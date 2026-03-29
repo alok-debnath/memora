@@ -236,7 +236,7 @@ const ChatBubble = React.memo(function ChatBubble({
 
   return (
     <Animated.View
-      entering={FadeInDown.duration(250).springify().damping(18)}
+      entering={FadeInDown.duration(220)}
       style={{ marginBottom: CHAT.messageGap }}
     >
       <XStack
@@ -324,7 +324,7 @@ const ChatBubble = React.memo(function ChatBubble({
 
           {/* Inline action bar — shown on long press */}
           {showActions && (
-            <Animated.View entering={ZoomIn.springify().damping(18)}>
+            <Animated.View entering={ZoomIn.duration(200)}>
               <XStack
                 gap={6}
                 alignSelf={isUser ? "flex-end" : "flex-start"}
@@ -629,7 +629,7 @@ function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => void }) 
   return (
     <YStack flex={1} justifyContent="center" padding={24} gap={28}>
       <YStack alignItems="center" gap={12}>
-        <Animated.View entering={ZoomIn.springify().damping(16)}>
+        <Animated.View entering={ZoomIn.duration(250)}>
           <XStack
             width={72}
             height={72}
