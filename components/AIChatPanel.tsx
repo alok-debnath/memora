@@ -48,11 +48,9 @@ const CHAT = {
 } as const;
 
 const SUGGESTIONS = [
-  "What did I note about the project?",
-  "Search my documents",
-  "Find travel memories",
-  "Create a reminder",
-  "How many memories do I have?",
+  "Remember my WiFi password is starlight42",
+  "What did I save about my passport?",
+  "Show all my work memories",
 ];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -647,13 +645,13 @@ function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => void }) 
           </XStack>
         </Animated.View>
         <Text
-          fontSize={22}
+          fontSize={20}
           fontFamily="$heading"
           fontWeight="700"
           textAlign="center"
           color="$color"
         >
-          Ask Memora anything
+          What's on your mind?
         </Text>
         <Text
           fontSize={14}
@@ -663,7 +661,7 @@ function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => void }) 
           maxWidth={300}
           color="$colorMuted"
         >
-          Search memories, inspect documents, analyze patterns, or create notes.
+          Create, find, edit or remove any memory
         </Text>
       </YStack>
 

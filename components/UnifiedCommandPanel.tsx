@@ -31,12 +31,6 @@ import { SegmentedControl } from "./ui/SegmentedControl";
 // Constants
 // ---------------------------------------------------------------------------
 
-const CHAT_SUGGESTIONS = [
-  "Remember my WiFi password is starlight42",
-  "What did I save about my passport?",
-  "Show all my work memories",
-];
-
 const TEMPLATES = [
   {
     name: "Meeting Notes",
@@ -73,37 +67,6 @@ const TIPS = [
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
-
-interface SuggestionCardProps {
-  text: string;
-  onPress: () => void;
-  index: number;
-}
-
-function SuggestionCard({ text, onPress, index }: SuggestionCardProps) {
-  const theme = useAppTheme();
-  return (
-    <Animated.View entering={FadeIn.delay(index * 60).duration(250)}>
-      <PressableScale onPress={onPress}>
-        <XStack
-          backgroundColor="$card"
-          borderColor="$borderColor"
-          borderWidth={1}
-          borderRadius={14}
-          paddingHorizontal={16}
-          paddingVertical={14}
-          alignItems="center"
-          justifyContent="space-between"
-        >
-          <Text fontSize={14} fontFamily="$body" color="$color" flex={1} marginRight={12} numberOfLines={1}>
-            &ldquo;{text}&rdquo;
-          </Text>
-          <Feather name="arrow-right" size={16} color={theme.colorMuted.val} />
-        </XStack>
-      </PressableScale>
-    </Animated.View>
-  );
-}
 
 function TemplateCard({
   template,
@@ -188,22 +151,15 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
   const [isSaving, setIsSaving] = useState(false);
   const [timeCapsuleEnabled, setTimeCapsuleEnabled] = useState(false);
   const [capsuleDate, setCapsuleDate] = useState("");
-  const [chatText, setChatText] = useState("");
-  const [isChatSending, setIsChatSending] = useState(false);
-  const [voiceLiveTranscript, setVoiceLiveTranscript] = useState("");
   const insets = useSafeAreaInsets();
   const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
   const keyboardSpacerStyle = useAnimatedStyle(() => ({
     height: Math.abs(keyboardHeight.value),
   }));
-  const chatMessages = useQuery(api.chat.list, token ? { token } : "skip") ?? [];
-  const hasMessages = chatMessages.length > 0;
 
   const noteInputRef = useRef<TextInput>(null);
-  const chatInputRef = useRef<TextInput>(null);
 
   const captureMemory = useAction(api.actions.processMemory.captureMemory);
-  const sendChatMessage = useAction(api.actions.memoryChat.chat);
 
   // ---- Handlers ----
 
@@ -237,38 +193,10 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
     }
   };
 
-  const handleChatSend = useCallback(
-    async (text: string) => {
-      if (!text.trim() || !token) return;
-      if (Platform.OS !== "web") {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      }
-      setIsChatSending(true);
-      setChatText("");
-      try {
-        await sendChatMessage({ token, message: text.trim() });
-      } catch {
-        // handled by UI
-      }
-      setIsChatSending(false);
-    },
-    [token, sendChatMessage],
-  );
-
-  const handleVoiceComplete = (text: string) => {
-    if (text.trim()) {
-      handleChatSend(text);
-    }
-  };
-
   const handleTemplateSelect = (template: (typeof TEMPLATES)[number]) => {
     setNoteText(template.prompt);
     setNoteSubTab("type");
     setTimeout(() => noteInputRef.current?.focus(), 200);
-  };
-
-  const handleSuggestion = (text: string) => {
-    handleChatSend(text);
   };
 
   // ---- Render ----
@@ -368,147 +296,7 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
 
       {/* ── Content ── */}
       {activeTab === "chat" ? (
-        hasMessages ? (
-          /* Chat with messages — delegate to AIChatPanel */
-          <AIChatPanel token={token} chatInputMode={chatInputMode} setChatInputMode={setChatInputMode} />
-        ) : (
-          /* Chat empty state */
-          <YStack flex={1}>
-            <ScrollView
-              style={{ flex: 1 }}
-              contentContainerStyle={{ paddingBottom: 20 }}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-            >
-              <YStack alignItems="center" paddingTop={40} paddingBottom={32} gap={10}>
-                <XStack
-                  width={64}
-                  height={64}
-                  borderRadius={32}
-                  alignItems="center"
-                  justifyContent="center"
-                  marginBottom={8}
-                  backgroundColor={theme.primary.val + "12"}
-                >
-                  <Feather name="cpu" size={36} color={theme.primary.val} />
-                </XStack>
-                <Text fontSize={20} fontFamily="$body" fontWeight="700" textAlign="center" color="$color">
-                  What&apos;s on your mind?
-                </Text>
-                <Text fontSize={14} fontFamily="$body" textAlign="center" color="$colorMuted">
-                  Create, find, edit or remove any memory
-                </Text>
-              </YStack>
-
-              <YStack gap={10} paddingHorizontal={20}>
-                {CHAT_SUGGESTIONS.map((text, i) => (
-                  <SuggestionCard
-                    key={text}
-                    text={text}
-                    onPress={() => handleSuggestion(text)}
-                    index={i}
-                  />
-                ))}
-              </YStack>
-            </ScrollView>
-
-            {/* Spacer that grows with the keyboard so ScrollView content isn't hidden */}
-            <Animated.View style={keyboardSpacerStyle} />
-
-            {/* Bottom input area — sticks above keyboard */}
-            <KeyboardStickyView>
-            <YStack
-              paddingHorizontal={16}
-              paddingVertical={12}
-              paddingBottom={Math.max(insets.bottom, 12)}
-              borderTopWidth={0.5}
-              borderTopColor="$borderColor"
-              backgroundColor="$background"
-            >
-              {chatInputMode === "voice" ? (
-                <YStack gap={8}>
-                  {voiceLiveTranscript ? (
-                    <YStack
-                      paddingHorizontal={14}
-                      paddingVertical={10}
-                      borderRadius={16}
-                      backgroundColor="$accent"
-                      borderWidth={1}
-                      borderColor="$primary"
-                    >
-                      <Text fontSize={15} fontFamily="$body" color="$color" lineHeight={22}>
-                        {voiceLiveTranscript}
-                      </Text>
-                    </YStack>
-                  ) : null}
-                  <YStack alignItems="center">
-                    <VoiceRecorder
-                      onTranscription={setVoiceLiveTranscript}
-                      onTranscriptionComplete={(text) => {
-                        setVoiceLiveTranscript("");
-                        handleVoiceComplete(text);
-                      }}
-                      compact={false}
-                    />
-                  </YStack>
-                </YStack>
-              ) : (
-                <XStack alignItems="flex-end" gap={8}>
-                  <Pressable style={{ position: "absolute", left: 0, bottom: 0, width: 40, height: 40, alignItems: "center", justifyContent: "center" }} hitSlop={8}>
-                    <Feather name="paperclip" size={20} color={theme.colorMuted.val} />
-                  </Pressable>
-                  <TextInput
-                    ref={chatInputRef}
-                    value={chatText}
-                    onChangeText={setChatText}
-                    placeholder="Type a message..."
-                    placeholderTextColor={theme.colorMuted.val}
-                    multiline
-                    style={{
-                      flex: 1,
-                      minHeight: 42,
-                      maxHeight: 100,
-                      borderRadius: 21,
-                      paddingHorizontal: 16,
-                      paddingVertical: 10,
-                      fontSize: 15,
-                      fontFamily: FontFamily.regular,
-                      borderWidth: 0.5,
-                      color: theme.color.val,
-                      backgroundColor: theme.secondary.val,
-                      borderColor: theme.borderColor.val,
-                    }}
-                    autoFocus
-                  />
-                  <PressableScale
-                    onPress={() => {
-                      if (chatText.trim()) handleChatSend(chatText);
-                    }}
-                    disabled={!chatText.trim() || isChatSending}
-                  >
-                    <XStack
-                      width={38}
-                      height={38}
-                      borderRadius={19}
-                      alignItems="center"
-                      justifyContent="center"
-                      backgroundColor={chatText.trim() && !isChatSending ? "$primary" : "$borderColor"}
-                    >
-                      <Feather
-                        name="send"
-                        size={16}
-                        color={
-                          chatText.trim() && !isChatSending ? "#FFFFFF" : theme.colorMuted.val
-                        }
-                      />
-                    </XStack>
-                  </PressableScale>
-                </XStack>
-              )}
-            </YStack>
-            </KeyboardStickyView>
-          </YStack>
-        )
+        <AIChatPanel token={token} chatInputMode={chatInputMode} setChatInputMode={setChatInputMode} />
       ) : (
         /* ── New Memory Tab ── */
         <YStack flex={1}>
