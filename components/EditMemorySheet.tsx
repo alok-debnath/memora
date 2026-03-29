@@ -8,7 +8,8 @@ import {
   Alert,
   useWindowDimensions,
 } from "react-native";
-import DateTimePicker from "@react-native-community/datetimepicker";
+import DateTimePicker from "react-native-ui-datepicker";
+import dayjs from "dayjs";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import * as Haptics from "expo-haptics";
@@ -95,9 +96,7 @@ export function EditMemorySheet({
   const [form, setForm] = useState(() => createInitialState(memory));
   const [mode, setMode] = useState<"manual" | "voice">("manual");
   const [voiceLoading, setVoiceLoading] = useState(false);
-
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -135,22 +134,6 @@ export function EditMemorySheet({
     Speech.speak(`${form.title}. ${form.content}`, { language: "en" });
   };
 
-  const handleDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(Platform.OS === 'ios');
-    if (selectedDate) {
-      setField("reminderDate", selectedDate.toISOString());
-    }
-  };
-
-  const handleTimeChange = (event: any, selectedTime?: Date) => {
-    setShowTimePicker(Platform.OS === 'ios');
-    if (selectedTime) {
-      const current = form.reminderDate ? new Date(form.reminderDate) : new Date();
-      current.setHours(selectedTime.getHours());
-      current.setMinutes(selectedTime.getMinutes());
-      setField("reminderDate", current.toISOString());
-    }
-  };
 
   const handleDelete = () => {
     if (!memory) return;
@@ -401,11 +384,10 @@ export function EditMemorySheet({
                   />
                 </XStack>
               ) : (
-                <XStack gap={8}>
+                <YStack gap={8}>
                   <Pressable
-                    onPress={() => setShowDatePicker(true)}
+                    onPress={() => setShowPicker(!showPicker)}
                     style={{
-                      flex: 1,
                       flexDirection: "row",
                       alignItems: "center",
                       gap: 8,
@@ -419,47 +401,25 @@ export function EditMemorySheet({
                   >
                     <Feather name="calendar" size={14} color={theme.colorMuted.val} />
                     <Text style={{ flex: 1, fontSize: 14, fontFamily: FontFamily.regular, color: form.reminderDate ? theme.color.val : theme.colorMuted.val }}>
-                      {form.reminderDate ? new Date(form.reminderDate).toLocaleDateString() : "Select Date"}
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setShowTimePicker(true)}
-                    style={{
-                      flex: 1,
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 8,
-                      borderWidth: 0.5,
-                      borderRadius: 12,
-                      paddingHorizontal: 12,
-                      paddingVertical: 10,
-                      borderColor: theme.borderColor.val,
-                      backgroundColor: theme.card.val,
-                    }}
-                  >
-                    <Feather name="clock" size={14} color={theme.colorMuted.val} />
-                    <Text style={{ flex: 1, fontSize: 14, fontFamily: FontFamily.regular, color: form.reminderDate ? theme.color.val : theme.colorMuted.val }}>
-                      {form.reminderDate ? new Date(form.reminderDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Select Time"}
+                      {form.reminderDate ? dayjs(form.reminderDate).format("MMM D, YYYY - h:mm A") : "Select Date & Time"}
                     </Text>
                   </Pressable>
 
-                  {showDatePicker && (
-                    <DateTimePicker
-                      value={form.reminderDate ? new Date(form.reminderDate) : new Date()}
-                      mode="date"
-                      display="default"
-                      onChange={handleDateChange}
-                    />
+                  {showPicker && (
+                    <YStack backgroundColor="$card" borderRadius={12} borderWidth={0.5} borderColor="$borderColor" padding={8}>
+                      <DateTimePicker
+                        mode="single"
+                        timePicker={true}
+                        date={form.reminderDate ? dayjs(form.reminderDate).toDate() : new Date()}
+                        onChange={(params: any) => {
+                          if (params.date) {
+                            setField("reminderDate", dayjs(params.date).toISOString());
+                          }
+                        }}
+                      />
+                    </YStack>
                   )}
-                  {showTimePicker && (
-                    <DateTimePicker
-                      value={form.reminderDate ? new Date(form.reminderDate) : new Date()}
-                      mode="time"
-                      display="default"
-                      onChange={handleTimeChange}
-                    />
-                  )}
-                </XStack>
+                </YStack>
               )}
             </YStack>
 
