@@ -135,6 +135,11 @@ function ThinkingIndicator() {
           borderColor="$borderColor"
           gap={6}
           alignItems="center"
+          shadowColor="#000"
+          shadowOffset={{ width: 0, height: 2 }}
+          shadowOpacity={0.05}
+          shadowRadius={6}
+          elevation={2}
         >
           <ThinkingDot delay={0}   color={color} />
           <ThinkingDot delay={160} color={color} />
@@ -233,7 +238,7 @@ const ChatBubble = React.memo(function ChatBubble({
 
   return (
     <Animated.View
-      entering={FadeIn.duration(180)}
+      entering={FadeInDown.duration(250).springify().damping(18)}
       style={{ marginBottom: CHAT.messageGap }}
     >
       <XStack
@@ -256,21 +261,68 @@ const ChatBubble = React.memo(function ChatBubble({
         )}
 
         <YStack flex={1} gap={4}>
-          <Pressable onLongPress={handleLongPress} delayLongPress={400}>
-            <Animated.View style={bubbleStyle}>
-              <YStack
-                paddingHorizontal={CHAT.bubblePadding}
-                paddingVertical={12}
-                borderRadius={CHAT.bubbleRadius}
-                backgroundColor={isUser ? theme.primary.val : theme.backgroundStrong.val}
-                borderWidth={isUser ? 0 : 1}
-                borderColor={isUser ? "transparent" : "$borderColor"}
-                style={isUser ? { borderBottomRightRadius: 6 } : { borderBottomLeftRadius: 6 }}
-              >
-                <Markdown style={mdStyles}>{msg.content}</Markdown>
-              </YStack>
-            </Animated.View>
-          </Pressable>
+          <XStack alignItems="center" gap={8} alignSelf={isUser ? "flex-end" : "flex-start"}>
+            {/* Show speaker icon to the left of AI messages if it's currently speaking */}
+            {!isUser && isSpeaking && (
+              <Animated.View entering={ZoomIn.duration(200)}>
+                 <Pressable
+                  onPress={() => onSpeak(msg._id, msg.content)}
+                  hitSlop={8}
+                  style={({ pressed }) => ({
+                    opacity: pressed ? 0.6 : 1,
+                    width: 24,
+                    height: 24,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: theme.primary.val + "15",
+                    borderRadius: 12,
+                  })}
+                >
+                  <Feather name="volume-x" size={14} color={theme.primary.val} />
+                </Pressable>
+              </Animated.View>
+            )}
+
+            <Pressable onLongPress={handleLongPress} delayLongPress={400} style={{ flexShrink: 1 }}>
+              <Animated.View style={bubbleStyle}>
+                <YStack
+                  paddingHorizontal={CHAT.bubblePadding}
+                  paddingVertical={12}
+                  borderRadius={CHAT.bubbleRadius}
+                  backgroundColor={isUser ? theme.primary.val : theme.backgroundStrong.val}
+                  borderWidth={isUser ? 0 : 1}
+                  borderColor={isUser ? "transparent" : "$borderColor"}
+                  style={isUser ? { borderBottomRightRadius: 6 } : { borderBottomLeftRadius: 6 }}
+                  shadowColor={isUser ? theme.primary.val : "#000"}
+                  shadowOffset={{ width: 0, height: 2 }}
+                  shadowOpacity={isUser ? 0.2 : 0.05}
+                  shadowRadius={6}
+                  elevation={2}
+                >
+                  <Markdown style={mdStyles}>{msg.content}</Markdown>
+                </YStack>
+              </Animated.View>
+            </Pressable>
+
+            {/* Show speaker icon to the right of AI messages */}
+            {!isUser && !isSpeaking && (
+              <Animated.View entering={FadeIn.duration(200)}>
+                <Pressable
+                  onPress={() => onSpeak(msg._id, msg.content)}
+                  hitSlop={8}
+                  style={({ pressed }) => ({
+                    opacity: pressed ? 0.6 : 1,
+                    width: 28,
+                    height: 28,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  })}
+                >
+                  <Feather name="volume-2" size={14} color={theme.colorMuted.val} />
+                </Pressable>
+              </Animated.View>
+            )}
+          </XStack>
 
           {/* Inline action bar — shown on long press */}
           {showActions && (
@@ -298,37 +350,6 @@ const ChatBubble = React.memo(function ChatBubble({
                   <Feather name="copy" size={12} color={theme.colorMuted.val} />
                   <Text fontSize={11} fontFamily="$body" color="$colorMuted">Copy</Text>
                 </Pressable>
-
-                {!isUser && (
-                  <Pressable
-                    onPress={() => { onSpeak(msg._id, msg.content); setShowActions(false); }}
-                    style={({ pressed }) => ({
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 4,
-                      paddingHorizontal: 10,
-                      paddingVertical: 5,
-                      borderRadius: 10,
-                      backgroundColor: theme.backgroundStrong.val,
-                      borderWidth: 1,
-                      borderColor: theme.borderColor.val,
-                      opacity: pressed ? 0.7 : 1,
-                    })}
-                  >
-                    <Feather
-                      name={isSpeaking ? "volume-x" : "volume-2"}
-                      size={12}
-                      color={isSpeaking ? theme.primary.val : theme.colorMuted.val}
-                    />
-                    <Text
-                      fontSize={11}
-                      fontFamily="$body"
-                      color={isSpeaking ? "$primary" : "$colorMuted"}
-                    >
-                      {isSpeaking ? "Stop" : "Listen"}
-                    </Text>
-                  </Pressable>
-                )}
               </XStack>
             </Animated.View>
           )}
@@ -383,52 +404,53 @@ function VoiceWaveform({ color }: { color: string }) {
 
 // ─── Chat Input Bar ───────────────────────────────────────────────────────────
 
+import { VoiceRecorder } from "./VoiceRecorder";
+
 function ChatInputBar({
   isSending,
   onSend,
   onPickImage,
   onPickDoc,
+  chatInputMode,
+  setChatInputMode,
 }: {
   isSending: boolean;
   onSend: (text: string) => void;
   onPickImage: () => void;
   onPickDoc: () => void;
+  chatInputMode?: "voice" | "keyboard";
+  setChatInputMode?: (mode: "voice" | "keyboard") => void;
 }) {
   const theme = useAppTheme();
   const [text, setText] = useState("");
   const inputRef = useRef<TextInput>(null);
+  const [internalMode, setInternalMode] = useState<"voice" | "keyboard">("keyboard");
 
-  const voice = useVoiceInput(
-    useCallback(
-      (transcript: string) => {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        onSend(transcript);
-      },
-      [onSend],
-    ),
-  );
+  const mode = chatInputMode ?? internalMode;
+  const setMode = setChatInputMode ?? setInternalMode;
+
+  const [voiceLiveTranscript, setVoiceLiveTranscript] = useState("");
+
+  const handleVoiceComplete = useCallback((transcript: string) => {
+    if (transcript.trim()) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      // Pass true to indicate this was a voice message
+      (onSend as any)(transcript, true);
+    }
+  }, [onSend]);
 
   const canSend = text.trim().length > 0 && !isSending;
 
   const handleSend = useCallback(() => {
     const trimmed = text.trim();
     if (!trimmed || isSending) return;
-    onSend(trimmed);
+    (onSend as any)(trimmed, false);
     setText("");
   }, [text, isSending, onSend]);
 
-  const handleMicPress = useCallback(async () => {
-    if (voice.isListening) {
-      voice.stop();
-    } else {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      await voice.start();
-    }
-  }, [voice]);
-
   // Web: Ctrl/Cmd+Enter to send
   useEffect(() => {
-    if (Platform.OS !== "web") return;
+    if (Platform.OS !== "web" || mode !== "keyboard") return;
     const el = inputRef.current as unknown as HTMLElement | null;
     if (!el) return;
     const handler = (e: KeyboardEvent) => {
@@ -439,51 +461,60 @@ function ChatInputBar({
     };
     el.addEventListener("keydown", handler);
     return () => el.removeEventListener("keydown", handler);
-  }, [handleSend]);
+  }, [handleSend, mode]);
 
-  // ── Voice active UI ────────────────────────────────────────────────────────
-  if (voice.isListening) {
+  // ── Voice mode UI ────────────────────────────────────────────────────────
+  if (mode === "voice") {
     return (
       <Animated.View entering={FadeIn.duration(150)}>
-        <XStack
-          alignItems="center"
-          padding={8}
-          gap={8}
-          borderWidth={1.5}
-          borderRadius={24}
-          borderColor="$primary"
-          backgroundColor="$backgroundStrong"
-          minHeight={56}
-        >
-          <VoiceWaveform color={theme.primary.val} />
+        <YStack gap={8}>
+          {voiceLiveTranscript ? (
+            <YStack
+              paddingHorizontal={14}
+              paddingVertical={10}
+              borderRadius={16}
+              backgroundColor="$accent"
+              borderWidth={1}
+              borderColor="$primary"
+            >
+              <Text fontSize={15} fontFamily="$body" color="$color" lineHeight={22}>
+                {voiceLiveTranscript}
+              </Text>
+            </YStack>
+          ) : null}
+          <XStack alignItems="center" justifyContent="center" position="relative" minHeight={80}>
+             {/* Center Voice Button */}
+             <VoiceRecorder
+                onTranscription={setVoiceLiveTranscript}
+                onTranscriptionComplete={(text) => {
+                  setVoiceLiveTranscript("");
+                  handleVoiceComplete(text);
+                }}
+                compact={false}
+              />
 
-          <Text
-            flex={1}
-            fontSize={15}
-            fontFamily="$body"
-            color={voice.liveTranscript ? "$color" : "$colorMuted"}
-            fontStyle={voice.liveTranscript ? "normal" : "italic"}
-            numberOfLines={3}
-          >
-            {voice.liveTranscript || "Listening…"}
-          </Text>
-
-          <Pressable
-            onPress={handleMicPress}
-            hitSlop={6}
-            style={({ pressed }) => ({
-              width: 38,
-              height: 38,
-              borderRadius: 19,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: theme.destructive.val + "20",
-              opacity: pressed ? 0.7 : 1,
-            })}
-          >
-            <Feather name="square" size={16} color={theme.destructive.val} />
-          </Pressable>
-        </XStack>
+              {/* Right Keyboard Button */}
+              <Pressable
+                onPress={() => setMode("keyboard")}
+                hitSlop={12}
+                style={({ pressed }) => ({
+                  position: "absolute",
+                  right: 16,
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: theme.backgroundStrong.val,
+                  borderWidth: 1,
+                  borderColor: theme.borderColor.val,
+                  opacity: pressed ? 0.7 : 1,
+                })}
+              >
+                <Feather name="type" size={20} color={theme.colorMuted.val} />
+              </Pressable>
+          </XStack>
+        </YStack>
       </Animated.View>
     );
   }
@@ -555,7 +586,7 @@ function ChatInputBar({
       />
 
       <Pressable
-        onPress={handleMicPress}
+        onPress={() => setMode("voice")}
         hitSlop={6}
         style={({ pressed }) => ({
           width: 38,
@@ -671,7 +702,12 @@ function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => void }) 
 
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 
-export function AIChatPanel({ compact, token: tokenProp }: AIChatPanelProps) {
+interface ExtendedAIChatPanelProps extends AIChatPanelProps {
+  chatInputMode?: "voice" | "keyboard";
+  setChatInputMode?: (mode: "voice" | "keyboard") => void;
+}
+
+export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatInputMode }: ExtendedAIChatPanelProps) {
   const theme = useAppTheme();
   const auth = useAuth();
   const { showToast } = useAppToast();
@@ -688,6 +724,7 @@ export function AIChatPanel({ compact, token: tokenProp }: AIChatPanelProps) {
   const clearChat = useMutation(api.chat.clear);
 
   const [isSending, setIsSending] = useState(false);
+  const [optimisticMessage, setOptimisticMessage] = useState<ChatMsg | null>(null);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
 
@@ -698,17 +735,36 @@ export function AIChatPanel({ compact, token: tokenProp }: AIChatPanelProps) {
       const timer = setTimeout(() => {
         flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
       }, 120);
+
+      // Auto-readout logic
+      if (lastInputModeRef.current === "voice" && messages.length > 0) {
+        const lastMsg = messages[messages.length - 1]; // Assume latest message is at end of array (since query sorts ascending)
+        if (lastMsg && lastMsg.role !== "user" && !unreadVoiceResponsesRef.current.has(lastMsg._id)) {
+            unreadVoiceResponsesRef.current.add(lastMsg._id);
+            speakMessage(lastMsg._id, lastMsg.content);
+        }
+      }
+
       prevCountRef.current = messages.length;
+
+      // If we received new messages and one of them matches our optimistic message content, clear it.
+      // (Or we just clear it unconditionally when a new message arrives while sending).
+      if (isSending) {
+        setOptimisticMessage(null);
+      }
       return () => clearTimeout(timer);
     }
     prevCountRef.current = messages.length;
-  }, [messages.length]);
+  }, [messages.length, isSending, messages]);
 
   useEffect(() => {
-    if (isSending) {
-      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    if (isSending || optimisticMessage) {
+      const timer = setTimeout(() => {
+        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+      }, 50);
+      return () => clearTimeout(timer);
     }
-  }, [isSending]);
+  }, [isSending, optimisticMessage]);
 
   const speakMessage = useCallback(
     (id: string, text: string) => {
@@ -717,6 +773,7 @@ export function AIChatPanel({ compact, token: tokenProp }: AIChatPanelProps) {
         setSpeakingId(null);
         return;
       }
+      Speech.stop(); // Stop any currently playing speech before starting a new one
       setSpeakingId(id);
       Speech.speak(text.replace(/\*\*/g, "").replace(/`/g, ""), {
         onDone: () => setSpeakingId(null),
@@ -735,23 +792,40 @@ export function AIChatPanel({ compact, token: tokenProp }: AIChatPanelProps) {
     [showToast],
   );
 
+  const lastInputModeRef = useRef<"voice" | "keyboard">("keyboard");
+  const unreadVoiceResponsesRef = useRef<Set<string>>(new Set());
+
   const handleSend = useCallback(
-    async (text: string) => {
+    async (text: string, isVoice: boolean = false) => {
       if (!text.trim() || !token) return;
       if (Platform.OS !== "web") {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
+
+      lastInputModeRef.current = isVoice ? "voice" : "keyboard";
+
+      const optimisticMsg: ChatMsg = {
+        _id: `optimistic_${Date.now()}`,
+        role: "user",
+        content: text.trim(),
+        _creationTime: Date.now(),
+      };
+
+      setOptimisticMessage(optimisticMsg);
       setIsSending(true);
       try {
         await sendMessage({ token, message: text.trim() });
+        // Optimistic message will be cleared by the useEffect when real messages arrive
       } catch (error) {
+        setOptimisticMessage(null);
         showToast({
           title: "Failed to send message",
           message: "Check your connection and try again.",
           tone: "error",
         });
+      } finally {
+        setIsSending(false);
       }
-      setIsSending(false);
     },
     [token, sendMessage, showToast],
   );
@@ -855,18 +929,26 @@ export function AIChatPanel({ compact, token: tokenProp }: AIChatPanelProps) {
   // Inject a synthetic "thinking" item at the front (visual bottom in inverted list)
   // instead of using ListHeaderComponent, which gets scaleY:-1 applied in inverted mode
   const displayMessages = useMemo(() => {
-    const base = [...messages].reverse();
+    let base = [...messages];
+
+    // Add optimistic message if it exists
+    if (optimisticMessage && !base.some(m => m.content === optimisticMessage.content && m.role === "user" && m._creationTime > optimisticMessage._creationTime - 5000)) {
+       base.push(optimisticMessage as any);
+    }
+
+    base = base.reverse();
+
     if (isSending) {
       return [
-        { _id: "__thinking__", role: "thinking", content: "", _creationTime: 0 } as ChatMsg,
+        { _id: "__thinking__", role: "thinking", content: "", _creationTime: 0 } as any,
         ...base,
       ];
     }
     return base;
-  }, [messages, isSending]);
+  }, [messages, isSending, optimisticMessage]);
 
   const renderMessage = useCallback(
-    ({ item }: { item: ChatMsg }) => {
+    ({ item }: { item: any }) => {
       if (item.role === "thinking") return <ThinkingIndicator />;
       return (
         <ChatBubble
@@ -882,7 +964,7 @@ export function AIChatPanel({ compact, token: tokenProp }: AIChatPanelProps) {
     [aiMdStyles, userMdStyles, speakingId, speakMessage, copyMessage],
   );
 
-  const keyExtractor = useCallback((item: ChatMsg) => item._id, []);
+  const keyExtractor = useCallback((item: any) => item._id, []);
 
   // ── Input bar ──────────────────────────────────────────────────────────────
   const inputBar = (
@@ -906,13 +988,15 @@ export function AIChatPanel({ compact, token: tokenProp }: AIChatPanelProps) {
           onSend={handleSend}
           onPickImage={pickImage}
           onPickDoc={pickDocument}
+          chatInputMode={chatInputMode}
+          setChatInputMode={setChatInputMode}
         />
       </YStack>
     </KeyboardStickyView>
   );
 
   // ── Empty state ────────────────────────────────────────────────────────────
-  if (messages.length === 0) {
+  if (messages.length === 0 && !optimisticMessage && !isSending) {
     return (
       <YStack flex={1}>
         <YStack flex={1} overflow="hidden">

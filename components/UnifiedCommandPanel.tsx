@@ -370,7 +370,7 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
       {activeTab === "chat" ? (
         hasMessages ? (
           /* Chat with messages — delegate to AIChatPanel */
-          <AIChatPanel token={token} />
+          <AIChatPanel token={token} chatInputMode={chatInputMode} setChatInputMode={setChatInputMode} />
         ) : (
           /* Chat empty state */
           <YStack flex={1}>
