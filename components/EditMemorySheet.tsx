@@ -7,6 +7,8 @@ import {
   ActivityIndicator,
   Alert,
   useWindowDimensions,
+  Modal,
+  View,
 } from "react-native";
 import DateTimePicker from "react-native-ui-datepicker";
 import dayjs from "dayjs";
@@ -405,20 +407,67 @@ export function EditMemorySheet({
                     </Text>
                   </Pressable>
 
-                  {showPicker && (
-                    <YStack backgroundColor="$card" borderRadius={12} borderWidth={0.5} borderColor="$borderColor" padding={8}>
-                      <DateTimePicker
-                        mode="single"
-                        timePicker={true}
-                        date={form.reminderDate ? dayjs(form.reminderDate).toDate() : new Date()}
-                        onChange={(params: any) => {
-                          if (params.date) {
-                            setField("reminderDate", dayjs(params.date).toISOString());
-                          }
-                        }}
+                  <Modal
+                    visible={showPicker}
+                    transparent
+                    animationType="fade"
+                    onRequestClose={() => setShowPicker(false)}
+                  >
+                    <View
+                      style={{
+                        flex: 1,
+                        backgroundColor: "rgba(0,0,0,0.5)",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        padding: 20,
+                      }}
+                    >
+                      <Pressable
+                        style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+                        onPress={() => setShowPicker(false)}
                       />
-                    </YStack>
-                  )}
+                      <YStack
+                        backgroundColor="$card"
+                        borderRadius={16}
+                        borderWidth={1}
+                        borderColor="$borderColor"
+                        padding={16}
+                        width="100%"
+                        maxWidth={400}
+                        shadowColor="#000"
+                        shadowOffset={{ width: 0, height: 4 }}
+                        shadowOpacity={0.2}
+                        shadowRadius={12}
+                        elevation={10}
+                      >
+                        <XStack justifyContent="space-between" alignItems="center" marginBottom={16}>
+                          <Text fontSize={16} fontFamily="$heading" fontWeight="600" color="$color">
+                            Set Reminder
+                          </Text>
+                          <Pressable onPress={() => setShowPicker(false)} hitSlop={10}>
+                            <Feather name="x" size={20} color={theme.colorMuted.val} />
+                          </Pressable>
+                        </XStack>
+
+                        <DateTimePicker
+                          mode="single"
+                          timePicker={true}
+                          date={form.reminderDate ? dayjs(form.reminderDate).toDate() : new Date()}
+                          onChange={(params: any) => {
+                            if (params.date) {
+                              setField("reminderDate", dayjs(params.date).toISOString());
+                            }
+                          }}
+                        />
+
+                        <GradientButton
+                          title="Done"
+                          onPress={() => setShowPicker(false)}
+                          style={{ marginTop: 16 }}
+                        />
+                      </YStack>
+                    </View>
+                  </Modal>
                 </YStack>
               )}
             </YStack>
