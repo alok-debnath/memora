@@ -8,6 +8,7 @@ import {
   Alert,
   useWindowDimensions,
 } from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import * as Haptics from "expo-haptics";
@@ -95,6 +96,9 @@ export function EditMemorySheet({
   const [mode, setMode] = useState<"manual" | "voice">("manual");
   const [voiceLoading, setVoiceLoading] = useState(false);
 
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+
   useEffect(() => {
     if (visible) {
       setForm(createInitialState(memory));
@@ -129,6 +133,23 @@ export function EditMemorySheet({
   const handleReadAloud = () => {
     if (!form.content && !form.title) return;
     Speech.speak(`${form.title}. ${form.content}`, { language: "en" });
+  };
+
+  const handleDateChange = (event: any, selectedDate?: Date) => {
+    setShowDatePicker(Platform.OS === 'ios');
+    if (selectedDate) {
+      setField("reminderDate", selectedDate.toISOString());
+    }
+  };
+
+  const handleTimeChange = (event: any, selectedTime?: Date) => {
+    setShowTimePicker(Platform.OS === 'ios');
+    if (selectedTime) {
+      const current = form.reminderDate ? new Date(form.reminderDate) : new Date();
+      current.setHours(selectedTime.getHours());
+      current.setMinutes(selectedTime.getMinutes());
+      setField("reminderDate", current.toISOString());
+    }
   };
 
   const handleDelete = () => {
@@ -352,26 +373,94 @@ export function EditMemorySheet({
               >
                 REMINDER
               </Text>
-              <XStack
-                alignItems="center"
-                gap={8}
-                borderWidth={0.5}
-                borderRadius={12}
-                paddingHorizontal={12}
-                paddingVertical={10}
-                borderColor="$borderColor"
-                backgroundColor="$card"
-              >
-                <Feather name="calendar" size={14} color={theme.colorMuted.val} />
-                <TextInput
-                  value={form.reminderDate}
-                  onChangeText={(v) => setField("reminderDate", v)}
-                  placeholder="mm/dd/yyyy, --:-- --"
-                  placeholderTextColor={theme.colorMuted.val}
-                  autoCapitalize="none"
-                  style={{ flex: 1, fontSize: 14, fontFamily: FontFamily.regular, color: theme.color.val }}
-                />
-              </XStack>
+              {Platform.OS === "web" ? (
+                <XStack
+                  alignItems="center"
+                  gap={8}
+                  borderWidth={0.5}
+                  borderRadius={12}
+                  paddingHorizontal={12}
+                  paddingVertical={10}
+                  borderColor="$borderColor"
+                  backgroundColor="$card"
+                >
+                  <Feather name="calendar" size={14} color={theme.colorMuted.val} />
+                  <input
+                    type="datetime-local"
+                    value={form.reminderDate ? form.reminderDate.slice(0, 16) : ""}
+                    onChange={(e: any) => setField("reminderDate", e.target.value ? new Date(e.target.value).toISOString() : "")}
+                    style={{
+                      flex: 1,
+                      border: "none",
+                      background: "transparent",
+                      color: theme.color.val,
+                      fontSize: 14,
+                      fontFamily: "Inter, sans-serif",
+                      outline: "none",
+                    }}
+                  />
+                </XStack>
+              ) : (
+                <XStack gap={8}>
+                  <Pressable
+                    onPress={() => setShowDatePicker(true)}
+                    style={{
+                      flex: 1,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 8,
+                      borderWidth: 0.5,
+                      borderRadius: 12,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      borderColor: theme.borderColor.val,
+                      backgroundColor: theme.card.val,
+                    }}
+                  >
+                    <Feather name="calendar" size={14} color={theme.colorMuted.val} />
+                    <Text style={{ flex: 1, fontSize: 14, fontFamily: FontFamily.regular, color: form.reminderDate ? theme.color.val : theme.colorMuted.val }}>
+                      {form.reminderDate ? new Date(form.reminderDate).toLocaleDateString() : "Select Date"}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setShowTimePicker(true)}
+                    style={{
+                      flex: 1,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 8,
+                      borderWidth: 0.5,
+                      borderRadius: 12,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      borderColor: theme.borderColor.val,
+                      backgroundColor: theme.card.val,
+                    }}
+                  >
+                    <Feather name="clock" size={14} color={theme.colorMuted.val} />
+                    <Text style={{ flex: 1, fontSize: 14, fontFamily: FontFamily.regular, color: form.reminderDate ? theme.color.val : theme.colorMuted.val }}>
+                      {form.reminderDate ? new Date(form.reminderDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Select Time"}
+                    </Text>
+                  </Pressable>
+
+                  {showDatePicker && (
+                    <DateTimePicker
+                      value={form.reminderDate ? new Date(form.reminderDate) : new Date()}
+                      mode="date"
+                      display="default"
+                      onChange={handleDateChange}
+                    />
+                  )}
+                  {showTimePicker && (
+                    <DateTimePicker
+                      value={form.reminderDate ? new Date(form.reminderDate) : new Date()}
+                      mode="time"
+                      display="default"
+                      onChange={handleTimeChange}
+                    />
+                  )}
+                </XStack>
+              )}
             </YStack>
 
             {/* Recurring */}

@@ -280,9 +280,10 @@ export const captureMemory = action({
             messages: [
               {
                 role: "system",
-                content: `You are an AI assistant that processes memory notes. Extract ALL structured data from the user's input. Today's date: ${new Date().toISOString()}. The user's timezone is ${userTz}.
+            content: `You are an AI assistant that processes memory notes. Extract ALL structured data from the user's input. Today's date (UTC): ${new Date().toISOString()}. The user's timezone is ${userTz}.
 
-CRITICAL TIMEZONE RULE: When the user mentions times like "9:30 AM", "3pm tomorrow", or "next Monday at 10am", that time is in THEIR timezone (${userTz}). You MUST convert it to UTC for reminder_date.
+CRITICAL TIMEZONE RULE: When the user mentions times like "9:30 AM", "3pm tomorrow", or "next Monday at 10am", that time is in THEIR timezone (${userTz}). You MUST output the time in UTC ISO-8601 string format for the \`reminder_date\` property.
+Example: if it's currently Jan 1st and user is in America/New_York (UTC-5), and they say "tomorrow at 3pm", their local time for the reminder is Jan 2nd 15:00. You must output the UTC equivalent, which is Jan 2nd 20:00:00Z.
 
 For category: "personal" (daily life, education, exams, relationships, hobbies, social events), "work" (job tasks, meetings, professional projects), "finance" (money, payments, invoices, banking), "health" (medical, fitness, mental health), "other". Default to "personal" when in doubt — only use "work" for professional/job content.
 For mood: happy, sad, anxious, excited, neutral, grateful, frustrated, hopeful, nostalgic, motivated.

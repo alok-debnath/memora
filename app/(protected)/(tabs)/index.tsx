@@ -375,7 +375,7 @@ export default function HomeScreen() {
                         </Text>
                         {memory.reminderDate && (
                           <Text fontSize={12} fontFamily="$body" color="$colorMuted" marginTop={2}>
-                            {new Date(memory.reminderDate).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                            {new Date(memory.reminderDate).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                           </Text>
                         )}
                       </YStack>
@@ -426,7 +426,7 @@ export default function HomeScreen() {
                         </Text>
                         {memory.reminderDate && (
                           <Text fontSize={12} fontFamily="$body" color="$colorMuted" marginTop={2}>
-                            {new Date(memory.reminderDate).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+                            {new Date(memory.reminderDate).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                           </Text>
                         )}
                       </YStack>

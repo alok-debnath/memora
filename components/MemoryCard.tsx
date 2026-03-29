@@ -168,9 +168,11 @@ export function MemoryCard({
                     <XStack alignItems="center" gap={3}>
                       <Feather name="bell" size={10} color={theme.primary.val} />
                       <Text fontSize={11} fontFamily="$body" fontWeight="500" color="$primary">
-                        {new Date(memory.reminderDate).toLocaleDateString(undefined, {
+                        {new Date(memory.reminderDate).toLocaleString(undefined, {
                           month: "short",
                           day: "numeric",
+                          hour: "numeric",
+                          minute: "2-digit"
                         })}
                       </Text>
                     </XStack>
