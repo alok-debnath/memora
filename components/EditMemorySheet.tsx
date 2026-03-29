@@ -458,6 +458,18 @@ export function EditMemorySheet({
                               setField("reminderDate", dayjs(params.date).toISOString());
                             }
                           }}
+                          styles={{
+                            day_label: { color: theme.color.val, fontFamily: FontFamily.regular },
+                            selected: { backgroundColor: theme.primary.val, borderRadius: 8 },
+                            selected_label: { color: "#fff", fontFamily: FontFamily.bold },
+                            month_selector_label: { color: theme.color.val, fontFamily: FontFamily.bold },
+                            year_selector_label: { color: theme.color.val, fontFamily: FontFamily.bold },
+                            time_selector_label: { color: theme.color.val, fontFamily: FontFamily.bold },
+                            weekday_label: { color: theme.colorMuted.val, fontFamily: FontFamily.regular },
+                            today_label: { color: theme.primary.val, fontFamily: FontFamily.bold },
+                            button_prev: { backgroundColor: "transparent" },
+                            button_next: { backgroundColor: "transparent" },
+                          }}
                         />
 
                         <GradientButton
