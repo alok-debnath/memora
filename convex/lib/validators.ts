@@ -1,0 +1,83 @@
+import { v } from "convex/values";
+
+export const moodValidator = v.union(
+  v.literal("happy"),
+  v.literal("sad"),
+  v.literal("anxious"),
+  v.literal("excited"),
+  v.literal("neutral"),
+  v.literal("grateful"),
+  v.literal("frustrated"),
+  v.literal("hopeful"),
+  v.literal("nostalgic"),
+  v.literal("motivated")
+);
+
+export const categoryValidator = v.union(
+  v.literal("personal"),
+  v.literal("work"),
+  v.literal("finance"),
+  v.literal("health"),
+  v.literal("other")
+);
+
+export const importanceValidator = v.union(
+  v.literal("critical"),
+  v.literal("high"),
+  v.literal("normal"),
+  v.literal("low")
+);
+
+export const lifeAreaValidator = v.union(
+  v.literal("career"),
+  v.literal("family"),
+  v.literal("health"),
+  v.literal("finance"),
+  v.literal("social"),
+  v.literal("hobbies"),
+  v.literal("education"),
+  v.literal("travel"),
+  v.literal("self-care"),
+  v.literal("relationships")
+);
+
+export const recurrenceValidator = v.union(
+  v.literal("yearly"),
+  v.literal("monthly"),
+  v.literal("weekly"),
+  v.literal("daily")
+);
+
+export const extractedActionsValidator = v.array(
+  v.object({
+    action: v.string(),
+    completed: v.boolean(),
+    actionType: v.optional(
+      v.union(
+        v.literal("task"),
+        v.literal("reminder"),
+        v.literal("fact"),
+        v.literal("decision")
+      )
+    ),
+  })
+);
+
+export const contextTagsValidator = v.object({
+  who: v.optional(v.array(v.string())),
+  what: v.optional(v.string()),
+  where: v.optional(v.string()),
+  why: v.optional(v.string()),
+});
+
+export const energyLevelValidator = v.union(
+  v.literal("high"),
+  v.literal("medium"),
+  v.literal("low")
+);
+
+export const priorityValidator = v.union(
+  v.literal("high"),
+  v.literal("normal"),
+  v.literal("low")
+);

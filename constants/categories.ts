@@ -1,0 +1,98 @@
+import { Feather } from "@expo/vector-icons";
+
+export type Category = "personal" | "work" | "finance" | "health" | "other";
+
+export type Mood =
+  | "happy"
+  | "sad"
+  | "anxious"
+  | "excited"
+  | "neutral"
+  | "grateful"
+  | "frustrated"
+  | "hopeful"
+  | "nostalgic"
+  | "motivated";
+
+export type Importance = "critical" | "high" | "normal" | "low";
+
+export type LifeArea =
+  | "career"
+  | "family"
+  | "health"
+  | "finance"
+  | "social"
+  | "hobbies"
+  | "education"
+  | "travel"
+  | "self-care"
+  | "relationships";
+
+export const categoryIcons: Record<Category, keyof typeof Feather.glyphMap> = {
+  personal: "home",
+  work: "briefcase",
+  finance: "dollar-sign",
+  health: "heart",
+  other: "file-text",
+};
+
+export const categoryLabels: Record<Category, string> = {
+  personal: "Personal",
+  work: "Work",
+  finance: "Finance",
+  health: "Health",
+  other: "Other",
+};
+
+export const moodIcons: Record<Mood, keyof typeof Feather.glyphMap> = {
+  happy: "smile",
+  sad: "frown",
+  anxious: "alert-circle",
+  excited: "zap",
+  neutral: "minus-circle",
+  grateful: "gift",
+  frustrated: "cloud-lightning",
+  hopeful: "sunrise",
+  nostalgic: "clock",
+  motivated: "trending-up",
+};
+
+export const moodLabels: Record<Mood, string> = {
+  happy: "Happy",
+  sad: "Sad",
+  anxious: "Anxious",
+  excited: "Excited",
+  neutral: "Neutral",
+  grateful: "Grateful",
+  frustrated: "Frustrated",
+  hopeful: "Hopeful",
+  nostalgic: "Nostalgic",
+  motivated: "Motivated",
+};
+
+export const importanceLabels: Record<Importance, string> = {
+  critical: "Critical",
+  high: "High",
+  normal: "Normal",
+  low: "Low",
+};
+
+export const importanceColors: Record<Importance, string> = {
+  critical: "#DC2626",
+  high: "#F59E0B",
+  normal: "#3B82F6",
+  low: "#6B7280",
+};
+
+export const lifeAreaLabels: Record<LifeArea, string> = {
+  career: "Career",
+  family: "Family",
+  health: "Health",
+  finance: "Finance",
+  social: "Social",
+  hobbies: "Hobbies",
+  education: "Education",
+  travel: "Travel",
+  "self-care": "Self-care",
+  relationships: "Relationships",
+};

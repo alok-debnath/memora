@@ -1,0 +1,81 @@
+import { v } from "convex/values";
+import { mutation, query, internalMutation } from "./_generated/server";
+import { api } from "./_generated/api";
+import { resolveUser } from "./lib/withAuth";
+
+export const list = query({
+  args: {
+    token: v.string(),
+    conversationId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = await resolveUser(ctx, args.token);
+
+    if (args.conversationId) {
+      return await ctx.db
+        .query("chatMessages")
+        .withIndex("by_user_conversation", (q) =>
+          q.eq("userId", userId).eq("conversationId", args.conversationId)
+        )
+        .order("asc")
+        .take(200);
+    }
+
+    return await ctx.db
+      .query("chatMessages")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .order("asc")
+      .take(200);
+  },
+});
+
+export const send = internalMutation({
+  args: {
+    userId: v.id("users"),
+    content: v.string(),
+    role: v.union(v.literal("user"), v.literal("assistant")),
+    conversationId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("chatMessages", {
+      userId: args.userId,
+      role: args.role,
+      content: args.content,
+      conversationId: args.conversationId,
+    });
+  },
+});
+
+export const clear = mutation({
+  args: {
+    token: v.string(),
+    conversationId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = await resolveUser(ctx, args.token);
+
+    const messages = args.conversationId
+      ? await ctx.db
+          .query("chatMessages")
+          .withIndex("by_user_conversation", (q) =>
+            q.eq("userId", userId).eq("conversationId", args.conversationId)
+          )
+          .take(500)
+      : await ctx.db
+          .query("chatMessages")
+          .withIndex("by_user", (q) => q.eq("userId", userId))
+          .take(500);
+
+    for (const msg of messages) {
+      await ctx.db.delete(msg._id);
+    }
+
+    // If there are more, schedule continuation
+    if (messages.length >= 500) {
+      await ctx.scheduler.runAfter(0, api.chat.clear, {
+        token: args.token,
+        conversationId: args.conversationId,
+      });
+    }
+  },
+});

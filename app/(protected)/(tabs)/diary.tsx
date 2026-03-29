@@ -1,0 +1,274 @@
+import React, { useState } from "react";
+import {
+  TextInput,
+  ScrollView,
+  Platform,
+  Alert,
+  Pressable,
+  ActivityIndicator,
+} from "react-native";
+import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import Animated, { FadeInUp } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import { useAuth } from "@/hooks/useAuth";
+import type { DiaryEntry } from "@/types/memory";
+import { DiaryEntryCard } from "@/components/DiaryEntryCard";
+import { VoiceRecorder } from "@/components/VoiceRecorder";
+import { GradientButton } from "@/components/ui/GradientButton";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { XStack, YStack, Text } from "tamagui";
+import { useAppTheme } from "@/hooks/useAppTheme";
+import { FontFamily } from "@/constants/fonts";
+
+type DiaryEntryItem = {
+  _id: Id<"diaryEntries">;
+  _creationTime: number;
+  rawText: string;
+  correctedText?: string;
+  mood?: string;
+  energyLevel?: string;
+  topics: string[];
+  summary?: string;
+  structuredInsights?: Array<{ insight: string; category: string }>;
+  habitsDetected?: Array<{
+    habit: string;
+    sentiment: "positive" | "negative" | "neutral";
+    frequencyHint?: string;
+  }>;
+  personalityTraits?: Array<{ trait: string; evidence: string }>;
+  likes?: string[];
+  dislikes?: string[];
+  actionItems?: string[];
+};
+
+export default function DiaryScreen() {
+  const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const { user, token } = useAuth();
+
+  const entries = (useQuery(api.diary.list, token ? { token } : "skip") ?? []) as DiaryEntryItem[];
+  const createEntry = useMutation(api.diary.create);
+  const deleteEntry = useMutation(api.diary.remove);
+
+  const [diaryText, setDiaryText] = useState("");
+  const [mode, setMode] = useState<"voice" | "type">("voice");
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!diaryText.trim() || !token) return;
+    if (Platform.OS !== "web") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    setIsSaving(true);
+    try {
+      await createEntry({ token, rawText: diaryText.trim() });
+      setDiaryText("");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleVoiceComplete = async (text: string) => {
+    if (!text.trim() || !token) return;
+    if (Platform.OS !== "web") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    setIsSaving(true);
+    try {
+      await createEntry({ token, rawText: text.trim() });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = (id: Id<"diaryEntries">) => {
+    if (Platform.OS === "web") {
+      if (window.confirm("Delete this diary entry?")) {
+        deleteEntry({ token: token!, id });
+      }
+    } else {
+      Alert.alert("Delete Entry", "Are you sure?", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: () => deleteEntry({ token: token!, id }) },
+      ]);
+    }
+  };
+
+  const webTopPadding = Platform.OS === "web" ? 67 : 0;
+
+  return (
+    <YStack flex={1} backgroundColor="$background">
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20, paddingTop: insets.top + webTopPadding + 8 }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Header */}
+        <Animated.View entering={FadeInUp.duration(400)}>
+          <XStack alignItems="flex-start" justifyContent="space-between" marginBottom={20}>
+            <YStack flex={1} marginRight={12}>
+              <Text fontSize={24} fontFamily="$body" fontWeight="700" color="$color" marginBottom={4}>
+                📖 AI Diary
+              </Text>
+              <Text fontSize={13} fontFamily="$body" lineHeight={18} color="$colorMuted">
+                Speak or type your thoughts · AI will organize & analyze them
+              </Text>
+            </YStack>
+            <Pressable hitSlop={8}>
+              <Feather name="info" size={20} color={theme.colorMuted.val} />
+            </Pressable>
+          </XStack>
+        </Animated.View>
+
+        {/* Mode Toggle Pills */}
+        <XStack gap={8} marginBottom={12}>
+          <Pressable
+            onPress={() => setMode("voice")}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+              borderRadius: 20,
+              backgroundColor: mode === "voice" ? theme.primary.val : theme.secondary.val,
+            }}
+          >
+            <Feather name="mic" size={14} color={mode === "voice" ? "#FFFFFF" : theme.colorMuted.val} />
+            <Text
+              fontSize={14}
+              fontFamily="$body"
+              fontWeight="500"
+              color={mode === "voice" ? "#FFFFFF" : "$colorMuted"}
+            >
+              Voice
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setMode("type")}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+              borderRadius: 20,
+              backgroundColor: mode === "type" ? theme.primary.val : theme.secondary.val,
+            }}
+          >
+            <Feather name="grid" size={14} color={mode === "type" ? "#FFFFFF" : theme.colorMuted.val} />
+            <Text
+              fontSize={14}
+              fontFamily="$body"
+              fontWeight="500"
+              color={mode === "type" ? "#FFFFFF" : "$colorMuted"}
+            >
+              Type
+            </Text>
+          </Pressable>
+        </XStack>
+
+        {/* Input Card */}
+        <YStack
+          backgroundColor="$card"
+          borderColor="$borderColor"
+          borderWidth={0.5}
+          borderRadius={16}
+          padding={16}
+          marginBottom={4}
+          shadowColor="$shadowColor"
+          shadowOffset={{ width: 0, height: 2 }}
+          shadowOpacity={0.06}
+          shadowRadius={8}
+          elevation={2}
+        >
+          {mode === "voice" ? (
+            isSaving ? (
+              <YStack alignItems="center" justifyContent="center" paddingVertical={24} gap={16}>
+                <ActivityIndicator size="large" color={theme.primary.val} />
+                <Text fontSize={14} fontFamily="$body" color="$colorMuted">Saving entry...</Text>
+              </YStack>
+            ) : (
+              <YStack alignItems="center" justifyContent="center" paddingVertical={24} gap={16}>
+                <VoiceRecorder onTranscription={() => {}} onTranscriptionComplete={handleVoiceComplete} />
+                <Text fontSize={14} fontFamily="$body" color="$colorMuted">
+                  Tap the microphone to start speaking
+                </Text>
+              </YStack>
+            )
+          ) : (
+            <>
+              <TextInput
+                value={diaryText}
+                onChangeText={setDiaryText}
+                placeholder="Write about your day, thoughts, feelings, or anything on your mind..."
+                placeholderTextColor={theme.colorMuted.val}
+                multiline
+                style={{ minHeight: 140, fontSize: 15, fontFamily: FontFamily.regular, textAlignVertical: "top", lineHeight: 22, color: theme.color.val }}
+              />
+              <GradientButton
+                title="Save & Analyze"
+                onPress={handleSubmit}
+                icon="send"
+                loading={isSaving}
+                style={{ marginTop: 12 }}
+              />
+            </>
+          )}
+        </YStack>
+
+        {/* Recent Entries */}
+        <YStack marginTop={24}>
+          <Text
+            fontSize={11}
+            fontFamily="$body"
+            fontWeight="600"
+            color="$colorMuted"
+            letterSpacing={0.8}
+            marginBottom={12}
+            textTransform="uppercase"
+          >
+            RECENT ENTRIES
+          </Text>
+          {entries.length === 0 ? (
+            <EmptyState
+              icon="book"
+              title="No diary entries yet"
+              description="Start speaking to create your first entry"
+            />
+          ) : (
+            <YStack gap={12}>
+              {entries.map((entry, i: number) => (
+                <DiaryEntryCard
+                  key={entry._id}
+                  entry={{
+                    ...entry,
+                    id: entry._id,
+                    userId: user?._id ?? ("" as never),
+                    mood: entry.mood as DiaryEntry["mood"],
+                    energyLevel: entry.energyLevel as DiaryEntry["energyLevel"],
+                    createdAt: new Date(entry._creationTime).toISOString(),
+                    updatedAt: new Date(entry._creationTime).toISOString(),
+                    habitsDetected: entry.habitsDetected ?? [],
+                    personalityTraits: entry.personalityTraits ?? [],
+                    likes: entry.likes ?? [],
+                    dislikes: entry.dislikes ?? [],
+                    actionItems: entry.actionItems ?? [],
+                  } as DiaryEntry}
+                  onDelete={() => handleDelete(entry._id)}
+                  index={i}
+                />
+              ))}
+            </YStack>
+          )}
+        </YStack>
+
+        <YStack height={100} />
+      </ScrollView>
+    </YStack>
+  );
+}
