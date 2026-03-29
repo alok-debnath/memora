@@ -98,6 +98,7 @@ export default function HomeScreen() {
 
   const flashbacks = useQuery(api.memories.flashbacks, token ? { token } : "skip") ?? [];
   const reminderMemories = useQuery(api.memories.reminders, token ? { token } : "skip") ?? [];
+  const upcomingReminders = useQuery(api.memories.upcomingReminders, token ? { token } : "skip") ?? [];
   const stats = useQuery(api.memories.stats, token ? { token } : "skip");
   const semanticSearch = useAction(api.actions.semanticSearch.search);
 
@@ -375,6 +376,57 @@ export default function HomeScreen() {
                         {memory.reminderDate && (
                           <Text fontSize={12} fontFamily="$body" color="$colorMuted" marginTop={2}>
                             {new Date(memory.reminderDate).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                          </Text>
+                        )}
+                      </YStack>
+                      <Feather name="chevron-right" size={16} color={theme.colorMuted.val} />
+                    </XStack>
+                  </PressableScale>
+                </Animated.View>
+              ))}
+            </YStack>
+          </Animated.View>
+        )}
+
+        {/* Upcoming Reminders (This Week) */}
+        {upcomingReminders.length > 0 && (
+          <Animated.View entering={FadeIn.delay(300).duration(400)} style={{ marginTop: 24 }}>
+            <XStack alignItems="center" gap={8} paddingHorizontal={20} marginBottom={14}>
+              <YStack
+                width={28}
+                height={28}
+                borderRadius={8}
+                backgroundColor={theme.primary.val + "15"}
+                alignItems="center"
+                justifyContent="center"
+              >
+                <Feather name="calendar" size={14} color={theme.primary.val} />
+              </YStack>
+              <Text fontSize={16} fontFamily="$body" fontWeight="600" color="$color" flex={1}>
+                Upcoming This Week
+              </Text>
+            </XStack>
+            <YStack paddingHorizontal={20} gap={8}>
+              {upcomingReminders.slice(0, 5).map((memory, i: number) => (
+                <Animated.View key={memory._id} entering={FadeIn.delay(i * 60).duration(300)}>
+                  <PressableScale onPress={() => setEditMemory(memory)}>
+                    <XStack
+                      alignItems="center"
+                      padding={14}
+                      borderRadius={14}
+                      borderWidth={1}
+                      gap={12}
+                      backgroundColor="$card"
+                      borderColor="$borderColor"
+                    >
+                      <YStack width={8} height={8} borderRadius={4} backgroundColor={theme.primary.val} />
+                      <YStack flex={1}>
+                        <Text fontSize={14} fontFamily="$body" fontWeight="500" color="$color" numberOfLines={1}>
+                          {memory.title}
+                        </Text>
+                        {memory.reminderDate && (
+                          <Text fontSize={12} fontFamily="$body" color="$colorMuted" marginTop={2}>
+                            {new Date(memory.reminderDate).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
                           </Text>
                         )}
                       </YStack>

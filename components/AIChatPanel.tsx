@@ -133,11 +133,6 @@ function ThinkingIndicator() {
           borderColor="$borderColor"
           gap={6}
           alignItems="center"
-          shadowColor="#000"
-          shadowOffset={{ width: 0, height: 2 }}
-          shadowOpacity={0.05}
-          shadowRadius={6}
-          elevation={2}
         >
           <ThinkingDot delay={0}   color={color} />
           <ThinkingDot delay={160} color={color} />
@@ -291,11 +286,6 @@ const ChatBubble = React.memo(function ChatBubble({
                   borderWidth={isUser ? 0 : 1}
                   borderColor={isUser ? "transparent" : "$borderColor"}
                   style={isUser ? { borderBottomRightRadius: 6 } : { borderBottomLeftRadius: 6 }}
-                  shadowColor={isUser ? theme.primary.val : "#000"}
-                  shadowOffset={{ width: 0, height: 2 }}
-                  shadowOpacity={isUser ? 0.2 : 0.05}
-                  shadowRadius={6}
-                  elevation={2}
                 >
                   <Markdown style={mdStyles}>{msg.content}</Markdown>
                 </YStack>

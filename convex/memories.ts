@@ -80,6 +80,27 @@ export const reminders = query({
   },
 });
 
+export const upcomingReminders = query({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const { userId } = await resolveUser(ctx, args.token);
+    const now = new Date();
+    const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const nowIso = now.toISOString();
+    const nextWeekIso = nextWeek.toISOString();
+
+    const memories = await ctx.db
+      .query("memories")
+      .withIndex("by_user_reminderDate", (q) => q.eq("userId", userId))
+      .take(500);
+
+    return memories
+      .filter((m) => m.reminderDate && m.reminderDate > nowIso && m.reminderDate <= nextWeekIso)
+      .sort((a, b) => (a.reminderDate! > b.reminderDate! ? 1 : -1))
+      .slice(0, 20);
+  },
+});
+
 export const get = query({
   args: { token: v.string(), id: v.id("memories") },
   handler: async (ctx, args) => {
