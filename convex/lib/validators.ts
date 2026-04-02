@@ -81,3 +81,45 @@ export const priorityValidator = v.union(
   v.literal("normal"),
   v.literal("low")
 );
+
+/**
+ * Validator for encrypted envelope format
+ * All encrypted fields use this structure
+ */
+export const encryptedEnvelopeValidator = v.object({
+  v: v.number(), // encryption version
+  n: v.string(), // base64 nonce
+  c: v.string(), // base64 ciphertext
+});
+
+/**
+ * Validator for user encryption key material
+ */
+export const keyMaterialValidator = v.object({
+  version: v.number(),
+  salt: v.string(),
+  encryptedDek: v.string(),
+  dekNonce: v.string(),
+  iterations: v.number(),
+});
+
+/**
+ * Audit log action types
+ */
+export const auditActionValidator = v.union(
+  v.literal("memory.create"),
+  v.literal("memory.read"),
+  v.literal("memory.update"),
+  v.literal("memory.delete"),
+  v.literal("memory.share"),
+  v.literal("diary.create"),
+  v.literal("diary.read"),
+  v.literal("diary.delete"),
+  v.literal("chat.create"),
+  v.literal("data.export"),
+  v.literal("account.login"),
+  v.literal("account.logout"),
+  v.literal("account.delete"),
+  v.literal("encryption.setup"),
+  v.literal("encryption.rekey")
+);

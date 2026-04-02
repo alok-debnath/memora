@@ -382,9 +382,9 @@ async function searchMemories(
       memory.content,
       memory.category,
       memory.mood,
-      ...memory.tags,
-      ...memory.people,
-      ...memory.locations,
+      ...(memory.tags ?? []),
+      ...(memory.people ?? []),
+      ...(memory.locations ?? []),
     ]
       .filter(Boolean)
       .join("\n")
@@ -481,7 +481,7 @@ export const chat = action({
     });
     const recentChat = chatHistory.slice(-12).map((message) => ({
       role: message.role as "user" | "assistant",
-      content: message.content.slice(0, 4000),
+      content: (message.content ?? "").slice(0, 4000),
     }));
 
     const attachments = parseAttachments(args.message);
@@ -722,7 +722,7 @@ export const chat = action({
                 if (memory.mood) {
                   moods[memory.mood] = (moods[memory.mood] ?? 0) + 1;
                 }
-                for (const tag of memory.tags) {
+                for (const tag of memory.tags ?? []) {
                   tagCounts[tag] = (tagCounts[tag] ?? 0) + 1;
                 }
                 if (memory.reminderDate) {

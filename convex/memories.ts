@@ -12,6 +12,7 @@ import {
   recurrenceValidator,
   extractedActionsValidator,
   contextTagsValidator,
+  encryptedEnvelopeValidator,
 } from "./lib/validators";
 
 export const list = query({
@@ -177,9 +178,9 @@ export const searchByKeyword = internalQuery({
 
     return memories.filter(
       (m) =>
-        m.tags.some((tag) => tag.toLowerCase().includes(queryLower)) ||
-        m.people.some((person) => person.toLowerCase().includes(queryLower)) ||
-        m.locations.some((loc) => loc.toLowerCase().includes(queryLower))
+        (m.tags ?? []).some((tag) => tag.toLowerCase().includes(queryLower)) ||
+        (m.people ?? []).some((person) => person.toLowerCase().includes(queryLower)) ||
+        (m.locations ?? []).some((loc) => loc.toLowerCase().includes(queryLower))
     ).slice(0, maxResults);
   },
 });
@@ -212,13 +213,22 @@ export const listForAI = internalQuery({
 export const create = mutation({
   args: {
     token: v.string(),
-    title: v.string(),
-    content: v.string(),
+    // Plaintext fields (legacy, optional)
+    title: v.optional(v.string()),
+    content: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
+    people: v.optional(v.array(v.string())),
+    locations: v.optional(v.array(v.string())),
+    // Encrypted fields
+    encryptedTitle: v.optional(encryptedEnvelopeValidator),
+    encryptedContent: v.optional(encryptedEnvelopeValidator),
+    encryptedTags: v.optional(encryptedEnvelopeValidator),
+    encryptedPeople: v.optional(encryptedEnvelopeValidator),
+    encryptedLocations: v.optional(encryptedEnvelopeValidator),
+    titleBlindIndex: v.optional(v.string()),
+    // Other fields
     category: categoryValidator,
     mood: v.optional(moodValidator),
-    tags: v.array(v.string()),
-    people: v.array(v.string()),
-    locations: v.array(v.string()),
     importance: importanceValidator,
     lifeArea: v.optional(lifeAreaValidator),
     contextTags: v.optional(contextTagsValidator),
@@ -235,13 +245,22 @@ export const create = mutation({
     const userId = user.userId;
     const memoryId = await ctx.db.insert("memories", {
       userId,
+      // Plaintext fields (optional)
       title: args.title,
       content: args.content,
-      category: args.category,
-      mood: args.mood,
       tags: args.tags,
       people: args.people,
       locations: args.locations,
+      // Encrypted fields
+      encryptedTitle: args.encryptedTitle,
+      encryptedContent: args.encryptedContent,
+      encryptedTags: args.encryptedTags,
+      encryptedPeople: args.encryptedPeople,
+      encryptedLocations: args.encryptedLocations,
+      titleBlindIndex: args.titleBlindIndex,
+      // Other fields
+      category: args.category,
+      mood: args.mood,
       importance: args.importance,
       lifeArea: args.lifeArea,
       contextTags: args.contextTags,
@@ -256,8 +275,8 @@ export const create = mutation({
 
     await ctx.scheduler.runAfter(0, api.actions.processMemory.processMemory, {
       memoryId,
-      title: args.title,
-      content: args.content,
+      title: args.title ?? "",
+      content: args.content ?? "",
       userTimezone: user.timezone,
     });
 
@@ -269,13 +288,22 @@ export const update = mutation({
   args: {
     token: v.string(),
     id: v.id("memories"),
+    // Plaintext fields (legacy, optional)
     title: v.optional(v.string()),
     content: v.optional(v.string()),
-    category: v.optional(categoryValidator),
-    mood: v.optional(v.union(moodValidator, v.null())),
     tags: v.optional(v.array(v.string())),
     people: v.optional(v.array(v.string())),
     locations: v.optional(v.array(v.string())),
+    // Encrypted fields
+    encryptedTitle: v.optional(encryptedEnvelopeValidator),
+    encryptedContent: v.optional(encryptedEnvelopeValidator),
+    encryptedTags: v.optional(encryptedEnvelopeValidator),
+    encryptedPeople: v.optional(encryptedEnvelopeValidator),
+    encryptedLocations: v.optional(encryptedEnvelopeValidator),
+    titleBlindIndex: v.optional(v.string()),
+    // Other fields
+    category: v.optional(categoryValidator),
+    mood: v.optional(v.union(moodValidator, v.null())),
     importance: v.optional(importanceValidator),
     lifeArea: v.optional(v.union(lifeAreaValidator, v.null())),
     contextTags: v.optional(v.union(contextTagsValidator, v.null())),
@@ -297,8 +325,8 @@ export const update = mutation({
     await ctx.db.insert("memoryHistory", {
       memoryId: args.id,
       userId,
-      previousTitle: memory.title,
-      previousContent: memory.content,
+      previousTitle: memory.title ?? "",
+      previousContent: memory.content ?? "",
       editedAt: Date.now(),
       snapshotJson: serializeMemorySnapshot(memory),
     });
@@ -316,8 +344,8 @@ export const update = mutation({
     if (args.title !== undefined || args.content !== undefined) {
       await ctx.scheduler.runAfter(0, api.actions.processMemory.processMemory, {
         memoryId: args.id,
-        title: args.title ?? memory.title,
-        content: args.content ?? memory.content,
+        title: args.title ?? memory.title ?? "",
+        content: args.content ?? memory.content ?? "",
         userTimezone: user.timezone,
       });
     }
@@ -522,7 +550,7 @@ export const stats = query({
       if (m.mood) {
         moodCounts[m.mood] = (moodCounts[m.mood] ?? 0) + 1;
       }
-      for (const tag of m.tags) {
+      for (const tag of m.tags ?? []) {
         tagCounts[tag] = (tagCounts[tag] ?? 0) + 1;
       }
       if (m.reminderDate) reminderCount++;

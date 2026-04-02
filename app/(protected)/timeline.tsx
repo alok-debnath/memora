@@ -53,15 +53,16 @@ export default function TimelineScreen() {
     const filtered = query
       ? allMemories.filter(
           (memory) =>
-            memory.title.toLowerCase().includes(query) ||
-            memory.content.toLowerCase().includes(query) ||
+            (memory.title ?? "").toLowerCase().includes(query) ||
+            (memory.content ?? "").toLowerCase().includes(query) ||
             memory.category.toLowerCase().includes(query)
         )
       : allMemories;
 
     return [...filtered].sort((a, b) => b._creationTime - a._creationTime);
   }, [allMemories, searchQuery]);
-  const groups = groupByDate(sorted);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const groups = groupByDate(sorted as any);
   const webTopPadding = Platform.OS === "web" ? 67 : 0;
 
   return (

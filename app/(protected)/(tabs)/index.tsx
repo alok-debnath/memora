@@ -71,18 +71,24 @@ type MemoryItem = {
   _id: Id<"memories">;
   _creationTime: number;
   userId: Id<"users">;
-  title: string;
-  content: string;
+  title?: string;
+  content?: string;
   category: string;
   mood?: string;
-  tags: string[];
-  people: string[];
-  locations: string[];
+  tags?: string[];
+  people?: string[];
+  locations?: string[];
   importance: string;
   reminderDate?: string;
   isRecurring: boolean;
   shareToken?: string;
   isPublic?: boolean;
+  // Encrypted fields
+  encryptedTitle?: { v: number; n: string; c: string };
+  encryptedContent?: { v: number; n: string; c: string };
+  encryptedTags?: { v: number; n: string; c: string };
+  encryptedPeople?: { v: number; n: string; c: string };
+  encryptedLocations?: { v: number; n: string; c: string };
   [key: string]: unknown;
 };
 
@@ -108,13 +114,15 @@ export default function HomeScreen() {
   const addToReview = useMutation(api.review.addToReview);
   const createShareLink = useMutation(api.sharing.createShareLink);
 
-  const [editMemory, setEditMemory] = useState<MemoryItem | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [editMemory, setEditMemory] = useState<any | null>(null);
   const isEditMemoryOpen = useUIStore((s) => s.isEditMemoryOpen);
   const openEditMemory = useUIStore((s) => s.openEditMemory);
   const closeEditMemory = useUIStore((s) => s.closeEditMemory);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [searchResults, setSearchResults] = useState<MemoryItem[] | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [searchResults, setSearchResults] = useState<any[] | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 

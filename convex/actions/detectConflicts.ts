@@ -72,7 +72,7 @@ export const detectConflicts = action({
       }
 
       const memoryText = candidates
-        .map((memory) => `[${memory._id}] ${memory.title}: ${memory.content.slice(0, 150)}`)
+        .map((memory) => `[${memory._id}] ${memory.title ?? ""}: ${(memory.content ?? "").slice(0, 150)}`)
         .join("\n");
 
       return analyzeConflicts(client, args.content, memoryText);
@@ -85,7 +85,7 @@ export const detectConflicts = action({
         id: id as typeof args.memoryId,
       });
       if (memory) {
-        candidateMemories.push(`[${memory._id}] ${memory.title}: ${memory.content.slice(0, 150)}`);
+        candidateMemories.push(`[${memory._id}] ${memory.title ?? ""}: ${(memory.content ?? "").slice(0, 150)}`);
       }
     }
 

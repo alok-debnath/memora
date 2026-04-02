@@ -11,6 +11,9 @@ import {
   contextTagsValidator,
   energyLevelValidator,
   priorityValidator,
+  encryptedEnvelopeValidator,
+  keyMaterialValidator,
+  auditActionValidator,
 } from "./lib/validators";
 
 export default defineSchema({
@@ -35,18 +38,35 @@ export default defineSchema({
 
   memories: defineTable({
     userId: v.id("users"),
-    title: v.string(),
-    content: v.string(),
+    /** Plain text title - will be removed after migration */
+    title: v.optional(v.string()),
+    /** Plain text content - will be removed after migration */
+    content: v.optional(v.string()),
+    /** Encrypted title envelope */
+    encryptedTitle: v.optional(encryptedEnvelopeValidator),
+    /** Encrypted content envelope */
+    encryptedContent: v.optional(encryptedEnvelopeValidator),
+    /** Blind index for title search (HMAC hash) */
+    titleBlindIndex: v.optional(v.string()),
     category: categoryValidator,
     mood: v.optional(moodValidator),
-    tags: v.array(v.string()),
-    people: v.array(v.string()),
-    locations: v.array(v.string()),
+    /** Plain text tags - will be migrated to encrypted */
+    tags: v.optional(v.array(v.string())),
+    /** Encrypted tags array */
+    encryptedTags: v.optional(encryptedEnvelopeValidator),
+    /** Plain text people - will be migrated to encrypted */
+    people: v.optional(v.array(v.string())),
+    /** Encrypted people array */
+    encryptedPeople: v.optional(encryptedEnvelopeValidator),
+    /** Plain text locations - will be migrated to encrypted */
+    locations: v.optional(v.array(v.string())),
+    /** Encrypted locations array */
+    encryptedLocations: v.optional(encryptedEnvelopeValidator),
     importance: importanceValidator,
     lifeArea: v.optional(lifeAreaValidator),
     contextTags: v.optional(contextTagsValidator),
     sentimentScore: v.optional(v.float64()),
-    linkedUrls: v.array(v.string()),
+    linkedUrls: v.optional(v.array(v.string())),
     extractedActions: v.optional(extractedActionsValidator),
     reminderDate: v.optional(v.string()),
     isRecurring: v.boolean(),
@@ -55,6 +75,8 @@ export default defineSchema({
     embedding: v.optional(v.array(v.float64())),
     shareToken: v.optional(v.string()),
     isPublic: v.optional(v.boolean()),
+    /** Encryption version used (for migration tracking) */
+    encryptionVersion: v.optional(v.number()),
   })
     .index("by_user", ["userId"])
     .index("by_user_category", ["userId", "category"])
@@ -94,11 +116,22 @@ export default defineSchema({
   memoryHistory: defineTable({
     memoryId: v.id("memories"),
     userId: v.id("users"),
-    previousContent: v.string(),
-    previousTitle: v.string(),
+    /** Plain text - will be removed after migration */
+    previousContent: v.optional(v.string()),
+    /** Encrypted previous content */
+    encryptedPreviousContent: v.optional(encryptedEnvelopeValidator),
+    /** Plain text - will be removed after migration */
+    previousTitle: v.optional(v.string()),
+    /** Encrypted previous title */
+    encryptedPreviousTitle: v.optional(encryptedEnvelopeValidator),
     editedAt: v.float64(),
     changeReason: v.optional(v.string()),
+    /** Plain text snapshot - will be removed after migration */
     snapshotJson: v.optional(v.string()),
+    /** Encrypted full snapshot */
+    encryptedSnapshot: v.optional(encryptedEnvelopeValidator),
+    /** Encryption version used */
+    encryptionVersion: v.optional(v.number()),
   })
     .index("by_memory", ["memoryId"])
     .index("by_user", ["userId"]),
@@ -154,15 +187,31 @@ export default defineSchema({
 
   diaryEntries: defineTable({
     userId: v.id("users"),
-    rawText: v.string(),
+    /** Plain text - will be removed after migration */
+    rawText: v.optional(v.string()),
+    /** Encrypted raw text */
+    encryptedRawText: v.optional(encryptedEnvelopeValidator),
+    /** Plain text - will be removed after migration */
     correctedText: v.optional(v.string()),
+    /** Encrypted corrected text */
+    encryptedCorrectedText: v.optional(encryptedEnvelopeValidator),
     mood: v.optional(moodValidator),
     energyLevel: v.optional(energyLevelValidator),
-    topics: v.array(v.string()),
+    /** Plain text topics - will be migrated */
+    topics: v.optional(v.array(v.string())),
+    /** Encrypted topics */
+    encryptedTopics: v.optional(encryptedEnvelopeValidator),
+    /** Plain text - will be removed after migration */
     summary: v.optional(v.string()),
+    /** Encrypted summary */
+    encryptedSummary: v.optional(encryptedEnvelopeValidator),
+    /** Plain text - will be removed after migration */
     structuredInsights: v.optional(
       v.array(v.object({ insight: v.string(), category: v.string() }))
     ),
+    /** Encrypted structured insights */
+    encryptedInsights: v.optional(encryptedEnvelopeValidator),
+    /** Plain text - will be removed after migration */
     habitsDetected: v.optional(
       v.array(
         v.object({
@@ -176,12 +225,28 @@ export default defineSchema({
         })
       )
     ),
+    /** Encrypted habits */
+    encryptedHabits: v.optional(encryptedEnvelopeValidator),
+    /** Plain text - will be removed after migration */
     personalityTraits: v.optional(
       v.array(v.object({ trait: v.string(), evidence: v.string() }))
     ),
+    /** Encrypted personality traits */
+    encryptedPersonality: v.optional(encryptedEnvelopeValidator),
+    /** Plain text - will be removed after migration */
     likes: v.optional(v.array(v.string())),
+    /** Encrypted likes */
+    encryptedLikes: v.optional(encryptedEnvelopeValidator),
+    /** Plain text - will be removed after migration */
     dislikes: v.optional(v.array(v.string())),
+    /** Encrypted dislikes */
+    encryptedDislikes: v.optional(encryptedEnvelopeValidator),
+    /** Plain text - will be removed after migration */
     actionItems: v.optional(v.array(v.string())),
+    /** Encrypted action items */
+    encryptedActionItems: v.optional(encryptedEnvelopeValidator),
+    /** Encryption version used */
+    encryptionVersion: v.optional(v.number()),
   }).index("by_user", ["userId"]),
 
   reviewCards: defineTable({
@@ -199,21 +264,33 @@ export default defineSchema({
 
   nudges: defineTable({
     userId: v.id("users"),
-    title: v.string(),
-    message: v.string(),
+    /** Plain text - will be removed after migration */
+    title: v.optional(v.string()),
+    /** Encrypted title */
+    encryptedTitle: v.optional(encryptedEnvelopeValidator),
+    /** Plain text - will be removed after migration */
+    message: v.optional(v.string()),
+    /** Encrypted message */
+    encryptedMessage: v.optional(encryptedEnvelopeValidator),
     nudgeType: v.string(),
     priority: priorityValidator,
     isDismissed: v.boolean(),
     isActedOn: v.boolean(),
     basedOnDiaryEntryIds: v.optional(v.array(v.id("diaryEntries"))),
     expiresAt: v.optional(v.float64()),
+    /** Encryption version used */
+    encryptionVersion: v.optional(v.number()),
   }).index("by_user", ["userId"]),
 
   chatMessages: defineTable({
     userId: v.id("users"),
     conversationId: v.optional(v.string()),
     role: v.union(v.literal("user"), v.literal("assistant")),
-    content: v.string(),
+    /** Plain text - will be removed after migration */
+    content: v.optional(v.string()),
+    /** Encrypted message content */
+    encryptedContent: v.optional(encryptedEnvelopeValidator),
+    /** Plain text attachments - will be migrated */
     attachments: v.optional(
       v.array(
         v.object({
@@ -223,6 +300,10 @@ export default defineSchema({
         })
       )
     ),
+    /** Encrypted attachments metadata */
+    encryptedAttachments: v.optional(encryptedEnvelopeValidator),
+    /** Encryption version used */
+    encryptionVersion: v.optional(v.number()),
   })
     .index("by_user", ["userId"])
     .index("by_user_conversation", ["userId", "conversationId"]),
@@ -234,6 +315,64 @@ export default defineSchema({
   })
     .index("by_token", ["token"])
     .index("by_user", ["userId"]),
+
+  // ============================================
+  // ENCRYPTION & PRIVACY TABLES
+  // ============================================
+
+  /**
+   * User encryption key material
+   * Stores the encrypted DEK (Data Encryption Key) for each user
+   * The DEK is encrypted with a key derived from the user's password
+   */
+  userKeys: defineTable({
+    userId: v.id("users"),
+    /** Encrypted key material (DEK wrapped with password-derived key) */
+    keyMaterial: keyMaterialValidator,
+    /** Index key for blind indexing (encrypted with DEK) */
+    encryptedIndexKey: v.optional(v.string()),
+    /** When encryption was set up */
+    createdAt: v.float64(),
+    /** When key material was last updated (e.g., password change) */
+    updatedAt: v.float64(),
+  }).index("by_user", ["userId"]),
+
+  /**
+   * Audit log for sensitive operations
+   * Tracks access and modifications for compliance
+   */
+  auditLogs: defineTable({
+    userId: v.id("users"),
+    action: auditActionValidator,
+    /** Resource type that was accessed/modified */
+    resourceType: v.optional(v.string()),
+    /** ID of the resource (e.g., memory ID) */
+    resourceId: v.optional(v.string()),
+    /** Additional context (IP, user agent hash, etc.) */
+    metadata: v.optional(v.record(v.string(), v.string())),
+    /** Timestamp of the action */
+    timestamp: v.float64(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_action", ["userId", "action"])
+    .index("by_timestamp", ["timestamp"]),
+
+  /**
+   * Privacy consent tracking for GDPR/CCPA compliance
+   */
+  privacyConsent: defineTable({
+    userId: v.id("users"),
+    /** Version of privacy policy consented to */
+    policyVersion: v.string(),
+    /** Whether user consented to AI processing of their data */
+    aiProcessingConsent: v.boolean(),
+    /** Whether user consented to analytics */
+    analyticsConsent: v.boolean(),
+    /** When consent was given */
+    consentedAt: v.float64(),
+    /** IP address (hashed) at time of consent */
+    ipHash: v.optional(v.string()),
+  }).index("by_user", ["userId"]),
 
   ...authTables,
 });

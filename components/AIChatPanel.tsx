@@ -960,7 +960,7 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
         const lastMsg = messages[messages.length - 1]; // Assume latest message is at end of array (since query sorts ascending)
         if (lastMsg && lastMsg.role !== "user" && !unreadVoiceResponsesRef.current.has(lastMsg._id)) {
             unreadVoiceResponsesRef.current.add(lastMsg._id);
-            speakMessage(lastMsg._id, lastMsg.content);
+            speakMessage(lastMsg._id, lastMsg.content ?? "");
         }
       }
 

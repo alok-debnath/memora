@@ -2,7 +2,12 @@ import { v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { api } from "./_generated/api";
 import { resolveUser } from "./lib/withAuth";
-import { moodValidator, energyLevelValidator, priorityValidator } from "./lib/validators";
+import { 
+  moodValidator, 
+  energyLevelValidator, 
+  priorityValidator,
+  encryptedEnvelopeValidator 
+} from "./lib/validators";
 
 export const list = query({
   args: { token: v.string() },
@@ -19,11 +24,17 @@ export const list = query({
 export const create = mutation({
   args: {
     token: v.string(),
-    rawText: v.string(),
+    // Plaintext fields (legacy, optional)
+    rawText: v.optional(v.string()),
     correctedText: v.optional(v.string()),
+    topics: v.optional(v.array(v.string())),
+    // Encrypted fields
+    encryptedRawText: v.optional(encryptedEnvelopeValidator),
+    encryptedCorrectedText: v.optional(encryptedEnvelopeValidator),
+    encryptedTopics: v.optional(encryptedEnvelopeValidator),
+    // Other fields
     mood: v.optional(moodValidator),
     energyLevel: v.optional(energyLevelValidator),
-    topics: v.optional(v.array(v.string())),
     structuredInsights: v.optional(
       v.array(v.object({ insight: v.string(), category: v.string() }))
     ),
@@ -34,15 +45,18 @@ export const create = mutation({
       userId,
       rawText: args.rawText,
       correctedText: args.correctedText,
+      topics: args.topics ?? ["general"],
+      encryptedRawText: args.encryptedRawText,
+      encryptedCorrectedText: args.encryptedCorrectedText,
+      encryptedTopics: args.encryptedTopics,
       mood: args.mood,
       energyLevel: args.energyLevel,
-      topics: args.topics ?? ["general"],
       structuredInsights: args.structuredInsights,
     });
 
     await ctx.scheduler.runAfter(0, api.actions.processDiary.processDiary, {
       entryId,
-      rawText: args.rawText,
+      rawText: args.rawText ?? "",
     });
 
     return entryId;

@@ -47,8 +47,8 @@ export const listSnapshots = query({
         historyId: row._id,
         memoryId: row.memoryId,
         action: row.changeReason === "deleted" ? "deleted" : "edited",
-        title: row.previousTitle,
-        contentPreview: row.previousContent.slice(0, 120),
+        title: row.previousTitle ?? "",
+        contentPreview: (row.previousContent ?? "").slice(0, 120),
         changedAt: row.editedAt,
       }));
   },

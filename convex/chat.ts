@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query, internalMutation } from "./_generated/server";
 import { api } from "./_generated/api";
 import { resolveUser } from "./lib/withAuth";
+import { encryptedEnvelopeValidator } from "./lib/validators";
 
 export const list = query({
   args: {
@@ -32,15 +33,19 @@ export const list = query({
 export const send = internalMutation({
   args: {
     userId: v.id("users"),
-    content: v.string(),
     role: v.union(v.literal("user"), v.literal("assistant")),
     conversationId: v.optional(v.string()),
+    // Plaintext field (legacy, optional)
+    content: v.optional(v.string()),
+    // Encrypted field
+    encryptedContent: v.optional(encryptedEnvelopeValidator),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("chatMessages", {
       userId: args.userId,
       role: args.role,
       content: args.content,
+      encryptedContent: args.encryptedContent,
       conversationId: args.conversationId,
     });
   },

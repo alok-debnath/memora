@@ -274,9 +274,9 @@ export default function ReviewScreen() {
                   >
                     {currentCard.memory.content}
                   </Text>
-                  {currentCard.memory.tags?.length > 0 && (
+                  {(currentCard.memory.tags?.length ?? 0) > 0 && (
                     <XStack gap={6} justifyContent="center">
-                      {currentCard.memory.tags.slice(0, 3).map((t: string) => (
+                      {(currentCard.memory.tags ?? []).slice(0, 3).map((t: string) => (
                         <Badge key={t} label={t} small />
                       ))}
                     </XStack>

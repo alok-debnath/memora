@@ -125,9 +125,9 @@ export default function SharedMemoryScreen() {
           {memory.content}
         </Text>
 
-        {memory.tags.length > 0 && (
+        {(memory.tags?.length ?? 0) > 0 && (
           <XStack flexWrap="wrap" gap={8} marginBottom={16}>
-            {memory.tags.map((tag: string) => (
+            {(memory.tags ?? []).map((tag: string) => (
               <YStack
                 key={tag}
                 paddingHorizontal={10}
@@ -143,35 +143,35 @@ export default function SharedMemoryScreen() {
           </XStack>
         )}
 
-        {memory.people.length > 0 && (
+        {(memory.people?.length ?? 0) > 0 && (
           <YStack marginTop={12}>
             <Text fontSize={12} fontFamily={FontFamily.semiBold} marginBottom={4} color="$colorMuted">
               People mentioned
             </Text>
             <Text fontSize={14} fontFamily={FontFamily.regular} color="$color">
-              {memory.people.join(", ")}
+              {(memory.people ?? []).join(", ")}
             </Text>
           </YStack>
         )}
 
-        {memory.locations.length > 0 && (
+        {(memory.locations?.length ?? 0) > 0 && (
           <YStack marginTop={12}>
             <Text fontSize={12} fontFamily={FontFamily.semiBold} marginBottom={4} color="$colorMuted">
               Locations
             </Text>
             <Text fontSize={14} fontFamily={FontFamily.regular} color="$color">
-              {memory.locations.join(", ")}
+              {(memory.locations ?? []).join(", ")}
             </Text>
           </YStack>
         )}
 
-        {memory.linkedUrls?.length > 0 && (
+        {(memory.linkedUrls?.length ?? 0) > 0 && (
           <YStack marginTop={12}>
             <Text fontSize={12} fontFamily={FontFamily.semiBold} marginBottom={4} color="$colorMuted">
               Links
             </Text>
             <YStack gap={8}>
-              {memory.linkedUrls.map((url: string) => (
+              {(memory.linkedUrls ?? []).map((url: string) => (
                 <Pressable key={url} onPress={() => Linking.openURL(url)} style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, marginTop: 6, backgroundColor: theme.borderColor.val }}>
                   <Feather name="link" size={12} color={Colors.primary} />
                   <Text fontSize={13} fontFamily={FontFamily.medium} flex={1} numberOfLines={1} style={{ color: Colors.primary }}>
