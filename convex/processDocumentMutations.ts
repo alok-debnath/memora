@@ -59,8 +59,6 @@ export const createExtractedMemory = internalMutation({
     userId: v.id("users"),
     title: v.string(),
     content: v.string(),
-    category: v.string(),
-    tags: v.array(v.string()),
     people: v.array(v.string()),
     locations: v.array(v.string()),
     importance: v.string(),
@@ -71,13 +69,9 @@ export const createExtractedMemory = internalMutation({
       userId: args.userId,
       title: args.title,
       content: args.content,
-      category:
-        args.category as "personal" | "work" | "finance" | "health" | "other",
-      tags: args.tags,
       people: args.people,
       locations: args.locations,
-      importance:
-        args.importance as "critical" | "high" | "normal" | "low",
+      importance: args.importance as "critical" | "high" | "normal" | "low",
       embedding: args.embedding,
       linkedUrls: [],
       isRecurring: false,

@@ -25,8 +25,6 @@ type ExtractedDocumentResult = {
   memories?: Array<{
     title?: string;
     content?: string;
-    category?: "personal" | "work" | "finance" | "health" | "other";
-    tags?: string[];
     importance?: "critical" | "high" | "normal" | "low";
     people?: string[];
     locations?: string[];
@@ -68,7 +66,7 @@ export const processDocument = action({
           {
             role: "system",
             content:
-              'You are a document analysis AI. Extract ALL text and information from this document. Identify the document type (warranty, receipt, invoice, certificate, contract, manual, insurance, or other). Extract key details like brand, model, serial number, purchase date, expiry or end date, coverage, amounts, provider, and notes. Generate memory notes from the document content - each should be a standalone, useful piece of information. Be thorough and precise with dates. Return only valid JSON with fields: extractedText, summary, documentType, expiryDate, keyDetails, memories (array of {title, content, category, tags, importance, people, locations}).',
+              'You are a document analysis AI. Extract ALL text and information from this document. Identify the document type (warranty, receipt, invoice, certificate, contract, manual, insurance, or other). Extract key details like brand, model, serial number, purchase date, expiry or end date, coverage, amounts, provider, and notes. Generate memory notes from the document content - each should be a standalone, useful piece of information. Be thorough and precise with dates. Return only valid JSON with fields: extractedText, summary, documentType, expiryDate, keyDetails, memories (array of {title, content, importance, people, locations}).',
           },
           {
             role: "user",
@@ -116,14 +114,23 @@ ${args.text.slice(0, 15000)}`,
             userId,
             title: memory.title || "Extracted Memory",
             content: memory.content || "",
-            category: memory.category,
-            tags: memory.tags,
-            people: memory.people,
-            locations: memory.locations,
-            importance: memory.importance,
+            people: memory.people ?? [],
+            locations: memory.locations ?? [],
+            importance: memory.importance ?? "normal",
             embedding: memoryEmbeddings[index],
           }
         );
+        // Schedule topic assignment for each extracted memory
+        const memEmbed = memoryEmbeddings[index];
+        if (memEmbed) {
+          await ctx.scheduler.runAfter(0, internal.actions.manageTopics.assignTopicsToMemory, {
+            memoryId: id,
+            userId,
+            title: memory.title || "Extracted Memory",
+            content: memory.content || "",
+            embedding: memEmbed,
+          });
+        }
         memoryIds.push(id);
       }
 
