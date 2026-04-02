@@ -675,6 +675,13 @@ function advanceDate(
   return next;
 }
 
+export const getInternal = internalQuery({
+  args: { memoryId: v.id("memories") },
+  handler: async (ctx, args) => {
+    return ctx.db.get(args.memoryId);
+  },
+});
+
 export const setTopics = internalMutation({
   args: {
     memoryId: v.id("memories"),

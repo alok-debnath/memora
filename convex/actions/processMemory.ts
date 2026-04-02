@@ -16,7 +16,6 @@ import { normalizeMemoryFields } from "../lib/aiNormalization";
 type AIExtractedMemory = {
   title?: string;
   content?: string;
-  category?: "personal" | "work" | "finance" | "health" | "other";
   mood?:
     | "happy"
     | "sad"
@@ -28,7 +27,6 @@ type AIExtractedMemory = {
     | "hopeful"
     | "nostalgic"
     | "motivated";
-  tags?: string[];
   people?: string[];
   locations?: string[];
   importance?: "critical" | "high" | "normal" | "low";
@@ -61,20 +59,9 @@ type AIExtractedMemory = {
 
 function fallbackStructuredData(content: string): AIExtractedMemory {
   const firstSentence = content.split(/[.\n]/)[0]?.trim() || "New Memory";
-  const lower = content.toLowerCase();
-  const category = lower.includes("meeting") || lower.includes("project")
-    ? "work"
-    : lower.includes("doctor") || lower.includes("workout")
-      ? "health"
-      : lower.includes("money") || lower.includes("invoice")
-        ? "finance"
-        : "personal";
-
   return {
     title: firstSentence.slice(0, 70),
     content,
-    category,
-    tags: [],
     people: [],
     locations: [],
     importance: "normal",
@@ -119,7 +106,6 @@ CRITICAL WORDING RULE: Write title and content in objective, note-style language
 
 CRITICAL TIMEZONE RULE: When the user mentions times like "9:30 AM", "3pm tomorrow", or "next Monday at 10am", that time is in THEIR timezone (${userTz}). Convert it to UTC for the reminder_date field. Example: If user is in Asia/Kolkata (UTC+5:30) and says "9:30 AM", UTC time is 4:00 AM, output "2026-03-09T04:00:00Z".
 
-For category: "personal" (daily life, education, exams, relationships, hobbies, social events), "work" (job tasks, meetings, professional projects), "finance" (money, payments, invoices, banking), "health" (medical, fitness, mental health), "other". Default to "personal" when in doubt — only use "work" for professional/job content.
 For mood: happy, sad, anxious, excited, neutral, grateful, frustrated, hopeful, nostalgic, motivated.
 For people: extract ALL people names mentioned.
 For locations: extract ALL locations, places, venues, cities, countries mentioned.
@@ -128,8 +114,7 @@ For life_area: career, family, health, finance, social, hobbies, education, trav
 For context_tags: extract structured context (who, what, where, why).
 For sentiment_score: rate from -1.0 (very negative) to 1.0 (very positive).
 For linked_urls: extract any URLs mentioned.
-For extracted_actions: identify actionable items with "text" (description) and "type" (task/reminder/fact/decision).
-For tags: return 3-7 relevant lowercase tags.`,
+For extracted_actions: identify actionable items with "text" (description) and "type" (task/reminder/fact/decision).`,
           },
           {
             role: "user",
@@ -152,10 +137,6 @@ For tags: return 3-7 relevant lowercase tags.`,
                   recurrence_type: {
                     type: "string",
                     enum: ["yearly", "monthly", "weekly", "daily"],
-                  },
-                  category: {
-                    type: "string",
-                    enum: ["personal", "work", "finance", "health", "other"],
                   },
                   mood: {
                     type: "string",
@@ -193,9 +174,8 @@ For tags: return 3-7 relevant lowercase tags.`,
                       required: ["text", "type"],
                     },
                   },
-                  tags: { type: "array", items: { type: "string" } },
                 },
-                required: ["title", "content", "category"],
+                required: ["title", "content"],
                 additionalProperties: false,
               },
             },
@@ -219,9 +199,7 @@ For tags: return 3-7 relevant lowercase tags.`,
       await ctx.runMutation(internal.processMemoryMutations.updateAIFields, {
         memoryId: args.memoryId,
         title: normalized.title,
-        category: normalized.category,
         mood: normalized.mood,
-        tags: normalized.tags,
         people: normalized.people,
         locations: normalized.locations,
         importance: normalized.importance,
@@ -233,6 +211,18 @@ For tags: return 3-7 relevant lowercase tags.`,
         extractedActions: normalized.extractedActions,
         embedding,
       });
+
+      // Schedule AI topic assignment
+      const memory = await ctx.runQuery(internal.memories.getInternal, { memoryId: args.memoryId });
+      if (memory) {
+        await ctx.scheduler.runAfter(0, internal.actions.manageTopics.assignTopicsToMemory, {
+          memoryId: args.memoryId,
+          userId: memory.userId,
+          title: normalized.title ?? args.title,
+          content: args.content,
+          embedding,
+        });
+      }
     } catch {
       // Embedding is the critical update; enrichment is best-effort.
     }
@@ -243,20 +233,8 @@ export const captureMemory = action({
   args: {
     token: v.string(),
     content: v.string(),
-    category: v.optional(
-      v.union(
-        v.literal("personal"),
-        v.literal("work"),
-        v.literal("finance"),
-        v.literal("health"),
-        v.literal("other")
-      )
-    ),
   },
-  handler: async (
-    ctx,
-    args
-  ): Promise<{
+  handler: async (ctx, args): Promise<{
     memoryId: Id<"memories">;
     structured: AIExtractedMemory;
     conflicts: Array<{ existingMemoryId: string; description: string }>;
@@ -285,7 +263,6 @@ export const captureMemory = action({
 CRITICAL TIMEZONE RULE: When the user mentions times like "9:30 AM", "3pm tomorrow", or "next Monday at 10am", that time is in THEIR timezone (${userTz}). You MUST output the time in UTC ISO-8601 string format for the \`reminder_date\` property.
 Example: if it's currently Jan 1st and user is in America/New_York (UTC-5), and they say "tomorrow at 3pm", their local time for the reminder is Jan 2nd 15:00. You must output the UTC equivalent, which is Jan 2nd 20:00:00Z.
 
-For category: "personal" (daily life, education, exams, relationships, hobbies, social events), "work" (job tasks, meetings, professional projects), "finance" (money, payments, invoices, banking), "health" (medical, fitness, mental health), "other". Default to "personal" when in doubt — only use "work" for professional/job content.
 For mood: happy, sad, anxious, excited, neutral, grateful, frustrated, hopeful, nostalgic, motivated.
 For people: extract all people names.
 For locations: extract all locations and places.
@@ -294,8 +271,7 @@ For life_area: career, family, health, finance, social, hobbies, education, trav
 For context_tags: extract who, what, where, why.
 For sentiment_score: rate from -1.0 to 1.0.
 For linked_urls: extract any URLs mentioned.
-For extracted_actions: identify actionable items. Each action should have text and type (task, reminder, fact, decision).
-For tags: return 3-7 relevant lowercase tags.`,
+For extracted_actions: identify actionable items. Each action should have text and type (task, reminder, fact, decision).`,
               },
               { role: "user", content: args.content },
             ],
@@ -310,7 +286,6 @@ For tags: return 3-7 relevant lowercase tags.`,
                     properties: {
                       title: { type: "string" },
                       content: { type: "string" },
-                      category: { type: "string", enum: ["personal", "work", "finance", "health", "other"] },
                       mood: { type: "string", enum: ["happy", "sad", "anxious", "excited", "neutral", "grateful", "frustrated", "hopeful", "nostalgic", "motivated"] },
                       people: { type: "array", items: { type: "string" } },
                       locations: { type: "array", items: { type: "string" } },
@@ -338,10 +313,9 @@ For tags: return 3-7 relevant lowercase tags.`,
                           required: ["text", "type"],
                         },
                       },
-                      tags: { type: "array", items: { type: "string" } },
                       reminder_date: { type: "string" },
                     },
-                    required: ["title", "content", "category"],
+                    required: ["title", "content"],
                     additionalProperties: false,
                   },
                 },
@@ -375,9 +349,7 @@ For tags: return 3-7 relevant lowercase tags.`,
       token: args.token,
       title: structured.title || fallbackStructuredData(args.content).title || "New Memory",
       content: args.content,
-      category: structured.category || args.category || "other",
       mood: structured.mood,
-      tags: structured.tags || [],
       people: structured.people || [],
       locations: structured.locations || [],
       importance: structured.importance || "normal",
@@ -394,9 +366,7 @@ For tags: return 3-7 relevant lowercase tags.`,
       await ctx.runMutation(internal.processMemoryMutations.updateAIFields, {
         memoryId,
         title: structured.title,
-        category: structured.category,
         mood: structured.mood,
-        tags: structured.tags,
         people: structured.people,
         locations: structured.locations,
         importance: structured.importance,
@@ -406,6 +376,17 @@ For tags: return 3-7 relevant lowercase tags.`,
         reminderDate: structured.reminderDate,
         sentimentScore: structured.sentimentScore,
         extractedActions: structured.extractedActions,
+        embedding,
+      });
+    }
+
+    // Schedule topic assignment if we have an embedding
+    if (embedding) {
+      await ctx.scheduler.runAfter(0, internal.actions.manageTopics.assignTopicsToMemory, {
+        memoryId,
+        userId: session._id,
+        title: structured.title ?? fallbackStructuredData(args.content).title ?? "New Memory",
+        content: args.content,
         embedding,
       });
     }

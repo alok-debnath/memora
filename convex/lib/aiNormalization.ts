@@ -1,11 +1,3 @@
-const MEMORY_CATEGORIES = new Set([
-  "personal",
-  "work",
-  "finance",
-  "health",
-  "other",
-] as const);
-
 const MEMORY_MOODS = new Set([
   "happy",
   "sad",
@@ -41,7 +33,6 @@ const MEMORY_LIFE_AREAS = new Set([
 
 const DIARY_ENERGY = new Set(["high", "medium", "low"] as const);
 
-type MemoryCategory = "personal" | "work" | "finance" | "health" | "other";
 type MemoryMood =
   | "happy"
   | "sad"
@@ -160,9 +151,7 @@ export function normalizeMemoryFields(value: Record<string, unknown>) {
   return {
     title: asTrimmedString(value.title),
     content: asTrimmedString(value.content),
-    category: asEnumValue<MemoryCategory>(value.category, MEMORY_CATEGORIES),
     mood: asEnumValue<MemoryMood>(value.mood, MEMORY_MOODS),
-    tags: asStringArray(value.tags),
     people: asStringArray(value.people),
     locations: asStringArray(value.locations),
     importance: asEnumValue<MemoryImportance>(value.importance, MEMORY_IMPORTANCE),
@@ -273,8 +262,6 @@ export function normalizeDocumentMemory(value: Record<string, unknown>) {
   return {
     title: asTrimmedString(value.title),
     content: asTrimmedString(value.content),
-    category: asEnumValue<MemoryCategory>(value.category, MEMORY_CATEGORIES) ?? "other",
-    tags: asStringArray(value.tags) ?? [],
     importance:
       asEnumValue<MemoryImportance>(value.importance, MEMORY_IMPORTANCE) ?? "normal",
     people: asStringArray(value.people) ?? [],
