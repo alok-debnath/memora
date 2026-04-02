@@ -6,7 +6,6 @@ import { resolveUser } from "./lib/withAuth";
 import { serializeMemorySnapshot } from "./lib/memorySnapshot";
 import {
   moodValidator,
-  categoryValidator,
   importanceValidator,
   lifeAreaValidator,
   recurrenceValidator,
@@ -91,32 +90,51 @@ export const upcomingReminders = query({
   args: {
     token: v.string(),
     asOf: v.optional(v.string()),
+    range: v.optional(v.union(v.literal("week"), v.literal("month"), v.literal("year"), v.literal("all"))),
   },
   handler: async (ctx, args) => {
     const { userId } = await resolveUser(ctx, args.token);
     const now = args.asOf ? new Date(args.asOf) : new Date();
-    const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
     const nowIso = now.toISOString();
-    const nextWeekIso = nextWeek.toISOString();
+    const range = args.range ?? "week";
+
+    const rangeMs: Record<string, number> = {
+      week: 7 * 24 * 60 * 60 * 1000,
+      month: 30 * 24 * 60 * 60 * 1000,
+      year: 365 * 24 * 60 * 60 * 1000,
+    };
+
+    if (range === "all") {
+      const memories = await ctx.db
+        .query("memories")
+        .withIndex("by_user_reminderDate", (q) =>
+          q.eq("userId", userId).gte("reminderDate", nowIso)
+        )
+        .order("asc")
+        .take(100);
+      return memories.filter((m) => !!m.reminderDate && m.reminderDate >= nowIso).slice(0, 50);
+    }
+
+    const endIso = new Date(now.getTime() + rangeMs[range]).toISOString();
 
     const memories = await ctx.db
       .query("memories")
       .withIndex("by_user_reminderDate", (q) =>
         q.eq("userId", userId)
           .gte("reminderDate", nowIso)
-          .lte("reminderDate", nextWeekIso)
+          .lte("reminderDate", endIso)
       )
       .order("asc")
-      .take(40);
+      .take(100);
 
     return memories
       .filter(
         (memory) =>
           !!memory.reminderDate &&
           memory.reminderDate >= nowIso &&
-          memory.reminderDate <= nextWeekIso
+          memory.reminderDate <= endIso
       )
-      .slice(0, 20);
+      .slice(0, 50);
   },
 });
 
@@ -196,7 +214,6 @@ export const searchByKeyword = internalQuery({
 
     return memories.filter(
       (m) =>
-        (m.tags ?? []).some((tag) => tag.toLowerCase().includes(queryLower)) ||
         (m.people ?? []).some((person) => person.toLowerCase().includes(queryLower)) ||
         (m.locations ?? []).some((loc) => loc.toLowerCase().includes(queryLower))
     ).slice(0, maxResults);
@@ -206,16 +223,16 @@ export const searchByKeyword = internalQuery({
 export const listForAI = internalQuery({
   args: {
     userId: v.id("users"),
-    category: v.optional(categoryValidator),
+    primaryTopicId: v.optional(v.id("userTopics")),
     limit: v.optional(v.float64()),
   },
   handler: async (ctx, args) => {
     const take = args.limit ? Math.min(args.limit, 100) : 20;
-    if (args.category) {
+    if (args.primaryTopicId) {
       return ctx.db
         .query("memories")
-        .withIndex("by_user_category", (q) =>
-          q.eq("userId", args.userId).eq("category", args.category!)
+        .withIndex("by_user_primaryTopic", (q) =>
+          q.eq("userId", args.userId).eq("primaryTopicId", args.primaryTopicId!)
         )
         .order("desc")
         .take(take);
@@ -234,18 +251,15 @@ export const create = mutation({
     // Plaintext fields (legacy, optional)
     title: v.optional(v.string()),
     content: v.optional(v.string()),
-    tags: v.optional(v.array(v.string())),
     people: v.optional(v.array(v.string())),
     locations: v.optional(v.array(v.string())),
     // Encrypted fields
     encryptedTitle: v.optional(encryptedEnvelopeValidator),
     encryptedContent: v.optional(encryptedEnvelopeValidator),
-    encryptedTags: v.optional(encryptedEnvelopeValidator),
     encryptedPeople: v.optional(encryptedEnvelopeValidator),
     encryptedLocations: v.optional(encryptedEnvelopeValidator),
     titleBlindIndex: v.optional(v.string()),
     // Other fields
-    category: categoryValidator,
     mood: v.optional(moodValidator),
     importance: importanceValidator,
     lifeArea: v.optional(lifeAreaValidator),
@@ -266,18 +280,15 @@ export const create = mutation({
       // Plaintext fields (optional)
       title: args.title,
       content: args.content,
-      tags: args.tags,
       people: args.people,
       locations: args.locations,
       // Encrypted fields
       encryptedTitle: args.encryptedTitle,
       encryptedContent: args.encryptedContent,
-      encryptedTags: args.encryptedTags,
       encryptedPeople: args.encryptedPeople,
       encryptedLocations: args.encryptedLocations,
       titleBlindIndex: args.titleBlindIndex,
       // Other fields
-      category: args.category,
       mood: args.mood,
       importance: args.importance,
       lifeArea: args.lifeArea,
@@ -309,18 +320,15 @@ export const update = mutation({
     // Plaintext fields (legacy, optional)
     title: v.optional(v.string()),
     content: v.optional(v.string()),
-    tags: v.optional(v.array(v.string())),
     people: v.optional(v.array(v.string())),
     locations: v.optional(v.array(v.string())),
     // Encrypted fields
     encryptedTitle: v.optional(encryptedEnvelopeValidator),
     encryptedContent: v.optional(encryptedEnvelopeValidator),
-    encryptedTags: v.optional(encryptedEnvelopeValidator),
     encryptedPeople: v.optional(encryptedEnvelopeValidator),
     encryptedLocations: v.optional(encryptedEnvelopeValidator),
     titleBlindIndex: v.optional(v.string()),
     // Other fields
-    category: v.optional(categoryValidator),
     mood: v.optional(v.union(moodValidator, v.null())),
     importance: v.optional(importanceValidator),
     lifeArea: v.optional(v.union(lifeAreaValidator, v.null())),
@@ -533,12 +541,12 @@ export const exportMemories = query({
     return memories.map((m) => ({
       title: m.title,
       content: m.content,
-      category: m.category,
       mood: m.mood,
-      tags: m.tags,
       people: m.people,
       locations: m.locations,
       importance: m.importance,
+      primaryTopicId: m.primaryTopicId,
+      topicIds: m.topicIds,
       createdAt: m._creationTime,
     }));
   },
@@ -557,9 +565,8 @@ export const stats = query({
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .take(1000);
 
-    const categoryCounts: Record<string, number> = {};
     const moodCounts: Record<string, number> = {};
-    const tagCounts: Record<string, number> = {};
+    const topicCounts: Record<string, number> = {};
     let reminderCount = 0;
     let recurringCount = 0;
 
@@ -568,12 +575,11 @@ export const stats = query({
     const creationDays = new Set<number>();
 
     for (const m of memories) {
-      categoryCounts[m.category] = (categoryCounts[m.category] ?? 0) + 1;
       if (m.mood) {
         moodCounts[m.mood] = (moodCounts[m.mood] ?? 0) + 1;
       }
-      for (const tag of m.tags ?? []) {
-        tagCounts[tag] = (tagCounts[tag] ?? 0) + 1;
+      if (m.primaryTopicId) {
+        topicCounts[m.primaryTopicId] = (topicCounts[m.primaryTopicId] ?? 0) + 1;
       }
       if (m.reminderDate) reminderCount++;
       if (m.isRecurring) recurringCount++;
@@ -600,12 +606,8 @@ export const stats = query({
     return {
       totalMemories: memories.length,
       totalReminders: reminderCount,
-      categories: Object.keys(categoryCounts).length,
-      categoryCounts,
       moodCounts,
-      topTags: Object.entries(tagCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10),
+      topicCounts,
       recurringCount,
       recentCount,
       streakDays,
@@ -672,6 +674,20 @@ function advanceDate(
   }
   return next;
 }
+
+export const setTopics = internalMutation({
+  args: {
+    memoryId: v.id("memories"),
+    primaryTopicId: v.id("userTopics"),
+    topicIds: v.array(v.id("userTopics")),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.memoryId, {
+      primaryTopicId: args.primaryTopicId,
+      topicIds: args.topicIds,
+    });
+  },
+});
 
 export const listWithoutEmbeddings = internalQuery({
   args: { limit: v.optional(v.float64()) },
