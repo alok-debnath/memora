@@ -467,15 +467,15 @@ const ChatBubble = React.memo(function ChatBubble({
                     hitSlop={8}
                     style={({ pressed }) => ({
                       opacity: pressed ? 0.6 : 1,
-                      width: 24,
-                      height: 24,
+                      width: 28,
+                      height: 28,
                       alignItems: "center",
                       justifyContent: "center",
                       backgroundColor: theme.primary.val + "15",
-                      borderRadius: 12,
+                      borderRadius: 14,
                     })}
                   >
-                    <Feather name="volume-x" size={14} color={theme.primary.val} />
+                    <Feather name="volume-x" size={18} color={theme.primary.val} />
                   </Pressable>
                 </Animated.View>
               ) : (
@@ -491,7 +491,7 @@ const ChatBubble = React.memo(function ChatBubble({
                       justifyContent: "center",
                     })}
                   >
-                    <Feather name="volume-2" size={14} color={theme.colorMuted.val} />
+                    <Feather name="volume-2" size={18} color={theme.colorMuted.val} />
                   </Pressable>
                 </Animated.View>
               )

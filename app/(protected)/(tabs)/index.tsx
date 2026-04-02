@@ -30,33 +30,31 @@ import { XStack, YStack, Text } from "tamagui";
 import type { MemoryNote } from "@/types/memory";
 import type { Id } from "@/convex/_generated/dataModel";
 
-function toMemoryNote(m: Record<string, unknown>): MemoryNote {
-  return {
-    id: m._id as string,
-    userId: (m.userId as string) || "",
-    title: (m.title as string) || "",
-    content: (m.content as string) || "",
-    category: (m.category || "personal") as MemoryNote["category"],
-    mood: m.mood as MemoryNote["mood"],
-    tags: (m.tags as string[]) || [],
-    people: (m.people as string[]) || [],
-    locations: (m.locations as string[]) || [],
-    importance: (m.importance || "normal") as MemoryNote["importance"],
-    lifeArea: m.lifeArea as MemoryNote["lifeArea"],
-    contextTags: m.contextTags as Record<string, string> | undefined,
-    sentimentScore: m.sentimentScore as number | undefined,
-    linkedUrls: Array.isArray(m.linkedUrls) ? m.linkedUrls : [],
-    extractedActions: m.extractedActions as MemoryNote["extractedActions"],
-    reminderDate: m.reminderDate as string | undefined,
-    isRecurring: (m.isRecurring as boolean) ?? false,
-    recurrenceType: m.recurrenceType as MemoryNote["recurrenceType"],
-    capsuleUnlockDate: m.capsuleUnlockDate as string | undefined,
-    attachments: [],
-    isPublic: m.isPublic as boolean | undefined,
-    createdAt: new Date(m._creationTime as number).toISOString(),
-    updatedAt: new Date(m._creationTime as number).toISOString(),
-  };
-}
+const toMemoryNote = (m: Record<string, unknown>): MemoryNote => ({
+  id: m._id as string,
+  userId: (m.userId as string) || "",
+  title: (m.title as string) || "",
+  content: (m.content as string) || "",
+  category: (m.category || "personal") as MemoryNote["category"],
+  mood: m.mood as MemoryNote["mood"],
+  tags: (m.tags as string[]) || [],
+  people: (m.people as string[]) || [],
+  locations: (m.locations as string[]) || [],
+  importance: (m.importance || "normal") as MemoryNote["importance"],
+  lifeArea: m.lifeArea as MemoryNote["lifeArea"],
+  contextTags: m.contextTags as Record<string, string> | undefined,
+  sentimentScore: m.sentimentScore as number | undefined,
+  linkedUrls: Array.isArray(m.linkedUrls) ? m.linkedUrls : [],
+  extractedActions: m.extractedActions as MemoryNote["extractedActions"],
+  reminderDate: m.reminderDate as string | undefined,
+  isRecurring: (m.isRecurring as boolean) ?? false,
+  recurrenceType: m.recurrenceType as MemoryNote["recurrenceType"],
+  capsuleUnlockDate: m.capsuleUnlockDate as string | undefined,
+  attachments: [],
+  isPublic: m.isPublic as boolean | undefined,
+  createdAt: new Date(m._creationTime as number).toISOString(),
+  updatedAt: new Date(m._creationTime as number).toISOString(),
+});
 
 function useDebounce(value: string, delay: number) {
   const [debounced, setDebounced] = useState(value);
@@ -153,13 +151,17 @@ export default function HomeScreen() {
   }, [canLoadMore, isLoadingMore]);
 
   const memories = useMemo(() => {
-    let filtered = searchResults ? [...searchResults] : [...allMemories];
-    if (searchResults) {
-      filtered.sort((a, b) => b._creationTime - a._creationTime);
-    }
+    const source = searchResults ?? allMemories;
+    let filtered = source;
+    
     if (selectedCategory) {
-      filtered = filtered.filter((m) => m.category === selectedCategory);
+      filtered = source.filter((m) => m.category === selectedCategory);
     }
+    
+    if (searchResults) {
+      filtered = [...filtered].sort((a, b) => b._creationTime - a._creationTime);
+    }
+    
     return filtered;
   }, [allMemories, searchResults, selectedCategory]);
 
@@ -215,6 +217,16 @@ export default function HomeScreen() {
       }
     }
   };
+
+  // Memoize transformed memories to avoid re-processing on every render
+  const transformedMemories = useMemo(
+    () => memories.map((m) => ({ raw: m, note: toMemoryNote(m) })),
+    [memories]
+  );
+
+  // Memoize sliced reminder lists to avoid re-creating arrays on every render
+  const topReminders = useMemo(() => reminderMemories.slice(0, 3), [reminderMemories]);
+  const weekReminders = useMemo(() => upcomingReminders.slice(0, 5), [upcomingReminders]);
 
   const firstName = user?.name?.split(" ")[0] || "there";
   const webTopPadding = Platform.OS === "web" ? 67 : 0;
@@ -369,7 +381,7 @@ export default function HomeScreen() {
               </YStack>
             </XStack>
             <YStack paddingHorizontal={20} gap={8}>
-              {reminderMemories.slice(0, 3).map((memory, i: number) => (
+              {topReminders.map((memory, i: number) => (
                 <Animated.View key={memory._id} entering={FadeIn.delay(i * 60).duration(300)}>
                   <PressableScale onPress={() => { setEditMemory(memory); openEditMemory(); }}>
                     <XStack
@@ -420,7 +432,7 @@ export default function HomeScreen() {
               </Text>
             </XStack>
             <YStack paddingHorizontal={20} gap={8}>
-              {upcomingReminders.slice(0, 5).map((memory, i: number) => (
+              {weekReminders.map((memory, i: number) => (
                 <Animated.View key={memory._id} entering={FadeIn.delay(i * 60).duration(300)}>
                   <PressableScale onPress={() => { setEditMemory(memory); openEditMemory(); }}>
                     <XStack
@@ -492,15 +504,15 @@ export default function HomeScreen() {
             />
           ) : (
             <YStack paddingHorizontal={16} gap={12}>
-              {memories.map((memory, i: number) => (
+              {transformedMemories.map(({ raw, note }, i: number) => (
                 <MemoryCard
-                  key={memory._id}
-                  memory={toMemoryNote(memory)}
+                  key={raw._id}
+                  memory={note}
                   index={i}
-                  onPress={() => { setEditMemory(memory); openEditMemory(); }}
-                  onDelete={() => handleDelete(memory._id)}
-                  onShare={() => handleShare(memory._id)}
-                  onAddToReview={() => token && addToReview({ token, memoryId: memory._id })}
+                  onPress={() => { setEditMemory(raw); openEditMemory(); }}
+                  onDelete={() => handleDelete(raw._id)}
+                  onShare={() => handleShare(raw._id)}
+                  onAddToReview={() => token && addToReview({ token, memoryId: raw._id })}
                 />
               ))}
             </YStack>

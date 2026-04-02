@@ -19,7 +19,7 @@ interface MemoryCardProps {
   index?: number;
 }
 
-export function MemoryCard({
+export const MemoryCard = React.memo(function MemoryCard({
   memory,
   onPress,
   onDelete,
@@ -205,4 +205,4 @@ export function MemoryCard({
       </PressableScale>
     </Animated.View>
   );
-}
+});
