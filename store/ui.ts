@@ -96,3 +96,9 @@ export const selectSheetStack = (state: UIStore) => state.sheetStack;
 export const selectIsAIChatOpen = (state: UIStore) => state.isAIChatOpen;
 export const selectIsEditMemoryOpen = (state: UIStore) => state.isEditMemoryOpen;
 export const selectIsCommandOpen = (state: UIStore) => state.isCommandOpen;
+export const selectSheetPosition = (sheetId: string) => (state: UIStore) => {
+  const index = state.sheetStack.indexOf(sheetId);
+  if (index === -1) return { depth: 0, total: state.sheetStack.length };
+  const depth = state.sheetStack.length - 1 - index;
+  return { depth, total: state.sheetStack.length };
+};

@@ -31,7 +31,7 @@ interface VoiceRecorderProps {
   compact?: boolean;
 }
 
-const SPEECH_END_STOP_MS = 800;
+const SPEECH_END_STOP_MS = 2500;
 
 export function VoiceRecorder({
   onTranscription,
@@ -49,6 +49,7 @@ export function VoiceRecorder({
   const lastBroadcastRef = useRef("");
   const hasCompletedRef = useRef(false);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wasInitiatedByMeRef = useRef(false);
 
   const pulseScale = useSharedValue(1);
   const pulseOpacity = useSharedValue(0.3);
@@ -126,8 +127,10 @@ export function VoiceRecorder({
   };
 
   const publishComplete = () => {
+    if (!wasInitiatedByMeRef.current) return;
     if (hasCompletedRef.current) return;
     hasCompletedRef.current = true;
+    wasInitiatedByMeRef.current = false;
     const text = transcriptRef.current.trim();
     if (!text) return;
     broadcastTranscript(text);
@@ -235,6 +238,7 @@ export function VoiceRecorder({
     }
 
     hasCompletedRef.current = false;
+    wasInitiatedByMeRef.current = true;
     transcriptRef.current = "";
     lastBroadcastRef.current = "";
     setDuration(0);
@@ -242,6 +246,7 @@ export function VoiceRecorder({
 
     const result = await startSpeechRecognition();
     if (!result.ok) {
+      wasInitiatedByMeRef.current = false;
       showToastImperative({
         title: "Could not start dictation",
         message: result.reason,
@@ -322,10 +327,10 @@ export function VoiceRecorder({
             alignItems: "center",
             justifyContent: "center",
             shadowColor: theme.primary.val,
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.3,
-            shadowRadius: 8,
-            elevation: 4,
+            shadowOffset: { width: 0, height: compact ? 1 : 3 },
+            shadowOpacity: compact ? 0.14 : 0.24,
+            shadowRadius: compact ? 3 : 8,
+            elevation: compact ? 1 : 4,
           }}
         >
           <Feather

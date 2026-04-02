@@ -5,6 +5,7 @@ import {
   Switch,
   Alert,
   TextInput,
+  Pressable,
   StyleSheet,
 } from "react-native";
 import { XStack, YStack, Text } from "tamagui";
@@ -24,6 +25,23 @@ import { SectionLabel } from "@/components/ui/SectionLabel";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { FontFamily } from "@/constants/fonts";
+import { Dropdown, type IDropdownRef } from "react-native-element-dropdown";
+import { getTimeZones } from "@vvo/tzdb";
+
+type TimezoneOption = {
+  value: string;
+  label: string;
+  searchText: string;
+  offsetInMinutes: number;
+};
+
+const formatUtcOffset = (offsetInMinutes: number) => {
+  const sign = offsetInMinutes >= 0 ? "+" : "-";
+  const absoluteMinutes = Math.abs(offsetInMinutes);
+  const hours = String(Math.floor(absoluteMinutes / 60)).padStart(2, "0");
+  const minutes = String(absoluteMinutes % 60).padStart(2, "0");
+  return `UTC${sign}${hours}:${minutes}`;
+};
 
 export default function ProfileScreen() {
   const theme = useAppTheme();
@@ -35,6 +53,49 @@ export default function ProfileScreen() {
     user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
   );
   const [isSavingProfile, setIsSavingProfile] = React.useState(false);
+  const timezoneDropdownRef = React.useRef<IDropdownRef>(null);
+  const [timezoneSearchText, setTimezoneSearchText] = React.useState("");
+  const timezoneOptions = React.useMemo<TimezoneOption[]>(() => {
+    const options = getTimeZones({ includeUtc: true }).map((timeZone) => ({
+      value: timeZone.name,
+      label: `${timeZone.name} (${formatUtcOffset(timeZone.currentTimeOffsetInMinutes)})`,
+      searchText: [
+        timeZone.name,
+        timeZone.alternativeName,
+        timeZone.countryName,
+        timeZone.abbreviation,
+        ...timeZone.mainCities,
+      ].join(" "),
+      offsetInMinutes: timeZone.currentTimeOffsetInMinutes,
+    }));
+
+    options.sort((a, b) =>
+      a.offsetInMinutes === b.offsetInMinutes
+        ? a.value.localeCompare(b.value)
+        : a.offsetInMinutes - b.offsetInMinutes
+    );
+
+    return options;
+  }, []);
+  const timezoneDropdownOptions = React.useMemo<TimezoneOption[]>(() => {
+    if (!timezone || timezoneOptions.some((option) => option.value === timezone)) {
+      return timezoneOptions;
+    }
+
+    return [
+      {
+        value: timezone,
+        label: `${timezone} (Saved)`,
+        searchText: timezone,
+        offsetInMinutes: 0,
+      },
+      ...timezoneOptions,
+    ];
+  }, [timezone, timezoneOptions]);
+  const closeTimezoneDropdown = React.useCallback(() => {
+    setTimezoneSearchText("");
+    timezoneDropdownRef.current?.close();
+  }, []);
 
   const memoryResult = useQuery(api.memories.list, token ? { token, limit: 100 } : "skip");
   const memories = memoryResult?.memories ?? [];
@@ -268,20 +329,102 @@ export default function ProfileScreen() {
               >
                 Timezone
               </Text>
-              <TextInput
+              <Dropdown
+                ref={timezoneDropdownRef}
+                data={timezoneDropdownOptions}
                 value={timezone}
-                onChangeText={setTimezone}
-                placeholder="Asia/Kolkata"
-                placeholderTextColor={theme.colorMuted.val}
-                autoCapitalize="none"
+                labelField="label"
+                valueField="value"
+                searchField="searchText"
+                search
+                mode={Platform.OS === "web" ? "auto" : "modal"}
+                maxHeight={340}
+                placeholder="Select timezone"
                 style={[
                   styles.input,
+                  styles.dropdown,
                   {
                     backgroundColor: theme.secondary.val,
-                    color: theme.color.val,
                     borderColor: theme.borderColor.val,
                   },
                 ]}
+                containerStyle={[
+                  styles.dropdownContainer,
+                  Platform.OS !== "web" && styles.dropdownContainerModal,
+                  {
+                    backgroundColor: theme.card.val,
+                    borderColor: theme.borderColor.val,
+                  },
+                ]}
+                placeholderStyle={[
+                  styles.dropdownPlaceholderText,
+                  {
+                    color: theme.colorMuted.val,
+                    fontFamily: FontFamily.regular,
+                  },
+                ]}
+                selectedTextStyle={[
+                  styles.dropdownSelectedText,
+                  {
+                    color: theme.color.val,
+                    fontFamily: FontFamily.regular,
+                  },
+                ]}
+                itemContainerStyle={styles.dropdownItemContainer}
+                itemTextStyle={[
+                  styles.dropdownItemText,
+                  {
+                    color: theme.color.val,
+                    fontFamily: FontFamily.regular,
+                  },
+                ]}
+                activeColor={`${theme.primary.val}1A`}
+                iconColor={theme.colorMuted.val}
+                onChange={(item) => {
+                  setTimezone(item.value);
+                  setTimezoneSearchText("");
+                }}
+                onBlur={() => setTimezoneSearchText("")}
+                renderInputSearch={(onSearch) => (
+                  <XStack gap={8} alignItems="center" paddingHorizontal={8} paddingTop={8} paddingBottom={6}>
+                    <TextInput
+                      value={timezoneSearchText}
+                      onChangeText={(text) => {
+                        setTimezoneSearchText(text);
+                        onSearch(text);
+                      }}
+                      placeholder="Search timezone..."
+                      placeholderTextColor={theme.colorMuted.val}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      returnKeyType="search"
+                      style={[
+                        styles.dropdownSearchInput,
+                        {
+                          backgroundColor: theme.background.val,
+                          borderColor: theme.borderColor.val,
+                          color: theme.color.val,
+                          fontFamily: FontFamily.regular,
+                        },
+                      ]}
+                    />
+                    <Pressable
+                      onPress={closeTimezoneDropdown}
+                      accessibilityRole="button"
+                      accessibilityLabel="Close timezone selector"
+                      hitSlop={8}
+                      style={({ pressed }) => [
+                        styles.dropdownCloseButton,
+                        {
+                          backgroundColor: pressed ? `${theme.primary.val}24` : theme.secondary.val,
+                          borderColor: theme.borderColor.val,
+                        },
+                      ]}
+                    >
+                      <Feather name="x" size={18} color={theme.color.val} />
+                    </Pressable>
+                  </XStack>
+                )}
               />
             </YStack>
             <GradientButton
@@ -549,6 +692,50 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: FontFamily.regular,
     borderWidth: StyleSheet.hairlineWidth,
+  },
+  dropdown: {
+    minHeight: 49,
+    justifyContent: "center",
+  },
+  dropdownContainer: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  dropdownContainerModal: {
+    marginVertical: 20,
+    maxHeight: "90%",
+  },
+  dropdownSearchInput: {
+    flex: 1,
+    minHeight: 52,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: Platform.OS === "web" ? 12 : 10,
+    fontSize: 16,
+  },
+  dropdownCloseButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dropdownPlaceholderText: {
+    fontSize: 15,
+  },
+  dropdownSelectedText: {
+    fontSize: 15,
+  },
+  dropdownItemContainer: {
+    borderRadius: 10,
+    marginHorizontal: 8,
+    marginVertical: 2,
+  },
+  dropdownItemText: {
+    fontSize: 14,
   },
   settingRow: {
     flexDirection: "row", alignItems: "center", gap: 12,

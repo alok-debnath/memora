@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { BackHandler, Keyboard, Platform } from "react-native";
-import { Sheet, type SheetProps, XStack, YStack } from "tamagui";
+import { Sheet, type SheetProps, View } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 
 import { selectSheetStack, useUIStore } from "@/store/ui";
@@ -34,16 +34,12 @@ export function BaseSheet({
   ...props
 }: BaseSheetProps) {
   const theme = useAppTheme();
-  const RootSheet = Sheet as any;
-  const SheetHandle = Sheet.Handle as any;
-  const SheetOverlay = Sheet.Overlay as any;
-  const SheetFrame = Sheet.Frame as any;
+  const resolvedBg = backgroundColor ?? theme.backgroundStrong?.val ?? "$backgroundStrong";
 
-  const pushSheet = useUIStore((s) => s.pushSheet);
-  const popSheet = useUIStore((s) => s.popSheet);
+  // sheetStack is managed entirely by uiStore open/close actions (eager stack push/pop).
+  // No useEffect sync needed — that caused extra store updates mid-animation,
+  // making Tamagui Sheet drop open transitions on native.
   const sheetStack = useUIStore(selectSheetStack);
-  const resolvedBackgroundColor = backgroundColor ?? theme.card.val;
-  const isInStack = sheetId ? sheetStack.includes(sheetId) : false;
 
   const { snapPoints, zIndex } = useMemo(() => {
     if (!sheetId) {
@@ -62,21 +58,14 @@ export function BaseSheet({
     return { snapPoints: [snapPoint], zIndex: computedZIndex };
   }, [sheetId, sheetStack]);
 
-  // Sync sheet stack for sheets not using eager store actions
+  const isTopSheet = sheetId ? sheetStack[sheetStack.length - 1] === sheetId : true;
+  const wasTopSheet = useRef(isTopSheet);
   useEffect(() => {
-    if (!sheetId) return;
-    if (open && !isInStack) {
-      pushSheet(sheetId);
-    } else if (!open && isInStack) {
-      popSheet(sheetId);
+    if (open && wasTopSheet.current && !isTopSheet) {
+      Keyboard.dismiss();
     }
-  }, [isInStack, open, popSheet, pushSheet, sheetId]);
-
-  useEffect(() => {
-    return () => {
-      if (sheetId) popSheet(sheetId);
-    };
-  }, [popSheet, sheetId]);
+    wasTopSheet.current = isTopSheet;
+  }, [isTopSheet, open]);
 
   const onOpenChangeRef = useRef(onOpenChange);
   useEffect(() => {
@@ -90,6 +79,14 @@ export function BaseSheet({
     onOpenChangeRef.current(nextOpen);
   }, []);
 
+  const wasOpen = useRef(open);
+  useEffect(() => {
+    if (wasOpen.current && !open) {
+      Keyboard.dismiss();
+    }
+    wasOpen.current = open;
+  }, [open]);
+
   useEffect(() => {
     if (!open || Platform.OS !== "android") return;
 
@@ -99,47 +96,43 @@ export function BaseSheet({
     });
 
     return () => backHandler.remove();
-  }, [handleOpenChange, open]);
+  }, [open, handleOpenChange]);
 
   return (
-    <RootSheet
+    <Sheet
       modal
       open={open}
       onOpenChange={handleOpenChange}
       snapPoints={snapPoints}
       snapPointsMode={SHEET_CONFIG.snapPointsMode}
       dismissOnSnapToBottom={SHEET_CONFIG.dismissOnSnapToBottom}
-      disableDrag={props.disableDrag ?? false}
-      moveOnKeyboardChange={props.moveOnKeyboardChange ?? false}
+      // By default, disable drag-to-close so swiping inside the sheet body
+      // (e.g. scroll or gesture areas) doesn't accidentally move/close it.
+      // Individual sheets can still override by passing `disableDrag` in props.
+      disableDrag={props.disableDrag ?? true}
+      // Allow tapping the overlay to dismiss the sheet.
+      dismissOnOverlayPress={props.dismissOnOverlayPress ?? true}
       zIndex={zIndex}
       {...props}
     >
-      <SheetOverlay backgroundColor={SHEET_CONFIG.overlayBackgroundColor} />
-      <SheetFrame
-        backgroundColor={resolvedBackgroundColor}
+      <Sheet.Overlay backgroundColor={SHEET_CONFIG.overlayBackgroundColor} />
+      <Sheet.Frame
+        backgroundColor={resolvedBg}
         borderTopLeftRadius={SHEET_CONFIG.frameBorderRadius}
         borderTopRightRadius={SHEET_CONFIG.frameBorderRadius}
       >
-        <SheetHandle
-          backgroundColor="transparent"
-          opacity={1}
-          alignItems="center"
-          justifyContent="center"
-          paddingTop={10}
-          paddingBottom={6}
-          marginHorizontal={0}
-          marginBottom={0}
-          height={20}
-        >
-          <YStack
-            width={40}
-            height={4}
-            borderRadius={2}
-            backgroundColor={handleColor ?? "$borderColor"}
-          />
-        </SheetHandle>
+        {/* Custom handle - renders reliably on mobile unlike Sheet.Handle */}
+        <View
+          alignSelf="center"
+          width={40}
+          height={4}
+          borderRadius={2}
+          backgroundColor={handleColor ?? "$borderColor"}
+          marginTop={10}
+          marginBottom={6}
+        />
         {children}
-      </SheetFrame>
-    </RootSheet>
+      </Sheet.Frame>
+    </Sheet>
   );
 }

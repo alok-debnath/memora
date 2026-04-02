@@ -1,15 +1,20 @@
 import { BlurView } from "expo-blur";
-import { isLiquidGlassAvailable } from "expo-glass-effect";
+import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Tabs, useRouter, usePathname, Slot } from "expo-router";
-import { NativeTabs } from "expo-router/unstable-native-tabs";
-import { SymbolView, type SFSymbol } from "expo-symbols";
-import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import React, { useState } from "react";
-import { Platform, Pressable, StyleSheet } from "react-native";
+import { Feather } from "@expo/vector-icons";
+import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import React, { useEffect } from "react";
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   useAnimatedStyle,
+  withSpring,
   withTiming,
   useSharedValue,
 } from "react-native-reanimated";
@@ -20,179 +25,473 @@ import Colors from "@/constants/colors";
 import { FontFamily } from "@/constants/fonts";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
+import { useThemeStore } from "@/store/theme";
+import { useUIStore } from "@/store/ui";
 
-type MaterialIconName = React.ComponentProps<typeof MaterialCommunityIcons>["name"];
+// ─── Navigation items ─────────────────────────────────────────────────────────
 
 const NAV_ITEMS = [
   {
-    name: "index",
+    name: "index" as const,
     title: "Home",
     icon: "home" as const,
-    sfIcon: "house" as SFSymbol,
-    sfIconActive: "house.fill" as SFSymbol,
-    mdIcon: "home-outline" as MaterialIconName,
   },
   {
-    name: "diary",
+    name: "diary" as const,
     title: "Diary",
     icon: "book-open" as const,
-    sfIcon: "book" as SFSymbol,
-    sfIconActive: "book.fill" as SFSymbol,
-    mdIcon: "book-open-outline" as MaterialIconName,
   },
   {
-    name: "review",
+    name: "review" as const,
     title: "Review",
     icon: "refresh-cw" as const,
-    sfIcon: "brain.head.profile" as SFSymbol,
-    sfIconActive: "brain.head.profile.fill" as SFSymbol,
-    mdIcon: "head-lightbulb-outline" as MaterialIconName,
   },
   {
-    name: "more",
+    name: "more" as const,
     title: "More",
     icon: "more-horizontal" as const,
-    sfIcon: "ellipsis.circle" as SFSymbol,
-    sfIconActive: "ellipsis.circle.fill" as SFSymbol,
-    mdIcon: "dots-horizontal-circle-outline" as MaterialIconName,
   },
 ] as const;
 
-function CenterFab({ onPress }: { onPress: () => void }) {
+// ─── Bar geometry ─────────────────────────────────────────────────────────────
+
+const BAR_W = 340;
+const BAR_H = 60;
+const BAR_R = 999; // Large value → OS clamps to true pill (height/2 each side)
+const BAR_SIDE_PAD = 10; // Inner horizontal padding — pushes icons inward from edges
+const CONTENT_W = BAR_W - BAR_SIDE_PAD * 2; // Usable width inside side padding
+const SLOT_W = CONTENT_W / 5; // Slot width for each of 5 visual positions
+const IND_PAD_Y = 8; // Vertical inset from bar edge
+const IND_OVERLAP = 2; // How far the pill bleeds into neighboring slots (liquid glass)
+const IND_W = SLOT_W + IND_OVERLAP * 2; // Pill wider than its slot
+const IND_H = BAR_H - IND_PAD_Y * 2;
+const IND_Y = IND_PAD_Y;
+const FADE_H = 80; // Height of the fade gradient above the bar
+const BAR_BOTTOM_MARGIN = 14; // How far the pill floats above the safe-area bottom
+
+// Maps state.index (0–3) → visual slot (0, 1, 3, 4) → indicator translateX
+// Pill is centered on the slot but wider, so offset = side_pad + slot_center - half_pill
+const IND_X = [0, 1, 3, 4].map(
+  (slot) => BAR_SIDE_PAD + slot * SLOT_W + SLOT_W / 2 - IND_W / 2
+);
+// = [8, 76, 212, 280]
+
+// ─── Animation config (tweak here) ───────────────────────────────────────────
+// Higher damping = less oscillation. overshootClamping: true = no bounce at all.
+
+const ANIM = {
+  // Indicator pill sliding between tabs
+  indicator: { damping: 30, stiffness: 270, mass: 0.8, overshootClamping: true },
+  // Icon lift / label slide on focus change
+  focus: { damping: 22, stiffness: 280, overshootClamping: true },
+  // Tab item scale on press-in / press-out
+  tabPressIn: { damping: 18, stiffness: 500, overshootClamping: true },
+  tabPressOut: { damping: 18, stiffness: 320, overshootClamping: true },
+  // Plus button press
+  plusPressIn: { damping: 18, stiffness: 460, overshootClamping: true },
+  plusPressOut: { damping: 20, stiffness: 340, overshootClamping: true },
+  // Bar entrance on mount
+  entrance: { damping: 28, stiffness: 220, overshootClamping: true },
+} as const;
+
+// ─── TabItem ──────────────────────────────────────────────────────────────────
+
+type TabItemProps = {
+  icon: React.ComponentProps<typeof Feather>["name"];
+  title: string;
+  isFocused: boolean;
+  onPress: () => void;
+  primaryColor: string;
+  mutedColor: string;
+};
+
+function TabItem({
+  icon,
+  title,
+  isFocused,
+  onPress,
+  primaryColor,
+  mutedColor,
+}: TabItemProps) {
   const scale = useSharedValue(1);
-  const theme = useAppTheme();
+  const labelOpacity = useSharedValue(isFocused ? 1 : 0);
+  const labelY = useSharedValue(isFocused ? 0 : 5);
+  const iconY = useSharedValue(isFocused ? 0 : 5);
+
+  useEffect(() => {
+    labelOpacity.value = withTiming(isFocused ? 1 : 0, { duration: 150 });
+    labelY.value = withSpring(isFocused ? 0 : 5, ANIM.focus);
+    iconY.value = withSpring(isFocused ? -2 : 3, ANIM.focus);
+  }, [isFocused]);
+
+  const pressStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const labelStyle = useAnimatedStyle(() => ({
+    opacity: labelOpacity.value,
+    transform: [{ translateY: labelY.value }],
+  }));
+
+  const iconStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: iconY.value }],
+  }));
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={() => {
+        scale.value = withSpring(0.92, ANIM.tabPressIn);
+      }}
+      onPressOut={() => {
+        scale.value = withSpring(1, ANIM.tabPressOut);
+      }}
+      style={styles.tabItem}
+    >
+      <Animated.View style={[styles.tabInner, pressStyle]}>
+        <Animated.View style={iconStyle}>
+          <Feather
+            name={icon}
+            size={isFocused ? 18 : 17}
+            color={isFocused ? primaryColor : mutedColor}
+          />
+        </Animated.View>
+        <Animated.Text
+          style={[
+            styles.tabLabel,
+            { color: primaryColor, fontFamily: FontFamily.semiBold },
+            labelStyle,
+          ]}
+          numberOfLines={1}
+        >
+          {title}
+        </Animated.Text>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+// ─── PlusButton ───────────────────────────────────────────────────────────────
+
+function PlusButton({
+  onPress,
+  primaryColor,
+}: {
+  onPress: () => void;
+  primaryColor: string;
+}) {
+  const scale = useSharedValue(1);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
 
   return (
-    <YStack flex={1} alignItems="center" justifyContent="center">
-      <Animated.View style={[{ position: "relative", top: -22 }, animStyle]}>
-        <Pressable
-          onPress={onPress}
-          onPressIn={() => {
-            scale.value = withTiming(0.94, { duration: 120 });
-          }}
-          onPressOut={() => {
-            scale.value = withTiming(1, { duration: 140 });
-          }}
-          style={{
-            width: 58,
-            height: 58,
-            borderRadius: 29,
-            backgroundColor: theme.primary.val,
-            alignItems: "center",
-            justifyContent: "center",
-            shadowColor: theme.primary.val,
-            shadowOffset: { width: 0, height: 6 },
-            shadowOpacity: 0.45,
-            shadowRadius: 14,
-            elevation: 10,
-          }}
-        >
-          <Feather name="plus" size={26} color="#FFFFFF" />
-        </Pressable>
-      </Animated.View>
-    </YStack>
-  );
-}
-
-function IOSNativeTabLayout() {
-  const [showCommand, setShowCommand] = useState(false);
-
-  return (
-    <>
-      <NativeTabs>
-        {NAV_ITEMS.map((item) => (
-          <NativeTabs.Trigger key={item.name} name={item.name}>
-            <NativeTabs.Trigger.Icon
-              sf={{ default: item.sfIcon, selected: item.sfIconActive }}
-            />
-            <NativeTabs.Trigger.Label>{item.title}</NativeTabs.Trigger.Label>
-          </NativeTabs.Trigger>
-        ))}
-      </NativeTabs>
-      <UnifiedCommandPanel visible={showCommand} onClose={() => setShowCommand(false)} />
-    </>
-  );
-}
-
-function AndroidNativeTabLayout() {
-  const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
-  const [showCommand, setShowCommand] = useState(false);
-
-  return (
-    <>
-      <NativeTabs
-        backgroundColor={theme.card.val}
-        iconColor={{ default: theme.colorMuted.val, selected: theme.primary.val }}
-        labelStyle={{
-          fontFamily: FontFamily.medium,
-          fontSize: 11,
-          fontWeight: "500",
-          color: theme.colorMuted.val,
+    <View style={styles.plusSlot}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={() => {
+          scale.value = withSpring(0.94, ANIM.plusPressIn);
         }}
-        disableIndicator
-        rippleColor={theme.primary.val + "18"}
-        backBehavior="history"
-        labelVisibilityMode="labeled"
+        onPressOut={() => {
+          scale.value = withSpring(1, ANIM.plusPressOut);
+        }}
+      >
+        <Animated.View
+          style={[
+            styles.plusButton,
+            { backgroundColor: primaryColor },
+            animStyle,
+          ]}
+        >
+          <Feather name="plus" size={22} color="#FFFFFF" />
+        </Animated.View>
+      </Pressable>
+    </View>
+  );
+}
+
+// Maps route name → display index (0–3), ignoring hidden __fab route
+const ROUTE_DISPLAY_INDEX: Record<string, number> = {
+  index: 0,
+  diary: 1,
+  review: 2,
+  more: 3,
+};
+
+// ─── LiquidGlassTabBar ────────────────────────────────────────────────────────
+
+function LiquidGlassTabBar({
+  state,
+  navigation,
+  onPressAdd,
+}: BottomTabBarProps & { onPressAdd: () => void }) {
+  const insets = useSafeAreaInsets();
+  const theme = useAppTheme();
+  const resolvedMode = useThemeStore((s) => s.resolvedMode);
+  const isDark = resolvedMode === "dark";
+  const isWeb = Platform.OS === "web";
+
+  const primaryColor = theme.primary.val;
+  const mutedColor = theme.colorMuted.val;
+
+  // Active route name (stable key, immune to __fab shifting raw indices)
+  const activeRouteName = state.routes[state.index]?.name ?? "";
+  const displayIndex = ROUTE_DISPLAY_INDEX[activeRouteName] ?? 0;
+
+  // Sliding active indicator
+  const indicatorX = useSharedValue(IND_X[displayIndex] ?? IND_X[0]);
+  useEffect(() => {
+    indicatorX.value = withSpring(IND_X[displayIndex] ?? IND_X[0], ANIM.indicator);
+  }, [displayIndex]);
+
+  const indicatorStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: indicatorX.value }],
+  }));
+
+  // Entrance: slide up from below on mount
+  const barY = useSharedValue(100);
+  const barOpacity = useSharedValue(0);
+  useEffect(() => {
+    barY.value = withSpring(0, ANIM.entrance);
+    barOpacity.value = withTiming(1, { duration: 280 });
+  }, []);
+
+  const barEntranceStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: barY.value }],
+    opacity: barOpacity.value,
+  }));
+
+  const glassColor = isDark
+    ? "rgba(15,15,26,0.82)"
+    : "rgba(255,255,255,0.76)";
+  const overlayColor = isDark
+    ? "rgba(15,15,26,0.28)"
+    : "rgba(255,255,255,0.32)";
+  const borderColor = isDark
+    ? "rgba(255,255,255,0.18)"
+    : "rgba(0,0,0,0.10)";
+  const indicatorBg = primaryColor + "22"; // ~13% opacity tint
+
+  const handleTabPress = (routeName: string) => {
+    if (Platform.OS !== "web") {
+      Haptics.selectionAsync();
+    }
+    const route = state.routes.find((r) => r.name === routeName);
+    if (!route) return;
+    const event = navigation.emit({
+      type: "tabPress",
+      target: route.key,
+      canPreventDefault: true,
+    });
+    if (activeRouteName !== routeName && !event.defaultPrevented) {
+      navigation.navigate(routeName);
+    }
+  };
+
+  // Transparent wrapper tells React Navigation how much vertical space to reserve,
+  // so screen content doesn't hide behind the floating pill.
+  // alignItems: center handles horizontal centering — no position:absolute tricks needed.
+  const bottomInset = (Platform.OS === "android" ? Math.max(insets.bottom, 8) : insets.bottom + 8) + BAR_BOTTOM_MARGIN;
+  const containerHeight = BAR_H + bottomInset + FADE_H;
+  const fadeColors = React.useMemo(
+    () => {
+      // Multi-stop ease-in curve to eliminate banding
+      const c = isDark ? "0,0,0" : "255,255,255";
+      return [
+        `rgba(${c},0)`,
+        `rgba(${c},0.05)`,
+        `rgba(${c},0.13)`,
+        `rgba(${c},0.25)`,
+        `rgba(${c},0.42)`,
+        `rgba(${c},0.60)`,
+        `rgba(${c},0.75)`,
+        `rgba(${c},0.85)`,
+      ] as string[];
+    },
+    [isDark]
+  );
+
+  return (
+    <View
+      pointerEvents="box-none"
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        height: containerHeight,
+        width: "100%",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        paddingBottom: bottomInset,
+      }}
+    >
+      {/* Fade gradient so content dissolves behind the bar */}
+      <LinearGradient
+        colors={fadeColors}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+      <Animated.View style={[styles.outerContainer, barEntranceStyle]}>
+        <View style={styles.innerContainer}>
+          {/* Glass background */}
+          {isWeb ? (
+            // Web: CSS backdrop-filter blur
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                // @ts-ignore – web-only CSS property
+                {
+                  backgroundColor: glassColor,
+                  backdropFilter: "blur(28px)",
+                },
+              ]}
+            />
+          ) : Platform.OS === "ios" ? (
+            // iOS: BlurView renders beautifully
+            <>
+              <BlurView
+                style={StyleSheet.absoluteFill}
+                intensity={isDark ? 90 : 78}
+                tint={isDark ? "dark" : "light"}
+              />
+              <View
+                style={[StyleSheet.absoluteFill, { backgroundColor: overlayColor }]}
+              />
+            </>
+          ) : (
+            // Android: BlurView is unreliable — use high-opacity solid background
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  backgroundColor: isDark
+                    ? "rgba(18,18,30,0.97)"
+                    : "rgba(255,255,255,0.97)",
+                },
+              ]}
+            />
+          )}
+
+          {/* Border highlight */}
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              styles.border,
+              { borderColor },
+            ]}
+          />
+
+          {/* Sliding active indicator pill */}
+          <Animated.View
+            style={[
+              styles.indicator,
+              { backgroundColor: indicatorBg, top: IND_Y },
+              indicatorStyle,
+            ]}
+          />
+
+          {/* Tab items row */}
+          <View style={styles.row}>
+            {/* Home, Diary */}
+            {NAV_ITEMS.slice(0, 2).map((item) => (
+              <TabItem
+                key={item.name}
+                icon={item.icon}
+                title={item.title}
+                isFocused={activeRouteName === item.name}
+                onPress={() => handleTabPress(item.name)}
+                primaryColor={primaryColor}
+                mutedColor={mutedColor}
+              />
+            ))}
+
+            {/* Center + button */}
+            <PlusButton onPress={onPressAdd} primaryColor={primaryColor} />
+
+            {/* Review, More */}
+            {NAV_ITEMS.slice(2).map((item) => (
+              <TabItem
+                key={item.name}
+                icon={item.icon}
+                title={item.title}
+                isFocused={activeRouteName === item.name}
+                onPress={() => handleTabPress(item.name)}
+                primaryColor={primaryColor}
+                mutedColor={mutedColor}
+              />
+            ))}
+          </View>
+        </View>
+      </Animated.View>
+    </View>
+  );
+}
+
+// ─── Custom floating pill layout (mobile + web) ───────────────────────────────
+
+function CustomTabLayout() {
+  const isCommandOpen = useUIStore((s) => s.isCommandOpen);
+  const openCommand = useUIStore((s) => s.openCommand);
+  const closeCommand = useUIStore((s) => s.closeCommand);
+
+  return (
+    <>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          // Prevent React Navigation from rendering its own opaque tab bar background
+          tabBarStyle: {
+            position: "absolute",
+            backgroundColor: "transparent",
+            borderTopWidth: 0,
+            elevation: 0,
+            shadowOpacity: 0,
+            shadowRadius: 0,
+            height: 0,
+          },
+        }}
+        tabBar={(props) => (
+          <LiquidGlassTabBar
+            {...props}
+            onPressAdd={() => {
+              if (Platform.OS !== "web") {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              }
+              openCommand();
+            }}
+          />
+        )}
       >
         {NAV_ITEMS.map((item) => (
-          <NativeTabs.Trigger key={item.name} name={item.name}>
-            <NativeTabs.Trigger.Icon
-              src={{
-                default: (
-                  <NativeTabs.Trigger.VectorIcon
-                    family={MaterialCommunityIcons}
-                    name={item.mdIcon}
-                  />
-                ),
-                selected: (
-                  <NativeTabs.Trigger.VectorIcon
-                    family={MaterialCommunityIcons}
-                    name={item.mdIcon}
-                  />
-                ),
-              }}
-            />
-            <NativeTabs.Trigger.Label
-              selectedStyle={{ color: theme.primary.val, fontWeight: "600" }}
-            >
-              {item.title}
-            </NativeTabs.Trigger.Label>
-          </NativeTabs.Trigger>
+          <Tabs.Screen
+            key={item.name}
+            name={item.name}
+            options={{ title: item.title }}
+          />
         ))}
-      </NativeTabs>
-
-      <YStack
-        pointerEvents="box-none"
-        position="absolute"
-        left={0}
-        right={0}
-        bottom={insets.bottom + 42}
-        alignItems="center"
-      >
-        <CenterFab
-          onPress={() => {
-            Haptics.selectionAsync();
-            setShowCommand(true);
-          }}
-        />
-      </YStack>
-
-      <UnifiedCommandPanel visible={showCommand} onClose={() => setShowCommand(false)} />
+        {/* __fab.tsx exists for file-system routing but is not a nav tab */}
+        <Tabs.Screen name="__fab" options={{ href: null }} />
+      </Tabs>
+      <UnifiedCommandPanel
+        visible={isCommandOpen}
+        onClose={closeCommand}
+      />
     </>
   );
 }
+
+// ─── Desktop sidebar layout ───────────────────────────────────────────────────
 
 function DesktopSidebarLayout() {
   const theme = useAppTheme();
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const [showCommand, setShowCommand] = useState(false);
+  const isCommandOpen = useUIStore((s) => s.isCommandOpen);
+  const openCommand = useUIStore((s) => s.openCommand);
+  const closeCommand = useUIStore((s) => s.closeCommand);
 
   const isActive = (name: string) => {
     if (name === "index") return pathname === "/" || pathname === "/index";
@@ -215,7 +514,12 @@ function DesktopSidebarLayout() {
         paddingTop={insets.top + 20}
         paddingBottom={insets.bottom + 20}
       >
-        <XStack alignItems="center" gap={10} paddingHorizontal={12} marginBottom={32}>
+        <XStack
+          alignItems="center"
+          gap={10}
+          paddingHorizontal={12}
+          marginBottom={32}
+        >
           <YStack
             width={32}
             height={32}
@@ -245,7 +549,9 @@ function DesktopSidebarLayout() {
                   paddingVertical: 10,
                   paddingHorizontal: 12,
                   borderRadius: 12,
-                  backgroundColor: active ? Colors.primary + "12" : "transparent",
+                  backgroundColor: active
+                    ? Colors.primary + "12"
+                    : "transparent",
                 }}
               >
                 <Feather
@@ -269,7 +575,7 @@ function DesktopSidebarLayout() {
         <YStack flex={1} />
 
         <Pressable
-          onPress={() => setShowCommand(true)}
+          onPress={openCommand}
           style={({ pressed }) => ({
             flexDirection: "row",
             alignItems: "center",
@@ -292,132 +598,89 @@ function DesktopSidebarLayout() {
         <Slot />
       </YStack>
 
-      <UnifiedCommandPanel visible={showCommand} onClose={() => setShowCommand(false)} />
+      <UnifiedCommandPanel
+        visible={isCommandOpen}
+        onClose={closeCommand}
+      />
     </XStack>
   );
 }
 
-function MobileTabLayout() {
-  const theme = useAppTheme();
-  const isIOS = Platform.OS === "ios";
-  const isWeb = Platform.OS === "web";
-  const [showCommand, setShowCommand] = useState(false);
-  const webBarHeight = 60;
-
-  return (
-    <>
-      <Tabs
-        screenOptions={{
-          headerShown: false,
-          tabBarActiveTintColor: theme.primary.val,
-          tabBarInactiveTintColor: theme.colorMuted.val,
-          tabBarLabelStyle: isWeb ? styles.webLabel : styles.iosLabel,
-          tabBarItemStyle: isWeb ? styles.webTabItem : undefined,
-          tabBarStyle: isWeb
-            ? [
-                styles.webTabBar,
-                {
-                  backgroundColor: theme.card.val,
-                  borderTopColor: theme.borderColor.val,
-                  height: webBarHeight,
-                },
-              ]
-            : [styles.iosTabBar, { borderTopColor: theme.borderColor.val }],
-          tabBarBackground: () =>
-            isIOS ? (
-              <BlurView
-                intensity={80}
-                tint={theme.background.val === "#0F0F1A" ? "dark" : "light"}
-                style={StyleSheet.absoluteFill}
-              />
-            ) : null,
-        }}
-      >
-        {NAV_ITEMS.slice(0, 2).map((item) => (
-          <Tabs.Screen
-            key={item.name}
-            name={item.name}
-            options={{
-              title: item.title,
-              tabBarIcon: ({ color, focused }) =>
-                isIOS ? (
-                  <SymbolView
-                    name={focused ? item.sfIconActive : item.sfIcon}
-                    tintColor={color}
-                    size={22}
-                  />
-                ) : (
-                  <Feather name={item.icon} size={20} color={color} />
-                ),
-            }}
-          />
-        ))}
-
-        <Tabs.Screen
-          name="__fab"
-          options={{
-            title: "",
-            tabBarLabel: () => null,
-            tabBarButton: () => <CenterFab onPress={() => setShowCommand(true)} />,
-          }}
-          listeners={{
-            tabPress: (e) => {
-              e.preventDefault();
-              setShowCommand(true);
-            },
-          }}
-        />
-
-        {NAV_ITEMS.slice(2).map((item) => (
-          <Tabs.Screen
-            key={item.name}
-            name={item.name}
-            options={{
-              title: item.title,
-              tabBarIcon: ({ color, focused }) =>
-                isIOS ? (
-                  <SymbolView
-                    name={focused ? item.sfIconActive : item.sfIcon}
-                    tintColor={color}
-                    size={22}
-                  />
-                ) : (
-                  <Feather name={item.icon} size={20} color={color} />
-                ),
-            }}
-          />
-        ))}
-      </Tabs>
-
-      <UnifiedCommandPanel visible={showCommand} onClose={() => setShowCommand(false)} />
-    </>
-  );
-}
+// ─── Root export ──────────────────────────────────────────────────────────────
 
 export default function TabLayout() {
   const isLargeScreen = useIsLargeScreen();
 
   if (isLargeScreen) return <DesktopSidebarLayout />;
-  if (Platform.OS === "android") return <AndroidNativeTabLayout />;
-  if (Platform.OS === "ios" && isLiquidGlassAvailable()) return <IOSNativeTabLayout />;
-  return <MobileTabLayout />;
+  return <CustomTabLayout />;
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  iosTabBar: {
-    position: "absolute",
+  // Outer shell: shadow only (no overflow:hidden — that breaks shadow on Android)
+  outerContainer: {
+    width: BAR_W,
+    height: BAR_H,
+    borderRadius: BAR_R,
     backgroundColor: "transparent",
-    borderTopWidth: StyleSheet.hairlineWidth,
+    // iOS / web shadow
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    // Android elevation
     elevation: 0,
   },
-  iosLabel: { fontFamily: FontFamily.medium, fontSize: 10, fontWeight: "500" },
-  webTabBar: {
-    borderTopWidth: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
+  // Inner shell: clips glass blur + border to pill shape
+  innerContainer: {
+    flex: 1,
+    borderRadius: BAR_R,
+    overflow: "hidden",
   },
-  webTabItem: { justifyContent: "center" },
-  webLabel: { fontFamily: FontFamily.medium, fontSize: 11, fontWeight: "500" },
+  border: {
+    borderRadius: BAR_R,
+    borderWidth: 1,
+  },
+  row: {
+    flex: 1,
+    flexDirection: "row",
+    paddingHorizontal: BAR_SIDE_PAD,
+  },
+  indicator: {
+    position: "absolute",
+    width: IND_W,
+    height: IND_H,
+    borderRadius: 999,
+    left: 0,
+  },
+  tabItem: {
+    width: SLOT_W,
+    height: BAR_H,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  tabInner: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 1,
+  },
+  tabLabel: {
+    fontSize: 9,
+    fontWeight: "600",
+    letterSpacing: 0.1,
+  },
+  plusSlot: {
+    width: SLOT_W,
+    height: BAR_H,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  plusButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
+  },
 });

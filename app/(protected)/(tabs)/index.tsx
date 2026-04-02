@@ -15,6 +15,7 @@ import { useQuery, useMutation, useAction } from "convex/react";
 import * as Clipboard from "expo-clipboard";
 import { api } from "@/convex/_generated/api";
 import { useThemeStore } from "@/store/theme";
+import { useUIStore } from "@/store/ui";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { MemoryCard } from "@/components/MemoryCard";
@@ -108,6 +109,9 @@ export default function HomeScreen() {
   const createShareLink = useMutation(api.sharing.createShareLink);
 
   const [editMemory, setEditMemory] = useState<MemoryItem | null>(null);
+  const isEditMemoryOpen = useUIStore((s) => s.isEditMemoryOpen);
+  const openEditMemory = useUIStore((s) => s.openEditMemory);
+  const closeEditMemory = useUIStore((s) => s.closeEditMemory);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<MemoryItem[] | null>(null);
@@ -171,6 +175,7 @@ export default function HomeScreen() {
     if (editMemory) {
       await updateMemory({ token: token!, id: editMemory._id, ...data });
       setEditMemory(null);
+      closeEditMemory();
     }
   };
 
@@ -301,7 +306,7 @@ export default function HomeScreen() {
             >
               {flashbacks.map((memory, i: number) => (
                 <Animated.View key={memory._id} entering={FadeInRight.delay(i * 80).duration(300)}>
-                  <PressableScale onPress={() => setEditMemory(memory)}>
+                  <PressableScale onPress={() => { setEditMemory(memory); openEditMemory(); }}>
                     <YStack
                       width={240}
                       padding={16}
@@ -358,7 +363,7 @@ export default function HomeScreen() {
             <YStack paddingHorizontal={20} gap={8}>
               {reminderMemories.slice(0, 3).map((memory, i: number) => (
                 <Animated.View key={memory._id} entering={FadeIn.delay(i * 60).duration(300)}>
-                  <PressableScale onPress={() => setEditMemory(memory)}>
+                  <PressableScale onPress={() => { setEditMemory(memory); openEditMemory(); }}>
                     <XStack
                       alignItems="center"
                       padding={14}
@@ -409,7 +414,7 @@ export default function HomeScreen() {
             <YStack paddingHorizontal={20} gap={8}>
               {upcomingReminders.slice(0, 5).map((memory, i: number) => (
                 <Animated.View key={memory._id} entering={FadeIn.delay(i * 60).duration(300)}>
-                  <PressableScale onPress={() => setEditMemory(memory)}>
+                  <PressableScale onPress={() => { setEditMemory(memory); openEditMemory(); }}>
                     <XStack
                       alignItems="center"
                       padding={14}
@@ -484,7 +489,7 @@ export default function HomeScreen() {
                   key={memory._id}
                   memory={toMemoryNote(memory)}
                   index={i}
-                  onPress={() => setEditMemory(memory)}
+                  onPress={() => { setEditMemory(memory); openEditMemory(); }}
                   onDelete={() => handleDelete(memory._id)}
                   onShare={() => handleShare(memory._id)}
                   onAddToReview={() => token && addToReview({ token, memoryId: memory._id })}
@@ -522,8 +527,8 @@ export default function HomeScreen() {
         <EditMemorySheet
           key={editMemory._id}
           memory={toMemoryNote(editMemory)}
-          visible={!!editMemory}
-          onClose={() => setEditMemory(null)}
+          visible={isEditMemoryOpen}
+          onClose={() => { setEditMemory(null); closeEditMemory(); }}
           onSave={handleSaveEdit}
         />
       )}

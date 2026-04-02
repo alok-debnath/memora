@@ -33,25 +33,41 @@ export function SegmentedControl<T extends string = string>({
 }: SegmentedControlProps<T>) {
   const theme = useAppTheme();
   const [containerWidth, setContainerWidth] = useState(0);
+  const [fallbackSegmentWidth, setFallbackSegmentWidth] = useState(0);
   const activeIndex = options.findIndex((o) => o.value === value);
   const segmentWidth =
     containerWidth > 0 ? (containerWidth - PADDING * 2) / options.length : 0;
+  const effectiveSegmentWidth = segmentWidth > 0 ? segmentWidth : fallbackSegmentWidth;
 
   const indicatorX = useSharedValue(0);
 
   useEffect(() => {
-    if (segmentWidth > 0) {
-      indicatorX.value = withTiming(activeIndex * segmentWidth, INDICATOR_TIMING);
+    if (effectiveSegmentWidth > 0 && activeIndex >= 0) {
+      indicatorX.value = withTiming(
+        activeIndex * effectiveSegmentWidth,
+        INDICATOR_TIMING,
+      );
     }
-  }, [activeIndex, segmentWidth, indicatorX]);
+  }, [activeIndex, effectiveSegmentWidth, indicatorX]);
 
   const handleLayout = useCallback((e: LayoutChangeEvent) => {
     setContainerWidth(e.nativeEvent.layout.width);
   }, []);
 
+  const handleFirstSegmentLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      if (segmentWidth > 0 || fallbackSegmentWidth > 0) return;
+      const width = e.nativeEvent.layout.width;
+      if (width > 0) {
+        setFallbackSegmentWidth(width);
+      }
+    },
+    [fallbackSegmentWidth, segmentWidth],
+  );
+
   const indicatorStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: indicatorX.value }],
-    width: segmentWidth,
+    width: effectiveSegmentWidth,
   }));
 
   return (
@@ -68,7 +84,7 @@ export function SegmentedControl<T extends string = string>({
       minHeight={38}
     >
       {/* Sliding pill indicator */}
-      {segmentWidth > 0 && (
+      {effectiveSegmentWidth > 0 && (
         <Animated.View
           style={[
             {
@@ -90,7 +106,7 @@ export function SegmentedControl<T extends string = string>({
       )}
 
       {/* Option buttons */}
-      {options.map(({ value: optValue, label, icon }) => {
+      {options.map(({ value: optValue, label, icon }, idx) => {
         const isActive = optValue === value;
         return (
           <Pressable
@@ -98,6 +114,7 @@ export function SegmentedControl<T extends string = string>({
             style={{ flex: 1 }}
             onPress={() => onChange(optValue)}
             hitSlop={4}
+            onLayout={idx === 0 ? handleFirstSegmentLayout : undefined}
           >
             <XStack
               flex={1}
@@ -106,6 +123,11 @@ export function SegmentedControl<T extends string = string>({
               justifyContent="center"
               gap={5}
               borderRadius={11}
+              backgroundColor={
+                effectiveSegmentWidth === 0 && isActive
+                  ? theme.card.val
+                  : "transparent"
+              }
             >
               {icon}
               <Text

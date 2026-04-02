@@ -20,7 +20,6 @@ export function Card({ children, style, noPadding }: CardProps) {
       shadowOffset={{ width: 0, height: 12 }}
       shadowOpacity={0.05}
       shadowRadius={24}
-      elevation={3}
       style={style}
     >
       {children}

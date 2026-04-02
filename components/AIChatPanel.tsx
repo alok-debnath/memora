@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   TextInput,
   FlatList,
-  ScrollView,
   Pressable,
   Platform,
   Clipboard,
@@ -25,7 +24,6 @@ import Animated, {
   withSpring,
   ZoomIn,
 } from "react-native-reanimated";
-import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   KeyboardStickyView,
@@ -36,6 +34,7 @@ import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
 import { FontFamily } from "@/constants/fonts";
 import { useAppToast } from "@/components/ui/toast";
+import { logDevError } from "@/lib/devLog";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -43,8 +42,9 @@ const CHAT = {
   avatarSize: 32,
   bubbleRadius: 18,
   bubblePadding: 14,
-  messageGap: 12,
-  bodyPad: 16,
+  messageGap: 14,
+  bodyPad: 18,
+  panelRadius: 22,
 } as const;
 
 const SUGGESTIONS = [
@@ -52,6 +52,240 @@ const SUGGESTIONS = [
   "What did I save about my passport?",
   "Show all my work memories",
 ];
+
+const DEFAULT_SPEECH_RATE = Platform.OS === "android" ? 1.0 : 1.02;
+const DEFAULT_SPEECH_PITCH = 1;
+const MIN_SPEECH_RATE = 0.98;
+const MAX_SPEECH_RATE = 1.08;
+const MIN_SPEECH_PITCH = 0.96;
+const MAX_SPEECH_PITCH = 1.04;
+const SENTENCE_BREAK_PAUSE_MS = 60;
+const CLAUSE_BREAK_PAUSE_MS = 35;
+const SHORT_BREAK_PAUSE_MS = 18;
+
+const SURFACE_SHADOW = Platform.select({
+  ios: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+  },
+  android: {
+    elevation: 1,
+  },
+  default: {},
+});
+
+const BUBBLE_SHADOW = Platform.select({
+  ios: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 3,
+  },
+  android: {
+    elevation: 0,
+  },
+  default: {},
+});
+
+function getPreferredSpeechLocale() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().locale || "en-US";
+  } catch {
+    return "en-US";
+  }
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function formatMessageTime(timestamp: number) {
+  if (!timestamp) return "";
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "";
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(date);
+  } catch {
+    const hours = date.getHours();
+    const minutes = `${date.getMinutes()}`.padStart(2, "0");
+    return `${hours}:${minutes}`;
+  }
+}
+
+function cleanTextForSpeech(text: string) {
+  return text
+    .replace(/\r\n/g, "\n")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*[-*•]\s+/gm, "")
+    .replace(/[*_~]/g, "")
+    .replace(/&/g, " and ")
+    .replace(/\s+([,.;:!?])/g, "$1")
+    .replace(/([a-zA-Z])\/([a-zA-Z])/g, "$1 or $2")
+    .replace(/https?:\/\/\S+/g, " link ")
+    .replace(/\n{2,}/g, ". ")
+    .replace(/\n/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitLongSpeechChunk(text: string, maxLength: number) {
+  if (text.length <= maxLength) {
+    return [text];
+  }
+
+  const words = text.split(" ");
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length <= maxLength) {
+      current = next;
+    } else {
+      if (current) chunks.push(current.trim());
+      current = word;
+    }
+  }
+
+  if (current) {
+    chunks.push(current.trim());
+  }
+
+  return chunks;
+}
+
+function chunkTextForSpeech(text: string, maxLength: number) {
+  const sentenceCandidates = text
+    .replace(/([.!?])\s+/g, "$1|")
+    .split("|")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  const chunks: string[] = [];
+  for (const sentence of sentenceCandidates) {
+    if (sentence.length <= maxLength) {
+      chunks.push(sentence);
+      continue;
+    }
+
+    const clauseCandidates = sentence
+      .replace(/([,;:])\s+/g, "$1|")
+      .split("|")
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+
+    for (const clause of clauseCandidates) {
+      chunks.push(...splitLongSpeechChunk(clause, maxLength));
+    }
+  }
+
+  const targetLength = Math.min(maxLength, 260);
+  const grouped: string[] = [];
+  let current = "";
+  for (const chunk of chunks) {
+    const next = current ? `${current} ${chunk}` : chunk;
+    if (next.length <= targetLength) {
+      current = next;
+      continue;
+    }
+    if (current) grouped.push(current.trim());
+    current = chunk;
+  }
+  if (current) {
+    grouped.push(current.trim());
+  }
+
+  return grouped;
+}
+
+function getChunkPauseMs(chunk: string) {
+  if (/[.!?]$/.test(chunk)) return SENTENCE_BREAK_PAUSE_MS;
+  if (/[,;:]$/.test(chunk)) return CLAUSE_BREAK_PAUSE_MS;
+  return SHORT_BREAK_PAUSE_MS;
+}
+
+function getConsistentRate() {
+  return clamp(DEFAULT_SPEECH_RATE, MIN_SPEECH_RATE, MAX_SPEECH_RATE);
+}
+
+function getConsistentPitch() {
+  return clamp(DEFAULT_SPEECH_PITCH, MIN_SPEECH_PITCH, MAX_SPEECH_PITCH);
+}
+
+function pickBestSpeechVoice(
+  voices: Speech.Voice[],
+  locale: string,
+): Speech.Voice | null {
+  if (!voices.length) return null;
+
+  const localeLower = locale.toLowerCase();
+  const localeBase = localeLower.split("-")[0];
+
+  const languageScore = (language: string) => {
+    const voiceLang = language.toLowerCase();
+    if (voiceLang === localeLower) return 6;
+    if (voiceLang.startsWith(`${localeLower}-`) || localeLower.startsWith(`${voiceLang}-`)) return 5;
+    if (voiceLang.startsWith(localeBase)) return 4;
+    if (voiceLang.startsWith("en")) return 2;
+    return 0;
+  };
+
+  const naturalnessScore = (name: string) => {
+    const normalizedName = name.toLowerCase();
+    let score = 0;
+    if (
+      normalizedName.includes("enhanced")
+      || normalizedName.includes("neural")
+      || normalizedName.includes("premium")
+      || normalizedName.includes("natural")
+      || normalizedName.includes("siri")
+    ) {
+      score += 2;
+    }
+    if (
+      normalizedName.includes("novelty")
+      || normalizedName.includes("whisper")
+      || normalizedName.includes("compact")
+    ) {
+      score -= 2;
+    }
+    return score;
+  };
+
+  const platformVoiceScore = (voice: Speech.Voice) => {
+    const enrichedVoice = voice as Speech.Voice & {
+      localService?: boolean;
+      isDefault?: boolean;
+    };
+
+    let score = 0;
+    if (enrichedVoice.localService) score += 1;
+    if (enrichedVoice.isDefault) score += 1;
+    return score;
+  };
+
+  return [...voices].sort((a, b) => {
+    const aScore = languageScore(a.language)
+      + (a.quality === Speech.VoiceQuality.Enhanced ? 4 : 1)
+      + naturalnessScore(a.name)
+      + platformVoiceScore(a);
+    const bScore = languageScore(b.language)
+      + (b.quality === Speech.VoiceQuality.Enhanced ? 4 : 1)
+      + naturalnessScore(b.name)
+      + platformVoiceScore(b);
+
+    if (aScore !== bScore) return bScore - aScore;
+    return a.name.localeCompare(b.name);
+  })[0] ?? null;
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -143,57 +377,6 @@ function ThinkingIndicator() {
   );
 }
 
-// ─── Suggestion Chips ─────────────────────────────────────────────────────────
-
-function SuggestionChips({
-  chips,
-  onPress,
-  disabled,
-}: {
-  chips: string[];
-  onPress: (chip: string) => void;
-  disabled: boolean;
-}) {
-  const theme = useAppTheme();
-  return (
-    <YStack paddingBottom={8}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        keyboardShouldPersistTaps="always"
-        contentContainerStyle={{ gap: 8, paddingHorizontal: CHAT.bodyPad }}
-      >
-        {chips.map((chip) => (
-          <Pressable
-            key={chip}
-            onPress={() => onPress(chip)}
-            disabled={disabled}
-            style={({ pressed }) => ({
-              paddingHorizontal: 14,
-              paddingVertical: 8,
-              borderRadius: 20,
-              borderWidth: 1,
-              borderColor: theme.borderColor.val,
-              backgroundColor: theme.backgroundStrong.val,
-              opacity: disabled || pressed ? 0.5 : 1,
-            })}
-          >
-            <Text
-              fontSize={13}
-              fontFamily="$body"
-              fontWeight="500"
-              color="$color"
-              numberOfLines={1}
-            >
-              {chip}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-    </YStack>
-  );
-}
-
 // ─── Chat Bubble ──────────────────────────────────────────────────────────────
 
 const ChatBubble = React.memo(function ChatBubble({
@@ -215,6 +398,7 @@ const ChatBubble = React.memo(function ChatBubble({
   const isSpeaking = speakingId === msg._id;
   const [showActions, setShowActions] = useState(false);
   const scaleAnim = useSharedValue(1);
+  const messageTime = useMemo(() => formatMessageTime(msg._creationTime), [msg._creationTime]);
 
   const bubbleStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scaleAnim.value }],
@@ -255,27 +439,6 @@ const ChatBubble = React.memo(function ChatBubble({
 
         <YStack flex={1} gap={4}>
           <XStack alignItems="center" gap={8} alignSelf={isUser ? "flex-end" : "flex-start"}>
-            {/* Show speaker icon to the left of AI messages if it's currently speaking */}
-            {!isUser && isSpeaking && (
-              <Animated.View entering={ZoomIn.duration(200)}>
-                 <Pressable
-                  onPress={() => onSpeak(msg._id, msg.content)}
-                  hitSlop={8}
-                  style={({ pressed }) => ({
-                    opacity: pressed ? 0.6 : 1,
-                    width: 24,
-                    height: 24,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: theme.primary.val + "15",
-                    borderRadius: 12,
-                  })}
-                >
-                  <Feather name="volume-x" size={14} color={theme.primary.val} />
-                </Pressable>
-              </Animated.View>
-            )}
-
             <Pressable onLongPress={handleLongPress} delayLongPress={400} style={{ flexShrink: 1 }}>
               <Animated.View style={bubbleStyle}>
                 <YStack
@@ -285,30 +448,53 @@ const ChatBubble = React.memo(function ChatBubble({
                   backgroundColor={isUser ? theme.primary.val : theme.backgroundStrong.val}
                   borderWidth={isUser ? 0 : 1}
                   borderColor={isUser ? "transparent" : "$borderColor"}
-                  style={isUser ? { borderBottomRightRadius: 6 } : { borderBottomLeftRadius: 6 }}
+                  style={[
+                    isUser ? { borderBottomRightRadius: 6 } : { borderBottomLeftRadius: 6 },
+                    BUBBLE_SHADOW,
+                  ]}
                 >
                   <Markdown style={mdStyles}>{msg.content}</Markdown>
                 </YStack>
               </Animated.View>
             </Pressable>
 
-            {/* Show speaker icon to the right of AI messages */}
-            {!isUser && !isSpeaking && (
-              <Animated.View entering={FadeIn.duration(200)}>
-                <Pressable
-                  onPress={() => onSpeak(msg._id, msg.content)}
-                  hitSlop={8}
-                  style={({ pressed }) => ({
-                    opacity: pressed ? 0.6 : 1,
-                    width: 28,
-                    height: 28,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  })}
-                >
-                  <Feather name="volume-2" size={14} color={theme.colorMuted.val} />
-                </Pressable>
-              </Animated.View>
+            {/* Speaker icon — always to the right of AI messages */}
+            {!isUser && (
+              isSpeaking ? (
+                <Animated.View entering={ZoomIn.duration(200)}>
+                  <Pressable
+                    onPress={() => onSpeak(msg._id, msg.content)}
+                    hitSlop={8}
+                    style={({ pressed }) => ({
+                      opacity: pressed ? 0.6 : 1,
+                      width: 24,
+                      height: 24,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: theme.primary.val + "15",
+                      borderRadius: 12,
+                    })}
+                  >
+                    <Feather name="volume-x" size={14} color={theme.primary.val} />
+                  </Pressable>
+                </Animated.View>
+              ) : (
+                <Animated.View entering={FadeIn.duration(200)}>
+                  <Pressable
+                    onPress={() => onSpeak(msg._id, msg.content)}
+                    hitSlop={8}
+                    style={({ pressed }) => ({
+                      opacity: pressed ? 0.6 : 1,
+                      width: 28,
+                      height: 28,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    })}
+                  >
+                    <Feather name="volume-2" size={14} color={theme.colorMuted.val} />
+                  </Pressable>
+                </Animated.View>
+              )
             )}
           </XStack>
 
@@ -341,6 +527,20 @@ const ChatBubble = React.memo(function ChatBubble({
               </XStack>
             </Animated.View>
           )}
+
+          {messageTime ? (
+            <Text
+              fontSize={10}
+              fontFamily="$body"
+              color="$colorMuted"
+              opacity={0.75}
+              marginTop={2}
+              alignSelf={isUser ? "flex-end" : "flex-start"}
+              paddingHorizontal={4}
+            >
+              {messageTime}
+            </Text>
+          ) : null}
         </YStack>
       </XStack>
     </Animated.View>
@@ -418,6 +618,7 @@ function ChatInputBar({
   const setMode = setChatInputMode ?? setInternalMode;
 
   const [voiceLiveTranscript, setVoiceLiveTranscript] = useState("");
+  const hasLiveTranscript = voiceLiveTranscript.trim().length > 0;
 
   const handleVoiceComplete = useCallback((transcript: string) => {
     if (transcript.trim()) {
@@ -455,53 +656,53 @@ function ChatInputBar({
   if (mode === "voice") {
     return (
       <Animated.View entering={FadeIn.duration(150)}>
-        <YStack gap={8}>
-          {voiceLiveTranscript ? (
+        <YStack gap={hasLiveTranscript ? 8 : 0}>
+          {hasLiveTranscript ? (
             <YStack
-              paddingHorizontal={14}
-              paddingVertical={10}
-              borderRadius={16}
+              paddingHorizontal={12}
+              paddingVertical={8}
+              borderRadius={14}
               backgroundColor="$accent"
               borderWidth={1}
               borderColor="$primary"
             >
-              <Text fontSize={15} fontFamily="$body" color="$color" lineHeight={22}>
+              <Text fontSize={14} fontFamily="$body" color="$color" lineHeight={20}>
                 {voiceLiveTranscript}
               </Text>
             </YStack>
           ) : null}
-          <XStack alignItems="center" justifyContent="center" position="relative" minHeight={80}>
-             {/* Center Voice Button */}
-             <VoiceRecorder
-                onTranscription={setVoiceLiveTranscript}
-                onTranscriptionComplete={(text) => {
-                  setVoiceLiveTranscript("");
-                  handleVoiceComplete(text);
-                }}
-                compact={false}
-              />
+          <XStack alignItems="center" justifyContent="center" position="relative" minHeight={56}>
+              {/* Center Voice Button */}
+              <VoiceRecorder
+                 onTranscription={setVoiceLiveTranscript}
+                 onTranscriptionComplete={(text) => {
+                   setVoiceLiveTranscript("");
+                   handleVoiceComplete(text);
+                 }}
+                 compact
+               />
 
-              {/* Right Keyboard Button */}
-              <Pressable
-                onPress={() => setMode("keyboard")}
-                hitSlop={12}
-                style={({ pressed }) => ({
-                  position: "absolute",
-                  right: 16,
-                  width: 44,
-                  height: 44,
-                  borderRadius: 22,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: theme.backgroundStrong.val,
-                  borderWidth: 1,
-                  borderColor: theme.borderColor.val,
-                  opacity: pressed ? 0.7 : 1,
-                })}
-              >
-                <Feather name="type" size={20} color={theme.colorMuted.val} />
-              </Pressable>
-          </XStack>
+               {/* Right Keyboard Button */}
+               <Pressable
+                 onPress={() => setMode("keyboard")}
+                 hitSlop={12}
+                 style={({ pressed }) => ({
+                   position: "absolute",
+                   right: 8,
+                   width: 34,
+                   height: 34,
+                   borderRadius: 17,
+                   alignItems: "center",
+                   justifyContent: "center",
+                   backgroundColor: theme.backgroundStrong.val,
+                   borderWidth: 1,
+                   borderColor: theme.borderColor.val,
+                   opacity: pressed ? 0.7 : 1,
+                 })}
+               >
+                 <Feather name="type" size={16} color={theme.colorMuted.val} />
+               </Pressable>
+           </XStack>
         </YStack>
       </Animated.View>
     );
@@ -517,6 +718,7 @@ function ChatInputBar({
       borderRadius={24}
       borderColor="$borderColor"
       backgroundColor="$backgroundStrong"
+      style={SURFACE_SHADOW}
     >
       <Pressable
         onPress={onPickDoc}
@@ -714,7 +916,36 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
   const [isSending, setIsSending] = useState(false);
   const [optimisticMessage, setOptimisticMessage] = useState<ChatMsg | null>(null);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const [speechLocale, setSpeechLocale] = useState(getPreferredSpeechLocale);
+  const [speechVoiceId, setSpeechVoiceId] = useState<string | undefined>(undefined);
   const flatListRef = useRef<FlatList>(null);
+  const speechPlaybackTokenRef = useRef(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const configureSpeechVoice = async () => {
+      const locale = getPreferredSpeechLocale();
+      setSpeechLocale(locale);
+
+      try {
+        const voices = await Speech.getAvailableVoicesAsync();
+        const preferred = pickBestSpeechVoice(voices, locale);
+        if (!cancelled) {
+          setSpeechVoiceId(preferred?.identifier);
+          if (preferred?.language) setSpeechLocale(preferred.language);
+        }
+      } catch (error) {
+        logDevError("AIChatPanel.configureSpeechVoice", error);
+      }
+    };
+
+    void configureSpeechVoice();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Scroll to bottom when sending starts (to show thinking indicator) or when new messages arrive
   const prevCountRef = useRef(messages.length);
@@ -756,21 +987,71 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
 
   const speakMessage = useCallback(
     (id: string, text: string) => {
-      if (speakingId === id) {
+      const stopSpeaking = () => {
+        speechPlaybackTokenRef.current += 1;
         Speech.stop();
         setSpeakingId(null);
+      };
+
+      if (speakingId === id) {
+        stopSpeaking();
         return;
       }
-      Speech.stop(); // Stop any currently playing speech before starting a new one
+
+      const cleanText = cleanTextForSpeech(text);
+      if (!cleanText) return;
+
+      const chunks = chunkTextForSpeech(cleanText, Math.max(120, Speech.maxSpeechInputLength));
+      if (!chunks.length) return;
+
+      stopSpeaking();
       setSpeakingId(id);
-      Speech.speak(text.replace(/\*\*/g, "").replace(/`/g, ""), {
-        onDone: () => setSpeakingId(null),
-        onStopped: () => setSpeakingId(null),
-        onError: () => setSpeakingId(null),
-      });
+
+      const playbackToken = speechPlaybackTokenRef.current;
+      const speakChunk = (index: number) => {
+        if (speechPlaybackTokenRef.current !== playbackToken) return;
+        if (index >= chunks.length) {
+          setSpeakingId(null);
+          return;
+        }
+
+        const chunk = chunks[index];
+        Speech.speak(chunk, {
+          language: speechLocale,
+          voice: speechVoiceId,
+          rate: getConsistentRate(),
+          pitch: getConsistentPitch(),
+          useApplicationAudioSession: Platform.OS === "ios" ? false : undefined,
+          onDone: () => {
+            if (speechPlaybackTokenRef.current !== playbackToken) return;
+            setTimeout(() => {
+              speakChunk(index + 1);
+            }, getChunkPauseMs(chunk));
+          },
+          onStopped: () => {
+            if (speechPlaybackTokenRef.current === playbackToken) {
+              setSpeakingId(null);
+            }
+          },
+          onError: () => {
+            if (speechPlaybackTokenRef.current === playbackToken) {
+              setSpeakingId(null);
+            }
+          },
+        });
+      };
+
+      speakChunk(0);
     },
-    [speakingId],
+    [speakingId, speechLocale, speechVoiceId],
   );
+
+  useEffect(() => {
+    return () => {
+      speechPlaybackTokenRef.current += 1;
+      void Speech.stop();
+    };
+  }, []);
 
   const copyMessage = useCallback(
     (text: string) => {
@@ -958,19 +1239,14 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
   const inputBar = (
     <KeyboardStickyView>
       <YStack
-        backgroundColor="$backgroundStrong"
-        borderTopWidth={0.5}
+        backgroundColor="$background"
+        borderTopWidth={1}
         borderTopColor="$borderColor"
-        paddingHorizontal={12}
-        paddingTop={8}
+        paddingHorizontal={16}
+        paddingTop={10}
         paddingBottom={Math.max(insets.bottom, 12)}
         gap={8}
       >
-        <SuggestionChips
-          chips={SUGGESTIONS.slice(0, 3)}
-          onPress={handleSend}
-          disabled={isSending}
-        />
         <ChatInputBar
           isSending={isSending}
           onSend={handleSend}
@@ -988,7 +1264,20 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
     return (
       <YStack flex={1}>
         <YStack flex={1} overflow="hidden">
-          <EmptyState onSuggestion={handleSend} />
+          <YStack
+            marginHorizontal={CHAT.bodyPad}
+            marginTop={12}
+            marginBottom={8}
+            borderRadius={CHAT.panelRadius}
+            backgroundColor="$backgroundStrong"
+            borderWidth={1}
+            borderColor="$borderColor"
+            overflow="hidden"
+            style={SURFACE_SHADOW}
+            flex={1}
+          >
+            <EmptyState onSuggestion={handleSend} />
+          </YStack>
           <Animated.View style={keyboardSpacerStyle} />
         </YStack>
         {inputBar}
@@ -999,56 +1288,74 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
   // ── Chat view ──────────────────────────────────────────────────────────────
   return (
     <YStack flex={1}>
-      {/* Header */}
-      <XStack
-        alignItems="center"
-        justifyContent="space-between"
-        paddingHorizontal={CHAT.bodyPad}
-        paddingVertical={12}
-        borderBottomWidth={0.5}
-        borderBottomColor="$borderColor"
+      <YStack
+        marginHorizontal={CHAT.bodyPad}
+        marginTop={12}
+        marginBottom={10}
+        borderRadius={CHAT.panelRadius}
+        borderWidth={1}
+        borderColor="$borderColor"
         backgroundColor="$backgroundStrong"
+        overflow="hidden"
+        style={SURFACE_SHADOW}
+        flex={1}
       >
-        <YStack>
-          <Text fontSize={17} fontFamily="$heading" fontWeight="700" color="$color">
-            Memora AI
-          </Text>
-          <Text fontSize={12} fontFamily="$body" marginTop={1} color="$colorMuted">
+        {/* Header */}
+        <XStack
+          alignItems="center"
+          justifyContent="space-between"
+          paddingHorizontal={CHAT.bodyPad}
+          paddingVertical={11}
+          borderBottomWidth={1}
+          borderBottomColor="$borderColor"
+          backgroundColor="$card"
+        >
+          <Text fontSize={12} fontFamily="$body" color="$colorMuted">
             {messages.length} {messages.length === 1 ? "message" : "messages"}
           </Text>
-        </YStack>
-        <Pressable
-          onPress={handleClearChat}
-          hitSlop={8}
-          style={({ pressed }) => ({
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 6,
-            opacity: pressed ? 0.6 : 1,
-          })}
-        >
-          <Feather name="trash-2" size={15} color={theme.colorMuted.val} />
-          <Text fontSize={12} fontFamily="$body" color="$colorMuted">
-            Clear
-          </Text>
-        </Pressable>
-      </XStack>
+          <Pressable
+            onPress={handleClearChat}
+            hitSlop={8}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              paddingHorizontal: 10,
+              paddingVertical: 7,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: theme.borderColor.val,
+              backgroundColor: theme.background.val,
+              opacity: pressed ? 0.6 : 1,
+            })}
+          >
+            <Feather name="trash-2" size={14} color={theme.colorMuted.val} />
+            <Text fontSize={12} fontFamily="$body" color="$colorMuted">
+              Clear
+            </Text>
+          </Pressable>
+        </XStack>
 
-      {/* Message list + keyboard spacer */}
-      <YStack flex={1} overflow="hidden">
-        <FlatList
-          ref={flatListRef}
-          data={displayMessages}
-          renderItem={renderMessage}
-          keyExtractor={keyExtractor}
-          inverted
-          style={{ flex: 1 }}
-          contentContainerStyle={{ padding: CHAT.bodyPad, paddingTop: 10 }}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-        />
-        <Animated.View style={keyboardSpacerStyle} />
+        {/* Message list + keyboard spacer */}
+        <YStack flex={1} overflow="hidden" backgroundColor="$background">
+          <FlatList
+            ref={flatListRef}
+            data={displayMessages}
+            renderItem={renderMessage}
+            keyExtractor={keyExtractor}
+            inverted
+            style={{ flex: 1 }}
+            contentContainerStyle={{
+              paddingHorizontal: CHAT.bodyPad + 2,
+              paddingTop: CHAT.bodyPad + 6,
+              paddingBottom: CHAT.bodyPad - 2,
+            }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+          />
+          <Animated.View style={keyboardSpacerStyle} />
+        </YStack>
       </YStack>
 
       {inputBar}
