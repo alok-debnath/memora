@@ -8,9 +8,11 @@ export const list = query({
   args: {
     token: v.string(),
     conversationId: v.optional(v.string()),
+    limit: v.optional(v.float64()),
   },
   handler: async (ctx, args) => {
     const { userId } = await resolveUser(ctx, args.token);
+    const limit = args.limit ? Math.min(args.limit, 100) : 100;
 
     if (args.conversationId) {
       return await ctx.db
@@ -19,14 +21,14 @@ export const list = query({
           q.eq("userId", userId).eq("conversationId", args.conversationId)
         )
         .order("asc")
-        .take(200);
+        .take(limit);
     }
 
     return await ctx.db
       .query("chatMessages")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .order("asc")
-      .take(200);
+      .take(limit);
   },
 });
 

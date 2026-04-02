@@ -24,6 +24,7 @@ import { Card } from "@/components/ui/Card";
 import { SectionLabel } from "@/components/ui/SectionLabel";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { GradientButton } from "@/components/ui/GradientButton";
+import { Badge } from "@/components/ui/Badge";
 import { FontFamily } from "@/constants/fonts";
 import { Dropdown, type IDropdownRef } from "react-native-element-dropdown";
 import { getTimeZones } from "@vvo/tzdb";
@@ -96,10 +97,15 @@ export default function ProfileScreen() {
     setTimezoneSearchText("");
     timezoneDropdownRef.current?.close();
   }, []);
+  const [exportRequested, setExportRequested] = React.useState(false);
+  const exportData = useQuery(
+    api.dataExport.exportAllData,
+    exportRequested ? {} : "skip"
+  );
 
   const memoryResult = useQuery(api.memories.list, token ? { token, limit: 100 } : "skip");
   const memories = memoryResult?.memories ?? [];
-  const diaryEntries = useQuery(api.diary.list, token ? { token } : "skip") ?? [];
+  const diaryStats = useQuery(api.diary.stats, token ? { token } : "skip");
   const notificationPrefs = useQuery(api.notifications.get, token ? { token } : "skip");
   const updateNotifications = useMutation(api.notifications.upsert);
   const deleteAccount = useMutation(api.auth.deleteAccount);
@@ -115,28 +121,29 @@ export default function ProfileScreen() {
     );
   }, [user?.timezone]);
 
+  React.useEffect(() => {
+    if (!exportRequested || !exportData || Platform.OS !== "web") {
+      return;
+    }
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "memora-export.json";
+    a.click();
+    URL.revokeObjectURL(url);
+    setExportRequested(false);
+  }, [exportRequested, exportData]);
+
   const webTopPadding = Platform.OS === "web" ? 67 : 0;
   const upcomingReminders = memories.filter((memory) => memory.reminderDate).length;
 
   const handleExport = async () => {
-    const data = JSON.stringify(
-      {
-        exportedAt: new Date().toISOString(),
-        profile: user,
-        memories,
-        diaryEntries,
-      },
-      null,
-      2
-    );
     if (Platform.OS === "web") {
-      const blob = new Blob([data], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "memora-export.json";
-      a.click();
-      URL.revokeObjectURL(url);
+      setExportRequested(true);
     } else {
       Alert.alert("Export", `${memories.length} memories ready for export`);
     }
@@ -241,48 +248,50 @@ export default function ProfileScreen() {
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Animated.View entering={FadeInUp.duration(400)}>
-          <Card style={styles.profileCard}>
-            <LinearGradient colors={["#E8911B", "#D4710F"]} style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {user?.name?.charAt(0)?.toUpperCase() || "?"}
-              </Text>
-            </LinearGradient>
-            <Text fontSize={11} fontFamily="$heading" letterSpacing={1.2} marginBottom={8} color="$primary">
-              MEMORA ACCOUNT
-            </Text>
-            <Text fontSize={20} fontFamily="$heading" fontWeight="600" marginBottom={2} color="$color">
-              {user?.name || "User"}
-            </Text>
-            <Text fontSize={14} fontFamily="$body" marginBottom={16} color="$colorMuted">
-              {user?.email || ""}
-            </Text>
-            <XStack alignItems="center" gap={18}>
-              <YStack alignItems="center">
+          <Card style={{ ...styles.profileCard, padding: 18, borderRadius: 26 }}>
+            <XStack alignItems="flex-start" justifyContent="space-between" gap={14}>
+              <XStack alignItems="center" gap={14} flex={1}>
+                <LinearGradient colors={["#E8911B", "#D4710F"]} style={styles.avatar}>
+                  <Text style={styles.avatarText}>
+                    {user?.name?.charAt(0)?.toUpperCase() || "?"}
+                  </Text>
+                </LinearGradient>
+                <YStack flex={1} gap={6}>
+                  <Badge label="Memora account" color={theme.primary.val} />
+                  <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
+                    {user?.name || "User"}
+                  </Text>
+                  <Text fontSize={14} fontFamily="$body" color="$colorMuted" numberOfLines={1}>
+                    {user?.email || ""}
+                  </Text>
+                </YStack>
+              </XStack>
+            </XStack>
+            <XStack gap={10} marginTop={16}>
+              <Card style={{ flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 18 }}>
                 <Text fontSize={20} fontFamily="$heading" fontWeight="700" color="$color">
                   {memories.length}
                 </Text>
-                <Text fontSize={12} fontFamily="$body" marginTop={2} color="$colorMuted">
+                <Text fontSize={11} fontFamily="$body" marginTop={2} color="$colorMuted">
                   Memories
                 </Text>
-              </YStack>
-              <YStack width={1} height={30} backgroundColor="$borderColor" />
-              <YStack alignItems="center">
+              </Card>
+              <Card style={{ flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 18 }}>
                 <Text fontSize={20} fontFamily="$heading" fontWeight="700" color="$color">
-                  {diaryEntries.length}
+                  {diaryStats?.totalEntries ?? 0}
                 </Text>
-                <Text fontSize={12} fontFamily="$body" marginTop={2} color="$colorMuted">
+                <Text fontSize={11} fontFamily="$body" marginTop={2} color="$colorMuted">
                   Diary
                 </Text>
-              </YStack>
-              <YStack width={1} height={30} backgroundColor="$borderColor" />
-              <YStack alignItems="center">
+              </Card>
+              <Card style={{ flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 18 }}>
                 <Text fontSize={20} fontFamily="$heading" fontWeight="700" color="$color">
                   {upcomingReminders}
                 </Text>
-                <Text fontSize={12} fontFamily="$body" marginTop={2} color="$colorMuted">
+                <Text fontSize={11} fontFamily="$body" marginTop={2} color="$colorMuted">
                   Reminders
                 </Text>
-              </YStack>
+              </Card>
             </XStack>
           </Card>
         </Animated.View>

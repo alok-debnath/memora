@@ -263,14 +263,14 @@ function LiquidGlassTabBar({
   }));
 
   const glassColor = isDark
-    ? "rgba(15,15,26,0.82)"
-    : "rgba(255,255,255,0.76)";
+    ? "rgba(30,22,16,0.84)"
+    : "rgba(255,252,247,0.82)";
   const overlayColor = isDark
-    ? "rgba(15,15,26,0.28)"
-    : "rgba(255,255,255,0.32)";
+    ? "rgba(24,18,13,0.28)"
+    : "rgba(255,248,238,0.38)";
   const borderColor = isDark
-    ? "rgba(255,255,255,0.18)"
-    : "rgba(0,0,0,0.10)";
+    ? "rgba(233,173,74,0.16)"
+    : "rgba(123,87,34,0.12)";
   const indicatorBg = primaryColor + "22"; // ~13% opacity tint
 
   const handleTabPress = (routeName: string) => {
@@ -329,7 +329,7 @@ function LiquidGlassTabBar({
     >
       {/* Fade gradient so content dissolves behind the bar */}
       <LinearGradient
-        colors={fadeColors}
+        colors={fadeColors as [string, string, ...string[]]}
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
@@ -506,36 +506,59 @@ function DesktopSidebarLayout() {
   return (
     <XStack flex={1} backgroundColor="$background">
       <YStack
-        width={260}
+        width={292}
         borderRightWidth={1}
         borderRightColor="$borderColor"
-        backgroundColor="$card"
-        paddingHorizontal={16}
-        paddingTop={insets.top + 20}
+        backgroundColor="$background"
+        paddingHorizontal={20}
+        paddingTop={insets.top + 18}
         paddingBottom={insets.bottom + 20}
       >
-        <XStack
-          alignItems="center"
-          gap={10}
-          paddingHorizontal={12}
-          marginBottom={32}
+        <YStack
+          borderRadius={28}
+          padding={18}
+          marginBottom={18}
+          backgroundColor="$card"
+          borderWidth={1}
+          borderColor="$borderColor"
+          gap={16}
         >
+          <XStack alignItems="center" gap={12}>
+            <YStack
+              width={40}
+              height={40}
+              borderRadius={14}
+              backgroundColor={Colors.primary + "18"}
+              alignItems="center"
+              justifyContent="center"
+            >
+              <Feather name="layers" size={20} color={Colors.primary} />
+            </YStack>
+            <YStack flex={1}>
+              <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
+                Memora
+              </Text>
+              <Text fontSize={12} color="$colorMuted">
+                Memory studio
+              </Text>
+            </YStack>
+          </XStack>
           <YStack
-            width={32}
-            height={32}
-            borderRadius={10}
-            backgroundColor={Colors.primary + "15"}
-            alignItems="center"
-            justifyContent="center"
+            borderRadius={18}
+            padding={14}
+            backgroundColor={Colors.primary + "10"}
+            gap={8}
           >
-            <Feather name="layers" size={18} color={Colors.primary} />
+            <Text fontSize={11} letterSpacing={1} textTransform="uppercase" color="$primary" fontWeight="700">
+              Quick Capture
+            </Text>
+            <Text fontSize={13} lineHeight={19} color="$colorMuted">
+              Capture notes, voice snippets, reminders, and AI chat from one command surface.
+            </Text>
           </YStack>
-          <Text fontSize={20} fontFamily="$body" fontWeight="700" color="$color">
-            Memora
-          </Text>
-        </XStack>
+        </YStack>
 
-        <YStack gap={2}>
+        <YStack gap={8}>
           {NAV_ITEMS.map((item) => {
             const active = isActive(item.name);
             return (
@@ -546,27 +569,49 @@ function DesktopSidebarLayout() {
                   flexDirection: "row",
                   alignItems: "center",
                   gap: 12,
-                  paddingVertical: 10,
-                  paddingHorizontal: 12,
-                  borderRadius: 12,
+                  paddingVertical: 14,
+                  paddingHorizontal: 14,
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: active ? Colors.primary + "22" : "transparent",
                   backgroundColor: active
                     ? Colors.primary + "12"
                     : "transparent",
                 }}
               >
-                <Feather
-                  name={item.icon}
-                  size={18}
-                  color={active ? Colors.primary : theme.colorMuted.val}
-                />
-                <Text
-                  fontSize={14}
-                  fontFamily="$body"
-                  fontWeight={active ? "600" : "400"}
-                  color={active ? "$primary" : "$color"}
+                <YStack
+                  width={36}
+                  height={36}
+                  borderRadius={12}
+                  alignItems="center"
+                  justifyContent="center"
+                  backgroundColor={active ? Colors.primary + "18" : theme.secondary.val}
                 >
-                  {item.title}
-                </Text>
+                  <Feather
+                    name={item.icon}
+                    size={18}
+                    color={active ? Colors.primary : theme.colorMuted.val}
+                  />
+                </YStack>
+                <YStack flex={1} gap={2}>
+                  <Text
+                    fontSize={15}
+                    fontFamily="$body"
+                    fontWeight={active ? "700" : "500"}
+                    color={active ? "$primary" : "$color"}
+                  >
+                    {item.title}
+                  </Text>
+                  <Text fontSize={12} color="$colorMuted">
+                    {item.title === "Home"
+                      ? "Live memories and reminders"
+                      : item.title === "Diary"
+                        ? "Structured daily reflection"
+                        : item.title === "Review"
+                          ? "Spaced repetition queue"
+                          : "Secondary pages and settings"}
+                  </Text>
+                </YStack>
               </Pressable>
             );
           })}
@@ -581,8 +626,8 @@ function DesktopSidebarLayout() {
             alignItems: "center",
             justifyContent: "center",
             gap: 8,
-            paddingVertical: 12,
-            borderRadius: 14,
+            paddingVertical: 14,
+            borderRadius: 18,
             backgroundColor: Colors.primary,
             opacity: pressed ? 0.85 : 1,
           })}
@@ -594,8 +639,17 @@ function DesktopSidebarLayout() {
         </Pressable>
       </YStack>
 
-      <YStack flex={1}>
-        <Slot />
+      <YStack flex={1} padding={14}>
+        <YStack
+          flex={1}
+          borderRadius={32}
+          overflow="hidden"
+          borderWidth={1}
+          borderColor="$borderColor"
+          backgroundColor="$background"
+        >
+          <Slot />
+        </YStack>
       </YStack>
 
       <UnifiedCommandPanel

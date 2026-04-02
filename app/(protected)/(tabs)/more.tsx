@@ -7,6 +7,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { PressableScale } from "@/components/ui/PressableScale";
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
 
 interface MenuItem {
   icon: keyof typeof Feather.glyphMap;
@@ -29,19 +31,53 @@ export default function MoreScreen() {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const webTopPadding = Platform.OS === "web" ? 67 : 0;
+  const totalRoutes = menuItems.length;
 
   return (
     <YStack
       flex={1}
       backgroundColor="$background"
       paddingHorizontal={16}
-      paddingTop={insets.top + webTopPadding + 16}
+      paddingTop={insets.top + webTopPadding + 12}
     >
-      <Text fontSize={26} fontFamily="$body" fontWeight="700" color="$color" marginBottom={20}>
-        More
-      </Text>
+      <Animated.View entering={FadeInUp.duration(420)}>
+        <Card
+          style={{
+            marginBottom: 16,
+            padding: 18,
+            borderRadius: 26,
+            backgroundColor: theme.card.val,
+          }}
+        >
+          <XStack alignItems="flex-start" justifyContent="space-between" gap={12}>
+            <YStack flex={1} gap={6}>
+              <Badge label="Navigation" color={theme.primary.val} />
+              <Text fontSize={28} lineHeight={32} fontFamily="$heading" fontWeight="700" color="$color">
+                Explore the vault
+              </Text>
+              <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
+                Jump into timelines, analytics, reminders, and profile controls from one place.
+              </Text>
+            </YStack>
+            <YStack
+              width={52}
+              height={52}
+              borderRadius={18}
+              alignItems="center"
+              justifyContent="center"
+              backgroundColor={theme.primary.val + "18"}
+            >
+              <Feather name="compass" size={22} color={theme.primary.val} />
+            </YStack>
+          </XStack>
+          <XStack gap={10} marginTop={16} flexWrap="wrap">
+            <Badge label={`${totalRoutes} sections`} color={theme.primary.val} />
+            <Badge label="Fast actions" />
+          </XStack>
+        </Card>
+      </Animated.View>
 
-      <ScrollView contentContainerStyle={{ gap: 10 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ gap: 10, paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
         {menuItems.map((item, i) => (
           <Animated.View key={item.route} entering={FadeInUp.delay(i * 60).duration(400)}>
             <PressableScale
@@ -50,17 +86,21 @@ export default function MoreScreen() {
                 flexDirection: "row",
                 alignItems: "center",
                 padding: 16,
-                borderRadius: 16,
-                borderWidth: 0.5,
+                borderRadius: 22,
+                borderWidth: 1,
                 gap: 14,
                 backgroundColor: theme.card.val,
                 borderColor: theme.borderColor.val,
+                shadowColor: "#000",
+                shadowOpacity: 0.05,
+                shadowRadius: 12,
+                shadowOffset: { width: 0, height: 8 },
               }}
             >
               <YStack
-                width={44}
-                height={44}
-                borderRadius={12}
+                width={46}
+                height={46}
+                borderRadius={14}
                 backgroundColor={item.color + "15"}
                 alignItems="center"
                 justifyContent="center"

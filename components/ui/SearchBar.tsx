@@ -8,9 +8,9 @@ import Animated, {
   withRepeat,
   withSequence,
 } from "react-native-reanimated";
-import { XStack } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { FontFamily } from "@/constants/fonts";
+import { XStack, Text } from "tamagui";
 
 interface SearchBarProps {
   value: string;
@@ -49,27 +49,51 @@ export function SearchBar({
 
   return (
     <XStack
-      backgroundColor="$secondary"
+      backgroundColor="$card"
       borderColor="$borderColor"
-      borderWidth={0.5}
-      borderRadius={12}
-      paddingHorizontal={14}
-      paddingVertical={10}
+      borderWidth={1}
+      borderRadius={18}
+      paddingHorizontal={16}
+      paddingVertical={12}
       alignItems="center"
-      gap={10}
+      gap={12}
+      shadowColor="$shadowColor"
+      shadowOffset={{ width: 0, height: 10 }}
+      shadowOpacity={0.05}
+      shadowRadius={24}
     >
-      <Feather name="search" size={18} color={theme.colorMuted.val} />
+      <XStack
+        width={34}
+        height={34}
+        borderRadius={12}
+        alignItems="center"
+        justifyContent="center"
+        backgroundColor={theme.primary.val + "12"}
+      >
+        <Feather name="search" size={16} color={theme.primary.val} />
+      </XStack>
       <TextInput
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={theme.colorMuted.val}
-        style={{ flex: 1, fontSize: 15, fontFamily: FontFamily.regular, padding: 0, color: theme.color.val }}
+        style={{
+          flex: 1,
+          fontSize: 15,
+          fontFamily: FontFamily.regular,
+          padding: 0,
+          color: theme.color.val,
+        }}
         returnKeyType="search"
       />
       {isSearching && (
         <Animated.View style={sparkleStyle}>
-          <Feather name="zap" size={16} color={theme.primary.val} />
+          <XStack alignItems="center" gap={6}>
+            <Feather name="zap" size={15} color={theme.primary.val} />
+            <Text fontSize={12} color="$primary" fontWeight="600">
+              Searching
+            </Text>
+          </XStack>
         </Animated.View>
       )}
       {value.length > 0 && !isSearching && (

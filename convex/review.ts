@@ -4,13 +4,17 @@ import { mutation, query } from "./_generated/server";
 import { resolveUser } from "./lib/withAuth";
 
 export const list = query({
-  args: { token: v.string() },
+  args: {
+    token: v.string(),
+    limit: v.optional(v.float64()),
+  },
   handler: async (ctx, args) => {
     const { userId } = await resolveUser(ctx, args.token);
+    const limit = args.limit ? Math.min(args.limit, 100) : 100;
     const cards = await ctx.db
       .query("reviewCards")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .take(200);
+      .take(limit);
 
     // Batch-fetch all memories in parallel to eliminate N+1
     const memoryResults = await Promise.all(
@@ -29,17 +33,21 @@ export const list = query({
 });
 
 export const getDue = query({
-  args: { token: v.string() },
+  args: {
+    token: v.string(),
+    limit: v.optional(v.float64()),
+  },
   handler: async (ctx, args) => {
     const { userId } = await resolveUser(ctx, args.token);
     const now = new Date().toISOString();
+    const limit = args.limit ? Math.min(args.limit, 50) : 50;
 
     const cards = await ctx.db
       .query("reviewCards")
       .withIndex("by_user_nextReviewAt", (q) =>
         q.eq("userId", userId).lte("nextReviewAt", now)
       )
-      .take(50);
+      .take(limit);
 
     // Batch-fetch all memories in parallel to eliminate N+1
     const memoryResults = await Promise.all(

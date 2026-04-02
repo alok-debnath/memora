@@ -14,12 +14,12 @@ export function Card({ children, style, noPadding }: CardProps) {
       backgroundColor="$card"
       borderColor="$borderColor"
       borderWidth={1}
-      borderRadius={22}
+      borderRadius={26}
       padding={noPadding ? 0 : 18}
       shadowColor="$shadowColor"
-      shadowOffset={{ width: 0, height: 12 }}
-      shadowOpacity={0.05}
-      shadowRadius={24}
+      shadowOffset={{ width: 0, height: 14 }}
+      shadowOpacity={0.08}
+      shadowRadius={30}
       style={style}
     >
       {children}

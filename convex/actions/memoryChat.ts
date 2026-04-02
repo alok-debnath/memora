@@ -478,6 +478,7 @@ export const chat = action({
 
     const chatHistory = await ctx.runQuery(api.chat.list, {
       token: args.token,
+      limit: 50,
     });
     const recentChat = chatHistory.slice(-12).map((message) => ({
       role: message.role as "user" | "assistant",

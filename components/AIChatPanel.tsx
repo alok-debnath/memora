@@ -909,7 +909,7 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
     height: Math.abs(keyboardHeight.value),
   }));
 
-  const messages = useQuery(api.chat.list, token ? { token } : "skip") ?? [];
+  const messages = useQuery(api.chat.list, token ? { token, limit: 100 } : "skip") ?? [];
   const sendMessage = useAction(api.actions.memoryChat.chat);
   const clearChat = useMutation(api.chat.clear);
 

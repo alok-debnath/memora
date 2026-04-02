@@ -10,14 +10,33 @@ import {
 } from "./lib/validators";
 
 export const list = query({
-  args: { token: v.string() },
+  args: {
+    token: v.string(),
+    limit: v.optional(v.float64()),
+  },
   handler: async (ctx, args) => {
     const { userId } = await resolveUser(ctx, args.token);
+    const limit = args.limit ? Math.min(args.limit, 100) : 100;
     return await ctx.db
       .query("diaryEntries")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .order("desc")
-      .take(200);
+      .take(limit);
+  },
+});
+
+export const stats = query({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const { userId } = await resolveUser(ctx, args.token);
+    const entries = await ctx.db
+      .query("diaryEntries")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .take(1000);
+
+    return {
+      totalEntries: entries.length,
+    };
   },
 });
 

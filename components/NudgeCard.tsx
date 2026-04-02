@@ -17,26 +17,50 @@ export function NudgeCard({ title, message, onDismiss, index = 0 }: NudgeCardPro
 
   return (
     <Animated.View entering={FadeInRight.delay(index * 100).duration(400)}>
-      <PressableScale style={{ width: 260, padding: 14, borderRadius: 14, borderWidth: 0.5, backgroundColor: theme.accent.val, borderColor: theme.borderColor.val, marginRight: 12 }}>
-        <XStack alignItems="center" gap={8} marginBottom={6}>
+      <PressableScale
+        style={{
+          width: 268,
+          padding: 14,
+          borderRadius: 20,
+          borderWidth: 1,
+          backgroundColor: theme.accent.val,
+          borderColor: theme.borderColor.val,
+          marginRight: 12,
+          shadowColor: "#000",
+          shadowOpacity: 0.05,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 8 },
+        }}
+      >
+        <XStack alignItems="center" gap={10} marginBottom={8}>
           <YStack
             width={28}
             height={28}
-            borderRadius={8}
-            backgroundColor={theme.primary.val + "20"}
+            borderRadius={10}
+            backgroundColor={theme.primary.val + "18"}
             alignItems="center"
             justifyContent="center"
           >
-            <Feather name="zap" size={16} color={theme.primary.val} />
+            <Feather name="star" size={16} color={theme.primary.val} />
           </YStack>
-          <Text flex={1} fontSize={14} fontFamily="$body" fontWeight="600" color="$color" numberOfLines={1}>
+          <Text flex={1} fontSize={14} fontFamily="$heading" fontWeight="600" color="$color" numberOfLines={1}>
             {title}
           </Text>
-          <PressableScale onPress={onDismiss} style={{ width: 24, height: 24, alignItems: "center", justifyContent: "center" }}>
+          <PressableScale
+            onPress={onDismiss}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 10,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: theme.backgroundStrong.val,
+            }}
+          >
             <Feather name="x" size={16} color={theme.colorMuted.val} />
           </PressableScale>
         </XStack>
-        <Text fontSize={13} fontFamily="$body" lineHeight={18} color="$colorMuted" numberOfLines={2}>
+        <Text fontSize={13} fontFamily="$body" lineHeight={19} color="$colorMuted" numberOfLines={3}>
           {message}
         </Text>
       </PressableScale>

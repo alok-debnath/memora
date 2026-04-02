@@ -12,29 +12,45 @@ interface EmptyStateProps {
 export function EmptyState({ icon, title, description }: EmptyStateProps) {
   const theme = useAppTheme();
   return (
-    <YStack alignItems="center" justifyContent="center" paddingVertical={60} paddingHorizontal={40}>
+    <YStack
+      alignItems="center"
+      justifyContent="center"
+      paddingVertical={56}
+      paddingHorizontal={28}
+      backgroundColor="$card"
+      borderWidth={1}
+      borderColor="$borderColor"
+      borderRadius={28}
+      gap={8}
+    >
       <YStack
-        width={72}
-        height={72}
-        borderRadius={36}
-        backgroundColor="$accent"
+        width={78}
+        height={78}
+        borderRadius={39}
+        backgroundColor={theme.primary.val + "16"}
         alignItems="center"
         justifyContent="center"
-        marginBottom={20}
+        marginBottom={8}
       >
         <Feather name={icon} size={32} color={theme.primary.val} />
       </YStack>
       <Text
         color="$color"
-        fontSize={18}
-        fontFamily="$body"
-        fontWeight="600"
+        fontSize={20}
+        fontFamily="$heading"
+        fontWeight="700"
         textAlign="center"
-        marginBottom={8}
       >
         {title}
       </Text>
-      <Text color="$colorMuted" fontSize={14} fontFamily="$body" textAlign="center" lineHeight={20}>
+      <Text
+        color="$colorMuted"
+        fontSize={14}
+        fontFamily="$body"
+        textAlign="center"
+        lineHeight={21}
+        maxWidth={320}
+      >
         {description}
       </Text>
     </YStack>

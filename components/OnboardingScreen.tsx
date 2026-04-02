@@ -1,66 +1,161 @@
-import React, { useState, useRef } from "react";
+import React, { useRef, useState } from "react";
 import {
-  Dimensions,
   FlatList,
-  Pressable,
   Platform,
+  Pressable,
+  useWindowDimensions,
+  View,
 } from "react-native";
-import { XStack, YStack, Text } from "tamagui";
-import { useAppTheme } from "@/hooks/useAppTheme";
 import { Feather } from "@expo/vector-icons";
+import { router } from "expo-router";
+import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInUp } from "react-native-reanimated";
-import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Text, XStack, YStack } from "tamagui";
+
+import { useAppTheme } from "@/hooks/useAppTheme";
 import { useAuth } from "@/hooks/useAuth";
 import { FontFamily } from "@/constants/fonts";
-import { router } from "expo-router";
-
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 interface OnboardingStep {
   icon: keyof typeof Feather.glyphMap;
   title: string;
   description: string;
   color: string;
+  label: string;
 }
 
 const steps: OnboardingStep[] = [
   {
     icon: "mic",
-    title: "Voice-First Capture",
+    title: "Capture in your own voice",
     description:
-      "Record your thoughts, ideas, and memories with just your voice. Memora transcribes and organizes everything automatically.",
+      "Record thoughts, ideas, and moments naturally. Memora turns them into structured notes without making you type everything out.",
     color: "#E8911B",
+    label: "Voice-first",
   },
   {
     icon: "cpu",
-    title: "AI-Powered Intelligence",
+    title: "Let AI enrich the memory",
     description:
-      "Our AI extracts people, places, moods, and action items from your memories. Every note becomes rich, searchable data.",
+      "People, places, moods, and actions are extracted automatically so each note becomes easier to revisit later.",
     color: "#3B82F6",
+    label: "Auto-enriched",
   },
   {
     icon: "search",
-    title: "Smart Semantic Search",
+    title: "Find meaning, not keywords",
     description:
-      "Find any memory by meaning, not just keywords. Ask natural questions and get relevant results instantly.",
+      "Search with natural language and get the memory you actually meant instead of hunting through folders and tags.",
     color: "#10B981",
+    label: "Semantic search",
   },
   {
     icon: "edit-3",
-    title: "Conversational Editing",
+    title: "Shape it through conversation",
     description:
-      "Chat with your AI assistant to search, create, update, or analyze your memories. It's like having a personal knowledge manager.",
-    color: "#8B5CF6",
+      "Ask Memora to draft, update, review, or analyze your memories. It behaves more like a companion than a form.",
+    color: "#F59E0B",
+    label: "Conversational",
   },
 ];
+
+function OnboardingSlide({
+  item,
+  index,
+  width,
+}: {
+  item: OnboardingStep;
+  index: number;
+  width: number;
+}) {
+  return (
+    <YStack width={width} flex={1} paddingHorizontal={20} justifyContent="center">
+      <Animated.View entering={FadeInUp.delay(120).duration(500)}>
+        <YStack
+          borderRadius={30}
+          padding={22}
+          backgroundColor="rgba(255,255,255,0.72)"
+          borderWidth={1}
+          borderColor="rgba(232,145,27,0.12)"
+          shadowColor="#000"
+          shadowOffset={{ width: 0, height: 16 }}
+          shadowOpacity={0.12}
+          shadowRadius={28}
+          elevation={5}
+        >
+          <XStack justifyContent="space-between" alignItems="center" marginBottom={20}>
+            <YStack
+              paddingHorizontal={12}
+              paddingVertical={7}
+              borderRadius={999}
+              backgroundColor={item.color + "18"}
+              borderWidth={1}
+              borderColor={item.color + "22"}
+            >
+              <Text fontSize={12} fontFamily={FontFamily.medium} color={item.color}>
+                {item.label}
+              </Text>
+            </YStack>
+            <Text fontSize={12} color="$colorMuted">
+              {String(index + 1).padStart(2, "0")}
+            </Text>
+          </XStack>
+
+          <XStack marginBottom={22} justifyContent="center">
+            <YStack
+              width={118}
+              height={118}
+              borderRadius={38}
+              alignItems="center"
+              justifyContent="center"
+              backgroundColor={item.color + "15"}
+            >
+              <YStack
+                width={86}
+                height={86}
+                borderRadius={28}
+                alignItems="center"
+                justifyContent="center"
+                backgroundColor={item.color + "24"}
+              >
+                <Feather name={item.icon} size={40} color={item.color} />
+              </YStack>
+            </YStack>
+          </XStack>
+
+          <Text
+            fontSize={28}
+            lineHeight={34}
+            fontFamily="$heading"
+            fontWeight="800"
+            textAlign="center"
+            color="$color"
+          >
+            {item.title}
+          </Text>
+          <Text
+            fontSize={16}
+            lineHeight={24}
+            textAlign="center"
+            color="$colorMuted"
+            marginTop={12}
+          >
+            {item.description}
+          </Text>
+        </YStack>
+      </Animated.View>
+    </YStack>
+  );
+}
 
 export function OnboardingScreen() {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const [currentIndex, setCurrentIndex] = useState(0);
-  const flatListRef = useRef<FlatList>(null);
+  const flatListRef = useRef<FlatList<OnboardingStep>>(null);
   const { setOnboardingSeen } = useAuth();
 
   const handleNext = () => {
@@ -68,12 +163,12 @@ export function OnboardingScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     if (currentIndex < steps.length - 1) {
-      flatListRef.current?.scrollToIndex({ index: currentIndex + 1 });
+      flatListRef.current?.scrollToIndex({ index: currentIndex + 1, animated: true });
       setCurrentIndex(currentIndex + 1);
-    } else {
-      setOnboardingSeen();
-      router.replace("/(public)/(auth)/login");
+      return;
     }
+    setOnboardingSeen();
+    router.replace("/(public)/(auth)/login");
   };
 
   const handleSkip = () => {
@@ -81,144 +176,149 @@ export function OnboardingScreen() {
     router.replace("/(public)/(auth)/login");
   };
 
-  const renderItem = ({ item }: { item: OnboardingStep }) => (
-    <YStack flex={1} alignItems="center" justifyContent="center" paddingHorizontal={40} width={SCREEN_WIDTH}>
-      <Animated.View
-        entering={FadeInUp.delay(200).duration(600)}
-        style={{
-          width: 140,
-          height: 140,
-          borderRadius: 70,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: item.color + "15",
-          marginBottom: 40,
-        }}
-      >
-        <XStack
-          width={100}
-          height={100}
-          borderRadius={50}
-          alignItems="center"
-          justifyContent="center"
-          backgroundColor={item.color + "25"}
-        >
-          <Feather name={item.icon} size={48} color={item.color} />
-        </XStack>
-      </Animated.View>
-      <Animated.Text
-        entering={FadeInUp.delay(400).duration(500)}
-        style={{
-          fontSize: 28,
-          fontFamily: FontFamily.bold,
-          textAlign: "center",
-          marginBottom: 16,
-          color: theme.color.val,
-        }}
-      >
-        {item.title}
-      </Animated.Text>
-      <Animated.Text
-        entering={FadeInUp.delay(500).duration(500)}
-        style={{
-          fontSize: 16,
-          fontFamily: FontFamily.regular,
-          textAlign: "center",
-          lineHeight: 24,
-          color: theme.colorMuted.val,
-        }}
-      >
-        {item.description}
-      </Animated.Text>
-    </YStack>
-  );
-
   return (
     <YStack flex={1} backgroundColor="$background">
-      <XStack
-        justifyContent="flex-end"
-        paddingHorizontal={20}
-        paddingTop={insets.top + 16}
-      >
-        {currentIndex < steps.length - 1 ? (
-          <Pressable onPress={handleSkip} hitSlop={12}>
-            <Text fontSize={15} fontFamily="$body" color="$colorMuted">
-              Skip
-            </Text>
-          </Pressable>
-        ) : (
-          <YStack />
-        )}
-      </XStack>
-
-      <FlatList
-        ref={flatListRef}
-        data={steps}
-        renderItem={renderItem}
-        keyExtractor={(_, i) => i.toString()}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        scrollEventThrottle={16}
+      <View pointerEvents="none" style={styles.glowOne} />
+      <View pointerEvents="none" style={styles.glowTwo} />
+      <LinearGradient
+        colors={["rgba(255,247,230,0.92)", "rgba(255,252,247,0.82)", "rgba(255,255,255,0.96)"] as const}
         style={{ flex: 1 }}
-        onMomentumScrollEnd={(e) => {
-          const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-          setCurrentIndex(idx);
-        }}
-        getItemLayout={(_, index) => ({
-          length: SCREEN_WIDTH,
-          offset: SCREEN_WIDTH * index,
-          index,
-        })}
-      />
-
-      <YStack
-        paddingHorizontal={20}
-        paddingBottom={insets.bottom + 20}
-        gap={24}
-        alignItems="center"
       >
-        <XStack gap={8} alignItems="center">
-          {steps.map((_, i) => (
-            <XStack
-              key={i}
-              height={8}
-              borderRadius={4}
-              backgroundColor={i === currentIndex ? "$primary" : "$borderColor"}
-              width={i === currentIndex ? 24 : 8}
-            />
-          ))}
+        <XStack
+          justifyContent="space-between"
+          alignItems="center"
+          paddingTop={insets.top + 14}
+          paddingHorizontal={20}
+          marginBottom={8}
+        >
+          <YStack>
+            <Text fontSize={12} letterSpacing={2} color="#8A7C67">
+              MEMORA
+            </Text>
+            <Text fontSize={13} color="#6A655C">
+              A calmer way to remember your life
+            </Text>
+          </YStack>
+          {currentIndex < steps.length - 1 ? (
+            <Pressable onPress={handleSkip} hitSlop={12}>
+              <Text fontSize={15} fontFamily={FontFamily.medium} color="$colorMuted">
+                Skip
+              </Text>
+            </Pressable>
+          ) : (
+            <YStack width={40} />
+          )}
         </XStack>
 
-        <Pressable onPress={handleNext}>
-          <LinearGradient
-            colors={["#E8911B", "#D4710F"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              paddingVertical: 16,
-              paddingHorizontal: 32,
-              borderRadius: 28,
-              gap: 8,
-              minWidth: 200,
-            }}
+        <FlatList
+          ref={flatListRef}
+          data={steps}
+          renderItem={({ item, index }) => (
+            <OnboardingSlide item={item} index={index} width={width} />
+          )}
+          keyExtractor={(_, i) => i.toString()}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          scrollEventThrottle={16}
+          style={{ flex: 1 }}
+          onMomentumScrollEnd={(e) => {
+            const idx = Math.round(e.nativeEvent.contentOffset.x / width);
+            setCurrentIndex(idx);
+          }}
+          getItemLayout={(_, index) => ({
+            length: width,
+            offset: width * index,
+            index,
+          })}
+          initialNumToRender={1}
+          windowSize={2}
+          removeClippedSubviews
+        />
+
+        <YStack
+          paddingHorizontal={20}
+          paddingBottom={insets.bottom + 20}
+          paddingTop={10}
+          gap={18}
+        >
+          <XStack gap={8} alignItems="center" justifyContent="center">
+            {steps.map((step, i) => (
+              <XStack
+                key={step.title}
+                height={8}
+                borderRadius={999}
+                width={i === currentIndex ? 28 : 8}
+                backgroundColor={i === currentIndex ? "$primary" : "$borderColor"}
+              />
+            ))}
+          </XStack>
+
+          <Pressable onPress={handleNext}>
+            <LinearGradient
+              colors={["#E8911B", "#D4710F", "#B96208"] as const}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.cta}
+            >
+              <Text color="#FFFFFF" fontSize={16} fontFamily={FontFamily.semiBold}>
+                {currentIndex === steps.length - 1 ? "Get Started" : "Next"}
+              </Text>
+              <Feather
+                name={currentIndex === steps.length - 1 ? "check" : "arrow-right"}
+                size={18}
+                color="#FFFFFF"
+              />
+            </LinearGradient>
+          </Pressable>
+
+          <Text
+            fontSize={12}
+            lineHeight={18}
+            color={theme.colorMuted.val}
+            textAlign="center"
           >
-            <Text color="white" fontSize={16} fontFamily="$body" fontWeight="600">
-              {currentIndex === steps.length - 1 ? "Get Started" : "Next"}
-            </Text>
-            <Feather
-              name={
-                currentIndex === steps.length - 1 ? "check" : "arrow-right"
-              }
-              size={18}
-              color="#FFFFFF"
-            />
-          </LinearGradient>
-        </Pressable>
-      </YStack>
+            Your workspace is private and can be explored at your own pace.
+          </Text>
+        </YStack>
+      </LinearGradient>
     </YStack>
   );
 }
+
+const styles = {
+  glowOne: {
+    position: "absolute" as const,
+    width: 340,
+    height: 340,
+    borderRadius: 340,
+    top: -100,
+    right: -120,
+    backgroundColor: "rgba(232,145,27,0.12)",
+  },
+  glowTwo: {
+    position: "absolute" as const,
+    width: 260,
+    height: 260,
+    borderRadius: 260,
+    bottom: 100,
+    left: -100,
+    backgroundColor: "rgba(245,166,35,0.10)",
+  },
+  cta: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 28,
+    gap: 8,
+    minWidth: 200,
+    alignSelf: "center" as const,
+    shadowColor: "#E8911B",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.24,
+    shadowRadius: 18,
+    elevation: 5,
+  },
+};

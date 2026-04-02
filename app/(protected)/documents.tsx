@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { ScrollView, Platform, Alert, Pressable, StyleSheet } from "react-native";
+import React, { useMemo, useState } from "react";
+import { ScrollView, Platform, Alert, Pressable } from "react-native";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { Feather } from "@expo/vector-icons";
@@ -50,27 +50,37 @@ export default function DocumentsScreen() {
   const documents = (useQuery(api.documents.list, token ? { token } : "skip") ?? []) as DocumentItem[];
   const createDoc = useMutation(api.documents.create);
   const removeDoc = useMutation(api.documents.remove);
-  const filteredDocuments =
-    statusFilter === "all"
-      ? documents
-      : documents.filter((doc) => doc.status === statusFilter);
-  const fullyFilteredDocuments = filteredDocuments.filter((doc) => {
-    const matchesType = typeFilter === "all" || (doc.documentType || "other") === typeFilter;
-    const haystack = [
-      doc.filename,
-      doc.summary,
-      doc.documentType,
-      ...(doc.keyDetails ? Object.values(doc.keyDetails) : []),
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-    const matchesQuery = !query.trim() || haystack.includes(query.trim().toLowerCase());
-    return matchesType && matchesQuery;
-  });
-  const documentTypes = Array.from(
-    new Set(documents.map((doc) => doc.documentType || "other"))
-  ).sort();
+
+  const documentTypes = useMemo(() => Array.from(new Set(documents.map((doc) => doc.documentType || "other"))).sort(), [documents]);
+
+  const fullyFilteredDocuments = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    return documents
+      .filter((doc) => statusFilter === "all" || doc.status === statusFilter)
+      .filter((doc) => typeFilter === "all" || (doc.documentType || "other") === typeFilter)
+      .filter((doc) => {
+        if (!normalized) return true;
+        const haystack = [
+          doc.filename,
+          doc.summary,
+          doc.documentType,
+          ...(doc.keyDetails ? Object.values(doc.keyDetails) : []),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(normalized);
+      });
+  }, [documents, query, statusFilter, typeFilter]);
+
+  const summary = useMemo(
+    () => ({
+      total: documents.length,
+      processed: documents.filter((doc) => doc.status === "completed").length,
+      memories: documents.reduce((sum, doc) => sum + doc.generatedMemoryIds.length, 0),
+    }),
+    [documents]
+  );
 
   const handleUpload = async () => {
     if (!token) return;
@@ -117,9 +127,7 @@ export default function DocumentsScreen() {
 
   const handleDelete = (docId: Id<"documentExtractions">) => {
     if (!token) return;
-    const doDelete = () => {
-      removeDoc({ token, documentId: docId });
-    };
+    const doDelete = () => removeDoc({ token, documentId: docId });
     if (Platform.OS === "web") {
       if (confirm("Delete this document?")) doDelete();
     } else {
@@ -130,204 +138,187 @@ export default function DocumentsScreen() {
     }
   };
 
-  const formatDate = (ts: number) => {
-    return new Date(ts).toLocaleDateString(undefined, {
-      month: "short", day: "numeric", year: "numeric",
+  const formatDate = (ts: number) =>
+    new Date(ts).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
     });
-  };
+
+  const statusFilters = [
+    { key: "all", label: "All" },
+    { key: "processing", label: "Processing" },
+    { key: "completed", label: "Completed" },
+    { key: "failed", label: "Failed" },
+  ] as const;
 
   return (
     <YStack flex={1} backgroundColor="$background">
-      <XStack
-        alignItems="center"
-        justifyContent="space-between"
-        paddingHorizontal={16}
-        paddingBottom={12}
-        paddingTop={insets.top + webTopPadding + 12}
+      <ScrollView
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop: insets.top + webTopPadding + 12,
+          paddingBottom: 28,
+        }}
+        showsVerticalScrollIndicator={false}
       >
-        <PressableScale onPress={() => router.back()}>
-          <Feather name="arrow-left" size={22} color={theme.color.val} />
-        </PressableScale>
-        <Text fontSize={18} fontFamily="$heading" fontWeight="600" color="$color">Documents</Text>
-        <YStack width={22} />
-      </XStack>
+        <Animated.View entering={FadeInUp.duration(400)}>
+          <Card style={{ padding: 18, borderRadius: 24, backgroundColor: theme.card.val, marginBottom: 14 }}>
+            <XStack alignItems="flex-start" justifyContent="space-between" gap={12}>
+              <YStack flex={1} gap={6}>
+                <Badge label="Vault" color={theme.primary.val} />
+                <Text fontSize={28} lineHeight={32} fontFamily="$heading" fontWeight="700" color="$color">
+                  Documents
+                </Text>
+                <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
+                  Upload files, extract structured details, and keep track of what turned into memories.
+                </Text>
+              </YStack>
+              <PressableScale onPress={() => router.back()} hitSlop={8}>
+                <YStack
+                  width={42}
+                  height={42}
+                  borderRadius={14}
+                  alignItems="center"
+                  justifyContent="center"
+                  backgroundColor={theme.secondary.val}
+                  borderWidth={1}
+                  borderColor={theme.borderColor.val}
+                >
+                  <Feather name="arrow-left" size={20} color={theme.color.val} />
+                </YStack>
+              </PressableScale>
+            </XStack>
+            <XStack gap={10} marginTop={16}>
+              <Card style={{ flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 18 }}>
+                <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
+                  {summary.total}
+                </Text>
+                <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">
+                  vault items
+                </Text>
+              </Card>
+              <Card style={{ flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 18 }}>
+                <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
+                  {summary.processed}
+                </Text>
+                <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">
+                  processed
+                </Text>
+              </Card>
+              <Card style={{ flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 18 }}>
+                <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
+                  {summary.memories}
+                </Text>
+                <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">
+                  memories
+                </Text>
+              </Card>
+            </XStack>
+          </Card>
+        </Animated.View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Card style={styles.summaryCard}>
-          <YStack flex={1} alignItems="center">
-            <Text fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">{documents.length}</Text>
-            <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">Vault Items</Text>
-          </YStack>
-          <YStack width={1} height={34} backgroundColor="$borderColor" />
-          <YStack flex={1} alignItems="center">
-            <Text fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">
-              {documents.filter((doc) => doc.status === "completed").length}
-            </Text>
-            <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">Processed</Text>
-          </YStack>
-          <YStack width={1} height={34} backgroundColor="$borderColor" />
-          <YStack flex={1} alignItems="center">
-            <Text fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">
-              {documents.reduce((sum, doc) => sum + doc.generatedMemoryIds.length, 0)}
-            </Text>
-            <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">Memories Created</Text>
-          </YStack>
-        </Card>
+        <GradientButton
+          title="Upload document"
+          onPress={handleUpload}
+          icon="upload"
+          loading={isUploading}
+          style={{ marginBottom: 14 }}
+        />
 
-        {documents.length === 0 ? (
-          <>
+        <SearchBar value={query} onChangeText={setQuery} placeholder="Search documents..." />
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 12 }}>
+          {statusFilters.map((filter) => {
+            const active = statusFilter === filter.key;
+            return (
+              <PressableScale
+                key={filter.key}
+                onPress={() => setStatusFilter(filter.key)}
+                style={{
+                  paddingHorizontal: 14,
+                  paddingVertical: 8,
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: active ? theme.primary.val : theme.borderColor.val,
+                  backgroundColor: active ? theme.primary.val + "18" : theme.card.val,
+                }}
+              >
+                <Text fontSize={13} fontFamily="$body" color={active ? "$primary" : "$colorMuted"}>
+                  {filter.label}
+                </Text>
+              </PressableScale>
+            );
+          })}
+        </ScrollView>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 12 }}>
+          {["all", ...documentTypes].map((type) => {
+            const active = typeFilter === type;
+            return (
+              <PressableScale
+                key={type}
+                onPress={() => setTypeFilter(type)}
+                style={{
+                  paddingHorizontal: 14,
+                  paddingVertical: 8,
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: active ? theme.primary.val : theme.borderColor.val,
+                  backgroundColor: active ? theme.primary.val + "18" : theme.card.val,
+                }}
+              >
+                <Text fontSize={13} fontFamily="$body" color={active ? "$primary" : "$colorMuted"}>
+                  {type === "all" ? "All types" : type}
+                </Text>
+              </PressableScale>
+            );
+          })}
+        </ScrollView>
+
+        <YStack gap={12}>
+          {fullyFilteredDocuments.length === 0 ? (
             <EmptyState
-              icon="file-text"
-              title="No documents yet"
-              description="Upload documents to extract and organize important information with AI"
+              icon="filter"
+              title="No matching documents"
+              description="Try another filter or upload a new document."
             />
-            <GradientButton
-              title="Upload Document"
-              onPress={handleUpload}
-              icon="upload"
-              loading={isUploading}
-              style={{ marginTop: 16, marginHorizontal: 40 }}
-            />
-          </>
-        ) : (
-          <>
-            <GradientButton
-              title="Upload Document"
-              onPress={handleUpload}
-              icon="upload"
-              loading={isUploading}
-              style={{ marginBottom: 16 }}
-            />
-            <SearchBar
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search documents..."
-            />
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.filterRow}
-            >
-              {[
-                { key: "all", label: "All" },
-                { key: "processing", label: "Processing" },
-                { key: "completed", label: "Completed" },
-                { key: "failed", label: "Failed" },
-              ].map((filter) => (
-                <PressableScale
-                  key={filter.key}
-                  onPress={() => setStatusFilter(filter.key as typeof statusFilter)}
-                  style={[
-                    styles.filterChip,
-                    {
-                      backgroundColor:
-                        statusFilter === filter.key ? theme.primary.val + "18" : theme.card.val,
-                      borderColor:
-                        statusFilter === filter.key ? theme.primary.val : theme.borderColor.val,
-                    },
-                  ]}
-                >
-                  <Text
-                    fontSize={13}
-                    fontFamily="$body"
-                    style={{
-                      color:
-                        statusFilter === filter.key ? theme.primary.val : theme.colorMuted.val,
-                    }}
-                  >
-                    {filter.label}
-                  </Text>
-                </PressableScale>
-              ))}
-            </ScrollView>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.filterRow}
-            >
-              {["all", ...documentTypes].map((type) => (
-                <PressableScale
-                  key={type}
-                  onPress={() => setTypeFilter(type)}
-                  style={[
-                    styles.filterChip,
-                    {
-                      backgroundColor:
-                        typeFilter === type ? theme.primary.val + "18" : theme.card.val,
-                      borderColor:
-                        typeFilter === type ? theme.primary.val : theme.borderColor.val,
-                    },
-                  ]}
-                >
-                  <Text
-                    fontSize={13}
-                    fontFamily="$body"
-                    style={{
-                      color: typeFilter === type ? theme.primary.val : theme.colorMuted.val,
-                    }}
-                  >
-                    {type === "all" ? "All Types" : type}
-                  </Text>
-                </PressableScale>
-              ))}
-            </ScrollView>
-            {fullyFilteredDocuments.map((doc, index) => (
+          ) : (
+            fullyFilteredDocuments.map((doc, index) => (
               <Animated.View key={doc._id} entering={FadeInUp.delay(index * 50).duration(300)}>
-                <Card style={{ ...styles.docCard, borderColor: theme.borderColor.val }}>
-                  <XStack alignItems="center" justifyContent="space-between">
+                <Card style={{ borderRadius: 22, borderColor: theme.borderColor.val }}>
+                  <XStack alignItems="center" justifyContent="space-between" gap={12}>
                     <XStack alignItems="center" gap={8} flex={1}>
                       <Feather name="file-text" size={18} color={theme.primary.val} />
-                      <Text
-                        fontSize={15}
-                        fontFamily="$body"
-                        fontWeight="500"
-                        flex={1}
-                        color="$color"
-                        numberOfLines={1}
-                      >
+                      <Text fontSize={15} fontFamily="$heading" fontWeight="600" flex={1} color="$color" numberOfLines={1}>
                         {doc.filename}
                       </Text>
                     </XStack>
                     <XStack alignItems="center" gap={10}>
-                      <Badge
-                        label={doc.status}
-                        color={statusColors[doc.status] || theme.colorMuted.val}
-                      />
+                      <Badge label={doc.status} color={statusColors[doc.status] || theme.colorMuted.val} />
                       <Pressable onPress={() => handleDelete(doc._id)}>
                         <Feather name="trash-2" size={16} color={theme.colorMuted.val} />
                       </Pressable>
                     </XStack>
                   </XStack>
+
                   <XStack flexWrap="wrap" gap={8} marginTop={10}>
-                    <Badge
-                      label={doc.documentType || "other"}
-                      color={theme.primary.val}
-                      small
-                    />
+                    <Badge label={doc.documentType || "other"} color={theme.primary.val} small />
                     {doc.expiryDate ? (
                       <Badge
                         label={`Expires ${new Date(doc.expiryDate).toLocaleDateString()}`}
-                        color={
-                          new Date(doc.expiryDate).getTime() < Date.now()
-                            ? theme.destructive.val
-                            : "#F59E0B"
-                        }
+                        color={new Date(doc.expiryDate).getTime() < Date.now() ? theme.destructive.val : "#F59E0B"}
                         small
                       />
                     ) : null}
                   </XStack>
+
                   {doc.summary && (
-                    <Text
-                      fontSize={13}
-                      fontFamily="$body"
-                      marginTop={8}
-                      lineHeight={18}
-                      color="$colorMuted"
-                      numberOfLines={2}
-                    >
+                    <Text fontSize={13} fontFamily="$body" marginTop={8} lineHeight={18} color="$colorMuted" numberOfLines={3}>
                       {doc.summary}
                     </Text>
                   )}
+
                   {doc.keyDetails && Object.keys(doc.keyDetails).length > 0 ? (
                     <XStack flexWrap="wrap" gap={8} marginTop={10}>
                       {Object.entries(doc.keyDetails)
@@ -345,76 +336,37 @@ export default function DocumentsScreen() {
                           >
                             <Text
                               fontSize={10}
-                              fontFamily="$heading"
-                              fontWeight="600"
+                              fontFamily="$body"
+                              fontWeight="700"
                               textTransform="uppercase"
                               letterSpacing={0.5}
                               color="$colorMuted"
                             >
                               {key.replace(/_/g, " ")}
                             </Text>
-                            <Text
-                              fontSize={12}
-                              fontFamily="$body"
-                              fontWeight="500"
-                              marginTop={4}
-                              color="$color"
-                              numberOfLines={1}
-                            >
+                            <Text fontSize={12} fontFamily="$body" fontWeight="500" marginTop={4} color="$color" numberOfLines={1}>
                               {value}
                             </Text>
                           </YStack>
                         ))}
                     </XStack>
                   ) : null}
+
                   <Text fontSize={12} fontFamily="$body" marginTop={6} color="$colorMuted">
                     {formatDate(doc._creationTime)}
                   </Text>
+
                   {doc.generatedMemoryIds.length > 0 && (
-                    <Text fontSize={12} fontFamily="$body" fontWeight="500" marginTop={4} color="$primary">
+                    <Text fontSize={12} fontFamily="$body" fontWeight="600" marginTop={4} color="$primary">
                       {doc.memoryCount ?? doc.generatedMemoryIds.length} memories generated
                     </Text>
                   )}
                 </Card>
               </Animated.View>
-            ))}
-            {fullyFilteredDocuments.length === 0 && (
-              <EmptyState
-                icon="filter"
-                title="No matching documents"
-                description="Try another filter or upload a new document."
-              />
-            )}
-          </>
-        )}
-        <YStack height={40} />
+            ))
+          )}
+        </YStack>
       </ScrollView>
     </YStack>
   );
 }
-
-const styles = StyleSheet.create({
-  content: { padding: 16 },
-  summaryCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 16,
-  },
-  filterRow: {
-    gap: 10,
-    paddingBottom: 16,
-  },
-  filterChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  docCard: {
-    marginBottom: 12,
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-  },
-});

@@ -52,6 +52,12 @@ export const upsert = mutation({
     };
 
     if (existing) {
+      const unchanged = Object.entries(updates).every(
+        ([key, value]) => existing[key as keyof typeof updates] === value
+      );
+      if (unchanged) {
+        return existing._id;
+      }
       await ctx.db.patch(existing._id, updates);
       return existing._id;
     }

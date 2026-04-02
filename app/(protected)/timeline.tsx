@@ -11,18 +11,28 @@ import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
 import { MemoryCard } from "@/components/MemoryCard";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { SectionLabel } from "@/components/ui/SectionLabel";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import type { MemoryNote } from "@/types/memory";
 
-function groupByDate(memories: Array<{ _id: string; title: string; content: string; category: string; mood?: string; _creationTime: number }>) {
+function groupByDate(
+  memories: Array<{
+    _id: string;
+    title: string;
+    content: string;
+    category: string;
+    mood?: string;
+    _creationTime: number;
+  }>
+) {
   const now = new Date();
   const today = now.toDateString();
   const yesterday = new Date(now.getTime() - 86400000).toDateString();
   const weekAgo = new Date(now.getTime() - 7 * 86400000);
 
-  const groups: Record<string, any[]> = {};
+  const groups: Record<string, typeof memories> = {};
 
   memories.forEach((m) => {
     const d = new Date(m._creationTime);
@@ -61,59 +71,89 @@ export default function TimelineScreen() {
 
     return [...filtered].sort((a, b) => b._creationTime - a._creationTime);
   }, [allMemories, searchQuery]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const groups = groupByDate(sorted as any);
+
+  const groups = useMemo(() => groupByDate(sorted as any), [sorted]);
+  const sectionCount = Object.keys(groups).length;
   const webTopPadding = Platform.OS === "web" ? 67 : 0;
 
   return (
     <YStack flex={1} backgroundColor="$background">
-      <XStack
-        alignItems="center"
-        justifyContent="space-between"
-        paddingHorizontal={16}
-        paddingBottom={12}
-        paddingTop={insets.top + webTopPadding + 12}
+      <ScrollView
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop: insets.top + webTopPadding + 12,
+          paddingBottom: 28,
+        }}
+        showsVerticalScrollIndicator={false}
       >
-        <PressableScale onPress={() => router.back()}>
-          <Feather name="arrow-left" size={22} color={theme.color.val} />
-        </PressableScale>
-        <Text fontSize={18} fontFamily="$heading" fontWeight="600" color="$color">Timeline</Text>
-        <YStack width={22} />
-      </XStack>
+        <Animated.View entering={FadeInUp.duration(400)}>
+          <Card style={{ padding: 18, borderRadius: 24, backgroundColor: theme.card.val, marginBottom: 14 }}>
+            <XStack alignItems="flex-start" justifyContent="space-between" gap={12}>
+              <YStack flex={1} gap={6}>
+                <Badge label="Chronological" color={theme.primary.val} />
+                <Text fontSize={28} lineHeight={32} fontFamily="$heading" fontWeight="700" color="$color">
+                  Timeline
+                </Text>
+                <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
+                  Review memories in time order, or narrow the story with a search.
+                </Text>
+              </YStack>
+              <PressableScale onPress={() => router.back()} hitSlop={8}>
+                <YStack
+                  width={42}
+                  height={42}
+                  borderRadius={14}
+                  alignItems="center"
+                  justifyContent="center"
+                  backgroundColor={theme.secondary.val}
+                  borderWidth={1}
+                  borderColor={theme.borderColor.val}
+                >
+                  <Feather name="arrow-left" size={20} color={theme.color.val} />
+                </YStack>
+              </PressableScale>
+            </XStack>
+            <XStack gap={10} marginTop={16}>
+              <Card style={{ flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 18 }}>
+                <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
+                  {sorted.length}
+                </Text>
+                <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">
+                  visible
+                </Text>
+              </Card>
+              <Card style={{ flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 18 }}>
+                <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
+                  {sectionCount}
+                </Text>
+                <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">
+                  sections
+                </Text>
+              </Card>
+            </XStack>
+          </Card>
+        </Animated.View>
 
-      <ScrollView contentContainerStyle={{ padding: 16, gap: 20 }} showsVerticalScrollIndicator={false}>
-        <Card style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <YStack flex={1} alignItems="center">
-            <Text fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">
-              {sorted.length}
-            </Text>
-            <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">
-              visible
-            </Text>
-          </YStack>
-          <YStack width={1} height={32} backgroundColor="$borderColor" />
-          <YStack flex={1} alignItems="center">
-            <Text fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">
-              {Object.keys(groups).length}
-            </Text>
-            <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">
-              sections
-            </Text>
-          </YStack>
-        </Card>
+        <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search your timeline..." />
 
-        <SearchBar
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder="Search your timeline..."
-        />
-
-        {Object.keys(groups).length === 0 ? (
-          <EmptyState icon="clock" title="No timeline" description="Create memories to see them on your timeline" />
+        {sectionCount === 0 ? (
+          <EmptyState icon="clock" title="No timeline" description="Create memories to see them on your timeline." />
         ) : (
           Object.entries(groups).map(([label, items], gi) => (
             <Animated.View key={label} entering={FadeInUp.delay(gi * 80).duration(400)}>
-              <SectionLabel>{label.toUpperCase()}</SectionLabel>
+              <Text
+                color="$colorMuted"
+                fontSize={11}
+                fontFamily="$body"
+                fontWeight="600"
+                textTransform="uppercase"
+                letterSpacing={1.2}
+                marginTop={16}
+                marginBottom={10}
+                marginLeft={4}
+              >
+                {label}
+              </Text>
               <YStack gap={10}>
                 {items.map((m, i: number) => (
                   <MemoryCard
@@ -121,10 +161,18 @@ export default function TimelineScreen() {
                     memory={{
                       ...m,
                       id: m._id,
+                      userId: "" as never,
+                      tags: [],
+                      people: [],
+                      locations: [],
+                      importance: "normal" as const,
+                      isRecurring: false,
+                      linkedUrls: [],
+                      extractedActions: [],
                       attachments: [],
                       createdAt: new Date(m._creationTime).toISOString(),
                       updatedAt: new Date(m._creationTime).toISOString(),
-                    }}
+                    } as MemoryNote}
                     index={i}
                   />
                 ))}
@@ -132,7 +180,6 @@ export default function TimelineScreen() {
             </Animated.View>
           ))
         )}
-        <YStack height={40} />
       </ScrollView>
     </YStack>
   );

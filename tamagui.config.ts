@@ -89,28 +89,28 @@ const interFont = createFont({
 });
 
 const lightTheme = {
-  background: "#FEFCF8",
-  backgroundHover: "#FFF8ED",
-  backgroundPress: "#FFF1DB",
-  backgroundFocus: "#FFF8ED",
+  background: "#F7F1E8",
+  backgroundHover: "#F2E8DA",
+  backgroundPress: "#E8D7BF",
+  backgroundFocus: "#F2E8DA",
   backgroundStrong: "#FFFFFF",
-  backgroundTransparent: "rgba(254, 252, 248, 0)",
+  backgroundTransparent: "rgba(247, 241, 232, 0)",
 
-  color: "#1A1A2E",
-  colorHover: "#1A1A2E",
-  colorPress: "#1A1A2E",
-  colorFocus: "#1A1A2E",
-  colorTransparent: "rgba(26, 26, 46, 0)",
-  colorMuted: "#6B7280",
+  color: "#1B1814",
+  colorHover: "#1B1814",
+  colorPress: "#1B1814",
+  colorFocus: "#1B1814",
+  colorTransparent: "rgba(27, 24, 20, 0)",
+  colorMuted: "#6C6256",
 
-  primary: "#E8911B",
-  primaryHover: "#F5A623",
+  primary: "#C98522",
+  primaryHover: "#E9AD4A",
 
-  secondary: "#F3F4F6",
-  secondaryHover: "#E5E7EB",
+  secondary: "#EFE3D3",
+  secondaryHover: "#E8D7BF",
 
-  accent: "#FFF1DB",
-  accentHover: "#FDE68A",
+  accent: "#F3E2C1",
+  accentHover: "#F2C66E",
 
   destructive: "#EF4444",
   destructiveHover: "#F87171",
@@ -119,43 +119,43 @@ const lightTheme = {
   warning: "#F59E0B",
   info: "#3B82F6",
 
-  borderColor: "#E5E7EB",
-  borderColorHover: "#D1D5DB",
-  borderColorFocus: "#E8911B",
-  borderColorPress: "#E8911B",
+  borderColor: "#DCC7AB",
+  borderColorHover: "#D2BA9B",
+  borderColorFocus: "#C98522",
+  borderColorPress: "#C98522",
 
-  shadowColor: "#000000",
-  shadowColorHover: "#000000",
+  shadowColor: "#5C3F19",
+  shadowColorHover: "#5C3F19",
 
   // Semantic aliases used across the app
-  card: "#FFFFFF",
-  cardBorder: "#F0E6D6",
+  card: "#FFFDFC",
+  cardBorder: "#E7D7C2",
   overlay: "rgba(0, 0, 0, 0.4)",
 };
 
 const darkTheme = {
-  background: "#0F0F1A",
-  backgroundHover: "#1A1A2E",
-  backgroundPress: "#252540",
-  backgroundFocus: "#1A1A2E",
-  backgroundStrong: "#1E1E32",
-  backgroundTransparent: "rgba(15, 15, 26, 0)",
+  background: "#18120D",
+  backgroundHover: "#241B14",
+  backgroundPress: "#33271D",
+  backgroundFocus: "#241B14",
+  backgroundStrong: "#2B2018",
+  backgroundTransparent: "rgba(24, 18, 13, 0)",
 
-  color: "#F9FAFB",
-  colorHover: "#F9FAFB",
-  colorPress: "#F9FAFB",
-  colorFocus: "#F9FAFB",
-  colorTransparent: "rgba(249, 250, 251, 0)",
-  colorMuted: "#9CA3AF",
+  color: "#FBF4EA",
+  colorHover: "#FBF4EA",
+  colorPress: "#FBF4EA",
+  colorFocus: "#FBF4EA",
+  colorTransparent: "rgba(251, 244, 234, 0)",
+  colorMuted: "#CCBCA6",
 
-  primary: "#F5A623",
-  primaryHover: "#FCD34D",
+  primary: "#E9AD4A",
+  primaryHover: "#F2C66E",
 
-  secondary: "#252540",
-  secondaryHover: "#2D2D44",
+  secondary: "#2D2219",
+  secondaryHover: "#3A2E23",
 
-  accent: "#2D2D44",
-  accentHover: "#3D3D54",
+  accent: "#33271D",
+  accentHover: "#433325",
 
   destructive: "#F87171",
   destructiveHover: "#FCA5A5",
@@ -164,17 +164,17 @@ const darkTheme = {
   warning: "#FBBF24",
   info: "#60A5FA",
 
-  borderColor: "#2D2D44",
-  borderColorHover: "#3D3D54",
-  borderColorFocus: "#F5A623",
-  borderColorPress: "#F5A623",
+  borderColor: "#433325",
+  borderColorHover: "#533F2F",
+  borderColorFocus: "#E9AD4A",
+  borderColorPress: "#E9AD4A",
 
   shadowColor: "#000000",
   shadowColorHover: "#000000",
 
   // Semantic aliases used across the app
-  card: "#1E1E32",
-  cardBorder: "#2D2D44",
+  card: "#221913",
+  cardBorder: "#433325",
   overlay: "rgba(0, 0, 0, 0.6)",
 };
 

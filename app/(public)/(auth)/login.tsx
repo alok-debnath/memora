@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { TextInput } from "react-native";
+import { TextInput, View } from "react-native";
+import { Feather } from "@expo/vector-icons";
 import { YStack, XStack, Text } from "tamagui";
 import { router } from "expo-router";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -37,132 +38,128 @@ export default function LoginScreen() {
   return (
     <AuthShell
       title="Welcome back"
-      subtitle="Sign in to your AI memory workspace."
+      subtitle="Sign in to continue your private memory workspace."
       accentIcon="zap"
     >
-      <YStack gap={16}>
-          {error ? (
-            <YStack
-              padding={12}
-              borderRadius={10}
-              backgroundColor={theme.destructive.val + "15"}
-            >
-              <Text
-                fontSize={13}
-                fontFamily={FontFamily.medium}
-                textAlign="center"
-                color="$destructive"
-              >
-                {error}
-              </Text>
-            </YStack>
-          ) : null}
-
-          <YStack gap={6}>
-            <Text
-              fontSize={11}
-              fontFamily={FontFamily.semiBold}
-              fontWeight="600"
-              letterSpacing={1}
-              marginLeft={4}
-              color="$colorMuted"
-            >
-              EMAIL
+      <YStack gap={18}>
+        {error ? (
+          <XStack
+            gap={10}
+            alignItems="flex-start"
+            padding={14}
+            borderRadius={16}
+            backgroundColor={theme.destructive.val + "12"}
+            borderWidth={1}
+            borderColor={theme.destructive.val + "22"}
+          >
+            <View style={{ marginTop: 1 }}>
+              <Feather name="alert-triangle" size={16} color={theme.destructive.val} />
+            </View>
+            <Text fontSize={13} lineHeight={19} fontFamily={FontFamily.medium} color="$destructive" flex={1}>
+              {error}
             </Text>
+          </XStack>
+        ) : null}
+
+        <YStack gap={7}>
+          <Text fontSize={11} fontFamily={FontFamily.semiBold} letterSpacing={1.2} color="$colorMuted">
+            EMAIL
+          </Text>
+          <TextInput
+            value={email}
+            onChangeText={setEmail}
+            placeholder="you@example.com"
+            placeholderTextColor={theme.colorMuted.val}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="email"
+            textContentType="emailAddress"
+            returnKeyType="next"
+            style={{
+              borderRadius: 16,
+              paddingHorizontal: 16,
+              paddingVertical: 15,
+              fontSize: 16,
+              fontFamily: FontFamily.regular,
+              borderWidth: 1,
+              backgroundColor: theme.card.val,
+              color: theme.color.val,
+              borderColor: theme.borderColor.val,
+            }}
+          />
+          <Text fontSize={12} lineHeight={18} color="$colorMuted">
+            Use the email connected to your Memora workspace.
+          </Text>
+        </YStack>
+
+        <YStack gap={7}>
+          <Text fontSize={11} fontFamily={FontFamily.semiBold} letterSpacing={1.2} color="$colorMuted">
+            PASSWORD
+          </Text>
+          <XStack
+            minHeight={54}
+            borderRadius={16}
+            borderWidth={1}
+            paddingLeft={16}
+            paddingRight={10}
+            alignItems="center"
+            backgroundColor="$card"
+            borderColor="$borderColor"
+          >
             <TextInput
-              value={email}
-              onChangeText={setEmail}
-              placeholder="you@example.com"
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Enter your password"
               placeholderTextColor={theme.colorMuted.val}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="email"
+              secureTextEntry={!showPassword}
+              autoComplete="password"
+              textContentType="password"
+              returnKeyType="go"
               style={{
-                borderRadius: 12,
-                paddingHorizontal: 16,
-                paddingVertical: 14,
+                flex: 1,
                 fontSize: 16,
                 fontFamily: FontFamily.regular,
-                borderWidth: 1,
-                backgroundColor: theme.secondary.val,
+                paddingVertical: 15,
                 color: theme.color.val,
-                borderColor: theme.borderColor.val,
               }}
             />
-          </YStack>
-
-          <YStack gap={6}>
-            <Text
-              fontSize={11}
-              fontFamily={FontFamily.semiBold}
-              fontWeight="600"
-              letterSpacing={1}
-              marginLeft={4}
-              color="$colorMuted"
+            <PressableScale
+              onPress={() => setShowPassword((value) => !value)}
+              style={{ paddingHorizontal: 10, paddingVertical: 8 }}
             >
-              PASSWORD
-            </Text>
-            <XStack
-              minHeight={52}
-              borderRadius={12}
-              borderWidth={1}
-              paddingLeft={16}
-              paddingRight={10}
-              alignItems="center"
-              backgroundColor="$secondary"
-              borderColor="$borderColor"
-            >
-              <TextInput
-                value={password}
-                onChangeText={setPassword}
-                placeholder="Enter your password"
-                placeholderTextColor={theme.colorMuted.val}
-                secureTextEntry={!showPassword}
-                autoComplete="password"
-                style={{
-                  flex: 1,
-                  fontSize: 16,
-                  fontFamily: FontFamily.regular,
-                  paddingVertical: 14,
-                  color: theme.color.val,
-                }}
-              />
-              <PressableScale onPress={() => setShowPassword((value) => !value)} style={{ paddingHorizontal: 8, paddingVertical: 6 }}>
-                <Text fontSize={13} fontFamily={FontFamily.semiBold} fontWeight="600" color="$colorMuted">
-                  {showPassword ? "Hide" : "Show"}
-                </Text>
-              </PressableScale>
-            </XStack>
-          </YStack>
+              <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$colorMuted">
+                {showPassword ? "Hide" : "Show"}
+              </Text>
+            </PressableScale>
+          </XStack>
+        </YStack>
 
-          <GradientButton
-            title="Sign In"
-            onPress={handleLogin}
-            loading={isLoading}
-            icon="log-in"
-            style={{ marginTop: 8 }}
-          />
+        <GradientButton
+          title="Sign In"
+          onPress={handleLogin}
+          loading={isLoading}
+          icon="log-in"
+          style={{ marginTop: 2 }}
+        />
 
-          <PressableScale
-            onPress={() => router.push("/(public)/(auth)/forgot-password")}
-            style={{ alignSelf: "center", marginTop: 12 }}
-          >
-            <Text fontSize={14} fontFamily={FontFamily.semiBold} fontWeight="600" color="$colorMuted">
+        <XStack justifyContent="space-between" alignItems="center" marginTop={2}>
+          <PressableScale onPress={() => router.push("/(public)/(auth)/forgot-password")}>
+            <Text fontSize={14} fontFamily={FontFamily.semiBold} color="$primary">
               Forgot password?
             </Text>
           </PressableScale>
-
-          <XStack justifyContent="center" alignItems="center" gap={6} marginTop={16}>
+          <XStack alignItems="center" gap={6}>
             <Text fontSize={14} fontFamily={FontFamily.regular} color="$colorMuted">
-              Don't have an account?
+              New here?
             </Text>
             <PressableScale onPress={() => router.push("/(public)/(auth)/signup")}>
-              <Text fontSize={14} fontFamily={FontFamily.semiBold} fontWeight="600" color="$primary">
+              <Text fontSize={14} fontFamily={FontFamily.semiBold} color="$primary">
                 Sign Up
               </Text>
             </PressableScale>
           </XStack>
+        </XStack>
       </YStack>
     </AuthShell>
   );

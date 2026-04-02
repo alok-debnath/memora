@@ -65,39 +65,57 @@ export const flashbacks = query({
 });
 
 export const reminders = query({
-  args: { token: v.string() },
+  args: {
+    token: v.string(),
+    asOf: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     const { userId } = await resolveUser(ctx, args.token);
-    const now = new Date().toISOString();
+    const now = args.asOf ?? new Date().toISOString();
 
     const memories = await ctx.db
       .query("memories")
-      .withIndex("by_user_reminderDate", (q) => q.eq("userId", userId))
-      .take(200);
+      .withIndex("by_user_reminderDate", (q) =>
+        q.eq("userId", userId).lte("reminderDate", now)
+      )
+      .order("desc")
+      .take(40);
 
     return memories
-      .filter((m) => m.reminderDate && m.reminderDate <= now)
+      .filter((memory) => !!memory.reminderDate && memory.reminderDate <= now)
       .slice(0, 20);
   },
 });
 
 export const upcomingReminders = query({
-  args: { token: v.string() },
+  args: {
+    token: v.string(),
+    asOf: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     const { userId } = await resolveUser(ctx, args.token);
-    const now = new Date();
+    const now = args.asOf ? new Date(args.asOf) : new Date();
     const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
     const nowIso = now.toISOString();
     const nextWeekIso = nextWeek.toISOString();
 
     const memories = await ctx.db
       .query("memories")
-      .withIndex("by_user_reminderDate", (q) => q.eq("userId", userId))
-      .take(500);
+      .withIndex("by_user_reminderDate", (q) =>
+        q.eq("userId", userId)
+          .gte("reminderDate", nowIso)
+          .lte("reminderDate", nextWeekIso)
+      )
+      .order("asc")
+      .take(40);
 
     return memories
-      .filter((m) => m.reminderDate && m.reminderDate > nowIso && m.reminderDate <= nextWeekIso)
-      .sort((a, b) => (a.reminderDate! > b.reminderDate! ? 1 : -1))
+      .filter(
+        (memory) =>
+          !!memory.reminderDate &&
+          memory.reminderDate >= nowIso &&
+          memory.reminderDate <= nextWeekIso
+      )
       .slice(0, 20);
   },
 });
@@ -174,7 +192,7 @@ export const searchByKeyword = internalQuery({
       .query("memories")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .order("desc")
-      .take(200);
+      .take(100);
 
     return memories.filter(
       (m) =>
@@ -527,9 +545,13 @@ export const exportMemories = query({
 });
 
 export const stats = query({
-  args: { token: v.string() },
+  args: {
+    token: v.string(),
+    asOf: v.optional(v.float64()),
+  },
   handler: async (ctx, args) => {
     const { userId } = await resolveUser(ctx, args.token);
+    const nowMs = args.asOf ?? Date.now();
     const memories = await ctx.db
       .query("memories")
       .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -558,11 +580,14 @@ export const stats = query({
       creationDays.add(Math.floor(m._creationTime / dayMs));
     }
 
-    const weekAgo = Date.now() - 7 * dayMs;
-    const recentCount = memories.filter((m) => m._creationTime >= weekAgo).length;
+    const weekAgo = nowMs - 7 * dayMs;
+    const recentCount = memories.reduce(
+      (count, memory) => count + (memory._creationTime >= weekAgo ? 1 : 0),
+      0
+    );
 
     // O(streak) streak calculation using Set lookups
-    const todayDayNum = Math.floor(Date.now() / dayMs);
+    const todayDayNum = Math.floor(nowMs / dayMs);
     let streakDays = 0;
     for (let d = 0; d < 365; d++) {
       if (creationDays.has(todayDayNum - d)) {

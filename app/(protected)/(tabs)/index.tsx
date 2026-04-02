@@ -1,34 +1,47 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
-  ScrollView,
-  Platform,
-  Alert,
   ActivityIndicator,
+  Alert,
+  Platform,
+  ScrollView,
   Share,
-  Pressable,
 } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import Animated, { FadeInUp, FadeIn, FadeInRight } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useQuery, useMutation, useAction } from "convex/react";
-import * as Clipboard from "expo-clipboard";
+import { useAction, useMutation, useQuery } from "convex/react";
+import Animated, { FadeIn, FadeInRight, FadeInUp } from "react-native-reanimated";
+import { XStack, YStack, Text } from "tamagui";
+
+import { EditMemorySheet } from "@/components/EditMemorySheet";
+import { FlashbackCard } from "@/components/FlashbackCard";
+import { MemoryCard } from "@/components/MemoryCard";
 import { api } from "@/convex/_generated/api";
-import { useThemeStore } from "@/store/theme";
-import { useUIStore } from "@/store/ui";
+import type { Id } from "@/convex/_generated/dataModel";
+import { categoryLabels } from "@/constants/categories";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { MemoryCard } from "@/components/MemoryCard";
-import { SearchBar } from "@/components/ui/SearchBar";
+import { useThemeStore } from "@/store/theme";
+import { useUIStore } from "@/store/ui";
+import type { MemoryNote } from "@/types/memory";
+import { Badge } from "@/components/ui/Badge";
 import { CategoryPills } from "@/components/ui/CategoryPills";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { SkeletonCard } from "@/components/ui/Skeleton";
-import { EditMemorySheet } from "@/components/EditMemorySheet";
+import { AppScreen, SectionCard } from "@/components/ui/AppScreen";
+import { BaseSheet } from "@/components/ui/BaseSheet";
 import { PressableScale } from "@/components/ui/PressableScale";
-import { StatCard } from "@/components/ui/StatCard";
-import { XStack, YStack, Text } from "tamagui";
-import type { MemoryNote } from "@/types/memory";
-import type { Id } from "@/convex/_generated/dataModel";
+import { SearchBar } from "@/components/ui/SearchBar";
+import { SkeletonCard } from "@/components/ui/Skeleton";
+
+const PAGE_SIZE = 20;
+const INITIAL_FEED_SIZE = 6;
 
 const toMemoryNote = (m: Record<string, unknown>): MemoryNote => ({
   id: m._id as string,
@@ -56,15 +69,6 @@ const toMemoryNote = (m: Record<string, unknown>): MemoryNote => ({
   updatedAt: new Date(m._creationTime as number).toISOString(),
 });
 
-function useDebounce(value: string, delay: number) {
-  const [debounced, setDebounced] = useState(value);
-  React.useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(t);
-  }, [value, delay]);
-  return debounced;
-}
-
 type MemoryItem = {
   _id: Id<"memories">;
   _creationTime: number;
@@ -81,7 +85,6 @@ type MemoryItem = {
   isRecurring: boolean;
   shareToken?: string;
   isPublic?: boolean;
-  // Encrypted fields
   encryptedTitle?: { v: number; n: string; c: string };
   encryptedContent?: { v: number; n: string; c: string };
   encryptedTags?: { v: number; n: string; c: string };
@@ -90,107 +93,175 @@ type MemoryItem = {
   [key: string]: unknown;
 };
 
+function includesQuery(value: string | undefined, query: string) {
+  return (value ?? "").toLowerCase().includes(query);
+}
+
+function getExactSearchMatches(memories: MemoryItem[], query: string) {
+  if (!query) return [];
+
+  return memories.filter((memory) => {
+    const categoryLabel =
+      categoryLabels[memory.category as keyof typeof categoryLabels]?.toLowerCase() ?? "";
+
+    return (
+      includesQuery(memory.title, query) ||
+      includesQuery(memory.content, query) ||
+      includesQuery(memory.category, query) ||
+      categoryLabel.includes(query) ||
+      (memory.tags ?? []).some((tag) => tag.toLowerCase().includes(query)) ||
+      (memory.people ?? []).some((person) => person.toLowerCase().includes(query)) ||
+      (memory.locations ?? []).some((location) => location.toLowerCase().includes(query))
+    );
+  });
+}
+
+function MetricTile({ value, label }: { value: number; label: string }) {
+  return (
+    <YStack
+      flex={1}
+      padding={14}
+      borderRadius={20}
+      backgroundColor="$background"
+      borderWidth={1}
+      borderColor="$borderColor"
+      gap={4}
+    >
+      <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
+        {value}
+      </Text>
+      <Text fontSize={12} color="$colorMuted">
+        {label}
+      </Text>
+    </YStack>
+  );
+}
+
 export default function HomeScreen() {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const { user, token } = useAuth();
   const { resolvedMode, setMode } = useThemeStore();
 
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [semanticResults, setSemanticResults] = useState<MemoryItem[] | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [editMemory, setEditMemory] = useState<MemoryItem | null>(null);
+  const [isOverviewOpen, setIsOverviewOpen] = useState(false);
+  const [showFullFeed, setShowFullFeed] = useState(false);
+  const requestIdRef = useRef(0);
+
+  const querySnapshot = useMemo(
+    () => ({
+      nowIso: new Date().toISOString(),
+      nowMs: Date.now(),
+    }),
+    []
+  );
+
   const memoryResult = useQuery(api.memories.list, token ? { token, limit: pageSize } : "skip");
   const allMemories = (memoryResult?.memories ?? []) as MemoryItem[];
   const canLoadMore = memoryResult ? !memoryResult.isDone : false;
 
   const flashbacks = useQuery(api.memories.flashbacks, token ? { token } : "skip") ?? [];
-  const reminderMemories = useQuery(api.memories.reminders, token ? { token } : "skip") ?? [];
-  const upcomingReminders = useQuery(api.memories.upcomingReminders, token ? { token } : "skip") ?? [];
-  const stats = useQuery(api.memories.stats, token ? { token } : "skip");
-  const semanticSearch = useAction(api.actions.semanticSearch.search);
+  const reminderMemories =
+    useQuery(api.memories.reminders, token ? { token, asOf: querySnapshot.nowIso } : "skip") ?? [];
+  const upcomingReminders =
+    useQuery(api.memories.upcomingReminders, token ? { token, asOf: querySnapshot.nowIso } : "skip") ?? [];
+  const stats =
+    useQuery(api.memories.stats, token ? { token, asOf: querySnapshot.nowMs } : "skip") ?? null;
 
+  const semanticSearch = useAction(api.actions.semanticSearch.search);
   const deleteMemory = useMutation(api.memories.remove);
   const updateMemory = useMutation(api.memories.update);
   const addToReview = useMutation(api.review.addToReview);
   const createShareLink = useMutation(api.sharing.createShareLink);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [editMemory, setEditMemory] = useState<any | null>(null);
-  const isEditMemoryOpen = useUIStore((s) => s.isEditMemoryOpen);
-  const openEditMemory = useUIStore((s) => s.openEditMemory);
-  const closeEditMemory = useUIStore((s) => s.closeEditMemory);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [searchResults, setSearchResults] = useState<any[] | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const isEditMemoryOpen = useUIStore((state) => state.isEditMemoryOpen);
+  const openEditMemory = useUIStore((state) => state.openEditMemory);
+  const closeEditMemory = useUIStore((state) => state.closeEditMemory);
 
-  const debouncedQuery = useDebounce(searchQuery, 400);
+  const trimmedSearchQuery = deferredSearchQuery.trim().toLowerCase();
+  const searchMode = searchQuery.trim().length > 0;
 
-  React.useEffect(() => {
-    if (debouncedQuery.trim().length < 2 || !token) {
-      setSearchResults(null);
+  useEffect(() => {
+    if (!trimmedSearchQuery || trimmedSearchQuery.length < 3 || !token) {
+      setSemanticResults(null);
+      setIsSearching(false);
       return;
     }
-    setIsSearching(true);
-    semanticSearch({ token, query: debouncedQuery, limit: 15 })
-      .then((results) => setSearchResults(results))
-      .catch(() => setSearchResults(null))
-      .finally(() => setIsSearching(false));
-  }, [debouncedQuery, token, semanticSearch]);
 
-  React.useEffect(() => {
+    const currentRequestId = requestIdRef.current + 1;
+    requestIdRef.current = currentRequestId;
+    setIsSearching(true);
+
+    semanticSearch({ token, query: trimmedSearchQuery, limit: 12 })
+      .then((results) => {
+        if (requestIdRef.current === currentRequestId) {
+          setSemanticResults(results as MemoryItem[]);
+        }
+      })
+      .catch(() => {
+        if (requestIdRef.current === currentRequestId) {
+          setSemanticResults(null);
+        }
+      })
+      .finally(() => {
+        if (requestIdRef.current === currentRequestId) {
+          setIsSearching(false);
+        }
+      });
+  }, [semanticSearch, token, trimmedSearchQuery]);
+
+  useEffect(() => {
     if (memoryResult) {
       setIsLoadingMore(false);
     }
   }, [memoryResult]);
 
+  useEffect(() => {
+    if (!searchMode) {
+      setShowFullFeed(false);
+    }
+  }, [searchMode]);
+
   const handleLoadMore = useCallback(() => {
     if (!canLoadMore || isLoadingMore) return;
     setIsLoadingMore(true);
-    setPageSize((prev) => prev + 20);
+    setPageSize((previous) => previous + PAGE_SIZE);
   }, [canLoadMore, isLoadingMore]);
 
-  const memories = useMemo(() => {
-    const source = searchResults ?? allMemories;
-    let filtered = source;
-    
-    if (selectedCategory) {
-      filtered = source.filter((m) => m.category === selectedCategory);
-    }
-    
-    if (searchResults) {
-      filtered = [...filtered].sort((a, b) => b._creationTime - a._creationTime);
-    }
-    
-    return filtered;
-  }, [allMemories, searchResults, selectedCategory]);
-
   const handleDelete = async (id: Id<"memories">) => {
+    if (!token) return;
     if (Platform.OS !== "web") {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     }
     if (Platform.OS === "web") {
       if (window.confirm("Delete this memory?")) {
-        await deleteMemory({ token: token!, id });
+        await deleteMemory({ token, id });
       }
-    } else {
-      Alert.alert("Delete", "Delete this memory?", [
-        { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: () => deleteMemory({ token: token!, id }) },
-      ]);
+      return;
     }
+
+    Alert.alert("Delete", "Delete this memory?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: () => deleteMemory({ token, id }) },
+    ]);
   };
 
   const handleSaveEdit = async (data: Record<string, unknown>) => {
-    if (editMemory) {
-      await updateMemory({ token: token!, id: editMemory._id, ...data });
-      setEditMemory(null);
-      closeEditMemory();
-    }
+    if (!editMemory || !token) return;
+    await updateMemory({ token, id: editMemory._id, ...data });
+    setEditMemory(null);
+    closeEditMemory();
   };
 
   const handleShare = async (id: Id<"memories">) => {
     if (!token) return;
+
     try {
       const shareToken = await createShareLink({ token, memoryId: id });
       const base =
@@ -202,14 +273,16 @@ export default function HomeScreen() {
       if (Platform.OS === "web") {
         await Clipboard.setStringAsync(shareUrl);
         window.alert("Share link copied to clipboard.");
-      } else {
-        await Share.share({
-          message: `View this memory in Memora: ${shareUrl}`,
-          url: shareUrl,
-        });
+        return;
       }
+
+      await Share.share({
+        message: `View this memory in Memora: ${shareUrl}`,
+        url: shareUrl,
+      });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to create share link.";
+      const message =
+        error instanceof Error ? error.message : "Unable to create share link.";
       if (Platform.OS === "web") {
         window.alert(message);
       } else {
@@ -218,340 +291,502 @@ export default function HomeScreen() {
     }
   };
 
-  // Memoize transformed memories to avoid re-processing on every render
-  const transformedMemories = useMemo(
-    () => memories.map((m) => ({ raw: m, note: toMemoryNote(m) })),
-    [memories]
+  const exactMatches = useMemo(
+    () => getExactSearchMatches(allMemories, trimmedSearchQuery),
+    [allMemories, trimmedSearchQuery]
   );
 
-  // Memoize sliced reminder lists to avoid re-creating arrays on every render
-  const topReminders = useMemo(() => reminderMemories.slice(0, 3), [reminderMemories]);
-  const weekReminders = useMemo(() => upcomingReminders.slice(0, 5), [upcomingReminders]);
+  const filteredMemories = useMemo(() => {
+    if (!searchMode) {
+      return selectedCategory
+        ? allMemories.filter((memory) => memory.category === selectedCategory)
+        : allMemories;
+    }
+
+    const merged = new Map<Id<"memories">, MemoryItem>();
+    for (const memory of exactMatches) {
+      merged.set(memory._id, memory);
+    }
+    for (const memory of semanticResults ?? []) {
+      if (!merged.has(memory._id)) {
+        merged.set(memory._id, memory);
+      }
+    }
+
+    const searchPool = Array.from(merged.values());
+    const byCategory = selectedCategory
+      ? searchPool.filter((memory) => memory.category === selectedCategory)
+      : searchPool;
+
+    return [...byCategory].sort((a, b) => b._creationTime - a._creationTime);
+  }, [allMemories, exactMatches, searchMode, selectedCategory, semanticResults]);
+
+  const transformedMemories = useMemo(
+    () => filteredMemories.map((memory) => ({ raw: memory, note: toMemoryNote(memory) })),
+    [filteredMemories]
+  );
+
+  const topReminders = useMemo(
+    () => reminderMemories.filter((memory) => !!memory.reminderDate).slice(0, 2),
+    [reminderMemories]
+  );
+  const weekReminders = useMemo(
+    () => upcomingReminders.filter((memory) => !!memory.reminderDate).slice(0, 4),
+    [upcomingReminders]
+  );
+  const visibleFeed = useMemo(
+    () =>
+      searchMode || showFullFeed
+        ? transformedMemories
+        : transformedMemories.slice(0, INITIAL_FEED_SIZE),
+    [searchMode, showFullFeed, transformedMemories]
+  );
 
   const firstName = user?.name?.split(" ")[0] || "there";
-  const webTopPadding = Platform.OS === "web" ? 67 : 0;
   const isLoading = !memoryResult;
   const totalMemories = stats?.totalMemories ?? 0;
   const totalReminders = stats?.totalReminders ?? 0;
   const totalCategories = stats?.categories ?? 0;
-
-  const toggleTheme = () => {
-    setMode(resolvedMode === "dark" ? "light" : "dark");
-  };
+  const recentActivity = stats?.recentCount ?? 0;
+  const streakDays = stats?.streakDays ?? 0;
+  const hiddenFeedCount = Math.max(transformedMemories.length - INITIAL_FEED_SIZE, 0);
+  const exactCount = exactMatches.length;
+  const relatedCount = Math.max(filteredMemories.length - exactCount, 0);
 
   return (
-    <YStack flex={1} backgroundColor="$background">
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: 20, paddingTop: insets.top + webTopPadding + 8 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header */}
-        <Animated.View entering={FadeInUp.duration(500)}>
-          <XStack
-            alignItems="flex-start"
-            justifyContent="space-between"
-            paddingHorizontal={20}
-            marginBottom={16}
-          >
-            <YStack flex={1}>
-              <Text fontSize={28} fontFamily="$body" fontWeight="700" color="$color">
-                Hey, {firstName} 👋
-              </Text>
-              <Text fontSize={13} fontFamily="$body" color="$colorMuted" marginTop={3}>
-                {totalMemories} {totalMemories === 1 ? "memory" : "memories"} · {totalReminders} upcoming
-              </Text>
-            </YStack>
-            <XStack gap={14} paddingTop={4}>
-              <Pressable hitSlop={8}>
-                <Feather name="info" size={20} color={theme.colorMuted.val} />
-              </Pressable>
-              <Pressable onPress={toggleTheme} hitSlop={8}>
+    <>
+      <AppScreen
+        title={`Hey, ${firstName}`}
+        headerRight={
+          <XStack gap={10} alignItems="center">
+            {!searchMode && topReminders.length > 0 ? (
+              <Badge label={`${topReminders.length} due`} color={theme.warning.val} small />
+            ) : null}
+            <PressableScale onPress={() => setMode(resolvedMode === "dark" ? "light" : "dark")}>
+              <YStack
+                width={46}
+                height={46}
+                borderRadius={16}
+                alignItems="center"
+                justifyContent="center"
+                backgroundColor="$card"
+                borderWidth={1}
+                borderColor="$borderColor"
+              >
                 <Feather
                   name={resolvedMode === "dark" ? "sun" : "moon"}
-                  size={20}
-                  color={theme.colorMuted.val}
+                  size={19}
+                  color={theme.color.val}
                 />
-              </Pressable>
-            </XStack>
+              </YStack>
+            </PressableScale>
           </XStack>
-
-          {/* Stat Cards */}
-          <XStack gap={10} paddingHorizontal={20} marginBottom={20}>
-            <StatCard emoji="🧠" count={totalMemories} label="Memories" />
-            <StatCard emoji="⏰" count={totalReminders} label="Reminders" />
-            <StatCard emoji="📁" count={totalCategories} label="Categories" />
-          </XStack>
-        </Animated.View>
-
-        {/* Search */}
-        <Animated.View entering={FadeInUp.delay(100).duration(400)} style={{ paddingHorizontal: 16, marginBottom: 16 }}>
-          <SearchBar
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            isSearching={isSearching}
-          />
-        </Animated.View>
-
-        {/* Category Filter */}
-        <Animated.View entering={FadeInUp.delay(150).duration(400)}>
-          <CategoryPills
-            selected={selectedCategory}
-            onSelect={setSelectedCategory}
-            categoryCounts={stats?.categoryCounts ?? {}}
-          />
-        </Animated.View>
-
-        {/* On This Day */}
-        {flashbacks.length > 0 && (
-          <Animated.View entering={FadeIn.delay(200).duration(400)} style={{ marginTop: 24 }}>
-            <XStack alignItems="center" gap={8} paddingHorizontal={20} marginBottom={14}>
-              <YStack
-                width={28}
-                height={28}
-                borderRadius={8}
-                backgroundColor={theme.primary.val + "15"}
-                alignItems="center"
-                justifyContent="center"
-              >
-                <Feather name="clock" size={14} color={theme.primary.val} />
-              </YStack>
-              <Text fontSize={16} fontFamily="$body" fontWeight="600" color="$color" flex={1}>
-                On This Day
-              </Text>
-            </XStack>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingHorizontal: 20, gap: 12 }}
-            >
-              {flashbacks.map((memory, i: number) => (
-                <Animated.View key={memory._id} entering={FadeInRight.delay(i * 80).duration(300)}>
-                  <PressableScale onPress={() => { setEditMemory(memory); openEditMemory(); }}>
-                    <YStack
-                      width={240}
-                      padding={16}
-                      borderRadius={16}
-                      borderWidth={1}
-                      gap={6}
-                      backgroundColor="$card"
-                      borderColor="$borderColor"
-                    >
-                      <Text fontSize={15} fontFamily="$body" fontWeight="600" color="$color" numberOfLines={1}>
-                        {memory.title}
-                      </Text>
-                      <Text fontSize={13} fontFamily="$body" lineHeight={18} color="$colorMuted" numberOfLines={2}>
-                        {memory.content}
-                      </Text>
-                      <Text fontSize={12} fontFamily="$body" fontWeight="500" color="$primary" marginTop={4}>
-                        {new Date(memory._creationTime).toLocaleDateString(undefined, {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        })}
-                      </Text>
-                    </YStack>
-                  </PressableScale>
-                </Animated.View>
-              ))}
-            </ScrollView>
-          </Animated.View>
-        )}
-
-        {/* Reminders Due */}
-        {reminderMemories.length > 0 && (
-          <Animated.View entering={FadeIn.delay(250).duration(400)} style={{ marginTop: 24 }}>
-            <XStack alignItems="center" gap={8} paddingHorizontal={20} marginBottom={14}>
-              <YStack
-                width={28}
-                height={28}
-                borderRadius={8}
-                backgroundColor="#F59E0B15"
-                alignItems="center"
-                justifyContent="center"
-              >
-                <Feather name="bell" size={14} color="#F59E0B" />
-              </YStack>
-              <Text fontSize={16} fontFamily="$body" fontWeight="600" color="$color" flex={1}>
-                Reminders Due
-              </Text>
-              <YStack paddingHorizontal={8} paddingVertical={2} borderRadius={10} backgroundColor="#F59E0B20">
-                <Text fontSize={12} fontFamily="$body" fontWeight="600" color="#F59E0B">
-                  {reminderMemories.length}
-                </Text>
-              </YStack>
-            </XStack>
-            <YStack paddingHorizontal={20} gap={8}>
-              {topReminders.map((memory, i: number) => (
-                <Animated.View key={memory._id} entering={FadeIn.delay(i * 60).duration(300)}>
-                  <PressableScale onPress={() => { setEditMemory(memory); openEditMemory(); }}>
-                    <XStack
-                      alignItems="center"
-                      padding={14}
-                      borderRadius={14}
-                      borderWidth={1}
-                      gap={12}
-                      backgroundColor="$card"
-                      borderColor="$borderColor"
-                    >
-                      <YStack width={8} height={8} borderRadius={4} backgroundColor="#F59E0B" />
-                      <YStack flex={1}>
-                        <Text fontSize={14} fontFamily="$body" fontWeight="500" color="$color" numberOfLines={1}>
-                          {memory.title}
-                        </Text>
-                        {memory.reminderDate && (
-                          <Text fontSize={12} fontFamily="$body" color="$colorMuted" marginTop={2}>
-                            {new Date(memory.reminderDate).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                          </Text>
-                        )}
-                      </YStack>
-                      <Feather name="chevron-right" size={16} color={theme.colorMuted.val} />
-                    </XStack>
-                  </PressableScale>
-                </Animated.View>
-              ))}
-            </YStack>
-          </Animated.View>
-        )}
-
-        {/* Upcoming Reminders (This Week) */}
-        {upcomingReminders.length > 0 && (
-          <Animated.View entering={FadeIn.delay(300).duration(400)} style={{ marginTop: 24 }}>
-            <XStack alignItems="center" gap={8} paddingHorizontal={20} marginBottom={14}>
-              <YStack
-                width={28}
-                height={28}
-                borderRadius={8}
-                backgroundColor={theme.primary.val + "15"}
-                alignItems="center"
-                justifyContent="center"
-              >
-                <Feather name="calendar" size={14} color={theme.primary.val} />
-              </YStack>
-              <Text fontSize={16} fontFamily="$body" fontWeight="600" color="$color" flex={1}>
-                Upcoming This Week
-              </Text>
-            </XStack>
-            <YStack paddingHorizontal={20} gap={8}>
-              {weekReminders.map((memory, i: number) => (
-                <Animated.View key={memory._id} entering={FadeIn.delay(i * 60).duration(300)}>
-                  <PressableScale onPress={() => { setEditMemory(memory); openEditMemory(); }}>
-                    <XStack
-                      alignItems="center"
-                      padding={14}
-                      borderRadius={14}
-                      borderWidth={1}
-                      gap={12}
-                      backgroundColor="$card"
-                      borderColor="$borderColor"
-                    >
-                      <YStack width={8} height={8} borderRadius={4} backgroundColor={theme.primary.val} />
-                      <YStack flex={1}>
-                        <Text fontSize={14} fontFamily="$body" fontWeight="500" color="$color" numberOfLines={1}>
-                          {memory.title}
-                        </Text>
-                        {memory.reminderDate && (
-                          <Text fontSize={12} fontFamily="$body" color="$colorMuted" marginTop={2}>
-                            {new Date(memory.reminderDate).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                          </Text>
-                        )}
-                      </YStack>
-                      <Feather name="chevron-right" size={16} color={theme.colorMuted.val} />
-                    </XStack>
-                  </PressableScale>
-                </Animated.View>
-              ))}
-            </YStack>
-          </Animated.View>
-        )}
-
-        {/* Memories List */}
-        <YStack marginTop={24}>
-          <XStack alignItems="center" gap={8} paddingHorizontal={20} marginBottom={14}>
-            <YStack
-              width={28}
-              height={28}
-              borderRadius={8}
-              backgroundColor={theme.primary.val + "15"}
-              alignItems="center"
-              justifyContent="center"
-            >
-              <Feather name="layers" size={14} color={theme.primary.val} />
-            </YStack>
-            <Text fontSize={16} fontFamily="$body" fontWeight="600" color="$color" flex={1}>
-              {searchResults ? "Search Results" : "All Memories"}
-            </Text>
-            {searchResults && (
-              <Text fontSize={13} fontFamily="$body" color="$colorMuted">
-                {memories.length} found
-              </Text>
-            )}
-          </XStack>
-          {isLoading ? (
-            <YStack paddingHorizontal={20}>
-              <SkeletonCard />
-              <SkeletonCard />
-              <SkeletonCard />
-            </YStack>
-          ) : memories.length === 0 ? (
-            <EmptyState
-              icon="layers"
-              title={searchResults ? "No results" : "No memories yet"}
-              description={
-                searchResults
-                  ? "Try a different search term"
-                  : "Tap the + button to capture your first memory"
-              }
-            />
-          ) : (
-            <YStack paddingHorizontal={16} gap={12}>
-              {transformedMemories.map(({ raw, note }, i: number) => (
-                <MemoryCard
-                  key={raw._id}
-                  memory={note}
-                  index={i}
-                  onPress={() => { setEditMemory(raw); openEditMemory(); }}
-                  onDelete={() => handleDelete(raw._id)}
-                  onShare={() => handleShare(raw._id)}
-                  onAddToReview={() => token && addToReview({ token, memoryId: raw._id })}
-                />
-              ))}
-            </YStack>
-          )}
-          {canLoadMore && !searchResults && (
-            <PressableScale onPress={handleLoadMore} style={{ marginTop: 16, alignItems: "center" }}>
-              {isLoadingMore ? (
-                <ActivityIndicator size="small" color={theme.primary.val} />
+        }
+      >
+        <Animated.View entering={FadeInUp.duration(280)}>
+          <SectionCard
+            title={searchMode ? "Search" : "Memory stream"}
+            action={
+              searchMode ? (
+                <XStack gap={8}>
+                  <Badge label={`${filteredMemories.length} results`} color={theme.primary.val} small />
+                  {exactCount > 0 ? (
+                    <Badge label={`${exactCount} exact`} color={theme.success.val} small />
+                  ) : null}
+                </XStack>
               ) : (
+                <Badge label={`${totalMemories} memories`} color={theme.primary.val} small />
+              )
+            }
+          >
+            <SearchBar
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              isSearching={isSearching}
+              placeholder="Search memories, tags, people, places..."
+            />
+            <CategoryPills
+              selected={selectedCategory}
+              onSelect={setSelectedCategory}
+              categoryCounts={stats?.categoryCounts ?? {}}
+            />
+            {searchMode && relatedCount > 0 ? (
+              <Text fontSize={12} color="$colorMuted">
+                Exact matches are shown first, then related semantic results.
+              </Text>
+            ) : null}
+          </SectionCard>
+        </Animated.View>
+
+        {!searchMode && topReminders.length > 0 ? (
+          <Animated.View entering={FadeIn.delay(80).duration(280)}>
+            <SectionCard
+              title="Due now"
+              action={<Badge label={`${topReminders.length}`} color={theme.warning.val} small />}
+            >
+              <YStack gap={10}>
+                {topReminders.map((memory) => (
+                  <PressableScale
+                    key={memory._id}
+                    onPress={() => {
+                      setEditMemory(memory as MemoryItem);
+                      openEditMemory();
+                    }}
+                  >
+                    <XStack
+                      alignItems="center"
+                      gap={12}
+                      padding={14}
+                      borderRadius={20}
+                      backgroundColor="$background"
+                      borderWidth={1}
+                      borderColor="$borderColor"
+                    >
+                      <YStack
+                        width={42}
+                        height={42}
+                        borderRadius={14}
+                        alignItems="center"
+                        justifyContent="center"
+                        backgroundColor={theme.warning.val + "18"}
+                      >
+                        <Feather name="bell" size={16} color={theme.warning.val} />
+                      </YStack>
+                      <YStack flex={1} gap={3}>
+                        <Text fontSize={15} fontWeight="700" color="$color" numberOfLines={1}>
+                          {memory.title || "Untitled memory"}
+                        </Text>
+                        <Text fontSize={13} color="$colorMuted" numberOfLines={1}>
+                          {new Date(memory.reminderDate!).toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </Text>
+                      </YStack>
+                      <Feather name="chevron-right" size={18} color={theme.colorMuted.val} />
+                    </XStack>
+                  </PressableScale>
+                ))}
+              </YStack>
+            </SectionCard>
+          </Animated.View>
+        ) : null}
+
+        <Animated.View entering={FadeIn.delay(140).duration(300)}>
+          <SectionCard
+            title={searchMode ? "Results" : "Recent"}
+            action={
+              !searchMode && hiddenFeedCount > 0 ? (
+                <PressableScale onPress={() => setShowFullFeed((value) => !value)}>
+                  <XStack alignItems="center" gap={6}>
+                    <Text fontSize={13} fontWeight="700" color="$primary">
+                      {showFullFeed ? "Show less" : `Show ${hiddenFeedCount} more`}
+                    </Text>
+                    <Feather
+                      name={showFullFeed ? "chevron-up" : "chevron-down"}
+                      size={14}
+                      color={theme.primary.val}
+                    />
+                  </XStack>
+                </PressableScale>
+              ) : null
+            }
+          >
+            {isLoading ? (
+              <YStack gap={12}>
+                <SkeletonCard />
+                <SkeletonCard />
+                <SkeletonCard />
+              </YStack>
+            ) : transformedMemories.length === 0 ? (
+              <EmptyState
+                icon="layers"
+                title={searchMode ? "No matches" : "No memories yet"}
+                description={
+                  searchMode
+                    ? "Try another phrase or clear the category filter."
+                    : "Capture your first memory to start the stream."
+                }
+              />
+            ) : (
+              <YStack gap={12}>
+                {visibleFeed.map(({ raw, note }, index) => (
+                  <MemoryCard
+                    key={raw._id}
+                    memory={note}
+                    index={index}
+                    onPress={() => {
+                      setEditMemory(raw);
+                      openEditMemory();
+                    }}
+                    onDelete={() => handleDelete(raw._id)}
+                    onShare={() => handleShare(raw._id)}
+                    onAddToReview={() => token && addToReview({ token, memoryId: raw._id })}
+                  />
+                ))}
+              </YStack>
+            )}
+
+            {canLoadMore && !searchMode ? (
+              <PressableScale onPress={handleLoadMore} style={{ alignSelf: "center" }}>
                 <XStack
                   alignItems="center"
-                  gap={6}
-                  paddingHorizontal={24}
-                  paddingVertical={10}
-                  borderRadius={12}
+                  gap={8}
+                  paddingHorizontal={18}
+                  paddingVertical={12}
+                  borderRadius={999}
+                  backgroundColor={theme.primary.val + "12"}
+                  borderWidth={1}
+                  borderColor={theme.primary.val + "18"}
+                >
+                  {isLoadingMore ? (
+                    <ActivityIndicator size="small" color={theme.primary.val} />
+                  ) : (
+                    <>
+                      <Text fontSize={14} fontWeight="700" color="$primary">
+                        Load more
+                      </Text>
+                      <Feather name="arrow-down" size={15} color={theme.primary.val} />
+                    </>
+                  )}
+                </XStack>
+              </PressableScale>
+            ) : null}
+
+            {!searchMode ? (
+              <PressableScale onPress={() => setIsOverviewOpen(true)}>
+                <XStack
+                  alignItems="center"
+                  justifyContent="space-between"
+                  gap={12}
+                  paddingTop={14}
+                  borderTopWidth={1}
+                  borderTopColor={theme.borderColor.val}
+                >
+                  <YStack flex={1} gap={4}>
+                    <Text fontSize={13} fontWeight="700" color="$color">
+                      {weekReminders.length > 0
+                        ? `${weekReminders.length} coming up`
+                        : "Nothing scheduled soon"}
+                    </Text>
+                    <Text fontSize={12} lineHeight={18} color="$colorMuted" numberOfLines={2}>
+                      {topReminders.length > 0
+                        ? `${topReminders.length} due now`
+                        : "No immediate follow-ups"}
+                      {" · "}
+                      {weekReminders.length > 0
+                        ? `Next: ${weekReminders[0].title || "Untitled memory"}`
+                        : `Recent activity: ${recentActivity} this week`}
+                    </Text>
+                  </YStack>
+                  <XStack alignItems="center" gap={6}>
+                    <Text fontSize={12} fontWeight="700" color="$primary">
+                      Overview
+                    </Text>
+                    <Feather name="chevron-right" size={14} color={theme.primary.val} />
+                  </XStack>
+                </XStack>
+              </PressableScale>
+            ) : null}
+          </SectionCard>
+        </Animated.View>
+      </AppScreen>
+
+      {!searchMode ? (
+        <YStack position="absolute" left={0} top="32%" zIndex={20}>
+          <PressableScale onPress={() => setIsOverviewOpen(true)}>
+            <YStack
+              paddingVertical={14}
+              paddingHorizontal={10}
+              borderTopRightRadius={18}
+              borderBottomRightRadius={18}
+              backgroundColor="$card"
+              borderWidth={1}
+              borderLeftWidth={0}
+              borderColor="$borderColor"
+              gap={8}
+              alignItems="center"
+              justifyContent="center"
+              shadowColor="$shadowColor"
+              shadowOffset={{ width: 0, height: 8 }}
+              shadowOpacity={0.08}
+              shadowRadius={20}
+            >
+              <Feather name="sidebar" size={16} color={theme.colorMuted.val} />
+              <Text
+                fontSize={10}
+                color="$colorMuted"
+                letterSpacing={1}
+                textTransform="uppercase"
+                style={{ transform: [{ rotate: "-90deg" }] }}
+              >
+                View
+              </Text>
+            </YStack>
+          </PressableScale>
+        </YStack>
+      ) : null}
+
+      <BaseSheet
+        open={isOverviewOpen}
+        onOpenChange={setIsOverviewOpen}
+        sheetId="homeOverview"
+      >
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 40, gap: 18 }}
+        >
+          <YStack gap={18}>
+            <XStack alignItems="center" justifyContent="space-between" gap={12}>
+              <Text fontSize={26} fontFamily="$heading" fontWeight="700" color="$color">
+                Overview
+              </Text>
+              <PressableScale onPress={() => setIsOverviewOpen(false)}>
+                <YStack
+                  width={38}
+                  height={38}
+                  borderRadius={14}
+                  alignItems="center"
+                  justifyContent="center"
+                  backgroundColor="$background"
                   borderWidth={1}
                   borderColor="$borderColor"
                 >
-                  <Text fontSize={14} fontFamily="$body" fontWeight="600" color="$primary">
-                    Load More
-                  </Text>
-                  <Feather name="chevron-down" size={14} color={theme.primary.val} />
-                </XStack>
-              )}
-            </PressableScale>
-          )}
-        </YStack>
-        <YStack height={120} />
-      </ScrollView>
+                  <Feather name="x" size={18} color={theme.color.val} />
+                </YStack>
+              </PressableScale>
+            </XStack>
 
-      {editMemory && (
+            <XStack gap={10}>
+              <MetricTile value={totalMemories} label="Memories" />
+              <MetricTile value={totalReminders} label="Reminders" />
+              <MetricTile value={totalCategories} label="Categories" />
+            </XStack>
+
+            <XStack gap={10}>
+              <MetricTile value={recentActivity} label="This week" />
+              <MetricTile value={streakDays} label="Streak" />
+              <MetricTile value={weekReminders.length} label="Coming up" />
+            </XStack>
+
+            {topReminders.length > 0 ? (
+              <SectionCard title="Due now">
+                <YStack gap={10}>
+                  {topReminders.map((memory) => (
+                    <XStack key={memory._id} alignItems="center" justifyContent="space-between" gap={12}>
+                      <YStack flex={1} gap={2}>
+                        <Text fontSize={14} fontWeight="700" color="$color" numberOfLines={1}>
+                          {memory.title || "Untitled memory"}
+                        </Text>
+                        <Text fontSize={12} color="$colorMuted">
+                          {new Date(memory.reminderDate!).toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </Text>
+                      </YStack>
+                      <Badge
+                        label={categoryLabels[memory.category as keyof typeof categoryLabels] ?? "Other"}
+                        color={theme.warning.val}
+                        small
+                      />
+                    </XStack>
+                  ))}
+                </YStack>
+              </SectionCard>
+            ) : null}
+
+            {topReminders.length === 0 ? (
+              <SectionCard title="Due now">
+                <Text fontSize={13} lineHeight={20} color="$colorMuted">
+                  Nothing needs attention immediately.
+                </Text>
+              </SectionCard>
+            ) : null}
+
+            {weekReminders.length > 0 ? (
+              <SectionCard title="Upcoming">
+                <YStack gap={10}>
+                  {weekReminders.map((memory) => (
+                    <XStack key={memory._id} alignItems="center" justifyContent="space-between" gap={12}>
+                      <YStack flex={1} gap={2}>
+                        <Text fontSize={14} fontWeight="700" color="$color" numberOfLines={1}>
+                          {memory.title || "Untitled memory"}
+                        </Text>
+                        <Text fontSize={12} color="$colorMuted">
+                          {new Date(memory.reminderDate!).toLocaleString(undefined, {
+                            weekday: "short",
+                            month: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </Text>
+                      </YStack>
+                      <Badge
+                        label={categoryLabels[memory.category as keyof typeof categoryLabels] ?? "Other"}
+                        color={theme.primary.val}
+                        small
+                      />
+                    </XStack>
+                  ))}
+                </YStack>
+              </SectionCard>
+            ) : null}
+
+            {weekReminders.length === 0 ? (
+              <SectionCard title="Upcoming">
+                <Text fontSize={13} lineHeight={20} color="$colorMuted">
+                  No scheduled reminders in the next 7 days.
+                </Text>
+              </SectionCard>
+            ) : null}
+
+            {flashbacks.length > 0 ? (
+              <SectionCard title="On this day">
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 12, paddingRight: 8 }}
+                >
+                  {flashbacks.map((memory, index) => (
+                    <Animated.View
+                      key={memory._id}
+                      entering={FadeInRight.delay(index * 60).duration(240)}
+                    >
+                      <FlashbackCard
+                        memory={toMemoryNote(memory)}
+                        onPress={() => {
+                          setIsOverviewOpen(false);
+                          setEditMemory(memory as MemoryItem);
+                          openEditMemory();
+                        }}
+                      />
+                    </Animated.View>
+                  ))}
+                </ScrollView>
+              </SectionCard>
+            ) : null}
+          </YStack>
+        </ScrollView>
+      </BaseSheet>
+
+      {editMemory ? (
         <EditMemorySheet
           key={editMemory._id}
           memory={toMemoryNote(editMemory)}
           visible={isEditMemoryOpen}
-          onClose={() => { setEditMemory(null); closeEditMemory(); }}
+          onClose={() => {
+            setEditMemory(null);
+            closeEditMemory();
+          }}
           onSave={handleSaveEdit}
         />
-      )}
-    </YStack>
+      ) : null}
+    </>
   );
 }
