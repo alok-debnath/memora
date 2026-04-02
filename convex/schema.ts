@@ -6,7 +6,6 @@ import {
   importanceValidator,
   lifeAreaValidator,
   recurrenceValidator,
-  categoryValidator,
   extractedActionsValidator,
   contextTagsValidator,
   energyLevelValidator,
@@ -38,9 +37,9 @@ export default defineSchema({
 
   memories: defineTable({
     userId: v.id("users"),
-    /** Plain text title - will be removed after migration */
+    /** Plain text title */
     title: v.optional(v.string()),
-    /** Plain text content - will be removed after migration */
+    /** Plain text content */
     content: v.optional(v.string()),
     /** Encrypted title envelope */
     encryptedTitle: v.optional(encryptedEnvelopeValidator),
@@ -48,17 +47,16 @@ export default defineSchema({
     encryptedContent: v.optional(encryptedEnvelopeValidator),
     /** Blind index for title search (HMAC hash) */
     titleBlindIndex: v.optional(v.string()),
-    category: categoryValidator,
+    /** Primary AI-assigned topic (indexed for fast filtering) */
+    primaryTopicId: v.optional(v.id("userTopics")),
+    /** All AI-assigned topics (1–3) */
+    topicIds: v.optional(v.array(v.id("userTopics"))),
     mood: v.optional(moodValidator),
-    /** Plain text tags - will be migrated to encrypted */
-    tags: v.optional(v.array(v.string())),
-    /** Encrypted tags array */
-    encryptedTags: v.optional(encryptedEnvelopeValidator),
-    /** Plain text people - will be migrated to encrypted */
+    /** Plain text people */
     people: v.optional(v.array(v.string())),
     /** Encrypted people array */
     encryptedPeople: v.optional(encryptedEnvelopeValidator),
-    /** Plain text locations - will be migrated to encrypted */
+    /** Plain text locations */
     locations: v.optional(v.array(v.string())),
     /** Encrypted locations array */
     encryptedLocations: v.optional(encryptedEnvelopeValidator),
@@ -79,7 +77,7 @@ export default defineSchema({
     encryptionVersion: v.optional(v.number()),
   })
     .index("by_user", ["userId"])
-    .index("by_user_category", ["userId", "category"])
+    .index("by_user_primaryTopic", ["userId", "primaryTopicId"])
     .index("by_user_reminderDate", ["userId", "reminderDate"])
     .index("by_share_token", ["shareToken"])
     .searchIndex("search_content", {
@@ -95,6 +93,28 @@ export default defineSchema({
       dimensions: 1536,
       filterFields: ["userId"],
     }),
+
+  userTopics: defineTable({
+    userId: v.id("users"),
+    name: v.string(),
+    slug: v.string(),
+    description: v.string(),
+    icon: v.string(),
+    color: v.string(),
+    centroid: v.array(v.float64()),
+    memoryCount: v.number(),
+    relatedTopics: v.array(v.object({
+      topicId: v.id("userTopics"),
+      similarity: v.float64(),
+      edgeType: v.union(v.literal("related"), v.literal("parent"), v.literal("child")),
+    })),
+    parentTopicId: v.optional(v.id("userTopics")),
+    isArchived: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_slug", ["userId", "slug"]),
 
   memoryAttachments: defineTable({
     memoryId: v.id("memories"),

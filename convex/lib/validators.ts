@@ -13,14 +13,6 @@ export const moodValidator = v.union(
   v.literal("motivated")
 );
 
-export const categoryValidator = v.union(
-  v.literal("personal"),
-  v.literal("work"),
-  v.literal("finance"),
-  v.literal("health"),
-  v.literal("other")
-);
-
 export const importanceValidator = v.union(
   v.literal("critical"),
   v.literal("high"),
