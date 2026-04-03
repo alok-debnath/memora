@@ -116,12 +116,12 @@ function TabItem({
   const scale = useSharedValue(1);
   const labelOpacity = useSharedValue(isFocused ? 1 : 0);
   const labelY = useSharedValue(isFocused ? 0 : 5);
-  const iconY = useSharedValue(isFocused ? 0 : 5);
+  const iconY = useSharedValue(isFocused ? -2 : 6);
 
   useEffect(() => {
     labelOpacity.value = withTiming(isFocused ? 1 : 0, { duration: 150 });
     labelY.value = withSpring(isFocused ? 0 : 5, ANIM.focus);
-    iconY.value = withSpring(isFocused ? -2 : 3, ANIM.focus);
+    iconY.value = withSpring(isFocused ? -2 : 6, ANIM.focus);
   }, [isFocused]);
 
   const pressStyle = useAnimatedStyle(() => ({
