@@ -2,14 +2,6 @@ const amber = "#C98522";
 const amberLight = "#E9AD4A";
 const amberDark = "#8F5A12";
 
-export const categoryColors: Record<string, string> = {
-  personal: "#6366F1",
-  work: "#3B82F6",
-  finance: "#10B981",
-  health: "#EF4444",
-  other: "#8B5CF6",
-};
-
 export const gradients = {
   warm: ["#8F5A12", "#C98522", "#E9AD4A"] as const,
   golden: ["#D99C36", "#F2C66E"] as const,

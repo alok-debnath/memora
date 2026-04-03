@@ -1,7 +1,5 @@
 import { Feather } from "@expo/vector-icons";
 
-export type Category = "personal" | "work" | "finance" | "health" | "other";
-
 export type Mood =
   | "happy"
   | "sad"
@@ -27,22 +25,6 @@ export type LifeArea =
   | "travel"
   | "self-care"
   | "relationships";
-
-export const categoryIcons: Record<Category, keyof typeof Feather.glyphMap> = {
-  personal: "home",
-  work: "briefcase",
-  finance: "dollar-sign",
-  health: "heart",
-  other: "file-text",
-};
-
-export const categoryLabels: Record<Category, string> = {
-  personal: "Personal",
-  work: "Work",
-  finance: "Finance",
-  health: "Health",
-  other: "Other",
-};
 
 export const moodIcons: Record<Mood, keyof typeof Feather.glyphMap> = {
   happy: "smile",

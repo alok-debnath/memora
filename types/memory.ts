@@ -1,13 +1,13 @@
-import type { Category, Mood, Importance, LifeArea } from "@/constants/categories";
+import type { Mood, Importance, LifeArea } from "@/constants/categories";
 
 export interface MemoryNote {
   id: string;
   userId: string;
   title: string;
   content: string;
-  category: Category;
+  primaryTopicId?: string;
+  topicIds?: string[];
   mood?: Mood;
-  tags: string[];
   people: string[];
   locations: string[];
   importance: Importance;
