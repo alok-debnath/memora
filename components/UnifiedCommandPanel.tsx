@@ -166,7 +166,13 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
       const content = timeCapsuleEnabled && capsuleDate
         ? `${noteText}\n\n[Time Capsule: lock until ${capsuleDate}]`
         : noteText;
-      const result = await captureMemory({ token, content });
+      const result = await captureMemory({
+        token,
+        content,
+        currentTime: new Date().toISOString(),
+        currentTimezone:
+          Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      });
       if (result.conflicts.length > 0) {
         const message = result.conflicts
           .map((c: { description: string }) => c.description)

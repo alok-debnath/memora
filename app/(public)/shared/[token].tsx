@@ -103,45 +103,18 @@ export default function SharedMemoryScreen() {
           {memory.title}
         </Text>
 
-        <XStack alignItems="center" gap={12} marginBottom={16}>
-          <YStack
-            paddingHorizontal={10}
-            paddingVertical={4}
-            borderRadius={8}
-            backgroundColor={Colors.primary + "15"}
-          >
-            <Text fontSize={12} fontFamily={FontFamily.semiBold} style={{ color: Colors.primary }}>
-              {memory.category}
-            </Text>
-          </YStack>
-          {memory.mood && (
+        {memory.mood && (
+          <XStack alignItems="center" gap={12} marginBottom={16}>
             <Text fontSize={13} fontFamily={FontFamily.regular} color="$colorMuted">
               Mood: {memory.mood}
             </Text>
-          )}
-        </XStack>
+          </XStack>
+        )}
 
         <Text fontSize={16} fontFamily={FontFamily.regular} lineHeight={24} marginBottom={16} color="$color">
           {memory.content}
         </Text>
 
-        {(memory.tags?.length ?? 0) > 0 && (
-          <XStack flexWrap="wrap" gap={8} marginBottom={16}>
-            {(memory.tags ?? []).map((tag: string) => (
-              <YStack
-                key={tag}
-                paddingHorizontal={10}
-                paddingVertical={4}
-                borderRadius={8}
-                backgroundColor="$borderColor"
-              >
-                <Text fontSize={12} fontFamily={FontFamily.regular} color="$colorMuted">
-                  #{tag}
-                </Text>
-              </YStack>
-            ))}
-          </XStack>
-        )}
 
         {(memory.people?.length ?? 0) > 0 && (
           <YStack marginTop={12}>

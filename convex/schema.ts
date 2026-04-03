@@ -114,7 +114,20 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_user", ["userId"])
+    .index("by_user_and_isArchived", ["userId", "isArchived"])
     .index("by_user_slug", ["userId", "slug"]),
+
+  memoryTopicLinks: defineTable({
+    userId: v.id("users"),
+    memoryId: v.id("memories"),
+    topicId: v.id("userTopics"),
+    isPrimary: v.boolean(),
+    assignedAt: v.number(),
+  })
+    .index("by_memory", ["memoryId"])
+    .index("by_topic", ["topicId"])
+    .index("by_user", ["userId"])
+    .index("by_user_and_topic", ["userId", "topicId"]),
 
   memoryAttachments: defineTable({
     memoryId: v.id("memories"),

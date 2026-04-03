@@ -20,7 +20,6 @@ type ReminderItem = {
   title: string;
   content: string;
   reminderDate?: string;
-  category: string;
   _creationTime: number;
 };
 
@@ -116,16 +115,20 @@ export default function RemindersScreen() {
                   Keep the pending moments in view. Overdue items are surfaced first so nothing slips.
                 </Text>
               </YStack>
-              <YStack
-                width={52}
-                height={52}
-                borderRadius={18}
-                alignItems="center"
-                justifyContent="center"
-                backgroundColor={theme.primary.val + "18"}
-              >
-                <Feather name="bell" size={22} color={theme.primary.val} />
-              </YStack>
+              <PressableScale onPress={() => router.back()} hitSlop={8}>
+                <YStack
+                  width={42}
+                  height={42}
+                  borderRadius={14}
+                  alignItems="center"
+                  justifyContent="center"
+                  backgroundColor={theme.secondary.val}
+                  borderWidth={1}
+                  borderColor={theme.borderColor.val}
+                >
+                  <Feather name="arrow-left" size={20} color={theme.color.val} />
+                </YStack>
+              </PressableScale>
             </XStack>
             <XStack gap={10} marginTop={16}>
               {metrics.map((metric) => (
@@ -228,7 +231,6 @@ export default function RemindersScreen() {
                       </Text>
                     </YStack>
                     <YStack gap={6} alignItems="flex-end">
-                      <Badge label={m.category} small />
                       {isOverdue(m.reminderDate!) && <Badge label="overdue" color={theme.destructive.val} small />}
                     </YStack>
                   </XStack>

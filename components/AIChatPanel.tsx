@@ -1083,7 +1083,13 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
       setOptimisticMessage(optimisticMsg);
       setIsSending(true);
       try {
-        await sendMessage({ token, message: text.trim() });
+        await sendMessage({
+          token,
+          message: text.trim(),
+          currentTime: new Date().toISOString(),
+          currentTimezone:
+            Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+        });
         // Optimistic message will be cleared by the useEffect when real messages arrive
       } catch (error) {
         setOptimisticMessage(null);

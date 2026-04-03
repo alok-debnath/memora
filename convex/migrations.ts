@@ -126,7 +126,6 @@ export const clearPlaintextFields = mutation({
         await ctx.db.patch(memory._id, {
           title: undefined,
           content: undefined,
-          tags: undefined,
           people: undefined,
           locations: undefined,
         });

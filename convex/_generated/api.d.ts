@@ -10,6 +10,7 @@
 
 import type * as actions_backfillEmbeddings from "../actions/backfillEmbeddings.js";
 import type * as actions_detectConflicts from "../actions/detectConflicts.js";
+import type * as actions_manageTopics from "../actions/manageTopics.js";
 import type * as actions_memoryChat from "../actions/memoryChat.js";
 import type * as actions_processDiary from "../actions/processDiary.js";
 import type * as actions_processDocument from "../actions/processDocument.js";
@@ -43,6 +44,7 @@ import type * as processDocumentMutations from "../processDocumentMutations.js";
 import type * as processMemoryMutations from "../processMemoryMutations.js";
 import type * as review from "../review.js";
 import type * as sharing from "../sharing.js";
+import type * as userTopics from "../userTopics.js";
 
 import type {
   ApiFromModules,
@@ -53,6 +55,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   "actions/backfillEmbeddings": typeof actions_backfillEmbeddings;
   "actions/detectConflicts": typeof actions_detectConflicts;
+  "actions/manageTopics": typeof actions_manageTopics;
   "actions/memoryChat": typeof actions_memoryChat;
   "actions/processDiary": typeof actions_processDiary;
   "actions/processDocument": typeof actions_processDocument;
@@ -86,6 +89,7 @@ declare const fullApi: ApiFromModules<{
   processMemoryMutations: typeof processMemoryMutations;
   review: typeof review;
   sharing: typeof sharing;
+  userTopics: typeof userTopics;
 }>;
 
 /**

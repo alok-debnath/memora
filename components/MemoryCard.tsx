@@ -12,6 +12,7 @@ import type { MemoryNote } from "@/types/memory";
 
 interface MemoryCardProps {
   memory: MemoryNote;
+  resolvedTopics?: Array<{ name: string; color?: string | null }>;
   onPress?: () => void;
   onDelete?: () => void;
   onShare?: () => void;
@@ -21,6 +22,7 @@ interface MemoryCardProps {
 
 export const MemoryCard = React.memo(function MemoryCard({
   memory,
+  resolvedTopics,
   onPress,
   onDelete,
   onShare,
@@ -100,31 +102,65 @@ export const MemoryCard = React.memo(function MemoryCard({
                 {memory.content}
               </Text>
 
-              {/* Meta row: mood */}
-              {memory.mood && (
+              {/* Meta row: mood + topics */}
+              {(memory.mood || (resolvedTopics && resolvedTopics.length > 0)) && (
                 <XStack flexWrap="wrap" alignItems="center" gap={6} marginBottom={10}>
-                  <XStack
-                    backgroundColor={(moodColors[memory.mood] || theme.secondary.val) + "15"}
-                    alignItems="center"
-                    gap={4}
-                    paddingHorizontal={8}
-                    paddingVertical={3}
-                    borderRadius={8}
-                  >
-                    <Feather
-                      name={moodIcons[memory.mood]}
-                      size={11}
-                      color={moodColors[memory.mood] || theme.colorMuted.val}
-                    />
-                    <Text
-                      fontSize={11}
-                      fontFamily="$body"
-                      fontWeight="500"
-                      color={moodColors[memory.mood] || theme.colorMuted.val}
+                  {memory.mood && (
+                    <XStack
+                      backgroundColor={(moodColors[memory.mood] || theme.secondary.val) + "15"}
+                      alignItems="center"
+                      gap={4}
+                      paddingHorizontal={8}
+                      paddingVertical={3}
+                      borderRadius={8}
                     >
-                      {moodLabels[memory.mood]}
+                      <Feather
+                        name={moodIcons[memory.mood]}
+                        size={11}
+                        color={moodColors[memory.mood] || theme.colorMuted.val}
+                      />
+                      <Text
+                        fontSize={11}
+                        fontFamily="$body"
+                        fontWeight="500"
+                        color={moodColors[memory.mood] || theme.colorMuted.val}
+                      >
+                        {moodLabels[memory.mood]}
+                      </Text>
+                    </XStack>
+                  )}
+                  {resolvedTopics?.slice(0, 2).map((topic, i) => (
+                    <XStack
+                      key={i}
+                      alignItems="center"
+                      gap={4}
+                      paddingHorizontal={7}
+                      paddingVertical={3}
+                      borderRadius={8}
+                      backgroundColor={(topic.color ?? theme.primary.val) + "15"}
+                    >
+                      <YStack
+                        width={6}
+                        height={6}
+                        borderRadius={3}
+                        backgroundColor={topic.color ?? theme.primary.val}
+                      />
+                      <Text
+                        fontSize={11}
+                        fontFamily="$body"
+                        fontWeight="500"
+                        color={topic.color ?? theme.primary.val}
+                        numberOfLines={1}
+                      >
+                        {topic.name}
+                      </Text>
+                    </XStack>
+                  ))}
+                  {resolvedTopics && resolvedTopics.length > 2 && (
+                    <Text fontSize={10} fontFamily="$body" color="$colorMuted">
+                      +{resolvedTopics.length - 2}
                     </Text>
-                  </XStack>
+                  )}
                 </XStack>
               )}
 

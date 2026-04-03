@@ -19,8 +19,6 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { categoryLabels } from "@/constants/categories";
-import { categoryColors } from "@/constants/colors";
 
 export default function ReviewScreen() {
   const theme = useAppTheme();
@@ -172,11 +170,6 @@ export default function ReviewScreen() {
                 {nextUp.map((card) => (
                   <Card key={card._id} style={{ paddingVertical: 14 }}>
                     <XStack justifyContent="space-between" alignItems="center" marginBottom={8}>
-                      <Badge
-                        label={categoryLabels[card.memory.category as keyof typeof categoryLabels] || "Other"}
-                        color={categoryColors[card.memory.category] || "#6B7280"}
-                        small
-                      />
                       <Text fontSize={12} fontFamily="$body" color="$colorMuted">
                         {new Date(card.nextReviewAt).toLocaleDateString()}
                       </Text>
@@ -196,11 +189,7 @@ export default function ReviewScreen() {
             <Animated.View style={[{ position: "absolute", width: "100%", height: "100%" }, frontStyle]}>
               <PressableScale onPress={handleReveal} style={{ flex: 1 }}>
                 <Card style={{ flex: 1, justifyContent: "space-between" }}>
-                  <XStack justifyContent="space-between" alignItems="center">
-                    <Badge
-                      label={categoryLabels[currentCard.memory.category as keyof typeof categoryLabels] || "Other"}
-                      color={categoryColors[currentCard.memory.category] || "#6B7280"}
-                    />
+                  <XStack justifyContent="flex-end" alignItems="center">
                     <Text fontSize={12} fontFamily="$body" color="$colorMuted">
                       {currentIndex + 1}/{dueCards.length}
                     </Text>
@@ -229,12 +218,7 @@ export default function ReviewScreen() {
 
             <Animated.View style={[{ position: "absolute", width: "100%", height: "100%" }, backStyle]}>
               <Card style={{ flex: 1, justifyContent: "space-between" }}>
-                <XStack justifyContent="space-between" alignItems="center">
-                  <Badge
-                    label={categoryLabels[currentCard.memory.category as keyof typeof categoryLabels] || "Other"}
-                    color={categoryColors[currentCard.memory.category] || "#6B7280"}
-                  />
-                </XStack>
+                <XStack />
                 <YStack flex={1} justifyContent="center" alignItems="center" paddingVertical={18}>
                   <Text
                     fontSize={21}
@@ -256,13 +240,6 @@ export default function ReviewScreen() {
                   >
                     {currentCard.memory.content}
                   </Text>
-                  {(currentCard.memory.tags?.length ?? 0) > 0 && (
-                    <XStack gap={6} justifyContent="center" flexWrap="wrap">
-                      {(currentCard.memory.tags ?? []).slice(0, 3).map((t: string) => (
-                        <Badge key={t} label={t} small />
-                      ))}
-                    </XStack>
-                  )}
                   <Text fontSize={12} fontFamily="$body" marginTop={10} color="$colorMuted">
                     Interval {Math.round(currentCard.intervalDays)} day
                     {Math.round(currentCard.intervalDays) === 1 ? "" : "s"}

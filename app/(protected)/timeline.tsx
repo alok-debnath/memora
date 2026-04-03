@@ -22,7 +22,6 @@ function groupByDate(
     _id: string;
     title: string;
     content: string;
-    category: string;
     mood?: string;
     _creationTime: number;
   }>
@@ -64,8 +63,7 @@ export default function TimelineScreen() {
       ? allMemories.filter(
           (memory) =>
             (memory.title ?? "").toLowerCase().includes(query) ||
-            (memory.content ?? "").toLowerCase().includes(query) ||
-            memory.category.toLowerCase().includes(query)
+            (memory.content ?? "").toLowerCase().includes(query)
         )
       : allMemories;
 
@@ -162,7 +160,6 @@ export default function TimelineScreen() {
                       ...m,
                       id: m._id,
                       userId: "" as never,
-                      tags: [],
                       people: [],
                       locations: [],
                       importance: "normal" as const,

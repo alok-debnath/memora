@@ -17,7 +17,7 @@ import { useAppTheme } from "@/hooks/useAppTheme";
 import * as Haptics from "expo-haptics";
 import { Feather } from "@expo/vector-icons";
 import * as Speech from "expo-speech";
-import { useAction } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
 import { GradientButton } from "./ui/GradientButton";
@@ -81,6 +81,17 @@ export function EditMemorySheet({
   const { width } = useWindowDimensions();
   const { token } = useAuth();
   const chatAction = useAction(api.actions.memoryChat.chat);
+  const topicList = useQuery(api.userTopics.list, token ? { token } : "skip") ?? [];
+  const resolvedTopics = (() => {
+    if (!memory) return [];
+    const byId: Record<string, { name: string; color?: string | null }> = {};
+    for (const t of topicList) byId[t._id] = { name: t.name, color: t.color };
+    const primary = memory.primaryTopicId ? byId[memory.primaryTopicId] : undefined;
+    const secondary = (memory.topicIds ?? [])
+      .filter((id) => id !== memory.primaryTopicId && byId[id])
+      .map((id) => byId[id]);
+    return [...(primary ? [primary] : []), ...secondary];
+  })();
   const stackPickers = width < 390;
 
   const [form, setForm] = useState(() => createInitialState(memory));
@@ -144,6 +155,9 @@ export function EditMemorySheet({
       await chatAction({
         token,
         message: `For the memory titled "${memory.title}" (ID: ${memory.id}): ${text}`,
+        currentTime: new Date().toISOString(),
+        currentTimezone:
+          Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       });
       onClose();
     } catch {
@@ -481,6 +495,65 @@ export function EditMemorySheet({
                 thumbColor="#FFFFFF"
               />
             </XStack>
+
+            {/* AI Topics (readonly) */}
+            {resolvedTopics.length > 0 && (
+              <YStack
+                borderWidth={0.5}
+                borderRadius={14}
+                padding={14}
+                gap={8}
+                borderColor="$borderColor"
+                backgroundColor="$card"
+              >
+                <XStack alignItems="center" gap={6} marginBottom={2}>
+                  <Feather name="tag" size={13} color={theme.colorMuted.val} />
+                  <Text
+                    fontSize={11}
+                    fontFamily="$body"
+                    fontWeight="600"
+                    letterSpacing={0.8}
+                    textTransform="uppercase"
+                    color="$colorMuted"
+                  >
+                    AI Topics
+                  </Text>
+                </XStack>
+                <XStack flexWrap="wrap" gap={6}>
+                  {resolvedTopics.map((topic, i) => (
+                    <XStack
+                      key={i}
+                      alignItems="center"
+                      gap={5}
+                      paddingHorizontal={10}
+                      paddingVertical={5}
+                      borderRadius={20}
+                      backgroundColor={(topic.color ?? theme.primary.val) + "18"}
+                      borderWidth={0.5}
+                      borderColor={(topic.color ?? theme.primary.val) + "40"}
+                    >
+                      <YStack
+                        width={7}
+                        height={7}
+                        borderRadius={4}
+                        backgroundColor={topic.color ?? theme.primary.val}
+                      />
+                      <Text
+                        fontSize={12}
+                        fontFamily="$body"
+                        fontWeight="500"
+                        color={topic.color ?? theme.primary.val}
+                      >
+                        {topic.name}
+                      </Text>
+                    </XStack>
+                  ))}
+                </XStack>
+                <Text fontSize={11} fontFamily="$body" color="$colorMuted">
+                  Assigned automatically by AI. Manage via the chat.
+                </Text>
+              </YStack>
+            )}
 
             {/* AI Insights */}
             {memory?.contextTags && (

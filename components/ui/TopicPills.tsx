@@ -4,20 +4,21 @@ import { Feather } from "@expo/vector-icons";
 import { PressableScale } from "./PressableScale";
 import { Text, XStack } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { useAuth } from "@/hooks/useAuth";
-import type { Id } from "@/convex/_generated/dataModel";
 
 interface TopicPillsProps {
   selected: string | null;
   onSelect: (topicId: string | null) => void;
+  topics: Array<{
+    _id: string;
+    name: string;
+    icon?: string | null;
+    color?: string | null;
+    memoryCount: number;
+  }>;
 }
 
-export function TopicPills({ selected, onSelect }: TopicPillsProps) {
+export function TopicPills({ selected, onSelect, topics }: TopicPillsProps) {
   const theme = useAppTheme();
-  const { token } = useAuth();
-  const topics = useQuery(api.userTopics.list, token ? { token } : "skip") ?? [];
 
   const activeTopics = topics
     .filter((t) => t.memoryCount > 0)

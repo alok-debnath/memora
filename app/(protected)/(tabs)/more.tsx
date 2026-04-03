@@ -81,7 +81,7 @@ export default function MoreScreen() {
         {menuItems.map((item, i) => (
           <Animated.View key={item.route} entering={FadeInUp.delay(i * 60).duration(400)}>
             <PressableScale
-              onPress={() => (router.navigate as (href: string) => void)(item.route)}
+              onPress={() => router.push(item.route as `/${string}`)}
               style={{
                 flexDirection: "row",
                 alignItems: "center",

@@ -44,6 +44,20 @@ const formatUtcOffset = (offsetInMinutes: number) => {
   return `UTC${sign}${hours}:${minutes}`;
 };
 
+// Computed once at module load — avoids blocking the JS thread on every mount.
+const ALL_TIMEZONE_OPTIONS: TimezoneOption[] = getTimeZones({ includeUtc: true })
+  .map((tz) => ({
+    value: tz.name,
+    label: `${tz.name} (${formatUtcOffset(tz.currentTimeOffsetInMinutes)})`,
+    searchText: [tz.name, tz.alternativeName, tz.countryName, tz.abbreviation, ...tz.mainCities].join(" "),
+    offsetInMinutes: tz.currentTimeOffsetInMinutes,
+  }))
+  .sort((a, b) =>
+    a.offsetInMinutes === b.offsetInMinutes
+      ? a.value.localeCompare(b.value)
+      : a.offsetInMinutes - b.offsetInMinutes
+  );
+
 export default function ProfileScreen() {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
@@ -56,43 +70,15 @@ export default function ProfileScreen() {
   const [isSavingProfile, setIsSavingProfile] = React.useState(false);
   const timezoneDropdownRef = React.useRef<IDropdownRef>(null);
   const [timezoneSearchText, setTimezoneSearchText] = React.useState("");
-  const timezoneOptions = React.useMemo<TimezoneOption[]>(() => {
-    const options = getTimeZones({ includeUtc: true }).map((timeZone) => ({
-      value: timeZone.name,
-      label: `${timeZone.name} (${formatUtcOffset(timeZone.currentTimeOffsetInMinutes)})`,
-      searchText: [
-        timeZone.name,
-        timeZone.alternativeName,
-        timeZone.countryName,
-        timeZone.abbreviation,
-        ...timeZone.mainCities,
-      ].join(" "),
-      offsetInMinutes: timeZone.currentTimeOffsetInMinutes,
-    }));
-
-    options.sort((a, b) =>
-      a.offsetInMinutes === b.offsetInMinutes
-        ? a.value.localeCompare(b.value)
-        : a.offsetInMinutes - b.offsetInMinutes
-    );
-
-    return options;
-  }, []);
   const timezoneDropdownOptions = React.useMemo<TimezoneOption[]>(() => {
-    if (!timezone || timezoneOptions.some((option) => option.value === timezone)) {
-      return timezoneOptions;
+    if (!timezone || ALL_TIMEZONE_OPTIONS.some((option) => option.value === timezone)) {
+      return ALL_TIMEZONE_OPTIONS;
     }
-
     return [
-      {
-        value: timezone,
-        label: `${timezone} (Saved)`,
-        searchText: timezone,
-        offsetInMinutes: 0,
-      },
-      ...timezoneOptions,
+      { value: timezone, label: `${timezone} (Saved)`, searchText: timezone, offsetInMinutes: 0 },
+      ...ALL_TIMEZONE_OPTIONS,
     ];
-  }, [timezone, timezoneOptions]);
+  }, [timezone]);
   const closeTimezoneDropdown = React.useCallback(() => {
     setTimezoneSearchText("");
     timezoneDropdownRef.current?.close();
@@ -103,8 +89,8 @@ export default function ProfileScreen() {
     exportRequested ? {} : "skip"
   );
 
-  const memoryResult = useQuery(api.memories.list, token ? { token, limit: 100 } : "skip");
-  const memories = memoryResult?.memories ?? [];
+  const nowMs = React.useMemo(() => Date.now(), []);
+  const memoryStats = useQuery(api.memories.stats, token ? { token, asOf: nowMs } : "skip");
   const diaryStats = useQuery(api.diary.stats, token ? { token } : "skip");
   const notificationPrefs = useQuery(api.notifications.get, token ? { token } : "skip");
   const updateNotifications = useMutation(api.notifications.upsert);
@@ -139,13 +125,14 @@ export default function ProfileScreen() {
   }, [exportRequested, exportData]);
 
   const webTopPadding = Platform.OS === "web" ? 67 : 0;
-  const upcomingReminders = memories.filter((memory) => memory.reminderDate).length;
+  const totalMemories = memoryStats?.totalMemories ?? 0;
+  const totalReminders = memoryStats?.totalReminders ?? 0;
 
   const handleExport = async () => {
     if (Platform.OS === "web") {
       setExportRequested(true);
     } else {
-      Alert.alert("Export", `${memories.length} memories ready for export`);
+      Alert.alert("Export", `${totalMemories} memories ready for export`);
     }
   };
 
@@ -239,11 +226,22 @@ export default function ProfileScreen() {
         paddingBottom={12}
         paddingTop={insets.top + webTopPadding + 12}
       >
-        <PressableScale onPress={() => router.back()}>
-          <Feather name="arrow-left" size={22} color={theme.color.val} />
+        <PressableScale onPress={() => router.back()} hitSlop={8}>
+          <YStack
+            width={42}
+            height={42}
+            borderRadius={14}
+            alignItems="center"
+            justifyContent="center"
+            backgroundColor={theme.secondary.val}
+            borderWidth={1}
+            borderColor={theme.borderColor.val}
+          >
+            <Feather name="arrow-left" size={20} color={theme.color.val} />
+          </YStack>
         </PressableScale>
         <Text fontSize={18} fontFamily="$heading" fontWeight="600" color="$color">Profile</Text>
-        <YStack width={22} />
+        <YStack width={42} />
       </XStack>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -270,7 +268,7 @@ export default function ProfileScreen() {
             <XStack gap={10} marginTop={16}>
               <Card style={{ flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 18 }}>
                 <Text fontSize={20} fontFamily="$heading" fontWeight="700" color="$color">
-                  {memories.length}
+                  {totalMemories}
                 </Text>
                 <Text fontSize={11} fontFamily="$body" marginTop={2} color="$colorMuted">
                   Memories
@@ -286,7 +284,7 @@ export default function ProfileScreen() {
               </Card>
               <Card style={{ flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 18 }}>
                 <Text fontSize={20} fontFamily="$heading" fontWeight="700" color="$color">
-                  {upcomingReminders}
+                  {totalReminders}
                 </Text>
                 <Text fontSize={11} fontFamily="$body" marginTop={2} color="$colorMuted">
                   Reminders

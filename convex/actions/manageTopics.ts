@@ -3,8 +3,9 @@
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { Id } from "../_generated/dataModel";
-import { getOpenAIClient, OPENAI_CHAT_MODEL } from "../lib/openai";
+import { Doc, Id } from "../_generated/dataModel";
+import type { ActionCtx } from "../_generated/server";
+import { embedText, getOpenAIClient, OPENAI_CHAT_MODEL } from "../lib/openai";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -28,6 +29,57 @@ function incrementalCentroid(
   oldCount: number
 ): number[] {
   return old.map((v, i) => (v * oldCount + newVec[i]) / (oldCount + 1));
+}
+
+function getMemoryTopicIds(memory: Doc<"memories"> | null): Id<"userTopics">[] {
+  if (!memory) return [];
+  return Array.from(
+    new Set(
+      [memory.primaryTopicId, ...(memory.topicIds ?? [])].filter(
+        (topicId): topicId is Id<"userTopics"> => Boolean(topicId)
+      )
+    )
+  );
+}
+
+async function reconcileUserTopicUsage(
+  ctx: {
+    runQuery: ActionCtx["runQuery"];
+    runMutation: ActionCtx["runMutation"];
+  },
+  userId: Id<"users">
+) {
+  const memoryTopicRefs: Array<{
+    _id: Id<"memories">;
+    primaryTopicId?: Id<"userTopics">;
+    topicIds: Id<"userTopics">[];
+  }> = await ctx.runQuery(internal.memories.listTopicRefsForUser, {
+    userId,
+  });
+
+  const usageCounts = new Map<Id<"userTopics">, number>();
+  for (const memory of memoryTopicRefs) {
+    const uniqueTopicIds = new Set<Id<"userTopics">>();
+    if (memory.primaryTopicId) {
+      uniqueTopicIds.add(memory.primaryTopicId);
+    }
+    for (const topicId of memory.topicIds) {
+      uniqueTopicIds.add(topicId);
+    }
+    for (const topicId of uniqueTopicIds) {
+      usageCounts.set(topicId, (usageCounts.get(topicId) ?? 0) + 1);
+    }
+  }
+
+  await ctx.runMutation(internal.userTopics.reconcileTopicUsage, {
+    userId,
+    usage: Array.from(usageCounts.entries()).map(([topicId, memoryCount]) => ({
+      topicId,
+      memoryCount,
+    })),
+  });
+
+  return memoryTopicRefs;
 }
 
 const TOPIC_ICONS = [
@@ -86,75 +138,285 @@ const TOPIC_COLORS = [
   "#A855F7",
 ];
 
-async function aiCreateTopic(
-  title: string,
-  content: string,
-  existingNames: string[]
-): Promise<{
+type TopicData = {
   name: string;
   slug: string;
   description: string;
   icon: string;
   color: string;
-}> {
-  const client = getOpenAIClient();
-  if (!client) {
-    const fallback = title.split(" ").slice(0, 2).join(" ") || "General";
-    return {
-      name: fallback,
-      slug: fallback.toLowerCase().replace(/\s+/g, "-"),
-      description: "AI-assigned topic",
-      icon: "tag",
-      color: TOPIC_COLORS[Math.floor(Math.random() * TOPIC_COLORS.length)],
-    };
-  }
+};
 
-  const prompt = `You are a personal knowledge organizer. Given a memory, create a topic that categorizes it.
-Existing topics (do NOT duplicate): ${existingNames.join(", ") || "none"}
+type TopicRecord = {
+  _id: Id<"userTopics">;
+  name: string;
+  slug: string;
+  description: string;
+  icon: string;
+  color: string;
+  centroid: number[];
+  memoryCount: number;
+  relatedTopics: Array<{
+    topicId: Id<"userTopics">;
+    similarity: number;
+    edgeType: "related" | "parent" | "child";
+  }>;
+  parentTopicId?: Id<"userTopics">;
+  isArchived: boolean;
+  createdAt: number;
+  updatedAt: number;
+};
+
+function normalizeTopicSlug(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/['’]s\b/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .split("-")
+    .filter(Boolean)
+    .map((segment) => {
+      if (segment.length > 3 && segment.endsWith("ies")) {
+        return `${segment.slice(0, -3)}y`;
+      }
+      if (
+        segment.length > 3 &&
+        segment.endsWith("s") &&
+        !segment.endsWith("ss")
+      ) {
+        return segment.slice(0, -1);
+      }
+      return segment;
+    })
+    .join("-");
+}
+
+function findNormalizedTopicMatch(
+  topics: TopicRecord[],
+  candidate: { name: string; slug: string }
+): TopicRecord | null {
+  const target = normalizeTopicSlug(candidate.slug || candidate.name);
+  return (
+    topics.find(
+      (topic) =>
+        normalizeTopicSlug(topic.slug) === target ||
+        normalizeTopicSlug(topic.name) === target
+    ) ?? null
+  );
+}
+
+function fallbackTopicData(title: string): TopicData {
+  const fallback = title.split(" ").slice(0, 3).join(" ") || "General";
+  return {
+    name: fallback,
+    slug: normalizeTopicSlug(fallback),
+    description: "AI-assigned topic",
+    icon: "tag",
+    color: TOPIC_COLORS[Math.floor(Math.random() * TOPIC_COLORS.length)],
+  };
+}
+
+function topicDataFromRequestedName(name: string): TopicData {
+  const cleaned = name.trim().replace(/\s+/g, " ");
+  const titled =
+    cleaned
+      .split(" ")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+      .join(" ") || "General";
+  const slug = normalizeTopicSlug(titled);
+  const colorSeed = Array.from(slug).reduce(
+    (sum, char) => sum + char.charCodeAt(0),
+    0
+  );
+  return {
+    name: titled,
+    slug,
+    description: `Memories related to ${titled.toLowerCase()}.`,
+    icon: "tag",
+    color: TOPIC_COLORS[colorSeed % TOPIC_COLORS.length],
+  };
+}
+
+async function aiCreateTopic(
+  title: string,
+  content: string,
+  existingTopics: Array<{ name: string; description: string }>
+): Promise<TopicData> {
+  const client = getOpenAIClient();
+  if (!client) return fallbackTopicData(title);
+
+  const existingSummary =
+    existingTopics.length > 0
+      ? existingTopics.map((t) => `"${t.name}" (${t.description || "no description"})`).join(", ")
+      : "none";
+
+  const prompt = `You are a personal knowledge organizer. Create a concise, reusable topic label for a memory.
+Existing topics (avoid creating duplicates or near-duplicates): ${existingSummary}
 Icons available: ${TOPIC_ICONS.join(", ")}
-Colors available: ${TOPIC_COLORS.join(", ")}
-Return ONLY valid JSON with these exact keys:
-{ "name": "2-3 words Title Case", "slug": "kebab-case", "description": "one sentence describing what memories share this topic", "icon": "feather-icon-name", "color": "#hexcolor" }`;
+Colors: ${TOPIC_COLORS.join(", ")}
+Rules:
+- Name must be 2-4 words, broad enough to reuse for similar future memories
+- e.g. "Family Names" not "Sister's Name", "Health Records" not "Blood Test Result"
+- Do NOT create a topic that already exists or is covered by an existing one
+Return ONLY valid JSON: { "name": "Title Case", "slug": "kebab-case", "description": "one sentence", "icon": "feather-icon-name", "color": "#hexcolor" }`;
 
   try {
     const resp = await client.chat.completions.create({
       model: OPENAI_CHAT_MODEL,
       messages: [
         { role: "system", content: prompt },
-        {
-          role: "user",
-          content: `Title: ${title}\nContent: ${content.slice(0, 400)}`,
-        },
+        { role: "user", content: `Title: ${title}\nContent: ${content.slice(0, 400)}` },
       ],
       response_format: { type: "json_object" },
       max_tokens: 150,
+      temperature: 0,
     });
 
-    const raw = resp.choices[0]?.message?.content ?? "{}";
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(resp.choices[0]?.message?.content ?? "{}");
+    const parsedName = typeof parsed.name === "string" ? parsed.name : title;
     return {
-      name: typeof parsed.name === "string" ? parsed.name : title,
-      slug:
-        typeof parsed.slug === "string"
-          ? parsed.slug
-          : title.toLowerCase().replace(/\s+/g, "-"),
-      description:
-        typeof parsed.description === "string" ? parsed.description : "",
+      name: parsedName,
+      slug: normalizeTopicSlug(
+        typeof parsed.slug === "string" ? parsed.slug : parsedName
+      ),
+      description: typeof parsed.description === "string" ? parsed.description : "",
       icon: TOPIC_ICONS.includes(parsed.icon) ? parsed.icon : "tag",
-      color: TOPIC_COLORS.includes(parsed.color)
-        ? parsed.color
-        : TOPIC_COLORS[0],
+      color: TOPIC_COLORS.includes(parsed.color) ? parsed.color : TOPIC_COLORS[0],
     };
   } catch {
-    const fallback = title.split(" ").slice(0, 2).join(" ") || "General";
-    return {
-      name: fallback,
-      slug: fallback.toLowerCase().replace(/\s+/g, "-"),
-      description: "",
-      icon: "tag",
-      color: TOPIC_COLORS[0],
-    };
+    return fallbackTopicData(title);
   }
+}
+
+/**
+ * LLM-hybrid topic selection: shows top candidates to the AI and asks it to pick
+ * the best existing topic or confirm that a new one is needed.
+ * Only called when cosine similarity doesn't give a clear answer (< AUTO_ASSIGN_THRESHOLD).
+ */
+async function aiSelectOrCreateTopic(
+  title: string,
+  content: string,
+  candidates: Array<{ _id: string; name: string; description: string; similarity: number }>,
+  allExistingTopics: Array<{ name: string; description: string }>
+): Promise<{ action: "existing"; topicId: string } | { action: "new"; topicData: TopicData }> {
+  const client = getOpenAIClient();
+
+  if (!client) {
+    // No LLM: use best candidate if similarity is decent, else create new
+    if (candidates.length > 0 && candidates[0].similarity >= 0.60) {
+      return { action: "existing", topicId: candidates[0]._id };
+    }
+    return { action: "new", topicData: fallbackTopicData(title) };
+  }
+
+  const candidateList = candidates
+    .map((c, i) => `${i + 1}. "${c.name}" — ${c.description || "a topic in the user's taxonomy"}`)
+    .join("\n");
+
+  const prompt = `You are a personal knowledge organizer assigning a memory to a topic.
+
+Memory: "${title}"
+Content: ${content.slice(0, 300)}
+
+Candidate topics already in the user's taxonomy:
+${candidateList}
+
+Rules:
+- STRONGLY prefer reusing an existing topic if it reasonably fits — even if the match isn't perfect
+- "Family Names" fits ANY memory about a family member's name, not just one specific person
+- "Health Records" fits any medical memory, even if it's about a different condition
+- Only choose "new" if NO candidate is even loosely related to the memory's theme
+- Return the index (1-based) of the best candidate, or 0 to create a new topic
+
+Return ONLY valid JSON: {"choice": 0} to create new, or {"choice": 2} to use candidate #2`;
+
+  try {
+    const resp = await client.chat.completions.create({
+      model: OPENAI_CHAT_MODEL,
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" },
+      max_tokens: 30,
+      temperature: 0,
+    });
+
+    const raw = JSON.parse(resp.choices[0]?.message?.content ?? "{}");
+    const choice = typeof raw.choice === "number" ? raw.choice : 0;
+    if (choice >= 1 && choice <= candidates.length) {
+      const picked = candidates[choice - 1];
+      return { action: "existing", topicId: picked._id };
+    }
+  } catch {
+    // Fall through to create new
+  }
+
+  const topicData = await aiCreateTopic(title, content, allExistingTopics);
+  return { action: "new", topicData };
+}
+
+async function aiReconcileTopicProposal(
+  title: string,
+  content: string,
+  proposedTopic: TopicData,
+  existingTopics: TopicRecord[]
+): Promise<{ action: "existing"; topicId: Id<"userTopics"> } | { action: "new" }> {
+  const client = getOpenAIClient();
+  if (!client) {
+    const normalizedMatch = findNormalizedTopicMatch(existingTopics, proposedTopic);
+    return normalizedMatch
+      ? { action: "existing", topicId: normalizedMatch._id }
+      : { action: "new" };
+  }
+
+  const taxonomy = existingTopics
+    .map(
+      (topic, index) =>
+        `${index + 1}. "${topic.name}" — ${topic.description || "no description"}`
+    )
+    .join("\n");
+
+  const prompt = `You are validating whether a newly proposed topic is actually necessary.
+
+Memory title: "${title}"
+Memory content: ${content.slice(0, 300)}
+
+Proposed new topic:
+- Name: ${proposedTopic.name}
+- Description: ${proposedTopic.description || "none"}
+
+Existing topics:
+${taxonomy || "none"}
+
+Rules:
+- Prefer reusing an existing topic whenever the proposal is narrower, more specific, or just a wording variant
+- Example: "Mother's Names" should reuse "Family Names"
+- Example: "Dad Medical Test" should reuse "Health Records" if that exists
+- Return 0 only if none of the existing topics are a reasonable umbrella for this memory
+
+Return ONLY valid JSON: {"choice": 0} for a truly new topic, or {"choice": 3} to reuse topic #3.`;
+
+  try {
+    const response = await client.chat.completions.create({
+      model: OPENAI_CHAT_MODEL,
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" },
+      max_tokens: 30,
+      temperature: 0,
+    });
+    const parsed = JSON.parse(response.choices[0]?.message?.content ?? "{}");
+    const choice = typeof parsed.choice === "number" ? parsed.choice : 0;
+    if (choice >= 1 && choice <= existingTopics.length) {
+      return {
+        action: "existing",
+        topicId: existingTopics[choice - 1]._id,
+      };
+    }
+  } catch {
+    // Fall through to normalized match / create.
+  }
+
+  const normalizedMatch = findNormalizedTopicMatch(existingTopics, proposedTopic);
+  return normalizedMatch
+    ? { action: "existing", topicId: normalizedMatch._id }
+    : { action: "new" };
 }
 
 // ─── Main actions ─────────────────────────────────────────────────────────────
@@ -169,121 +431,249 @@ export const assignTopicsToMemory = internalAction({
     embedding: v.array(v.float64()),
   },
   handler: async (ctx, args) => {
-    const topics = await ctx.runQuery(internal.userTopics.listWithCentroids, {
+    const existingMemory: Doc<"memories"> | null = await ctx.runQuery(
+      internal.memories.getInternal,
+      { memoryId: args.memoryId }
+    );
+    const previousTopicIds = new Set<Id<"userTopics">>(
+      getMemoryTopicIds(existingMemory)
+    );
+    const topics: TopicRecord[] = await ctx.runQuery(
+      internal.userTopics.listWithCentroids,
+      {
       userId: args.userId,
-    });
+      }
+    );
 
-    const PRIMARY_THRESHOLD = 0.82;
-    const SECONDARY_THRESHOLD = 0.65;
-    const MAX_TOPICS_PER_USER = 40;
-
-    const scored = topics
-      .map((t) => ({
+    // Cosine score all existing topics
+    const scored: Array<TopicRecord & { similarity: number }> = topics
+      .map((t: TopicRecord) => ({
         ...t,
         similarity: cosineSimilarity(args.embedding, t.centroid),
       }))
-      .sort((a, b) => b.similarity - a.similarity);
+      .sort(
+        (
+          a: TopicRecord & { similarity: number },
+          b: TopicRecord & { similarity: number }
+        ) => b.similarity - a.similarity
+      );
 
-    const primaryMatch =
-      scored[0]?.similarity >= PRIMARY_THRESHOLD ? scored[0] : null;
-    const secondaryMatches = scored
-      .filter(
-        (t) => t._id !== primaryMatch?._id && t.similarity >= SECONDARY_THRESHOLD
-      )
-      .slice(0, 2);
-
+    // Thresholds:
+    //   AUTO_ASSIGN  — clear vector match, skip LLM entirely
+    //   SECONDARY    — assign as secondary topic without LLM
+    const AUTO_ASSIGN_THRESHOLD = 0.82;
+    const SECONDARY_THRESHOLD = 0.62;
+    const MAX_TOPICS_PER_USER = 40;
+    const MAX_LLM_CANDIDATES = 8;
+    const bestMatch = scored[0];
     let primaryTopicId: Id<"userTopics">;
 
-    if (!primaryMatch) {
-      if (topics.length >= MAX_TOPICS_PER_USER && topics.length >= 2) {
-        let minSim = Infinity;
-        let mergeA = topics[0]._id;
-        let mergeB = topics[1]._id;
-        for (let i = 0; i < topics.length; i++) {
-          for (let j = i + 1; j < topics.length; j++) {
-            const s = cosineSimilarity(topics[i].centroid, topics[j].centroid);
-            if (s < minSim) {
-              minSim = s;
-              mergeA = topics[i]._id;
-              mergeB = topics[j]._id;
-            }
-          }
-        }
-        const keep = topics.find((t) => t._id === mergeA)!;
-        const merge = topics.find((t) => t._id === mergeB)!;
-        const keepId =
-          keep.memoryCount >= merge.memoryCount ? mergeA : mergeB;
-        const mergeId = keepId === mergeA ? mergeB : mergeA;
-        await ctx.runMutation(internal.userTopics.mergeTopic, {
-          keepId,
-          mergeId,
-        });
-      }
-
-      const existingNames = topics.map((t) => t.name);
-      const topicData = await aiCreateTopic(
-        args.title,
-        args.content,
-        existingNames
-      );
+    if (topics.length === 0) {
+      // No existing topics — create the first one
+      const topicData = await aiCreateTopic(args.title, args.content, []);
       primaryTopicId = await ctx.runMutation(internal.userTopics.createTopic, {
         userId: args.userId,
         ...topicData,
         centroid: args.embedding,
+        incrementExistingCount: false,
       });
-    } else {
-      primaryTopicId = primaryMatch._id;
-      const newCentroid = incrementalCentroid(
-        primaryMatch.centroid,
-        args.embedding,
-        primaryMatch.memoryCount
+      const matchedExistingTopic = topics.find(
+        (topic) => topic._id === primaryTopicId
       );
-      await ctx.runMutation(internal.userTopics.updateCentroidAndCount, {
-        topicId: primaryTopicId,
-        newCentroid,
-        delta: 1,
-      });
+      if (matchedExistingTopic && !previousTopicIds.has(primaryTopicId)) {
+        await ctx.runMutation(internal.userTopics.updateCentroidAndCount, {
+          topicId: primaryTopicId,
+          newCentroid: incrementalCentroid(
+            matchedExistingTopic.centroid,
+            args.embedding,
+            matchedExistingTopic.memoryCount
+          ),
+          delta: 1,
+        });
+      }
+    } else if (bestMatch.similarity >= AUTO_ASSIGN_THRESHOLD) {
+      // Clear vector match — no LLM needed
+      primaryTopicId = bestMatch._id;
+      if (!previousTopicIds.has(primaryTopicId)) {
+        await ctx.runMutation(internal.userTopics.updateCentroidAndCount, {
+          topicId: primaryTopicId,
+          newCentroid: incrementalCentroid(
+            bestMatch.centroid,
+            args.embedding,
+            bestMatch.memoryCount
+          ),
+          delta: 1,
+        });
+      }
+    } else {
+      // Ambiguous — let the LLM review only the strongest ranked candidates.
+      const curatedTopics = scored.slice(0, MAX_LLM_CANDIDATES);
+      const candidates = curatedTopics.map((t: TopicRecord & { similarity: number }) => ({
+          _id: t._id,
+          name: t.name,
+          description: t.description ?? "",
+          similarity: t.similarity,
+      }));
+
+      const allExisting = curatedTopics.map((t: TopicRecord & { similarity: number }) => ({
+        name: t.name,
+        description: t.description ?? "",
+      }));
+
+      const result = await aiSelectOrCreateTopic(
+        args.title,
+        args.content,
+        candidates,
+        allExisting
+      );
+
+      if (result.action === "existing") {
+        const matched = scored.find(
+          (t: TopicRecord & { similarity: number }) => t._id === result.topicId
+        )!;
+        primaryTopicId = matched._id;
+        if (!previousTopicIds.has(primaryTopicId)) {
+          await ctx.runMutation(internal.userTopics.updateCentroidAndCount, {
+            topicId: primaryTopicId,
+            newCentroid: incrementalCentroid(
+              matched.centroid,
+              args.embedding,
+              matched.memoryCount
+            ),
+            delta: 1,
+          });
+        }
+      } else {
+        const reconciled = await aiReconcileTopicProposal(
+          args.title,
+          args.content,
+          result.topicData,
+          curatedTopics
+        );
+
+        if (reconciled.action === "existing") {
+          const matched = topics.find(
+            (topic: TopicRecord) => topic._id === reconciled.topicId
+          );
+          if (!matched) {
+            throw new Error("Reconciled topic no longer exists");
+          }
+          primaryTopicId = matched._id;
+          if (!previousTopicIds.has(primaryTopicId)) {
+            await ctx.runMutation(internal.userTopics.updateCentroidAndCount, {
+              topicId: primaryTopicId,
+              newCentroid: incrementalCentroid(
+                matched.centroid,
+                args.embedding,
+                matched.memoryCount
+              ),
+              delta: 1,
+            });
+          }
+        } else {
+          // Enforce topic cap by merging the most similar pair before creating
+          if (topics.length >= MAX_TOPICS_PER_USER && topics.length >= 2) {
+            let maxSim = -1;
+            let mergeA = topics[0]._id;
+            let mergeB = topics[1]._id;
+            for (let i = 0; i < topics.length; i++) {
+              for (let j = i + 1; j < topics.length; j++) {
+                const s = cosineSimilarity(topics[i].centroid, topics[j].centroid);
+                if (s > maxSim) {
+                  maxSim = s;
+                  mergeA = topics[i]._id;
+                  mergeB = topics[j]._id;
+                }
+              }
+            }
+            const keepId =
+              (topics.find((t: TopicRecord) => t._id === mergeA)?.memoryCount ?? 0) >=
+              (topics.find((t: TopicRecord) => t._id === mergeB)?.memoryCount ?? 0)
+                ? mergeA
+                : mergeB;
+            const mergeId = keepId === mergeA ? mergeB : mergeA;
+            await ctx.runMutation(internal.userTopics.mergeTopic, {
+              keepId,
+              mergeId,
+            });
+          }
+
+          primaryTopicId = await ctx.runMutation(internal.userTopics.createTopic, {
+            userId: args.userId,
+            ...result.topicData,
+            centroid: args.embedding,
+            incrementExistingCount: false,
+          });
+          const matchedExistingTopic = topics.find(
+            (topic: TopicRecord) => topic._id === primaryTopicId
+          );
+          if (matchedExistingTopic && !previousTopicIds.has(primaryTopicId)) {
+            await ctx.runMutation(internal.userTopics.updateCentroidAndCount, {
+              topicId: primaryTopicId,
+              newCentroid: incrementalCentroid(
+                matchedExistingTopic.centroid,
+                args.embedding,
+                matchedExistingTopic.memoryCount
+              ),
+              delta: 1,
+            });
+          }
+        }
+      }
     }
+
+    // Secondary topics: clear vector matches that aren't the primary
+    const secondaryMatches = scored
+      .filter(
+        (t: TopicRecord & { similarity: number }) =>
+          t._id !== primaryTopicId && t.similarity >= SECONDARY_THRESHOLD
+      )
+      .slice(0, 2);
 
     for (const t of secondaryMatches) {
-      const newCentroid = incrementalCentroid(
-        t.centroid,
-        args.embedding,
-        t.memoryCount
-      );
-      await ctx.runMutation(internal.userTopics.updateCentroidAndCount, {
-        topicId: t._id,
-        newCentroid,
-        delta: 1,
-      });
+      if (!previousTopicIds.has(t._id)) {
+        await ctx.runMutation(internal.userTopics.updateCentroidAndCount, {
+          topicId: t._id,
+          newCentroid: incrementalCentroid(
+            t.centroid,
+            args.embedding,
+            t.memoryCount
+          ),
+          delta: 1,
+        });
+      }
     }
 
-    const topicIds = [
+    const nextTopicIds = [
       primaryTopicId,
-      ...secondaryMatches.map((t) => t._id as Id<"userTopics">),
+      ...secondaryMatches.map(
+        (t: TopicRecord & { similarity: number }) => t._id as Id<"userTopics">
+      ),
     ];
 
     await ctx.runMutation(internal.memories.setTopics, {
       memoryId: args.memoryId,
       primaryTopicId,
-      topicIds,
+      topicIds: nextTopicIds,
     });
 
-    // Trigger re-analysis every 15 new memories
-    const updatedTopics = await ctx.runQuery(
-      internal.userTopics.listWithCentroids,
-      { userId: args.userId }
+    const removedTopicIds = getMemoryTopicIds(existingMemory).filter(
+      (topicId) => !nextTopicIds.includes(topicId)
     );
+    if (removedTopicIds.length > 0) {
+      await ctx.runMutation(internal.userTopics.decrementOrArchiveTopics, {
+        topicIds: removedTopicIds,
+      });
+    }
+
+    // Trigger re-analysis every 15 memories
+    const updatedTopics = await ctx.runQuery(internal.userTopics.listWithCentroids, { userId: args.userId });
     const totalMemories = updatedTopics.reduce(
-      (sum, t) => sum + t.memoryCount,
+      (sum: number, t: TopicRecord) => sum + t.memoryCount,
       0
     );
     if (totalMemories > 0 && totalMemories % 15 === 0) {
-      await ctx.scheduler.runAfter(
-        3000,
-        internal.actions.manageTopics.reanalyzeUserTopics,
-        { userId: args.userId }
-      );
+      await ctx.scheduler.runAfter(3000, internal.actions.manageTopics.reanalyzeUserTopics, { userId: args.userId });
     }
   },
 });
@@ -292,9 +682,20 @@ export const assignTopicsToMemory = internalAction({
 export const reanalyzeUserTopics = internalAction({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
-    const topics = await ctx.runQuery(internal.userTopics.listWithCentroids, {
+    const memoryTopicRefs = await reconcileUserTopicUsage(ctx, args.userId);
+
+    for (const memory of memoryTopicRefs) {
+      await ctx.runMutation(internal.memories.syncTopicLinksForMemory, {
+        memoryId: memory._id,
+      });
+    }
+
+    const topics: TopicRecord[] = await ctx.runQuery(
+      internal.userTopics.listWithCentroids,
+      {
       userId: args.userId,
-    });
+      }
+    );
     if (topics.length < 2) return;
 
     const MERGE_THRESHOLD = 0.92;
@@ -355,21 +756,27 @@ export const handleManageTopic = internalAction({
       v.literal("merge"),
       v.literal("recolor"),
       v.literal("trigger_reanalysis"),
-      v.literal("list")
+      v.literal("list"),
+      v.literal("retag_memory")
     ),
     topicSlug: v.optional(v.string()),
     targetSlug: v.optional(v.string()),
     newName: v.optional(v.string()),
     newIcon: v.optional(v.string()),
     newColor: v.optional(v.string()),
+    memoryId: v.optional(v.id("memories")),
+    topicName: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
-    const topics = await ctx.runQuery(internal.userTopics.listWithCentroids, {
+  handler: async (ctx, args): Promise<unknown> => {
+    const topics: TopicRecord[] = await ctx.runQuery(
+      internal.userTopics.listWithCentroids,
+      {
       userId: args.userId,
-    });
+      }
+    );
 
     if (args.operation === "list") {
-      return topics.map((t) => ({
+      return topics.map((t: TopicRecord) => ({
         name: t.name,
         slug: t.slug,
         memoryCount: t.memoryCount,
@@ -385,7 +792,102 @@ export const handleManageTopic = internalAction({
       return { success: true, message: "Re-analysis scheduled" };
     }
 
-    const topic = topics.find((t) => t.slug === args.topicSlug);
+    if (args.operation === "retag_memory") {
+      if (!args.memoryId || !args.topicName?.trim()) {
+        return {
+          success: false,
+          message: "retag_memory requires memoryId and topicName",
+        };
+      }
+
+      const memory: Doc<"memories"> | null = await ctx.runQuery(
+        internal.memories.getInternal,
+        { memoryId: args.memoryId }
+      );
+      if (!memory || memory.userId !== args.userId) {
+        return { success: false, message: "Memory not found" };
+      }
+
+      const requestedTopic = topicDataFromRequestedName(args.topicName);
+      const matchedTopic =
+        findNormalizedTopicMatch(topics, requestedTopic) ??
+        null;
+
+      let targetTopicId: Id<"userTopics">;
+      let createdNewTopic = false;
+      if (matchedTopic) {
+        targetTopicId = matchedTopic._id;
+      } else {
+        const embedding =
+          memory.embedding ??
+          (await embedText(
+            [memory.title ?? "", memory.content ?? ""].filter(Boolean).join("\n\n")
+          ));
+        targetTopicId = await ctx.runMutation(internal.userTopics.createTopic, {
+          userId: args.userId,
+          ...requestedTopic,
+          centroid: embedding,
+          incrementExistingCount: false,
+        });
+        createdNewTopic = true;
+      }
+
+      const previousTopicIds = new Set(getMemoryTopicIds(memory));
+      const retainedSecondaryTopics = (memory.topicIds ?? []).filter(
+        (topicId) => topicId !== memory.primaryTopicId && topicId !== targetTopicId
+      );
+      const nextTopicIds = [targetTopicId, ...retainedSecondaryTopics].slice(0, 3);
+
+      await ctx.runMutation(internal.memories.setTopics, {
+        memoryId: memory._id,
+        primaryTopicId: targetTopicId,
+        topicIds: nextTopicIds,
+      });
+
+      if (!createdNewTopic && !previousTopicIds.has(targetTopicId)) {
+        const updatedTopics: TopicRecord[] = await ctx.runQuery(
+          internal.userTopics.listWithCentroids,
+          { userId: args.userId }
+        );
+        const topic = updatedTopics.find((entry) => entry._id === targetTopicId);
+        if (topic) {
+          const memoryEmbedding =
+            memory.embedding ??
+            (await embedText(
+              [memory.title ?? "", memory.content ?? ""].filter(Boolean).join("\n\n")
+            ));
+          await ctx.runMutation(internal.userTopics.updateCentroidAndCount, {
+            topicId: targetTopicId,
+            newCentroid: incrementalCentroid(
+              topic.centroid,
+              memoryEmbedding,
+              topic.memoryCount
+            ),
+            delta: 1,
+          });
+        }
+      }
+
+      const removedTopicIds = getMemoryTopicIds(memory).filter(
+        (topicId) => !nextTopicIds.includes(topicId)
+      );
+      if (removedTopicIds.length > 0) {
+        await ctx.runMutation(internal.userTopics.decrementOrArchiveTopics, {
+          topicIds: removedTopicIds,
+        });
+      }
+
+      await reconcileUserTopicUsage(ctx, args.userId);
+
+      return {
+        success: true,
+        message: `Retagged memory to '${requestedTopic.name}'`,
+        topicName: requestedTopic.name,
+        topicId: targetTopicId,
+      };
+    }
+
+    const topic = topics.find((t: TopicRecord) => t.slug === args.topicSlug);
     if (!topic)
       return { success: false, message: `Topic '${args.topicSlug}' not found` };
 
@@ -421,7 +923,7 @@ export const handleManageTopic = internalAction({
     }
 
     if (args.operation === "merge" && args.targetSlug) {
-      const target = topics.find((t) => t.slug === args.targetSlug);
+      const target = topics.find((t: TopicRecord) => t.slug === args.targetSlug);
       if (!target)
         return {
           success: false,

@@ -78,32 +78,32 @@ export function SegmentedControl<T extends string = string>({
       borderTopRightRadius={14}
       borderBottomLeftRadius={attached ? 0 : 14}
       borderBottomRightRadius={attached ? 0 : 14}
+      borderWidth={1}
+      borderColor="$borderColor"
       padding={PADDING}
       position="relative"
       alignSelf="stretch"
       minHeight={38}
     >
       {/* Sliding pill indicator */}
-      {effectiveSegmentWidth > 0 && (
-        <Animated.View
-          style={[
-            {
-              position: "absolute",
-              top: PADDING,
-              left: PADDING,
-              bottom: PADDING,
-              borderRadius: 11,
-              backgroundColor: theme.card.val,
-              shadowColor: "#000",
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.1,
-              shadowRadius: 4,
-              elevation: 2,
-            },
-            indicatorStyle,
-          ]}
-        />
-      )}
+      <Animated.View
+        style={[
+          {
+            position: "absolute",
+            top: PADDING,
+            left: PADDING,
+            bottom: PADDING,
+            borderRadius: 11,
+            backgroundColor: theme.card.val,
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: effectiveSegmentWidth > 0 ? 0.1 : 0,
+            shadowRadius: 4,
+            elevation: effectiveSegmentWidth > 0 ? 2 : 0,
+          },
+          indicatorStyle,
+        ]}
+      />
 
       {/* Option buttons */}
       {options.map(({ value: optValue, label, icon }, idx) => {

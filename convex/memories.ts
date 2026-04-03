@@ -1,5 +1,11 @@
 import { v } from "convex/values";
-import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+  MutationCtx,
+} from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { resolveUser } from "./lib/withAuth";
@@ -13,6 +19,50 @@ import {
   contextTagsValidator,
   encryptedEnvelopeValidator,
 } from "./lib/validators";
+
+async function replaceTopicLinksForMemory(
+  ctx: MutationCtx,
+  memory: Doc<"memories">
+) {
+  const existingLinks = await ctx.db
+    .query("memoryTopicLinks")
+    .withIndex("by_memory", (q) => q.eq("memoryId", memory._id))
+    .take(10);
+  for (const link of existingLinks) {
+    await ctx.db.delete(link._id);
+  }
+
+  const uniqueTopicIds = Array.from(
+    new Set(
+      [memory.primaryTopicId, ...(memory.topicIds ?? [])].filter(
+        (topicId): topicId is Id<"userTopics"> => topicId !== undefined
+      )
+    )
+  );
+
+  for (const topicId of uniqueTopicIds) {
+    await ctx.db.insert("memoryTopicLinks", {
+      userId: memory.userId,
+      memoryId: memory._id,
+      topicId,
+      isPrimary: memory.primaryTopicId === topicId,
+      assignedAt: memory._creationTime,
+    });
+  }
+}
+
+async function deleteTopicLinksForMemory(
+  ctx: MutationCtx,
+  memoryId: Id<"memories">
+) {
+  const existingLinks = await ctx.db
+    .query("memoryTopicLinks")
+    .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
+    .take(10);
+  for (const link of existingLinks) {
+    await ctx.db.delete(link._id);
+  }
+}
 
 export const list = query({
   args: {
@@ -145,6 +195,39 @@ export const get = query({
     const memory = await ctx.db.get(args.id);
     if (!memory || memory.userId !== userId) return null;
     return memory;
+  },
+});
+
+export const listByTopic = query({
+  args: {
+    token: v.string(),
+    topicId: v.id("userTopics"),
+    limit: v.optional(v.float64()),
+  },
+  handler: async (ctx, args): Promise<Doc<"memories">[]> => {
+    const { userId } = await resolveUser(ctx, args.token);
+    const take = args.limit ? Math.min(args.limit, 50) : 20;
+    const links = await ctx.db
+      .query("memoryTopicLinks")
+      .withIndex("by_user_and_topic", (q) =>
+        q.eq("userId", userId).eq("topicId", args.topicId)
+      )
+      .order("desc")
+      .take(Math.max(take * 3, 30));
+
+    const seen = new Set<Id<"memories">>();
+    const memories: Doc<"memories">[] = [];
+    for (const link of links) {
+      if (seen.has(link.memoryId)) continue;
+      const memory = await ctx.db.get(link.memoryId);
+      if (!memory || memory.userId !== userId) continue;
+      seen.add(memory._id);
+      memories.push(memory);
+    }
+
+    return memories
+      .sort((a, b) => b._creationTime - a._creationTime)
+      .slice(0, take);
   },
 });
 
@@ -307,6 +390,7 @@ export const create = mutation({
       title: args.title ?? "",
       content: args.content ?? "",
       userTimezone: user.timezone,
+      currentTime: new Date().toISOString(),
     });
 
     return memoryId;
@@ -373,6 +457,7 @@ export const update = mutation({
         title: args.title ?? memory.title ?? "",
         content: args.content ?? memory.content ?? "",
         userTimezone: user.timezone,
+        currentTime: new Date().toISOString(),
       });
     }
   },
@@ -401,6 +486,19 @@ export const remove = mutation({
     for (const card of reviewCards) {
       await ctx.db.delete(card._id);
     }
+    const topicIds = Array.from(
+      new Set(
+        [memory.primaryTopicId, ...(memory.topicIds ?? [])].filter(
+          (id): id is Id<"userTopics"> => id !== undefined
+        )
+      )
+    );
+    if (topicIds.length > 0) {
+      await ctx.runMutation(internal.userTopics.decrementOrArchiveTopics, {
+        topicIds,
+      });
+    }
+    await deleteTopicLinksForMemory(ctx, args.id);
     await ctx.db.delete(args.id);
   },
 });
@@ -447,6 +545,20 @@ export const removeMany = mutation({
         await ctx.db.delete(card._id);
       }
 
+      const topicIds = Array.from(
+        new Set(
+          [memory.primaryTopicId, ...(memory.topicIds ?? [])].filter(
+            (topicId): topicId is Id<"userTopics"> => topicId !== undefined
+          )
+        )
+      );
+      if (topicIds.length > 0) {
+        await ctx.runMutation(internal.userTopics.decrementOrArchiveTopics, {
+          topicIds,
+        });
+      }
+
+      await deleteTopicLinksForMemory(ctx, id);
       await ctx.db.delete(id);
       deleted += 1;
     }
@@ -682,6 +794,22 @@ export const getInternal = internalQuery({
   },
 });
 
+export const listTopicRefsForUser = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const memories = await ctx.db
+      .query("memories")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+
+    return memories.map((memory) => ({
+      _id: memory._id,
+      primaryTopicId: memory.primaryTopicId,
+      topicIds: memory.topicIds ?? [],
+    }));
+  },
+});
+
 export const setTopics = internalMutation({
   args: {
     memoryId: v.id("memories"),
@@ -693,6 +821,25 @@ export const setTopics = internalMutation({
       primaryTopicId: args.primaryTopicId,
       topicIds: args.topicIds,
     });
+    const memory = await ctx.db.get(args.memoryId);
+    if (!memory) return;
+    await replaceTopicLinksForMemory(ctx, {
+      ...memory,
+      primaryTopicId: args.primaryTopicId,
+      topicIds: args.topicIds,
+    });
+  },
+});
+
+export const syncTopicLinksForMemory = internalMutation({
+  args: { memoryId: v.id("memories") },
+  handler: async (ctx, args) => {
+    const memory = await ctx.db.get(args.memoryId);
+    if (!memory) {
+      await deleteTopicLinksForMemory(ctx, args.memoryId);
+      return;
+    }
+    await replaceTopicLinksForMemory(ctx, memory);
   },
 });
 

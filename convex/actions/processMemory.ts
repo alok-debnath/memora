@@ -57,6 +57,43 @@ type AIExtractedMemory = {
   }>;
 };
 
+function buildExtractionSystemPrompt(userTz: string, currentTime: string): string {
+  const now = new Date(currentTime);
+  const localDateStr = now.toLocaleDateString("en-US", {
+    timeZone: userTz,
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const localTimeStr = now.toLocaleTimeString("en-US", {
+    timeZone: userTz,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+  return `You are an AI assistant that processes memory notes. Extract ALL structured data from the user's input.
+
+CURRENT DATE & TIME: ${localDateStr} at ${localTimeStr} (${userTz}) — UTC: ${now.toISOString()}
+Use this to resolve relative expressions like "in 5 hours", "next Monday", "after lunch", "tomorrow morning" into exact absolute datetimes.
+This timestamp came from the user's device at capture-time. Treat it as the authoritative "now" for relative scheduling.
+
+CRITICAL WORDING RULE — NO RELATIVE TIME IN STORED MEMORIES: Write title and content in objective, note-style language. Never use relative time words ("today", "tomorrow", "yesterday", "next week", "this morning", "this afternoon", "in 5 hours", "soon", "later") in the title or content. Always write the actual resolved date: e.g. "Meeting with Sarah on 9 Apr 2026 at 14:00 IST" not "Meeting with Sarah tomorrow afternoon". Never use "I", "me", "my", "the user", or "you".
+
+CRITICAL TIMEZONE RULE: When the user mentions times, that time is in THEIR timezone (${userTz}). Convert to UTC ISO-8601 for reminder_date. Example: if user is in Asia/Kolkata (UTC+5:30) and says "9:30 AM", UTC time is 04:00 AM — output "2026-03-09T04:00:00Z".
+
+For mood: happy, sad, anxious, excited, neutral, grateful, frustrated, hopeful, nostalgic, motivated.
+For people: extract ALL people names mentioned.
+For locations: extract ALL locations, places, venues, cities, countries mentioned.
+For importance: "critical", "high", "normal", or "low" based on urgency/consequence/emotional weight.
+For life_area: career, family, health, finance, social, hobbies, education, travel, self-care, relationships.
+For context_tags: extract structured context (who, what, where, why).
+For sentiment_score: rate from -1.0 (very negative) to 1.0 (very positive).
+For linked_urls: extract any URLs mentioned.
+For extracted_actions: identify actionable items with "text" (description) and "type" (task/reminder/fact/decision).`;
+}
+
 function fallbackStructuredData(content: string): AIExtractedMemory {
   const firstSentence = content.split(/[.\n]/)[0]?.trim() || "New Memory";
   return {
@@ -76,6 +113,8 @@ export const processMemory = action({
     title: v.string(),
     content: v.string(),
     userTimezone: v.optional(v.string()),
+    currentTime: v.optional(v.string()),
+    currentTimezone: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const client = getOpenAIClient();
@@ -91,7 +130,9 @@ export const processMemory = action({
     });
 
     try {
-      const userTz = args.userTimezone ?? "UTC";
+      const userTz =
+        args.currentTimezone?.trim() || args.userTimezone || "UTC";
+      const currentTime = args.currentTime ?? new Date().toISOString();
 
       // Use tool calling with forced tool_choice to match Supabase pattern
       const response = await client.chat.completions.create({
@@ -100,21 +141,7 @@ export const processMemory = action({
         messages: [
           {
             role: "system",
-            content: `You are an AI assistant that processes memory notes. Extract ALL structured data from the user's input. Today's date: ${new Date().toISOString()}. The user's timezone is ${userTz}.
-
-CRITICAL WORDING RULE: Write title and content in objective, note-style language. Never use "I", "me", "my", "the user", or "you". Describe events as facts (e.g. "Exam on Friday at 3pm" not "I have an exam on Friday at 3pm". "Meeting with Sarah at 2pm" not "I need to meet Sarah at 2pm").
-
-CRITICAL TIMEZONE RULE: When the user mentions times like "9:30 AM", "3pm tomorrow", or "next Monday at 10am", that time is in THEIR timezone (${userTz}). Convert it to UTC for the reminder_date field. Example: If user is in Asia/Kolkata (UTC+5:30) and says "9:30 AM", UTC time is 4:00 AM, output "2026-03-09T04:00:00Z".
-
-For mood: happy, sad, anxious, excited, neutral, grateful, frustrated, hopeful, nostalgic, motivated.
-For people: extract ALL people names mentioned.
-For locations: extract ALL locations, places, venues, cities, countries mentioned.
-For importance: "critical", "high", "normal", or "low" based on urgency/consequence/emotional weight.
-For life_area: career, family, health, finance, social, hobbies, education, travel, self-care, relationships.
-For context_tags: extract structured context (who, what, where, why).
-For sentiment_score: rate from -1.0 (very negative) to 1.0 (very positive).
-For linked_urls: extract any URLs mentioned.
-For extracted_actions: identify actionable items with "text" (description) and "type" (task/reminder/fact/decision).`,
+            content: buildExtractionSystemPrompt(userTz, currentTime),
           },
           {
             role: "user",
@@ -132,7 +159,11 @@ For extracted_actions: identify actionable items with "text" (description) and "
                 properties: {
                   title: { type: "string", description: "Concise title, max 8 words" },
                   content: { type: "string", description: "Full memory content" },
-                  reminder_date: { type: "string", description: "ISO 8601 UTC datetime or null" },
+                  reminder_date: {
+                    type: "string",
+                    description:
+                      "Exact ISO 8601 UTC datetime. For relative times like 'after 6 hours', resolve from CURRENT DATE & TIME first.",
+                  },
                   is_recurring: { type: "boolean" },
                   recurrence_type: {
                     type: "string",
@@ -233,6 +264,8 @@ export const captureMemory = action({
   args: {
     token: v.string(),
     content: v.string(),
+    currentTime: v.optional(v.string()),
+    currentTimezone: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<{
     memoryId: Id<"memories">;
@@ -249,7 +282,9 @@ export const captureMemory = action({
 
     const client = getOpenAIClient();
     if (client) {
-      const userTz = session.timezone ?? "UTC";
+      const userTz =
+        args.currentTimezone?.trim() || session.timezone || "UTC";
+      const currentTime = args.currentTime ?? new Date().toISOString();
       const [analysisRaw, embeddingResult] = await Promise.allSettled([
         (async () => {
           const response = await client.chat.completions.create({
@@ -258,20 +293,7 @@ export const captureMemory = action({
             messages: [
               {
                 role: "system",
-            content: `You are an AI assistant that processes memory notes. Extract ALL structured data from the user's input. Today's date (UTC): ${new Date().toISOString()}. The user's timezone is ${userTz}.
-
-CRITICAL TIMEZONE RULE: When the user mentions times like "9:30 AM", "3pm tomorrow", or "next Monday at 10am", that time is in THEIR timezone (${userTz}). You MUST output the time in UTC ISO-8601 string format for the \`reminder_date\` property.
-Example: if it's currently Jan 1st and user is in America/New_York (UTC-5), and they say "tomorrow at 3pm", their local time for the reminder is Jan 2nd 15:00. You must output the UTC equivalent, which is Jan 2nd 20:00:00Z.
-
-For mood: happy, sad, anxious, excited, neutral, grateful, frustrated, hopeful, nostalgic, motivated.
-For people: extract all people names.
-For locations: extract all locations and places.
-For importance: critical, high, normal, or low.
-For life_area: career, family, health, finance, social, hobbies, education, travel, self-care, relationships.
-For context_tags: extract who, what, where, why.
-For sentiment_score: rate from -1.0 to 1.0.
-For linked_urls: extract any URLs mentioned.
-For extracted_actions: identify actionable items. Each action should have text and type (task, reminder, fact, decision).`,
+                content: buildExtractionSystemPrompt(userTz, currentTime),
               },
               { role: "user", content: args.content },
             ],
@@ -380,16 +402,8 @@ For extracted_actions: identify actionable items. Each action should have text a
       });
     }
 
-    // Schedule topic assignment if we have an embedding
-    if (embedding) {
-      await ctx.scheduler.runAfter(0, internal.actions.manageTopics.assignTopicsToMemory, {
-        memoryId,
-        userId: session._id,
-        title: structured.title ?? fallbackStructuredData(args.content).title ?? "New Memory",
-        content: args.content,
-        embedding,
-      });
-    }
+    // Topic assignment is handled by the processMemory action that was already
+    // scheduled by memories.create — no need to schedule it again here.
 
     const conflictResult = await ctx.runAction(
       api.actions.detectConflicts.detectConflicts,

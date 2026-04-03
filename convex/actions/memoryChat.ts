@@ -66,7 +66,11 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
         properties: {
           title: { type: "string", description: "Concise title, max 8 words, objective note-style (no 'I', 'me', 'my')" },
           content: { type: "string", description: "Full memory content in objective note-style language (no 'I', 'me', 'my')" },
-          reminder_date: { type: "string" },
+          reminder_date: {
+            type: "string",
+            description:
+              "Exact ISO 8601 UTC datetime for the reminder. For relative times like 'after 6 hours' or 'tomorrow morning', compute from the CURRENT DATE & TIME and convert to UTC before returning.",
+          },
           is_recurring: { type: "boolean" },
           recurrence_type: {
             type: "string",
@@ -93,7 +97,11 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           memory_id: { type: "string" },
           title: { type: "string", description: "Concise title, max 8 words, objective note-style (no 'I', 'me', 'my')" },
           content: { type: "string", description: "Full memory content in objective note-style language (no 'I', 'me', 'my')" },
-          reminder_date: { type: "string" },
+          reminder_date: {
+            type: "string",
+            description:
+              "Exact ISO 8601 UTC datetime for the reminder. For relative times like 'after 6 hours' or 'tomorrow morning', compute from the CURRENT DATE & TIME and convert to UTC before returning.",
+          },
           is_recurring: { type: "boolean" },
           recurrence_type: {
             type: "string",
@@ -227,19 +235,21 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "manage_topics",
       description:
-        "Manage the AI-generated topic taxonomy. List topics, rename, merge, recolor, or trigger a full re-analysis. Topics are AI-owned — never created manually by the user.",
+        "Manage the AI-generated topic taxonomy. List topics, rename, merge, recolor, retag a specific memory to a requested topic, or trigger a full re-analysis.",
       parameters: {
         type: "object",
         properties: {
           operation: {
             type: "string",
-            enum: ["list", "rename", "merge", "recolor", "trigger_reanalysis"],
+            enum: ["list", "rename", "merge", "recolor", "trigger_reanalysis", "retag_memory"],
           },
           topic_slug: { type: "string", description: "Slug of the topic to operate on." },
           target_slug: { type: "string", description: "For merge: the slug of the topic to merge into topic_slug." },
           new_name: { type: "string", description: "For rename: the new display name." },
           new_icon: { type: "string", description: "For recolor: Feather icon name." },
           new_color: { type: "string", description: "For recolor: hex color string." },
+          memory_id: { type: "string", description: "For retag_memory: actual memory id if already known. If not known, search memories first or refer to the most recent matching memory." },
+          topic_name: { type: "string", description: "For retag_memory: requested topic name to reuse or create." },
         },
         required: ["operation"],
         additionalProperties: false,
@@ -258,6 +268,21 @@ function parseAttachments(message: string): ParsedAttachment[] {
     fileType: match[2]?.trim() || "application/octet-stream",
     url: match[3]?.trim() || "",
   })).filter((item) => item.url);
+}
+
+function normalizeForMemoryDedupe(value: string | undefined): string {
+  return (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function buildCreateMemoryDedupeKey(args: {
+  title?: string;
+  content: string;
+}): string {
+  const normalizedContent = normalizeForMemoryDedupe(args.content);
+  return JSON.stringify({
+    content: normalizedContent,
+    fallbackTitle: normalizedContent ? "" : normalizeForMemoryDedupe(args.title),
+  });
 }
 
 function toMemorySummary(memory: MemoryDoc) {
@@ -411,8 +436,70 @@ async function searchMemories(
   };
 }
 
-function buildSystemPrompt(userTimezone: string) {
-  const today = new Date().toISOString().split("T")[0];
+async function resolveMemoryReference(
+  ctx: ActionCtx,
+  args: {
+    token: string;
+    userId: Id<"users">;
+    reference?: string;
+  }
+): Promise<Id<"memories"> | null> {
+  const recentMemories = await listMemoriesForAI(ctx, args.userId, 20);
+
+  if (!args.reference?.trim()) {
+    return recentMemories[0]?._id ?? null;
+  }
+
+  const reference = args.reference.trim().toLowerCase();
+
+  const exactIdMatch = recentMemories.find((memory) => memory._id === args.reference);
+  if (exactIdMatch) {
+    return exactIdMatch._id;
+  }
+
+  const referenceTerms = reference
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 1);
+
+  const scored = recentMemories
+    .map((memory) => {
+      const title = (memory.title ?? "").toLowerCase();
+      const content = (memory.content ?? "").toLowerCase();
+      let score = 0;
+      if (title.includes(reference)) score += 5;
+      if (content.includes(reference)) score += 3;
+      for (const term of referenceTerms) {
+        if (title.includes(term)) score += 2;
+        if (content.includes(term)) score += 1;
+      }
+      return { memory, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  if ((scored[0]?.score ?? 0) > 0) {
+    return scored[0].memory._id;
+  }
+
+  return recentMemories[0]?._id ?? null;
+}
+
+function buildSystemPrompt(userTimezone: string, currentTime: string) {
+  const now = new Date(currentTime);
+  const localDateStr = now.toLocaleDateString("en-US", {
+    timeZone: userTimezone,
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const localTimeStr = now.toLocaleTimeString("en-US", {
+    timeZone: userTimezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+  const utcStr = now.toISOString();
 
   return `You are Memora, a warm and witty personal AI memory assistant — the user's second brain. You remember everything they tell you and surface it instantly when needed. You have personality: helpful, occasionally playful, always feel like a trusted friend who happens to have a perfect memory.
 
@@ -420,7 +507,9 @@ function buildSystemPrompt(userTimezone: string) {
 
 1. **DIRECT, HUMAN ANSWERS**: Answer naturally — like a knowledgeable friend, not a database. Skip "I found a memory that says..." — just answer.
 
-2. **WARM CONFIRMATIONS**: When you save/update/delete something, confirm it with personality. For example: "Done! Exam reminder set for 1 PM today — good luck with it!" or "Saved! I'll remind you about that." Never give a bland, robotic confirmation.
+2. **WARM CONFIRMATIONS**: When you save/update/delete something, confirm it with personality. For example: "Done! Meeting reminder set for Friday 9 Apr at 2:00 PM — noted!" Never give a bland, robotic confirmation. Always echo the absolute date/time back so the user can verify it.
+
+2a. **NO VAGUE ASYNC PROMISES**: Do not say things like "stay tuned", "it should update soon", or "I've scheduled this" unless the completed tool result already confirms the exact state change. For a topic change on one specific memory, prefer an immediate concrete action over a broad re-analysis.
 
 3. **REMEMBER EVERYTHING**: When the user shares info casually, save it. They don't need to say "remember this" explicitly.
 
@@ -430,7 +519,7 @@ function buildSystemPrompt(userTimezone: string) {
    - Provide statistics and insights
    - Search uploaded documents (warranties, receipts, etc.)
    - Set reminders and recurring tasks
-   - Manage topics via manage_topics (rename, merge, recolor, trigger re-analysis, or list)
+  - Manage topics via manage_topics (rename, merge, recolor, retag a specific memory, trigger re-analysis, or list)
 
 5. **BE PROACTIVE**:
    - If you notice conflicting information, flag it naturally
@@ -445,17 +534,22 @@ function buildSystemPrompt(userTimezone: string) {
 
 9. **FILE ATTACHMENTS**: When user shares files, file URLs appear as [Attached file: name (type) — URL: ...]. Create or update a memory and call attach_file_to_memory when relevant.
 
-**TOPIC GUIDANCE**: Topics are AI-assigned automatically — never add them manually. When the user asks about topics (rename, merge, recolor, re-analyse), use the manage_topics tool. When they ask "what topics do I have", use manage_topics with operation="list".
+**TOPIC GUIDANCE**: Topics are AI-assigned by the system, but if the user explicitly wants a specific memory moved under a different topic, use manage_topics with operation="retag_memory". First identify the target memory: use a real memory_id if you already have it, otherwise search memories or infer the most recent relevant memory from context. Do not pass plain text like "class topic" into memory_id. Use rename/merge/recolor only for taxonomy-wide changes. When they ask "what topics do I have", use manage_topics with operation="list".
 
-Today's date: ${today}. The user's timezone is ${userTimezone}.
+**CURRENT DATE & TIME**: ${localDateStr} at ${localTimeStr} (${userTimezone}) — UTC: ${utcStr}
+Use this to resolve relative expressions like "in 5 hours", "next Monday", "after lunch", "tomorrow morning" into exact absolute datetimes before storing them.
+This timestamp came from the user's device at send-time. Treat it as the authoritative "now" for relative scheduling.
 
-**CRITICAL WORDING RULE**: When creating or updating memories, write title and content in objective, note-style language. Never use "I", "me", "my", "the user", or "you". Describe events as facts (e.g. "Exam on Friday at 3pm" not "I have an exam on Friday at 3pm". "Meeting with Sarah at 2pm" not "I need to meet Sarah at 2pm"). Your spoken REPLY to the user is still warm and personal — the wording rule only applies to the memory content/title stored via tools.
+**CRITICAL WORDING RULE — NO RELATIVE TIME IN STORED MEMORIES**:
+When writing memory title or content (stored via tools), NEVER use relative time words: "today", "tomorrow", "yesterday", "next week", "this morning", "this afternoon", "in 5 hours", "soon", "later", "recently", "just now", etc.
+Always write the actual resolved date/time: e.g. "Meeting with Sarah on 9 Apr 2026 at 14:00 IST" not "Meeting with Sarah tomorrow afternoon".
+Also: write in objective, note-style language — no "I", "me", "my", "the user", "you".
+Your spoken REPLY to the user is still warm and personal — this rule only applies to the stored title/content.
 
 **CRITICAL TIMEZONE RULE**:
-- When user says "9:30 AM", "3pm tomorrow", or "next Monday at 10am", that time is in THEIR timezone.
-- Convert to UTC for storage in reminder_date (ISO 8601).
-- When CONFIRMING, ALWAYS state time in their original timezone.
-- Never expose UTC times to the user.
+- User-mentioned times ("9:30 AM", "3pm in 5 hours") are in THEIR timezone (${userTimezone}).
+- Compute the exact UTC datetime and store it in reminder_date as ISO 8601.
+- When confirming, state the time in the user's timezone. Never expose UTC to the user.
 
 Use markdown only when it genuinely helps readability.`;
 }
@@ -464,6 +558,8 @@ export const chat = action({
   args: {
     token: v.string(),
     message: v.string(),
+    currentTime: v.optional(v.string()),
+    currentTimezone: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const client = getOpenAIClient();
@@ -471,6 +567,9 @@ export const chat = action({
     if (!session) {
       throw new Error("Unauthorized");
     }
+
+    const effectiveTimezone =
+      args.currentTimezone?.trim() || session.timezone || "UTC";
 
     await ctx.runMutation(internal.chat.send, {
       userId: session._id,
@@ -496,7 +595,10 @@ export const chat = action({
         const conversation: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
           {
             role: "system",
-            content: buildSystemPrompt(session.timezone ?? "UTC"),
+            content: buildSystemPrompt(
+              effectiveTimezone,
+              args.currentTime ?? new Date().toISOString()
+            ),
           },
           ...recentChat,
           ...(attachments.length > 0
@@ -513,6 +615,10 @@ export const chat = action({
         ];
 
         let finalText = "";
+        const createdMemoriesByDedupeKey = new Map<
+          string,
+          { id: Id<"memories">; title: string }
+        >();
 
         for (let iteration = 0; iteration < 8; iteration += 1) {
           const response = await client.chat.completions.create({
@@ -577,18 +683,22 @@ export const chat = action({
                 normalized.content ||
                 (typeof fnArgs.content === "string" ? fnArgs.content.trim() : "") ||
                 (typeof fnArgs.title === "string" ? fnArgs.title.trim() : "");
-
-              const created = await ctx.runAction(
-                api.actions.processMemory.captureMemory,
-                {
-                  token: args.token,
-                  content: contentToSave,
-                }
-              );
-
-              await ctx.runMutation(api.memories.update, {
-                token: args.token,
-                id: created.memoryId,
+              const isRecurring =
+                typeof fnArgs.is_recurring === "boolean"
+                  ? fnArgs.is_recurring
+                  : undefined;
+              const recurrenceType =
+                typeof fnArgs.recurrence_type === "string"
+                  ? fnArgs.recurrence_type
+                  : undefined;
+              const dedupeKey = buildCreateMemoryDedupeKey({
+                title:
+                  normalized.title ||
+                  (typeof fnArgs.title === "string" ? fnArgs.title : undefined),
+                content: contentToSave,
+              });
+              const existingCreated = createdMemoriesByDedupeKey.get(dedupeKey);
+              const memoryUpdatePatch = {
                 ...(normalized.title ? { title: normalized.title } : {}),
                 ...(normalized.mood ? { mood: normalized.mood } : {}),
                 ...(normalized.people ? { people: normalized.people } : {}),
@@ -599,27 +709,65 @@ export const chat = action({
                 ...(normalized.reminderDate
                   ? { reminderDate: normalized.reminderDate }
                   : {}),
-                ...(typeof fnArgs.is_recurring === "boolean"
-                  ? { isRecurring: fnArgs.is_recurring }
+                ...(isRecurring !== undefined
+                  ? { isRecurring }
                   : {}),
-                ...(typeof fnArgs.recurrence_type === "string"
+                ...(recurrenceType
                   ? {
-                      recurrenceType: fnArgs.recurrence_type as
+                      recurrenceType: recurrenceType as
                         | "yearly"
                         | "monthly"
                         | "weekly"
                         | "daily",
                     }
                   : {}),
-              });
+              };
 
-              result = JSON.stringify({
-                success: true,
-                memory: {
+              if (existingCreated) {
+                await ctx.runMutation(api.memories.update, {
+                  token: args.token,
+                  id: existingCreated.id,
+                  ...memoryUpdatePatch,
+                });
+                result = JSON.stringify({
+                  success: true,
+                  deduped: true,
+                  memory: {
+                    id: existingCreated.id,
+                    title: existingCreated.title,
+                  },
+                });
+              } else {
+                const created = await ctx.runAction(
+                  api.actions.processMemory.captureMemory,
+                  {
+                    token: args.token,
+                    content: contentToSave,
+                    currentTime: args.currentTime,
+                    currentTimezone: effectiveTimezone,
+                  }
+                );
+
+                await ctx.runMutation(api.memories.update, {
+                  token: args.token,
                   id: created.memoryId,
-                  title: normalized.title || created.structured.title || "New Memory",
-                },
-              });
+                  ...memoryUpdatePatch,
+                });
+
+                const resolvedTitle =
+                  normalized.title || created.structured.title || "New Memory";
+                createdMemoriesByDedupeKey.set(dedupeKey, {
+                  id: created.memoryId,
+                  title: resolvedTitle,
+                });
+                result = JSON.stringify({
+                  success: true,
+                  memory: {
+                    id: created.memoryId,
+                    title: resolvedTitle,
+                  },
+                });
+              }
             } else if (fnName === "update_memory") {
               try {
                 const normalized = normalizeMemoryFields(fnArgs);
@@ -762,15 +910,63 @@ export const chat = action({
                 );
               }
             } else if (fnName === "manage_topics") {
+              if (fnArgs.operation === "retag_memory") {
+                const resolvedMemoryId = await resolveMemoryReference(ctx, {
+                  token: args.token,
+                  userId: session._id,
+                  reference:
+                    typeof fnArgs.memory_id === "string" ? fnArgs.memory_id : undefined,
+                });
+
+                if (!resolvedMemoryId) {
+                  result = JSON.stringify({
+                    success: false,
+                    message: "Couldn't identify which memory to retag.",
+                  });
+                  conversation.push({
+                    role: "tool",
+                    tool_call_id: toolCall.id,
+                    content: result,
+                  });
+                  continue;
+                }
+
+                result = JSON.stringify(
+                  await ctx.runAction(internal.actions.manageTopics.handleManageTopic, {
+                    userId: session._id,
+                    operation: "retag_memory",
+                    memoryId: resolvedMemoryId,
+                    topicName:
+                      typeof fnArgs.topic_name === "string" ? fnArgs.topic_name : undefined,
+                  })
+                );
+                conversation.push({
+                  role: "tool",
+                  tool_call_id: toolCall.id,
+                  content: result,
+                });
+                continue;
+              }
+
               result = JSON.stringify(
                 await ctx.runAction(internal.actions.manageTopics.handleManageTopic, {
                   userId: session._id,
-                  operation: fnArgs.operation as "list" | "rename" | "merge" | "recolor" | "trigger_reanalysis",
+                  operation: fnArgs.operation as
+                    | "list"
+                    | "rename"
+                    | "merge"
+                    | "recolor"
+                    | "trigger_reanalysis"
+                    | "retag_memory",
                   topicSlug: typeof fnArgs.topic_slug === "string" ? fnArgs.topic_slug : undefined,
                   targetSlug: typeof fnArgs.target_slug === "string" ? fnArgs.target_slug : undefined,
                   newName: typeof fnArgs.new_name === "string" ? fnArgs.new_name : undefined,
                   newIcon: typeof fnArgs.new_icon === "string" ? fnArgs.new_icon : undefined,
                   newColor: typeof fnArgs.new_color === "string" ? fnArgs.new_color : undefined,
+                  memoryId: typeof fnArgs.memory_id === "string"
+                    ? (fnArgs.memory_id as Id<"memories">)
+                    : undefined,
+                  topicName: typeof fnArgs.topic_name === "string" ? fnArgs.topic_name : undefined,
                 })
               );
             } else if (fnName === "attach_file_to_memory") {

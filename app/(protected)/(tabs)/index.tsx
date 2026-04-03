@@ -25,14 +25,13 @@ import { FlashbackCard } from "@/components/FlashbackCard";
 import { MemoryCard } from "@/components/MemoryCard";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { categoryLabels } from "@/constants/categories";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useThemeStore } from "@/store/theme";
 import { useUIStore } from "@/store/ui";
 import type { MemoryNote } from "@/types/memory";
 import { Badge } from "@/components/ui/Badge";
-import { CategoryPills } from "@/components/ui/CategoryPills";
+import { TopicPills } from "@/components/ui/TopicPills";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AppScreen, SectionCard } from "@/components/ui/AppScreen";
 import { BaseSheet } from "@/components/ui/BaseSheet";
@@ -48,9 +47,9 @@ const toMemoryNote = (m: Record<string, unknown>): MemoryNote => ({
   userId: (m.userId as string) || "",
   title: (m.title as string) || "",
   content: (m.content as string) || "",
-  category: (m.category || "personal") as MemoryNote["category"],
+  primaryTopicId: m.primaryTopicId as string | undefined,
+  topicIds: m.topicIds as string[] | undefined,
   mood: m.mood as MemoryNote["mood"],
-  tags: (m.tags as string[]) || [],
   people: (m.people as string[]) || [],
   locations: (m.locations as string[]) || [],
   importance: (m.importance || "normal") as MemoryNote["importance"],
@@ -75,9 +74,9 @@ type MemoryItem = {
   userId: Id<"users">;
   title?: string;
   content?: string;
-  category: string;
+  primaryTopicId?: string;
+  topicIds?: string[];
   mood?: string;
-  tags?: string[];
   people?: string[];
   locations?: string[];
   importance: string;
@@ -87,7 +86,6 @@ type MemoryItem = {
   isPublic?: boolean;
   encryptedTitle?: { v: number; n: string; c: string };
   encryptedContent?: { v: number; n: string; c: string };
-  encryptedTags?: { v: number; n: string; c: string };
   encryptedPeople?: { v: number; n: string; c: string };
   encryptedLocations?: { v: number; n: string; c: string };
   [key: string]: unknown;
@@ -101,15 +99,9 @@ function getExactSearchMatches(memories: MemoryItem[], query: string) {
   if (!query) return [];
 
   return memories.filter((memory) => {
-    const categoryLabel =
-      categoryLabels[memory.category as keyof typeof categoryLabels]?.toLowerCase() ?? "";
-
     return (
       includesQuery(memory.title, query) ||
       includesQuery(memory.content, query) ||
-      includesQuery(memory.category, query) ||
-      categoryLabel.includes(query) ||
-      (memory.tags ?? []).some((tag) => tag.toLowerCase().includes(query)) ||
       (memory.people ?? []).some((person) => person.toLowerCase().includes(query)) ||
       (memory.locations ?? []).some((location) => location.toLowerCase().includes(query))
     );
@@ -145,13 +137,14 @@ export default function HomeScreen() {
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [semanticResults, setSemanticResults] = useState<MemoryItem[] | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [editMemory, setEditMemory] = useState<MemoryItem | null>(null);
   const [isOverviewOpen, setIsOverviewOpen] = useState(false);
   const [showFullFeed, setShowFullFeed] = useState(false);
+  const [upcomingRange, setUpcomingRange] = useState<"week" | "month" | "year" | "all">("week");
   const requestIdRef = useRef(0);
 
   const querySnapshot = useMemo(
@@ -161,8 +154,26 @@ export default function HomeScreen() {
     }),
     []
   );
+  const trimmedSearchQuery = deferredSearchQuery.trim().toLowerCase();
+  const searchMode = searchQuery.trim().length > 0;
 
   const memoryResult = useQuery(api.memories.list, token ? { token, limit: pageSize } : "skip");
+  const topicList = useQuery(api.userTopics.list, token ? { token } : "skip") ?? [];
+  const activeTopicSummaries =
+    useQuery(api.userTopics.activeSummaries, token ? { token } : "skip") ?? [];
+  const selectedTopicMemories = useQuery(
+    api.memories.listByTopic,
+    token && selectedTopic && !searchMode
+      ? { token, topicId: selectedTopic as Id<"userTopics">, limit: pageSize }
+      : "skip"
+  );
+  const topicById = useMemo(() => {
+    const map: Record<string, { name: string; color?: string | null; icon?: string | null }> = {};
+    for (const t of topicList) {
+      map[t._id] = { name: t.name, color: t.color, icon: t.icon };
+    }
+    return map;
+  }, [topicList]);
   const allMemories = (memoryResult?.memories ?? []) as MemoryItem[];
   const canLoadMore = memoryResult ? !memoryResult.isDone : false;
 
@@ -170,7 +181,7 @@ export default function HomeScreen() {
   const reminderMemories =
     useQuery(api.memories.reminders, token ? { token, asOf: querySnapshot.nowIso } : "skip") ?? [];
   const upcomingReminders =
-    useQuery(api.memories.upcomingReminders, token ? { token, asOf: querySnapshot.nowIso } : "skip") ?? [];
+    useQuery(api.memories.upcomingReminders, token ? { token, asOf: querySnapshot.nowIso, range: upcomingRange } : "skip") ?? [];
   const stats =
     useQuery(api.memories.stats, token ? { token, asOf: querySnapshot.nowMs } : "skip") ?? null;
 
@@ -183,9 +194,6 @@ export default function HomeScreen() {
   const isEditMemoryOpen = useUIStore((state) => state.isEditMemoryOpen);
   const openEditMemory = useUIStore((state) => state.openEditMemory);
   const closeEditMemory = useUIStore((state) => state.closeEditMemory);
-
-  const trimmedSearchQuery = deferredSearchQuery.trim().toLowerCase();
-  const searchMode = searchQuery.trim().length > 0;
 
   useEffect(() => {
     if (!trimmedSearchQuery || trimmedSearchQuery.length < 3 || !token) {
@@ -227,6 +235,15 @@ export default function HomeScreen() {
       setShowFullFeed(false);
     }
   }, [searchMode]);
+
+  useEffect(() => {
+    if (
+      selectedTopic &&
+      !activeTopicSummaries.some((topic) => topic._id === selectedTopic)
+    ) {
+      setSelectedTopic(null);
+    }
+  }, [activeTopicSummaries, selectedTopic]);
 
   const handleLoadMore = useCallback(() => {
     if (!canLoadMore || isLoadingMore) return;
@@ -298,9 +315,10 @@ export default function HomeScreen() {
 
   const filteredMemories = useMemo(() => {
     if (!searchMode) {
-      return selectedCategory
-        ? allMemories.filter((memory) => memory.category === selectedCategory)
-        : allMemories;
+      if (selectedTopic) {
+        return (selectedTopicMemories ?? []) as MemoryItem[];
+      }
+      return allMemories;
     }
 
     const merged = new Map<Id<"memories">, MemoryItem>();
@@ -314,12 +332,23 @@ export default function HomeScreen() {
     }
 
     const searchPool = Array.from(merged.values());
-    const byCategory = selectedCategory
-      ? searchPool.filter((memory) => memory.category === selectedCategory)
+    const byTopic = selectedTopic
+      ? searchPool.filter(
+          (memory) =>
+            memory.primaryTopicId === selectedTopic ||
+            (memory.topicIds ?? []).includes(selectedTopic)
+        )
       : searchPool;
 
-    return [...byCategory].sort((a, b) => b._creationTime - a._creationTime);
-  }, [allMemories, exactMatches, searchMode, selectedCategory, semanticResults]);
+    return [...byTopic].sort((a, b) => b._creationTime - a._creationTime);
+  }, [
+    allMemories,
+    exactMatches,
+    searchMode,
+    selectedTopic,
+    semanticResults,
+    selectedTopicMemories,
+  ]);
 
   const transformedMemories = useMemo(
     () => filteredMemories.map((memory) => ({ raw: memory, note: toMemoryNote(memory) })),
@@ -330,10 +359,6 @@ export default function HomeScreen() {
     () => reminderMemories.filter((memory) => !!memory.reminderDate).slice(0, 2),
     [reminderMemories]
   );
-  const weekReminders = useMemo(
-    () => upcomingReminders.filter((memory) => !!memory.reminderDate).slice(0, 4),
-    [upcomingReminders]
-  );
   const visibleFeed = useMemo(
     () =>
       searchMode || showFullFeed
@@ -343,12 +368,11 @@ export default function HomeScreen() {
   );
 
   const firstName = user?.name?.split(" ")[0] || "there";
-  const isLoading = !memoryResult;
+  const isLoading = !memoryResult || (!!selectedTopic && !searchMode && selectedTopicMemories === undefined);
   const totalMemories = stats?.totalMemories ?? 0;
   const totalReminders = stats?.totalReminders ?? 0;
-  const totalCategories = stats?.categories ?? 0;
+  const totalCategories = activeTopicSummaries.length;
   const recentActivity = stats?.recentCount ?? 0;
-  const streakDays = stats?.streakDays ?? 0;
   const hiddenFeedCount = Math.max(transformedMemories.length - INITIAL_FEED_SIZE, 0);
   const exactCount = exactMatches.length;
   const relatedCount = Math.max(filteredMemories.length - exactCount, 0);
@@ -403,17 +427,61 @@ export default function HomeScreen() {
               value={searchQuery}
               onChangeText={setSearchQuery}
               isSearching={isSearching}
-              placeholder="Search memories, tags, people, places..."
+              placeholder="Search memories, people, places..."
             />
-            <CategoryPills
-              selected={selectedCategory}
-              onSelect={setSelectedCategory}
-              categoryCounts={stats?.categoryCounts ?? {}}
+            <TopicPills
+              selected={selectedTopic}
+              onSelect={setSelectedTopic}
+              topics={
+                activeTopicSummaries as Array<{
+                  _id: string;
+                  name: string;
+                  icon?: string | null;
+                  color?: string | null;
+                  memoryCount: number;
+                }>
+              }
             />
             {searchMode && relatedCount > 0 ? (
               <Text fontSize={12} color="$colorMuted">
                 Exact matches are shown first, then related semantic results.
               </Text>
+            ) : null}
+
+            {!searchMode ? (
+              <PressableScale onPress={() => setIsOverviewOpen(true)}>
+                <XStack
+                  alignItems="center"
+                  justifyContent="space-between"
+                  gap={12}
+                  paddingTop={14}
+                  borderTopWidth={1}
+                  borderTopColor={theme.borderColor.val}
+                >
+                  <YStack flex={1} gap={4}>
+                    <Text fontSize={13} fontWeight="700" color="$color">
+                      {upcomingReminders.length > 0
+                        ? `${upcomingReminders.length} coming up`
+                        : "Nothing scheduled soon"}
+                    </Text>
+                    <Text fontSize={12} lineHeight={18} color="$colorMuted" numberOfLines={2}>
+                      {topReminders.length > 0
+                        ? `${topReminders.length} due now`
+                        : "No immediate follow-ups"}
+                      {" · "}
+                      {upcomingReminders.length > 0
+                        ? `Next: ${upcomingReminders[0].title || "Untitled memory"}`
+                        : `Recent activity: ${recentActivity} this week`}
+                    </Text>
+                  </YStack>
+                  <XStack alignItems="center" gap={6}>
+                    <Text fontSize={12} fontWeight="700" color="$primary">
+                      Overview
+                    </Text>
+                    <Feather name="chevron-right" size={14} color={theme.primary.val} />
+                  </XStack>
+                </XStack>
+              </PressableScale>
             ) : null}
           </SectionCard>
         </Animated.View>
@@ -503,33 +571,52 @@ export default function HomeScreen() {
             ) : transformedMemories.length === 0 ? (
               <EmptyState
                 icon="layers"
-                title={searchMode ? "No matches" : "No memories yet"}
+                title={
+                  searchMode
+                    ? "No matches"
+                    : selectedTopic
+                      ? "No memories for this topic"
+                      : "No memories yet"
+                }
                 description={
                   searchMode
-                    ? "Try another phrase or clear the category filter."
-                    : "Capture your first memory to start the stream."
+                    ? "Try another phrase or clear the topic filter."
+                    : selectedTopic
+                      ? "This topic no longer has any matching memories."
+                      : "Capture your first memory to start the stream."
                 }
               />
             ) : (
               <YStack gap={12}>
-                {visibleFeed.map(({ raw, note }, index) => (
-                  <MemoryCard
-                    key={raw._id}
-                    memory={note}
-                    index={index}
-                    onPress={() => {
-                      setEditMemory(raw);
-                      openEditMemory();
-                    }}
-                    onDelete={() => handleDelete(raw._id)}
-                    onShare={() => handleShare(raw._id)}
-                    onAddToReview={() => token && addToReview({ token, memoryId: raw._id })}
-                  />
-                ))}
+                {visibleFeed.map(({ raw, note }, index) => {
+                  const primaryTopic = note.primaryTopicId ? topicById[note.primaryTopicId] : undefined;
+                  const secondaryTopics = (note.topicIds ?? [])
+                    .filter((id) => id !== note.primaryTopicId && topicById[id])
+                    .map((id) => topicById[id]);
+                  const resolvedTopics = [
+                    ...(primaryTopic ? [primaryTopic] : []),
+                    ...secondaryTopics,
+                  ];
+                  return (
+                    <MemoryCard
+                      key={raw._id}
+                      memory={note}
+                      index={index}
+                      resolvedTopics={resolvedTopics.length > 0 ? resolvedTopics : undefined}
+                      onPress={() => {
+                        setEditMemory(raw);
+                        openEditMemory();
+                      }}
+                      onDelete={() => handleDelete(raw._id)}
+                      onShare={() => handleShare(raw._id)}
+                      onAddToReview={() => token && addToReview({ token, memoryId: raw._id })}
+                    />
+                  );
+                })}
               </YStack>
             )}
 
-            {canLoadMore && !searchMode ? (
+            {canLoadMore && !searchMode && !selectedTopic ? (
               <PressableScale onPress={handleLoadMore} style={{ alignSelf: "center" }}>
                 <XStack
                   alignItems="center"
@@ -555,79 +642,9 @@ export default function HomeScreen() {
               </PressableScale>
             ) : null}
 
-            {!searchMode ? (
-              <PressableScale onPress={() => setIsOverviewOpen(true)}>
-                <XStack
-                  alignItems="center"
-                  justifyContent="space-between"
-                  gap={12}
-                  paddingTop={14}
-                  borderTopWidth={1}
-                  borderTopColor={theme.borderColor.val}
-                >
-                  <YStack flex={1} gap={4}>
-                    <Text fontSize={13} fontWeight="700" color="$color">
-                      {weekReminders.length > 0
-                        ? `${weekReminders.length} coming up`
-                        : "Nothing scheduled soon"}
-                    </Text>
-                    <Text fontSize={12} lineHeight={18} color="$colorMuted" numberOfLines={2}>
-                      {topReminders.length > 0
-                        ? `${topReminders.length} due now`
-                        : "No immediate follow-ups"}
-                      {" · "}
-                      {weekReminders.length > 0
-                        ? `Next: ${weekReminders[0].title || "Untitled memory"}`
-                        : `Recent activity: ${recentActivity} this week`}
-                    </Text>
-                  </YStack>
-                  <XStack alignItems="center" gap={6}>
-                    <Text fontSize={12} fontWeight="700" color="$primary">
-                      Overview
-                    </Text>
-                    <Feather name="chevron-right" size={14} color={theme.primary.val} />
-                  </XStack>
-                </XStack>
-              </PressableScale>
-            ) : null}
           </SectionCard>
         </Animated.View>
       </AppScreen>
-
-      {!searchMode ? (
-        <YStack position="absolute" left={0} top="32%" zIndex={20}>
-          <PressableScale onPress={() => setIsOverviewOpen(true)}>
-            <YStack
-              paddingVertical={14}
-              paddingHorizontal={10}
-              borderTopRightRadius={18}
-              borderBottomRightRadius={18}
-              backgroundColor="$card"
-              borderWidth={1}
-              borderLeftWidth={0}
-              borderColor="$borderColor"
-              gap={8}
-              alignItems="center"
-              justifyContent="center"
-              shadowColor="$shadowColor"
-              shadowOffset={{ width: 0, height: 8 }}
-              shadowOpacity={0.08}
-              shadowRadius={20}
-            >
-              <Feather name="sidebar" size={16} color={theme.colorMuted.val} />
-              <Text
-                fontSize={10}
-                color="$colorMuted"
-                letterSpacing={1}
-                textTransform="uppercase"
-                style={{ transform: [{ rotate: "-90deg" }] }}
-              >
-                View
-              </Text>
-            </YStack>
-          </PressableScale>
-        </YStack>
-      ) : null}
 
       <BaseSheet
         open={isOverviewOpen}
@@ -665,14 +682,27 @@ export default function HomeScreen() {
               <MetricTile value={totalCategories} label="Categories" />
             </XStack>
 
-            <XStack gap={10}>
-              <MetricTile value={recentActivity} label="This week" />
-              <MetricTile value={streakDays} label="Streak" />
-              <MetricTile value={weekReminders.length} label="Coming up" />
-            </XStack>
-
-            {topReminders.length > 0 ? (
-              <SectionCard title="Due now">
+            <SectionCard
+              title="Due now"
+              action={
+                topReminders.length > 0 ? (
+                  <YStack
+                    minWidth={24}
+                    height={24}
+                    borderRadius={999}
+                    paddingHorizontal={8}
+                    alignItems="center"
+                    justifyContent="center"
+                    backgroundColor={theme.warning.val + "22"}
+                  >
+                    <Text fontSize={12} fontWeight="700" color={theme.warning.val}>
+                      {topReminders.length}
+                    </Text>
+                  </YStack>
+                ) : null
+              }
+            >
+              {topReminders.length > 0 ? (
                 <YStack gap={10}>
                   {topReminders.map((memory) => (
                     <XStack key={memory._id} alignItems="center" justifyContent="space-between" gap={12}>
@@ -690,28 +720,66 @@ export default function HomeScreen() {
                         </Text>
                       </YStack>
                       <Badge
-                        label={categoryLabels[memory.category as keyof typeof categoryLabels] ?? "Other"}
+                        label="reminder"
                         color={theme.warning.val}
                         small
                       />
                     </XStack>
                   ))}
                 </YStack>
-              </SectionCard>
-            ) : null}
-
-            {topReminders.length === 0 ? (
-              <SectionCard title="Due now">
+              ) : (
                 <Text fontSize={13} lineHeight={20} color="$colorMuted">
                   Nothing needs attention immediately.
                 </Text>
-              </SectionCard>
-            ) : null}
+              )}
+            </SectionCard>
 
-            {weekReminders.length > 0 ? (
-              <SectionCard title="Upcoming">
+            <SectionCard
+              title="Upcoming"
+              action={
+                upcomingReminders.length > 0 ? (
+                  <YStack
+                    minWidth={24}
+                    height={24}
+                    borderRadius={999}
+                    paddingHorizontal={8}
+                    alignItems="center"
+                    justifyContent="center"
+                    backgroundColor={theme.primary.val + "22"}
+                  >
+                    <Text fontSize={12} fontWeight="700" color="$primary">
+                      {upcomingReminders.length}
+                    </Text>
+                  </YStack>
+                ) : null
+              }
+            >
+              <XStack gap={6} flexWrap="wrap">
+                {(["week", "month", "year", "all"] as const).map((r) => (
+                  <PressableScale key={r} onPress={() => setUpcomingRange(r)}>
+                    <YStack
+                      paddingHorizontal={12}
+                      paddingVertical={6}
+                      borderRadius={999}
+                      backgroundColor={upcomingRange === r ? theme.primary.val + "22" : "$secondary"}
+                      borderWidth={1}
+                      borderColor={upcomingRange === r ? theme.primary.val : "$borderColor"}
+                    >
+                      <Text
+                        fontSize={12}
+                        fontWeight="700"
+                        color={upcomingRange === r ? "$primary" : "$colorMuted"}
+                        textTransform="capitalize"
+                      >
+                        {r}
+                      </Text>
+                    </YStack>
+                  </PressableScale>
+                ))}
+              </XStack>
+              {upcomingReminders.length > 0 ? (
                 <YStack gap={10}>
-                  {weekReminders.map((memory) => (
+                  {upcomingReminders.map((memory) => (
                     <XStack key={memory._id} alignItems="center" justifyContent="space-between" gap={12}>
                       <YStack flex={1} gap={2}>
                         <Text fontSize={14} fontWeight="700" color="$color" numberOfLines={1}>
@@ -728,23 +796,19 @@ export default function HomeScreen() {
                         </Text>
                       </YStack>
                       <Badge
-                        label={categoryLabels[memory.category as keyof typeof categoryLabels] ?? "Other"}
+                        label="upcoming"
                         color={theme.primary.val}
                         small
                       />
                     </XStack>
                   ))}
                 </YStack>
-              </SectionCard>
-            ) : null}
-
-            {weekReminders.length === 0 ? (
-              <SectionCard title="Upcoming">
+              ) : (
                 <Text fontSize={13} lineHeight={20} color="$colorMuted">
-                  No scheduled reminders in the next 7 days.
+                  No reminders in this range.
                 </Text>
-              </SectionCard>
-            ) : null}
+              )}
+            </SectionCard>
 
             {flashbacks.length > 0 ? (
               <SectionCard title="On this day">

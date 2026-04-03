@@ -1,7 +1,31 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { resolveUser } from "./lib/withAuth";
+
+function normalizeTopicSlug(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/['’]s\b/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .split("-")
+    .filter(Boolean)
+    .map((segment) => {
+      if (segment.length > 3 && segment.endsWith("ies")) {
+        return `${segment.slice(0, -3)}y`;
+      }
+      if (
+        segment.length > 3 &&
+        segment.endsWith("s") &&
+        !segment.endsWith("ss")
+      ) {
+        return segment.slice(0, -1);
+      }
+      return segment;
+    })
+    .join("-");
+}
 
 // ─── Public queries ───────────────────────────────────────────────────────────
 
@@ -9,11 +33,72 @@ export const list = query({
   args: { token: v.string() },
   handler: async (ctx, args) => {
     const { userId } = await resolveUser(ctx, args.token);
-    return ctx.db
+    const topics = await ctx.db
       .query("userTopics")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .filter((q) => q.eq(q.field("isArchived"), false))
+      .withIndex("by_user_and_isArchived", (q) =>
+        q.eq("userId", userId).eq("isArchived", false)
+      )
       .collect();
+    const activeTopics = await Promise.all(
+      topics.map(async (topic) => {
+        const hasLink = await ctx.db
+          .query("memoryTopicLinks")
+          .withIndex("by_user_and_topic", (q) =>
+            q.eq("userId", userId).eq("topicId", topic._id)
+          )
+          .take(1);
+        return hasLink.length > 0 ? topic : null;
+      })
+    );
+    return activeTopics.filter(
+      (topic): topic is NonNullable<(typeof activeTopics)[number]> => topic !== null
+    );
+  },
+});
+
+export const activeSummaries = query({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const { userId } = await resolveUser(ctx, args.token);
+    const hasAnyMemory = await ctx.db
+      .query("memories")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .take(1);
+    if (hasAnyMemory.length === 0) {
+      return [];
+    }
+
+    const topics = await ctx.db
+      .query("userTopics")
+      .withIndex("by_user_and_isArchived", (q) =>
+        q.eq("userId", userId).eq("isArchived", false)
+      )
+      .collect();
+    const activeTopics = await Promise.all(
+      topics.map(async (topic) => {
+        if (topic.memoryCount <= 0) return null;
+        const hasLink = await ctx.db
+          .query("memoryTopicLinks")
+          .withIndex("by_user_and_topic", (q) =>
+            q.eq("userId", userId).eq("topicId", topic._id)
+          )
+          .take(1);
+        return hasLink.length > 0 ? topic : null;
+      })
+    );
+
+    return activeTopics
+      .filter(
+        (topic): topic is NonNullable<(typeof activeTopics)[number]> => topic !== null
+      )
+      .map((topic) => ({
+        _id: topic._id,
+        name: topic.name,
+        icon: topic.icon,
+        color: topic.color,
+        memoryCount: topic.memoryCount,
+      }))
+      .sort((a, b) => b.memoryCount - a.memoryCount);
   },
 });
 
@@ -34,8 +119,9 @@ export const listWithCentroids = internalQuery({
   handler: async (ctx, args) => {
     return ctx.db
       .query("userTopics")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .filter((q) => q.eq(q.field("isArchived"), false))
+      .withIndex("by_user_and_isArchived", (q) =>
+        q.eq("userId", args.userId).eq("isArchived", false)
+      )
       .collect();
   },
 });
@@ -57,8 +143,9 @@ export const countActiveTopics = internalQuery({
   handler: async (ctx, args) => {
     const topics = await ctx.db
       .query("userTopics")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .filter((q) => q.eq(q.field("isArchived"), false))
+      .withIndex("by_user_and_isArchived", (q) =>
+        q.eq("userId", args.userId).eq("isArchived", false)
+      )
       .collect();
     return topics.length;
   },
@@ -75,15 +162,45 @@ export const createTopic = internalMutation({
     icon: v.string(),
     color: v.string(),
     centroid: v.array(v.float64()),
+    incrementExistingCount: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const existing = await ctx.db
+    const normalizedSlug = normalizeTopicSlug(args.slug || args.name);
+    const activeTopics = await ctx.db
+      .query("userTopics")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+    const normalizedMatch = activeTopics.find(
+      (topic) =>
+        !topic.isArchived &&
+        (normalizeTopicSlug(topic.slug) === normalizedSlug ||
+          normalizeTopicSlug(topic.name) === normalizedSlug)
+    );
+
+    if (normalizedMatch) {
+      if (args.incrementExistingCount !== false) {
+        const nextCount = normalizedMatch.memoryCount + 1;
+        const nextCentroid = normalizedMatch.centroid.map(
+          (value, index) =>
+            (value * normalizedMatch.memoryCount + args.centroid[index]) /
+            nextCount
+        );
+        await ctx.db.patch(normalizedMatch._id, {
+          centroid: nextCentroid,
+          memoryCount: nextCount,
+          updatedAt: Date.now(),
+        });
+      }
+      return normalizedMatch._id;
+    }
+
+    const exactSlugMatch = await ctx.db
       .query("userTopics")
       .withIndex("by_user_slug", (q) =>
-        q.eq("userId", args.userId).eq("slug", args.slug)
+        q.eq("userId", args.userId).eq("slug", normalizedSlug)
       )
       .first();
-    const slug = existing ? `${args.slug}-${Date.now()}` : args.slug;
+    const slug = exactSlugMatch ? `${normalizedSlug}-${Date.now()}` : normalizedSlug;
 
     return ctx.db.insert("userTopics", {
       userId: args.userId,
@@ -159,6 +276,130 @@ export const updateRelations = internalMutation({
   },
 });
 
+export const decrementOrArchiveTopics = internalMutation({
+  args: {
+    topicIds: v.array(v.id("userTopics")),
+  },
+  handler: async (ctx, args) => {
+    const uniqueTopicIds = Array.from(new Set(args.topicIds));
+
+    for (const topicId of uniqueTopicIds) {
+      const topic = await ctx.db.get(topicId);
+      if (!topic || topic.isArchived) continue;
+
+      const nextCount = Math.max(0, topic.memoryCount - 1);
+      if (nextCount > 0) {
+        await ctx.db.patch(topicId, {
+          memoryCount: nextCount,
+          updatedAt: Date.now(),
+        });
+        continue;
+      }
+
+      await ctx.db.patch(topicId, {
+        memoryCount: 0,
+        isArchived: true,
+        relatedTopics: [],
+        parentTopicId: undefined,
+        updatedAt: Date.now(),
+      });
+
+      const siblingTopics = await ctx.db
+        .query("userTopics")
+        .withIndex("by_user", (q) => q.eq("userId", topic.userId))
+        .collect();
+
+      for (const sibling of siblingTopics) {
+        if (sibling._id === topicId) continue;
+        const filteredRelations = sibling.relatedTopics.filter(
+          (relation) => relation.topicId !== topicId
+        );
+        const shouldClearParent = sibling.parentTopicId === topicId;
+        if (
+          filteredRelations.length !== sibling.relatedTopics.length ||
+          shouldClearParent
+        ) {
+          await ctx.db.patch(sibling._id, {
+            relatedTopics: filteredRelations,
+            ...(shouldClearParent ? { parentTopicId: undefined } : {}),
+            updatedAt: Date.now(),
+          });
+        }
+      }
+    }
+  },
+});
+
+export const reconcileTopicUsage = internalMutation({
+  args: {
+    userId: v.id("users"),
+    usage: v.array(
+      v.object({
+        topicId: v.id("userTopics"),
+        memoryCount: v.number(),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const usageByTopic = new Map(
+      args.usage.map((entry) => [entry.topicId, entry.memoryCount] as const)
+    );
+    const topics = await ctx.db
+      .query("userTopics")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+
+    const archivedTopicIds = new Set<Id<"userTopics">>();
+
+    for (const topic of topics) {
+      const nextCount = usageByTopic.get(topic._id) ?? 0;
+      const nextArchived = nextCount === 0;
+      if (
+        topic.memoryCount === nextCount &&
+        topic.isArchived === nextArchived &&
+        !(nextArchived && topic.relatedTopics.length > 0)
+      ) {
+        continue;
+      }
+
+      await ctx.db.patch(topic._id, {
+        memoryCount: nextCount,
+        isArchived: nextArchived,
+        relatedTopics: nextArchived ? [] : topic.relatedTopics,
+        ...(nextArchived ? { parentTopicId: undefined } : {}),
+        updatedAt: Date.now(),
+      });
+
+      if (nextArchived) {
+        archivedTopicIds.add(topic._id);
+      }
+    }
+
+    if (archivedTopicIds.size === 0) {
+      return;
+    }
+
+    for (const topic of topics) {
+      if (archivedTopicIds.has(topic._id)) continue;
+      const filteredRelations = topic.relatedTopics.filter(
+        (relation) => !archivedTopicIds.has(relation.topicId)
+      );
+      const shouldClearParent =
+        !!topic.parentTopicId && archivedTopicIds.has(topic.parentTopicId);
+      if (
+        filteredRelations.length !== topic.relatedTopics.length ||
+        shouldClearParent
+      ) {
+        await ctx.db.patch(topic._id, {
+          relatedTopics: filteredRelations,
+          ...(shouldClearParent ? { parentTopicId: undefined } : {}),
+          updatedAt: Date.now(),
+        });
+      }
+    }
+  },
+});
+
 export const mergeTopic = internalMutation({
   args: { keepId: v.id("userTopics"), mergeId: v.id("userTopics") },
   handler: async (ctx, args) => {
@@ -186,6 +427,9 @@ export const mergeTopic = internalMutation({
       await ctx.db.patch(m._id, {
         ...(isPrimary ? { primaryTopicId: args.keepId } : {}),
         topicIds: newTopicIds,
+      });
+      await ctx.runMutation(internal.memories.syncTopicLinksForMemory, {
+        memoryId: m._id,
       });
     }
 

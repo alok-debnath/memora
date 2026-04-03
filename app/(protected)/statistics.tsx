@@ -15,8 +15,7 @@ import { Card } from "@/components/ui/Card";
 import { SectionLabel } from "@/components/ui/SectionLabel";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { Badge } from "@/components/ui/Badge";
-import { categoryColors } from "@/constants/colors";
-import { categoryLabels, moodLabels } from "@/constants/categories";
+import { moodLabels } from "@/constants/categories";
 
 export default function StatisticsScreen() {
   const theme = useAppTheme();
@@ -27,7 +26,6 @@ export default function StatisticsScreen() {
   const memories = (memoryResult?.memories ?? []) as Array<{
     _id: Id<"memories">;
     _creationTime: number;
-    category: string;
     content: string;
     mood?: string;
   }>;
@@ -35,6 +33,7 @@ export default function StatisticsScreen() {
     _id: Id<"diaryEntries">;
   }>;
   const stats = useQuery(api.memories.stats, token ? { token } : "skip");
+  const topics = useQuery(api.userTopics.list, token ? { token } : "skip") ?? [];
 
   const webTopPadding = Platform.OS === "web" ? 67 : 0;
 
@@ -53,15 +52,6 @@ export default function StatisticsScreen() {
   const barGap = 12;
   const chartHeight = 120;
   const chartWidth = (barWidth + barGap) * 7;
-
-  const categoryCounts = useMemo<[string, number][]>(() => {
-    return Object.entries(
-      memories.reduce<Record<string, number>>((acc, m) => {
-        acc[m.category] = (acc[m.category] || 0) + 1;
-        return acc;
-      }, {})
-    ).sort((a, b) => (b[1] as number) - (a[1] as number)) as [string, number][];
-  }, [memories]);
 
   const totalWords = useMemo(
     () => memories.reduce((acc, m) => acc + (m.content || "").split(/\s+/).length, 0),
@@ -102,7 +92,7 @@ export default function StatisticsScreen() {
 
   const statCards = [
     { label: "Total memories", value: stats?.totalMemories ?? memories.length, icon: "layers" as const, color: "#3B82F6" },
-    { label: "Categories", value: stats?.categories ?? 0, icon: "zap" as const, color: "#F59E0B" },
+    { label: "Topics", value: topics.length, icon: "zap" as const, color: "#F59E0B" },
     { label: "Words written", value: totalWords, icon: "edit-3" as const, color: "#10B981" },
     { label: "Diary entries", value: diaryEntries.length, icon: "book" as const, color: "#8B5CF6" },
   ];
@@ -225,30 +215,35 @@ export default function StatisticsScreen() {
         </Animated.View>
 
         <Animated.View entering={FadeInUp.delay(280).duration(400)}>
-          <SectionLabel>Category breakdown</SectionLabel>
+          <SectionLabel>Topic breakdown</SectionLabel>
           <Card>
-            {categoryCounts.length === 0 ? (
+            {topics.length === 0 ? (
               <Text fontSize={14} fontFamily="$body" textAlign="center" paddingVertical={16} color="$colorMuted">
-                No data yet
+                No topics yet — memories are being analyzed
               </Text>
             ) : (
-              categoryCounts.map(([cat, count]) => {
-                const pct = (count / memories.length) * 100;
-                return (
-                  <XStack key={cat} alignItems="center" gap={10} paddingVertical={6}>
-                    <YStack width={10} height={10} borderRadius={5} backgroundColor={categoryColors[cat] || theme.primary.val} />
-                    <Text fontSize={13} fontFamily="$body" fontWeight="500" width={70} color="$color">
-                      {categoryLabels[cat as keyof typeof categoryLabels] || cat}
-                    </Text>
-                    <YStack flex={1} height={8} borderRadius={4} backgroundColor="$borderColor" overflow="hidden">
-                      <YStack height="100%" borderRadius={4} width={`${pct}%`} backgroundColor={categoryColors[cat] || theme.primary.val} />
-                    </YStack>
-                    <Text fontSize={12} fontFamily="$body" fontWeight="500" width={24} textAlign="right" color="$colorMuted">
-                      {count}
-                    </Text>
-                  </XStack>
-                );
-              })
+              (topics as Array<{ _id: string; name: string; color?: string | null; memoryCount: number }>)
+                .slice()
+                .sort((a, b) => b.memoryCount - a.memoryCount)
+                .map((topic) => {
+                  const total = Math.max(memories.length, 1);
+                  const pct = (topic.memoryCount / total) * 100;
+                  const color = topic.color || theme.primary.val;
+                  return (
+                    <XStack key={topic._id} alignItems="center" gap={10} paddingVertical={6}>
+                      <YStack width={10} height={10} borderRadius={5} backgroundColor={color} />
+                      <Text fontSize={13} fontFamily="$body" fontWeight="500" flex={1} numberOfLines={1} color="$color">
+                        {topic.name}
+                      </Text>
+                      <YStack width={80} height={8} borderRadius={4} backgroundColor="$borderColor" overflow="hidden">
+                        <YStack height="100%" borderRadius={4} width={`${pct}%`} backgroundColor={color} />
+                      </YStack>
+                      <Text fontSize={12} fontFamily="$body" fontWeight="500" width={24} textAlign="right" color="$colorMuted">
+                        {topic.memoryCount}
+                      </Text>
+                    </XStack>
+                  );
+                })
             )}
           </Card>
         </Animated.View>

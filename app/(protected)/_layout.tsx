@@ -1,4 +1,4 @@
-import { Redirect, Slot } from "expo-router";
+import { Redirect, Stack } from "expo-router";
 import { ActivityIndicator } from "react-native";
 import { YStack, useTheme } from "tamagui";
 
@@ -25,5 +25,5 @@ export default function ProtectedLayout() {
     return <Redirect href="/(public)/(auth)/login" />;
   }
 
-  return <Slot />;
+  return <Stack screenOptions={{ headerShown: false }} />;
 }
