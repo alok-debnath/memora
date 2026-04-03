@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { internalMutation } from "./_generated/server";
+import { toStoredMemoryFields } from "./lib/memoryKind";
 
 export const updateExtractionStatus = internalMutation({
   args: {
@@ -47,10 +48,19 @@ export const completeExtraction = internalMutation({
 export const setMemoryReminder = internalMutation({
   args: {
     memoryId: v.id("memories"),
-    reminderDate: v.string(),
+    dueAt: v.string(),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.memoryId, { reminderDate: args.reminderDate });
+    await ctx.db.patch(
+      args.memoryId,
+      toStoredMemoryFields({
+        entryKind: "reminder",
+        schedule: {
+          dueAt: args.dueAt,
+          isRecurring: false,
+        },
+      })
+    );
   },
 });
 
@@ -74,7 +84,8 @@ export const createExtractedMemory = internalMutation({
       importance: args.importance as "critical" | "high" | "normal" | "low",
       embedding: args.embedding,
       linkedUrls: [],
-      isRecurring: false,
+      entryKind: "memory" as const,
+      isDeleted: false,
     });
   },
 });

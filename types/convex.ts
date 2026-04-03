@@ -4,6 +4,12 @@ export interface ConvexMemory {
   userId: string;
   title: string;
   content: string;
+  entryKind?: "memory" | "reminder";
+  schedule?: {
+    dueAt: string;
+    isRecurring: boolean;
+    recurrenceType?: "daily" | "weekly" | "monthly" | "yearly";
+  };
   category: "personal" | "work" | "finance" | "health" | "other";
   mood?: string;
   tags: string[];
@@ -14,13 +20,12 @@ export interface ConvexMemory {
   sentimentScore?: number;
   linkedUrls: string[];
   extractedActions?: Array<{ action: string; completed: boolean }>;
-  reminderDate?: string;
-  isRecurring: boolean;
-  recurrenceType?: string;
   capsuleUnlockDate?: string;
   embedding?: number[];
   shareToken?: string;
   isPublic?: boolean;
+  isDeleted: boolean;
+  deletedAt?: number;
 }
 
 export interface ConvexDiaryEntry {

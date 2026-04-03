@@ -1,0 +1,489 @@
+import React from "react";
+import {
+  type LayoutChangeEvent,
+  Platform,
+  type ScrollViewProps,
+  type StyleProp,
+  StyleSheet,
+  type ViewStyle,
+  View,
+} from "react-native";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
+import { Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import Animated, {
+  Extrapolation,
+  FadeIn,
+  interpolate,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+} from "react-native-reanimated";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Text, XStack, YStack } from "tamagui";
+
+import { useAppTheme } from "@/hooks/useAppTheme";
+import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
+import { PressableScale } from "@/components/ui/PressableScale";
+import { useThemeStore } from "@/store/theme";
+
+const HEADER_HEIGHT = 48;
+const HEADER_TOP_MARGIN = 8;
+const CONTENT_TOP_GAP = 30;
+const TITLE_PILL_MAX_WIDTH = 240;
+const HEADER_COLLAPSE_RANGE = 180;
+
+function GlassPill({
+  children,
+  style,
+  onLayout,
+}: {
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+  onLayout?: (event: LayoutChangeEvent) => void;
+}) {
+  const theme = useAppTheme();
+  const resolvedMode = useThemeStore((state) => state.resolvedMode);
+  const isDark = resolvedMode === "dark";
+  const flattened = StyleSheet.flatten(style) ?? {};
+  const borderRadius =
+    typeof flattened.borderRadius === "number" ? flattened.borderRadius : 999;
+
+  const glassColor = isDark
+    ? "rgba(34,25,19,0.94)"
+    : "rgba(255,250,244,0.92)";
+  const overlayColor = isDark
+    ? "rgba(17,12,8,0.42)"
+    : "rgba(255,244,232,0.44)";
+  const borderColor = isDark
+    ? theme.borderColor.val + "80"
+    : "rgba(120,83,27,0.18)";
+  const sheenStart = isDark
+    ? "rgba(255,255,255,0.06)"
+    : "rgba(255,255,255,0.78)";
+  const sheenEnd = isDark
+    ? "rgba(255,255,255,0.01)"
+    : "rgba(255,255,255,0.12)";
+
+  return (
+    <View
+      onLayout={onLayout}
+      style={[
+        styles.glassShellBase,
+        Platform.OS === "web" ? styles.glassShellWeb : styles.glassShellNative,
+        { borderRadius, shadowColor: theme.shadowColor.val },
+        flattened,
+      ]}
+    >
+      {Platform.OS === "web" ? (
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            styles.glassBackdrop,
+            {
+              backgroundColor: glassColor,
+              // @ts-ignore web-only style
+              backdropFilter: "blur(28px)",
+            },
+          ]}
+        />
+      ) : Platform.OS === "ios" ? (
+        <>
+          <BlurView
+            pointerEvents="none"
+            style={StyleSheet.absoluteFill}
+            intensity={82}
+            tint={isDark ? "dark" : "light"}
+          />
+          <View
+            pointerEvents="none"
+            style={[
+              StyleSheet.absoluteFill,
+              styles.glassBackdrop,
+              { backgroundColor: overlayColor },
+            ]}
+          />
+        </>
+      ) : (
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            styles.glassBackdrop,
+            {
+              backgroundColor: isDark
+                ? "rgba(27,22,18,0.96)"
+                : "rgba(255,250,245,0.96)",
+            },
+          ]}
+        />
+      )}
+
+      <LinearGradient
+        pointerEvents="none"
+        colors={[sheenStart, sheenEnd]}
+        start={{ x: 0.12, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[StyleSheet.absoluteFill, styles.glassSheen]}
+      />
+      {Platform.OS !== "web" ? (
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            styles.glassRim,
+            { borderRadius },
+          ]}
+        />
+      ) : null}
+      <View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFill,
+          styles.glassBorder,
+          { borderRadius, borderColor },
+        ]}
+      />
+      <View style={styles.glassContent}>{children}</View>
+    </View>
+  );
+}
+
+type MorePageScaffoldProps = {
+  title: string;
+  children: React.ReactNode;
+  scrollProps?: Omit<ScrollViewProps, "children">;
+};
+
+export function MorePageScaffold({
+  title,
+  children,
+  scrollProps,
+}: MorePageScaffoldProps) {
+  const router = useRouter();
+  const theme = useAppTheme();
+  const isLargeScreen = useIsLargeScreen();
+  const headerCollapse = useSharedValue(0);
+  const titlePillWidth = useSharedValue(TITLE_PILL_MAX_WIDTH);
+  const headerTop = HEADER_TOP_MARGIN;
+  const contentTopPadding = headerTop + HEADER_HEIGHT + CONTENT_TOP_GAP;
+
+  const handleBackPress = React.useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace("/");
+  }, [router]);
+
+  const handleTitlePillLayout = React.useCallback(
+    (event: LayoutChangeEvent) => {
+      const measuredWidth = event.nativeEvent.layout.width;
+      if (measuredWidth > 0) {
+        titlePillWidth.value = measuredWidth;
+      }
+    },
+    [titlePillWidth]
+  );
+
+  const onScroll = useAnimatedScrollHandler<{ lastY?: number }>({
+    onBeginDrag: (event, context) => {
+      context.lastY = Math.max(event.contentOffset.y, 0);
+    },
+    onMomentumBegin: (event, context) => {
+      context.lastY = Math.max(event.contentOffset.y, 0);
+    },
+    onScroll: (event, context) => {
+      const currentY = Math.max(event.contentOffset.y, 0);
+      const previousY = context.lastY ?? currentY;
+      const deltaY = currentY - previousY;
+      context.lastY = currentY;
+
+      const next = headerCollapse.value + deltaY;
+      headerCollapse.value = Math.max(0, Math.min(HEADER_COLLAPSE_RANGE, next));
+    },
+  });
+
+  const backPillStyle = useAnimatedStyle(() => {
+    const offset = headerCollapse.value;
+    const scale = interpolate(offset, [0, HEADER_COLLAPSE_RANGE], [1, 0.68], Extrapolation.CLAMP);
+    return {
+      transform: [
+        {
+          translateY: interpolate(offset, [0, HEADER_COLLAPSE_RANGE], [0, -8], Extrapolation.CLAMP),
+        },
+        { scale },
+      ],
+      opacity: interpolate(offset, [0, 140], [1, 0.94], Extrapolation.CLAMP),
+    };
+  });
+
+  const titlePillStyle = useAnimatedStyle(() => {
+    const offset = headerCollapse.value;
+    const scale = interpolate(offset, [0, HEADER_COLLAPSE_RANGE], [1, 0.7], Extrapolation.CLAMP);
+    const shrink = 1 - scale;
+    const keepRightEdgeOffset = isLargeScreen
+      ? 0
+      : (titlePillWidth.value * shrink) / 2;
+    const keepTopEdgeOffset = (HEADER_HEIGHT * shrink) / 2;
+    return {
+      transform: [
+        { scale },
+        { translateX: keepRightEdgeOffset },
+        {
+          translateY:
+            interpolate(offset, [0, HEADER_COLLAPSE_RANGE], [0, -10], Extrapolation.CLAMP) -
+            keepTopEdgeOffset,
+        },
+      ],
+      opacity: interpolate(offset, [0, 140], [1, 0.97], Extrapolation.CLAMP),
+    };
+  });
+
+  const ambientStyle = useAnimatedStyle(() => {
+    const offset = headerCollapse.value;
+    return {
+      opacity: interpolate(offset, [0, HEADER_COLLAPSE_RANGE * 0.67], [0.95, 0.5]),
+      transform: [{ scale: interpolate(offset, [0, HEADER_COLLAPSE_RANGE * 0.67], [1, 0.92]) }],
+    };
+  });
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top", "bottom"]}>
+      <YStack flex={1} backgroundColor="$background">
+      <LinearGradient
+        colors={[theme.accent.val + "20", theme.background.val, theme.background.val]}
+        start={{ x: 0.04, y: 0 }}
+        end={{ x: 0.88, y: 0.62 }}
+        style={StyleSheet.absoluteFill}
+      />
+
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.ambientOrb,
+          {
+            top: headerTop - 14,
+            right: isLargeScreen ? 44 : -6,
+            backgroundColor: theme.primary.val + "14",
+          },
+          ambientStyle,
+        ]}
+      />
+
+      <Animated.ScrollView
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        scrollEventThrottle={16}
+        onScroll={onScroll}
+        {...scrollProps}
+        contentContainerStyle={[
+          {
+            paddingTop: contentTopPadding,
+            paddingBottom: 144,
+            paddingHorizontal: 16,
+          },
+          scrollProps?.contentContainerStyle,
+        ]}
+      >
+        <YStack
+          width="100%"
+          maxWidth={isLargeScreen ? 1040 : undefined}
+          alignSelf="center"
+          gap={14}
+        >
+          {children}
+        </YStack>
+      </Animated.ScrollView>
+
+      <Animated.View
+        entering={FadeIn.duration(320)}
+        pointerEvents="box-none"
+        style={[
+          styles.headerLayer,
+          {
+            top: headerTop,
+          },
+        ]}
+      >
+        {isLargeScreen ? (
+          <XStack
+            width="100%"
+            maxWidth={1040}
+            alignSelf="center"
+            alignItems="center"
+            gap={14}
+            paddingHorizontal={16}
+          >
+            <YStack width={HEADER_HEIGHT} height={HEADER_HEIGHT} alignItems="center" justifyContent="center">
+              <Animated.View style={backPillStyle}>
+                <PressableScale onPress={handleBackPress} hitSlop={10}>
+                  <View>
+                    <GlassPill
+                      style={{
+                        height: HEADER_HEIGHT,
+                        width: HEADER_HEIGHT,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Feather name="chevron-left" size={22} color={theme.color.val + "EE"} />
+                    </GlassPill>
+                  </View>
+                </PressableScale>
+              </Animated.View>
+            </YStack>
+
+            <YStack flex={1} height={HEADER_HEIGHT} justifyContent="center">
+              <Animated.View style={[titlePillStyle, styles.titlePillFullWidth]} pointerEvents="none">
+                <View>
+                  <GlassPill
+                    onLayout={handleTitlePillLayout}
+                    style={{
+                      minHeight: HEADER_HEIGHT,
+                      width: "100%",
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                      justifyContent: "center",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text
+                      color={theme.color.val}
+                      fontFamily="$heading"
+                      fontWeight="700"
+                      fontSize={15}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                      textAlign="center"
+                    >
+                      {title}
+                    </Text>
+                  </GlassPill>
+                </View>
+              </Animated.View>
+            </YStack>
+          </XStack>
+        ) : (
+          <>
+            <Animated.View style={[styles.backButtonWrap, backPillStyle]}>
+              <PressableScale onPress={handleBackPress} hitSlop={10}>
+                <View>
+                  <GlassPill
+                    style={{
+                      height: HEADER_HEIGHT,
+                      width: HEADER_HEIGHT,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Feather name="chevron-left" size={22} color={theme.color.val + "EE"} />
+                  </GlassPill>
+                </View>
+              </PressableScale>
+            </Animated.View>
+
+            <Animated.View style={styles.titleWrap} pointerEvents="none">
+              <Animated.View style={titlePillStyle}>
+                <View>
+                  <GlassPill
+                    onLayout={handleTitlePillLayout}
+                    style={{
+                      minHeight: HEADER_HEIGHT,
+                      maxWidth: TITLE_PILL_MAX_WIDTH,
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                      justifyContent: "center",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text
+                      color={theme.color.val}
+                      fontFamily="$heading"
+                      fontWeight="700"
+                      fontSize={15}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                      textAlign="center"
+                    >
+                      {title}
+                    </Text>
+                  </GlassPill>
+                </View>
+              </Animated.View>
+            </Animated.View>
+          </>
+        )}
+      </Animated.View>
+      </YStack>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  ambientOrb: {
+    position: "absolute",
+    width: 168,
+    height: 168,
+    borderRadius: 999,
+  },
+  backButtonWrap: {
+    position: "absolute",
+    left: 16,
+    top: 0,
+  },
+  glassBorder: {
+    borderWidth: 1,
+    zIndex: 3,
+  },
+  glassBackdrop: {
+    zIndex: 0,
+  },
+  glassContent: {
+    position: "relative",
+    zIndex: 4,
+  },
+  glassRim: {
+    zIndex: 2,
+    borderWidth: 1,
+    borderTopWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.28)",
+  },
+  glassSheen: {
+    zIndex: 1,
+  },
+  glassShellBase: {
+    overflow: "hidden",
+  },
+  glassShellNative: {
+    shadowOpacity: 0.2,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 10,
+  },
+  glassShellWeb: {
+    // Keep web stable: no extra shadow stack with backdrop blur to avoid first-frame artifacts
+  },
+  headerLayer: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    width: "100%",
+    alignSelf: "center",
+    height: HEADER_HEIGHT,
+    zIndex: 1001,
+    elevation: 1001,
+  },
+  titleWrap: {
+    position: "absolute",
+    left: 84,
+    right: 16,
+    top: 0,
+    alignItems: "flex-end",
+  },
+  titlePillFullWidth: {
+    width: "100%",
+  },
+});

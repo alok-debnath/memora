@@ -12,6 +12,7 @@ import {
   safeJsonParse,
 } from "../lib/openai";
 import { normalizeMemoryFields } from "../lib/aiNormalization";
+import { toStoredMemoryFields } from "../lib/memoryKind";
 
 type AIExtractedMemory = {
   title?: string;
@@ -48,6 +49,12 @@ type AIExtractedMemory = {
     why?: string;
   };
   linkedUrls?: string[];
+  entryKind?: "memory" | "reminder";
+  schedule?: {
+    dueAt: string;
+    isRecurring: boolean;
+    recurrenceType?: "yearly" | "monthly" | "weekly" | "daily";
+  };
   reminderDate?: string;
   sentimentScore?: number;
   extractedActions?: Array<{
@@ -81,7 +88,16 @@ This timestamp came from the user's device at capture-time. Treat it as the auth
 
 CRITICAL WORDING RULE — NO RELATIVE TIME IN STORED MEMORIES: Write title and content in objective, note-style language. Never use relative time words ("today", "tomorrow", "yesterday", "next week", "this morning", "this afternoon", "in 5 hours", "soon", "later") in the title or content. Always write the actual resolved date: e.g. "Meeting with Sarah on 9 Apr 2026 at 14:00 IST" not "Meeting with Sarah tomorrow afternoon". Never use "I", "me", "my", "the user", or "you".
 
-CRITICAL TIMEZONE RULE: When the user mentions times, that time is in THEIR timezone (${userTz}). Convert to UTC ISO-8601 for reminder_date. Example: if user is in Asia/Kolkata (UTC+5:30) and says "9:30 AM", UTC time is 04:00 AM — output "2026-03-09T04:00:00Z".
+CRITICAL TYPE RULE:
+- Every saved item must be classified as either "memory" or "reminder".
+- Default to "memory".
+- Use "reminder" when EITHER of these is true:
+  1. The user explicitly asks to be reminded ("remind me", "don't forget", "set a reminder").
+  2. The content describes a future scheduled event (meeting, appointment, deadline, call, flight, exam, task due date, etc.) with a resolvable date/time — even if phrased as a statement ("I have a meeting Monday at 9am", "dentist appointment Friday 3pm", "project due next Thursday").
+- Use "memory" for past events, general facts, reflections, or future events with NO specific date/time.
+- If the entry is a reminder, always populate the schedule field with the resolved UTC datetime.
+
+CRITICAL TIMEZONE RULE: When the user mentions times, that time is in THEIR timezone (${userTz}). Convert to UTC ISO-8601 for schedule.due_at. Example: if user is in Asia/Kolkata (UTC+5:30) and says "9:30 AM", UTC time is 04:00 AM — output "2026-03-09T04:00:00Z".
 
 For mood: happy, sad, anxious, excited, neutral, grateful, frustrated, hopeful, nostalgic, motivated.
 For people: extract ALL people names mentioned.
@@ -105,6 +121,14 @@ function fallbackStructuredData(content: string): AIExtractedMemory {
     linkedUrls: [],
     extractedActions: [],
   };
+}
+
+function hasExplicitSchedulingFields(value: Record<string, unknown>) {
+  return (
+    value.entryKind !== undefined ||
+    value.entry_kind !== undefined ||
+    value.schedule !== undefined
+  );
 }
 
 export const processMemory = action({
@@ -159,15 +183,25 @@ export const processMemory = action({
                 properties: {
                   title: { type: "string", description: "Concise title, max 8 words" },
                   content: { type: "string", description: "Full memory content" },
-                  reminder_date: {
+                  entry_kind: {
                     type: "string",
-                    description:
-                      "Exact ISO 8601 UTC datetime. For relative times like 'after 6 hours', resolve from CURRENT DATE & TIME first.",
+                    enum: ["memory", "reminder"],
                   },
-                  is_recurring: { type: "boolean" },
-                  recurrence_type: {
-                    type: "string",
-                    enum: ["yearly", "monthly", "weekly", "daily"],
+                  schedule: {
+                    type: "object",
+                    properties: {
+                      due_at: {
+                        type: "string",
+                        description:
+                          "Exact ISO 8601 UTC datetime. Only for explicit reminders with a real schedule.",
+                      },
+                      is_recurring: { type: "boolean" },
+                      recurrence_type: {
+                        type: "string",
+                        enum: ["yearly", "monthly", "weekly", "daily"],
+                      },
+                    },
+                    additionalProperties: false,
                   },
                   mood: {
                     type: "string",
@@ -227,6 +261,19 @@ export const processMemory = action({
       }
 
       const normalized = normalizeMemoryFields(extracted);
+
+      // Fetch current memory before updating so we can protect existing scheduling.
+      const memory = await ctx.runQuery(internal.memories.getInternal, { memoryId: args.memoryId });
+
+      // Don't let background enrichment downgrade an already-set reminder to a
+      // memory: only touch scheduling if the AI found a new due_at OR the memory
+      // is not already a confirmed reminder.
+      const existingIsReminder = memory?.entryKind === "reminder" && !!memory?.schedule?.dueAt;
+      const extractionHasSchedule = !!normalized.schedule?.dueAt;
+      const shouldUpdateScheduling =
+        hasExplicitSchedulingFields(extracted) &&
+        (extractionHasSchedule || !existingIsReminder);
+
       await ctx.runMutation(internal.processMemoryMutations.updateAIFields, {
         memoryId: args.memoryId,
         title: normalized.title,
@@ -237,14 +284,11 @@ export const processMemory = action({
         lifeArea: normalized.lifeArea,
         contextTags: normalized.contextTags,
         linkedUrls: normalized.linkedUrls,
-        reminderDate: normalized.reminderDate,
+        ...(shouldUpdateScheduling ? toStoredMemoryFields(normalized) : {}),
         sentimentScore: normalized.sentimentScore,
         extractedActions: normalized.extractedActions,
         embedding,
       });
-
-      // Schedule AI topic assignment
-      const memory = await ctx.runQuery(internal.memories.getInternal, { memoryId: args.memoryId });
       if (memory) {
         await ctx.scheduler.runAfter(0, internal.actions.manageTopics.assignTopicsToMemory, {
           memoryId: args.memoryId,
@@ -309,6 +353,22 @@ export const captureMemory = action({
                     properties: {
                       title: { type: "string" },
                       content: { type: "string" },
+                      entry_kind: {
+                        type: "string",
+                        enum: ["memory", "reminder"],
+                      },
+                      schedule: {
+                        type: "object",
+                        properties: {
+                          due_at: { type: "string" },
+                          is_recurring: { type: "boolean" },
+                          recurrence_type: {
+                            type: "string",
+                            enum: ["yearly", "monthly", "weekly", "daily"],
+                          },
+                        },
+                        additionalProperties: false,
+                      },
                       mood: { type: "string", enum: ["happy", "sad", "anxious", "excited", "neutral", "grateful", "frustrated", "hopeful", "nostalgic", "motivated"] },
                       people: { type: "array", items: { type: "string" } },
                       locations: { type: "array", items: { type: "string" } },
@@ -336,7 +396,6 @@ export const captureMemory = action({
                           required: ["text", "type"],
                         },
                       },
-                      reminder_date: { type: "string" },
                     },
                     required: ["title", "content"],
                     additionalProperties: false,
@@ -381,8 +440,8 @@ export const captureMemory = action({
       sentimentScore: structured.sentimentScore,
       linkedUrls: structured.linkedUrls || [],
       extractedActions: structured.extractedActions || [],
-      reminderDate: structured.reminderDate,
-      isRecurring: false,
+      entryKind: structured.entryKind,
+      schedule: structured.schedule,
       skipAiProcessing: true,
     });
 
@@ -401,7 +460,7 @@ export const captureMemory = action({
         lifeArea: structured.lifeArea,
         contextTags: structured.contextTags,
         linkedUrls: structured.linkedUrls,
-        reminderDate: structured.reminderDate,
+        ...toStoredMemoryFields(structured),
         sentimentScore: structured.sentimentScore,
         extractedActions: structured.extractedActions,
         embedding,

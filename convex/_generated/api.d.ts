@@ -30,6 +30,7 @@ import type * as history from "../history.js";
 import type * as http from "../http.js";
 import type * as lib_aiNormalization from "../lib/aiNormalization.js";
 import type * as lib_encryption from "../lib/encryption.js";
+import type * as lib_memoryKind from "../lib/memoryKind.js";
 import type * as lib_memorySnapshot from "../lib/memorySnapshot.js";
 import type * as lib_openai from "../lib/openai.js";
 import type * as lib_validators from "../lib/validators.js";
@@ -75,6 +76,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   "lib/aiNormalization": typeof lib_aiNormalization;
   "lib/encryption": typeof lib_encryption;
+  "lib/memoryKind": typeof lib_memoryKind;
   "lib/memorySnapshot": typeof lib_memorySnapshot;
   "lib/openai": typeof lib_openai;
   "lib/validators": typeof lib_validators;

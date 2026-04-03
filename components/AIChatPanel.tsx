@@ -39,7 +39,6 @@ import { logDevError } from "@/lib/devLog";
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const CHAT = {
-  avatarSize: 32,
   bubbleRadius: 18,
   bubblePadding: 14,
   messageGap: 14,
@@ -344,18 +343,6 @@ function ThinkingIndicator() {
         marginBottom={CHAT.messageGap}
         alignItems="flex-end"
       >
-        {/* Avatar */}
-        <XStack
-          width={CHAT.avatarSize}
-          height={CHAT.avatarSize}
-          borderRadius={CHAT.avatarSize / 2}
-          alignItems="center"
-          justifyContent="center"
-          backgroundColor={color + "15"}
-        >
-          <Feather name="zap" size={14} color={color} />
-        </XStack>
-
         {/* Bubble with three bouncing dots */}
         <XStack
           paddingHorizontal={16}
@@ -423,20 +410,6 @@ const ChatBubble = React.memo(function ChatBubble({
         gap={8}
         alignSelf={isUser ? "flex-end" : "flex-start"}
       >
-        {!isUser && (
-          <XStack
-            width={CHAT.avatarSize}
-            height={CHAT.avatarSize}
-            borderRadius={CHAT.avatarSize / 2}
-            alignItems="center"
-            justifyContent="center"
-            marginTop={2}
-            backgroundColor={theme.primary.val + "12"}
-          >
-            <Feather name="zap" size={14} color={theme.primary.val} />
-          </XStack>
-        )}
-
         <YStack flex={1} gap={4}>
           <XStack alignItems="center" gap={8} alignSelf={isUser ? "flex-end" : "flex-start"}>
             <Pressable onLongPress={handleLongPress} delayLongPress={400} style={{ flexShrink: 1 }}>

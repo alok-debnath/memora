@@ -40,6 +40,17 @@ export const recurrenceValidator = v.union(
   v.literal("daily")
 );
 
+export const memoryEntryKindValidator = v.union(
+  v.literal("memory"),
+  v.literal("reminder")
+);
+
+export const memoryScheduleValidator = v.object({
+  dueAt: v.string(),
+  isRecurring: v.boolean(),
+  recurrenceType: v.optional(recurrenceValidator),
+});
+
 export const extractedActionsValidator = v.array(
   v.object({
     action: v.string(),

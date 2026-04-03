@@ -3,9 +3,7 @@ import { ScrollView, Platform, Alert, Pressable } from "react-native";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { Feather } from "@expo/vector-icons";
-import { router } from "expo-router";
 import Animated, { FadeInUp } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -16,6 +14,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { SearchBar } from "@/components/ui/SearchBar";
+import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
 
 const statusColors: Record<string, string> = {
   pending: "#F59E0B",
@@ -39,13 +38,11 @@ type DocumentItem = {
 
 export default function DocumentsScreen() {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const { token } = useAuth();
   const [isUploading, setIsUploading] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"all" | "processing" | "completed" | "failed">("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [query, setQuery] = useState("");
-  const webTopPadding = Platform.OS === "web" ? 67 : 0;
 
   const documents = (useQuery(api.documents.list, token ? { token } : "skip") ?? []) as DocumentItem[];
   const createDoc = useMutation(api.documents.create);
@@ -153,42 +150,18 @@ export default function DocumentsScreen() {
   ] as const;
 
   return (
-    <YStack flex={1} backgroundColor="$background">
-      <ScrollView
-        contentContainerStyle={{
-          paddingHorizontal: 16,
-          paddingTop: insets.top + webTopPadding + 12,
-          paddingBottom: 28,
-        }}
-        showsVerticalScrollIndicator={false}
-      >
+    <MorePageScaffold title="Documents">
         <Animated.View entering={FadeInUp.duration(400)}>
           <Card style={{ padding: 18, borderRadius: 24, backgroundColor: theme.card.val, marginBottom: 14 }}>
-            <XStack alignItems="flex-start" justifyContent="space-between" gap={12}>
-              <YStack flex={1} gap={6}>
-                <Badge label="Vault" color={theme.primary.val} />
-                <Text fontSize={28} lineHeight={32} fontFamily="$heading" fontWeight="700" color="$color">
-                  Documents
-                </Text>
-                <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
-                  Upload files, extract structured details, and keep track of what turned into memories.
-                </Text>
-              </YStack>
-              <PressableScale onPress={() => router.back()} hitSlop={8}>
-                <YStack
-                  width={42}
-                  height={42}
-                  borderRadius={14}
-                  alignItems="center"
-                  justifyContent="center"
-                  backgroundColor={theme.secondary.val}
-                  borderWidth={1}
-                  borderColor={theme.borderColor.val}
-                >
-                  <Feather name="arrow-left" size={20} color={theme.color.val} />
-                </YStack>
-              </PressableScale>
-            </XStack>
+            <YStack flex={1} gap={6}>
+              <Badge label="Vault" color={theme.primary.val} />
+              <Text fontSize={28} lineHeight={32} fontFamily="$heading" fontWeight="700" color="$color">
+                Documents
+              </Text>
+              <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
+                Upload files, extract structured details, and keep track of what turned into memories.
+              </Text>
+            </YStack>
             <XStack gap={10} marginTop={16}>
               <Card style={{ flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 18 }}>
                 <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
@@ -366,7 +339,6 @@ export default function DocumentsScreen() {
             ))
           )}
         </YStack>
-      </ScrollView>
-    </YStack>
+    </MorePageScaffold>
   );
 }

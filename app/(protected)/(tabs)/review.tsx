@@ -11,7 +11,7 @@ import Animated, {
   interpolate,
   FadeInUp,
 } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -22,7 +22,6 @@ import { Badge } from "@/components/ui/Badge";
 
 export default function ReviewScreen() {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const { token } = useAuth();
 
   const dueCards = useQuery(api.review.getDue, token ? { token, limit: 25 } : "skip") ?? [];
@@ -83,7 +82,6 @@ export default function ReviewScreen() {
     opacity: flipProgress.value > 0.5 ? 1 : 0,
   }));
 
-  const webTopPadding = Platform.OS === "web" ? 67 : 0;
   const ratings = [
     { label: "Again", quality: 1, color: "#EF4444" },
     { label: "Hard", quality: 2, color: "#F59E0B" },
@@ -93,8 +91,9 @@ export default function ReviewScreen() {
   const progress = dueCards.length > 0 ? (currentIndex + (isRevealed ? 1 : 0)) / dueCards.length : 0;
 
   return (
-    <YStack flex={1} paddingHorizontal={16} backgroundColor="$background" paddingTop={insets.top + webTopPadding + 12}>
-      <Animated.View entering={FadeInUp.duration(400)}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top", "bottom"]}>
+      <YStack flex={1} paddingHorizontal={16} backgroundColor="$background" paddingTop={12}>
+        <Animated.View entering={FadeInUp.duration(400)}>
         <Card
           style={{
             marginBottom: 14,
@@ -150,7 +149,7 @@ export default function ReviewScreen() {
         )}
       </Animated.View>
 
-      {dueCards.length === 0 || !currentCard ? (
+        {dueCards.length === 0 || !currentCard ? (
         <>
           <EmptyState
             icon="check-circle"
@@ -183,7 +182,7 @@ export default function ReviewScreen() {
             </YStack>
           )}
         </>
-      ) : (
+        ) : (
         <YStack flex={1} alignItems="center" justifyContent="center" paddingBottom={24}>
           <YStack width="100%" maxWidth={400} height={320} position="relative">
             <Animated.View style={[{ position: "absolute", width: "100%", height: "100%" }, frontStyle]}>
@@ -301,7 +300,8 @@ export default function ReviewScreen() {
             </Text>
           </PressableScale>
         </YStack>
-      )}
-    </YStack>
+        )}
+      </YStack>
+    </SafeAreaView>
   );
 }

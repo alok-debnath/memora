@@ -9,6 +9,7 @@ import { useAppTheme } from "@/hooks/useAppTheme";
 import { moodLabels, moodIcons } from "@/constants/categories";
 import { moodColors } from "@/constants/colors";
 import type { MemoryNote } from "@/types/memory";
+import { getReminderDate, isReminder } from "@/types/memoryKind";
 
 interface MemoryCardProps {
   memory: MemoryNote;
@@ -167,11 +168,11 @@ export const MemoryCard = React.memo(function MemoryCard({
               {/* Bottom row: reminder + actions */}
               <XStack alignItems="center" justifyContent="space-between">
                 <XStack alignItems="center" gap={8}>
-                  {memory.reminderDate && (
+                  {isReminder(memory) && getReminderDate(memory) && (
                     <XStack alignItems="center" gap={3}>
                       <Feather name="bell" size={10} color={theme.primary.val} />
                       <Text fontSize={11} fontFamily="$body" fontWeight="500" color="$primary">
-                        {new Date(memory.reminderDate).toLocaleString(undefined, {
+                        {new Date(getReminderDate(memory)!).toLocaleString(undefined, {
                           month: "short",
                           day: "numeric",
                           hour: "numeric",
@@ -180,7 +181,7 @@ export const MemoryCard = React.memo(function MemoryCard({
                       </Text>
                     </XStack>
                   )}
-                  {memory.isRecurring && (
+                  {memory.schedule?.isRecurring && (
                     <Feather name="refresh-cw" size={10} color={theme.colorMuted.val} />
                   )}
                 </XStack>

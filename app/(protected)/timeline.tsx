@@ -1,20 +1,16 @@
 import React, { useMemo, useState } from "react";
-import { ScrollView, Platform } from "react-native";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { Feather } from "@expo/vector-icons";
-import { router } from "expo-router";
 import Animated, { FadeInUp } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
 import { MemoryCard } from "@/components/MemoryCard";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { PressableScale } from "@/components/ui/PressableScale";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
 import type { MemoryNote } from "@/types/memory";
 
 function groupByDate(
@@ -50,7 +46,6 @@ function groupByDate(
 
 export default function TimelineScreen() {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const { token } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -72,45 +67,20 @@ export default function TimelineScreen() {
 
   const groups = useMemo(() => groupByDate(sorted as any), [sorted]);
   const sectionCount = Object.keys(groups).length;
-  const webTopPadding = Platform.OS === "web" ? 67 : 0;
 
   return (
-    <YStack flex={1} backgroundColor="$background">
-      <ScrollView
-        contentContainerStyle={{
-          paddingHorizontal: 16,
-          paddingTop: insets.top + webTopPadding + 12,
-          paddingBottom: 28,
-        }}
-        showsVerticalScrollIndicator={false}
-      >
+    <MorePageScaffold title="Timeline">
         <Animated.View entering={FadeInUp.duration(400)}>
           <Card style={{ padding: 18, borderRadius: 24, backgroundColor: theme.card.val, marginBottom: 14 }}>
-            <XStack alignItems="flex-start" justifyContent="space-between" gap={12}>
-              <YStack flex={1} gap={6}>
-                <Badge label="Chronological" color={theme.primary.val} />
-                <Text fontSize={28} lineHeight={32} fontFamily="$heading" fontWeight="700" color="$color">
-                  Timeline
-                </Text>
-                <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
-                  Review memories in time order, or narrow the story with a search.
-                </Text>
-              </YStack>
-              <PressableScale onPress={() => router.back()} hitSlop={8}>
-                <YStack
-                  width={42}
-                  height={42}
-                  borderRadius={14}
-                  alignItems="center"
-                  justifyContent="center"
-                  backgroundColor={theme.secondary.val}
-                  borderWidth={1}
-                  borderColor={theme.borderColor.val}
-                >
-                  <Feather name="arrow-left" size={20} color={theme.color.val} />
-                </YStack>
-              </PressableScale>
-            </XStack>
+            <YStack flex={1} gap={6}>
+              <Badge label="Chronological" color={theme.primary.val} />
+              <Text fontSize={28} lineHeight={32} fontFamily="$heading" fontWeight="700" color="$color">
+                Timeline
+              </Text>
+              <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
+                Review memories in time order, or narrow the story with a search.
+              </Text>
+            </YStack>
             <XStack gap={10} marginTop={16}>
               <Card style={{ flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 18 }}>
                 <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
@@ -162,8 +132,12 @@ export default function TimelineScreen() {
                       userId: "" as never,
                       people: [],
                       locations: [],
-                      importance: "normal" as const,
+                      entryKind: "memory",
+                      schedule: undefined,
+                      reminderDate: undefined,
                       isRecurring: false,
+                      recurrenceType: undefined,
+                      importance: "normal" as const,
                       linkedUrls: [],
                       extractedActions: [],
                       attachments: [],
@@ -177,7 +151,6 @@ export default function TimelineScreen() {
             </Animated.View>
           ))
         )}
-      </ScrollView>
-    </YStack>
+    </MorePageScaffold>
   );
 }

@@ -41,6 +41,7 @@ export const list = query({
       .collect();
     const activeTopics = await Promise.all(
       topics.map(async (topic) => {
+        if (topic.memoryCount <= 0) return null;
         const hasLink = await ctx.db
           .query("memoryTopicLinks")
           .withIndex("by_user_and_topic", (q) =>
@@ -62,7 +63,9 @@ export const activeSummaries = query({
     const { userId } = await resolveUser(ctx, args.token);
     const hasAnyMemory = await ctx.db
       .query("memories")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .withIndex("by_user_isDeleted", (q) =>
+        q.eq("userId", userId).eq("isDeleted", false)
+      )
       .take(1);
     if (hasAnyMemory.length === 0) {
       return [];
@@ -330,6 +333,24 @@ export const decrementOrArchiveTopics = internalMutation({
   },
 });
 
+export const incrementTopicCounts = internalMutation({
+  args: {
+    topicIds: v.array(v.id("userTopics")),
+  },
+  handler: async (ctx, args) => {
+    const uniqueTopicIds = Array.from(new Set(args.topicIds));
+    for (const topicId of uniqueTopicIds) {
+      const topic = await ctx.db.get(topicId);
+      if (!topic) continue;
+      await ctx.db.patch(topicId, {
+        memoryCount: topic.memoryCount + 1,
+        isArchived: false,
+        updatedAt: Date.now(),
+      });
+    }
+  },
+});
+
 export const reconcileTopicUsage = internalMutation({
   args: {
     userId: v.id("users"),
@@ -413,6 +434,7 @@ export const mergeTopic = internalMutation({
       .collect();
 
     for (const m of allMemories) {
+      if (m.isDeleted) continue;
       const hasTopicIds = m.topicIds?.includes(args.mergeId);
       const isPrimary = m.primaryTopicId === args.mergeId;
       if (!hasTopicIds && !isPrimary) continue;

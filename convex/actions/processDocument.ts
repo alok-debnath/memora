@@ -159,7 +159,7 @@ ${args.text.slice(0, 15000)}`,
           if (reminderDate.getTime() > Date.now() && memoryIds[0]) {
             await ctx.runMutation(internal.processDocumentMutations.setMemoryReminder, {
               memoryId: memoryIds[0],
-              reminderDate: reminderDate.toISOString(),
+              dueAt: reminderDate.toISOString(),
             });
           }
         }

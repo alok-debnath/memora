@@ -1,0 +1,73 @@
+import type { Doc } from "../_generated/dataModel";
+
+export type MemoryEntryKind = "memory" | "reminder";
+export type MemoryRecurrenceType = "daily" | "weekly" | "monthly" | "yearly";
+
+export type MemorySchedule = {
+  dueAt: string;
+  isRecurring: boolean;
+  recurrenceType?: MemoryRecurrenceType;
+};
+
+type MemoryLike = {
+  entryKind?: MemoryEntryKind;
+  schedule?: MemorySchedule;
+};
+
+export function inferEntryKind(memory: MemoryLike): MemoryEntryKind {
+  return memory.entryKind ?? "memory";
+}
+
+export function getMemorySchedule(memory: MemoryLike): MemorySchedule | undefined {
+  if (memory.schedule?.dueAt) {
+    return {
+      dueAt: memory.schedule.dueAt,
+      isRecurring: memory.schedule.isRecurring,
+      recurrenceType: memory.schedule.recurrenceType,
+    };
+  }
+  return undefined;
+}
+
+export function getReminderDate(memory: MemoryLike): string | undefined {
+  return getMemorySchedule(memory)?.dueAt;
+}
+
+export function isReminder(memory: MemoryLike): boolean {
+  return inferEntryKind(memory) === "reminder" && !!getReminderDate(memory);
+}
+
+export function toStoredMemoryFields(input: {
+  entryKind?: MemoryEntryKind;
+  schedule?: MemorySchedule;
+}) {
+  const schedule = input.schedule?.dueAt
+    ? {
+        dueAt: input.schedule.dueAt,
+        isRecurring: input.schedule.isRecurring,
+        recurrenceType: input.schedule.recurrenceType,
+      }
+    : undefined;
+
+  const entryKind =
+    input.entryKind ?? (schedule?.dueAt ? "reminder" : "memory");
+
+  return {
+    entryKind,
+    schedule,
+  };
+}
+
+export function toMemorySummaryFields(memory: Doc<"memories">) {
+  const schedule = getMemorySchedule(memory);
+  return {
+    entry_kind: inferEntryKind(memory),
+    schedule: schedule
+      ? {
+          due_at: schedule.dueAt,
+          is_recurring: schedule.isRecurring,
+          recurrence_type: schedule.recurrenceType ?? null,
+        }
+      : null,
+  };
+}

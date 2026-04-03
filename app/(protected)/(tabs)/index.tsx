@@ -1,5 +1,4 @@
 import React, {
-  useCallback,
   useDeferredValue,
   useEffect,
   useMemo,
@@ -7,7 +6,6 @@ import React, {
   useState,
 } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Platform,
   ScrollView,
@@ -30,6 +28,7 @@ import { useAppTheme } from "@/hooks/useAppTheme";
 import { useThemeStore } from "@/store/theme";
 import { useUIStore } from "@/store/ui";
 import type { MemoryNote } from "@/types/memory";
+import { getReminderDate, inferMemoryEntryKind, isReminder } from "@/types/memoryKind";
 import { Badge } from "@/components/ui/Badge";
 import { TopicPills } from "@/components/ui/TopicPills";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -39,7 +38,6 @@ import { PressableScale } from "@/components/ui/PressableScale";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 
-const PAGE_SIZE = 20;
 const INITIAL_FEED_SIZE = 6;
 
 const toMemoryNote = (m: Record<string, unknown>): MemoryNote => ({
@@ -58,9 +56,12 @@ const toMemoryNote = (m: Record<string, unknown>): MemoryNote => ({
   sentimentScore: m.sentimentScore as number | undefined,
   linkedUrls: Array.isArray(m.linkedUrls) ? m.linkedUrls : [],
   extractedActions: m.extractedActions as MemoryNote["extractedActions"],
-  reminderDate: m.reminderDate as string | undefined,
-  isRecurring: (m.isRecurring as boolean) ?? false,
-  recurrenceType: m.recurrenceType as MemoryNote["recurrenceType"],
+  entryKind: inferMemoryEntryKind(m as Parameters<typeof inferMemoryEntryKind>[0]),
+  schedule: m.schedule as MemoryNote["schedule"] | undefined,
+  reminderDate: getReminderDate(m as Parameters<typeof getReminderDate>[0]),
+  isRecurring: (m.schedule as { isRecurring?: boolean } | undefined)?.isRecurring ?? false,
+  recurrenceType: (m.schedule as { recurrenceType?: MemoryNote["recurrenceType"] } | undefined)
+    ?.recurrenceType,
   capsuleUnlockDate: m.capsuleUnlockDate as string | undefined,
   attachments: [],
   isPublic: m.isPublic as boolean | undefined,
@@ -77,11 +78,11 @@ type MemoryItem = {
   primaryTopicId?: string;
   topicIds?: string[];
   mood?: string;
+  entryKind?: "memory" | "reminder";
+  schedule?: MemoryNote["schedule"];
   people?: string[];
   locations?: string[];
   importance: string;
-  reminderDate?: string;
-  isRecurring: boolean;
   shareToken?: string;
   isPublic?: boolean;
   encryptedTitle?: { v: number; n: string; c: string };
@@ -134,13 +135,11 @@ export default function HomeScreen() {
   const { user, token } = useAuth();
   const { resolvedMode, setMode } = useThemeStore();
 
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [semanticResults, setSemanticResults] = useState<MemoryItem[] | null>(null);
   const [isSearching, setIsSearching] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [editMemory, setEditMemory] = useState<MemoryItem | null>(null);
   const [isOverviewOpen, setIsOverviewOpen] = useState(false);
   const [showFullFeed, setShowFullFeed] = useState(false);
@@ -157,14 +156,14 @@ export default function HomeScreen() {
   const trimmedSearchQuery = deferredSearchQuery.trim().toLowerCase();
   const searchMode = searchQuery.trim().length > 0;
 
-  const memoryResult = useQuery(api.memories.list, token ? { token, limit: pageSize } : "skip");
+  const allMemoryResult = useQuery(api.memories.listAll, token ? { token, limit: 500 } : "skip");
   const topicList = useQuery(api.userTopics.list, token ? { token } : "skip") ?? [];
   const activeTopicSummaries =
     useQuery(api.userTopics.activeSummaries, token ? { token } : "skip") ?? [];
   const selectedTopicMemories = useQuery(
     api.memories.listByTopic,
     token && selectedTopic && !searchMode
-      ? { token, topicId: selectedTopic as Id<"userTopics">, limit: pageSize }
+      ? { token, topicId: selectedTopic as Id<"userTopics">, limit: 500 }
       : "skip"
   );
   const topicById = useMemo(() => {
@@ -174,14 +173,16 @@ export default function HomeScreen() {
     }
     return map;
   }, [topicList]);
-  const allMemories = (memoryResult?.memories ?? []) as MemoryItem[];
-  const canLoadMore = memoryResult ? !memoryResult.isDone : false;
+  const allMemories = (allMemoryResult ?? []) as MemoryItem[];
+  const feedMemories = allMemories;
 
   const flashbacks = useQuery(api.memories.flashbacks, token ? { token } : "skip") ?? [];
-  const reminderMemories =
-    useQuery(api.memories.reminders, token ? { token, asOf: querySnapshot.nowIso } : "skip") ?? [];
-  const upcomingReminders =
-    useQuery(api.memories.upcomingReminders, token ? { token, asOf: querySnapshot.nowIso, range: upcomingRange } : "skip") ?? [];
+  const reminderMemoriesRaw =
+    useQuery(api.memories.reminders, token ? { token, asOf: querySnapshot.nowIso } : "skip");
+  const reminderMemories = reminderMemoriesRaw ?? [];
+  const upcomingRemindersRaw =
+    useQuery(api.memories.upcomingReminders, token ? { token, asOf: querySnapshot.nowIso, range: upcomingRange } : "skip");
+  const upcomingReminders = upcomingRemindersRaw ?? [];
   const stats =
     useQuery(api.memories.stats, token ? { token, asOf: querySnapshot.nowMs } : "skip") ?? null;
 
@@ -225,12 +226,6 @@ export default function HomeScreen() {
   }, [semanticSearch, token, trimmedSearchQuery]);
 
   useEffect(() => {
-    if (memoryResult) {
-      setIsLoadingMore(false);
-    }
-  }, [memoryResult]);
-
-  useEffect(() => {
     if (!searchMode) {
       setShowFullFeed(false);
     }
@@ -244,12 +239,6 @@ export default function HomeScreen() {
       setSelectedTopic(null);
     }
   }, [activeTopicSummaries, selectedTopic]);
-
-  const handleLoadMore = useCallback(() => {
-    if (!canLoadMore || isLoadingMore) return;
-    setIsLoadingMore(true);
-    setPageSize((previous) => previous + PAGE_SIZE);
-  }, [canLoadMore, isLoadingMore]);
 
   const handleDelete = async (id: Id<"memories">) => {
     if (!token) return;
@@ -271,7 +260,11 @@ export default function HomeScreen() {
 
   const handleSaveEdit = async (data: Record<string, unknown>) => {
     if (!editMemory || !token) return;
-    await updateMemory({ token, id: editMemory._id, ...data });
+    if (data._delete) {
+      await deleteMemory({ token, id: editMemory._id });
+    } else {
+      await updateMemory({ token, id: editMemory._id, ...data });
+    }
     setEditMemory(null);
     closeEditMemory();
   };
@@ -318,7 +311,7 @@ export default function HomeScreen() {
       if (selectedTopic) {
         return (selectedTopicMemories ?? []) as MemoryItem[];
       }
-      return allMemories;
+      return feedMemories;
     }
 
     const merged = new Map<Id<"memories">, MemoryItem>();
@@ -342,7 +335,7 @@ export default function HomeScreen() {
 
     return [...byTopic].sort((a, b) => b._creationTime - a._creationTime);
   }, [
-    allMemories,
+    feedMemories,
     exactMatches,
     searchMode,
     selectedTopic,
@@ -356,7 +349,7 @@ export default function HomeScreen() {
   );
 
   const topReminders = useMemo(
-    () => reminderMemories.filter((memory) => !!memory.reminderDate).slice(0, 2),
+    () => reminderMemories.filter((memory) => !!getReminderDate(memory)).slice(0, 2),
     [reminderMemories]
   );
   const visibleFeed = useMemo(
@@ -368,7 +361,11 @@ export default function HomeScreen() {
   );
 
   const firstName = user?.name?.split(" ")[0] || "there";
-  const isLoading = !memoryResult || (!!selectedTopic && !searchMode && selectedTopicMemories === undefined);
+  const isLoading =
+    allMemoryResult === undefined ||
+    reminderMemoriesRaw === undefined ||
+    upcomingRemindersRaw === undefined ||
+    (!!selectedTopic && !searchMode && selectedTopicMemories === undefined);
   const totalMemories = stats?.totalMemories ?? 0;
   const totalReminders = stats?.totalReminders ?? 0;
   const totalCategories = activeTopicSummaries.length;
@@ -525,7 +522,7 @@ export default function HomeScreen() {
                           {memory.title || "Untitled memory"}
                         </Text>
                         <Text fontSize={13} color="$colorMuted" numberOfLines={1}>
-                          {new Date(memory.reminderDate!).toLocaleString(undefined, {
+                          {new Date(getReminderDate(memory)!).toLocaleString(undefined, {
                             month: "short",
                             day: "numeric",
                             hour: "numeric",
@@ -616,32 +613,6 @@ export default function HomeScreen() {
               </YStack>
             )}
 
-            {canLoadMore && !searchMode && !selectedTopic ? (
-              <PressableScale onPress={handleLoadMore} style={{ alignSelf: "center" }}>
-                <XStack
-                  alignItems="center"
-                  gap={8}
-                  paddingHorizontal={18}
-                  paddingVertical={12}
-                  borderRadius={999}
-                  backgroundColor={theme.primary.val + "12"}
-                  borderWidth={1}
-                  borderColor={theme.primary.val + "18"}
-                >
-                  {isLoadingMore ? (
-                    <ActivityIndicator size="small" color={theme.primary.val} />
-                  ) : (
-                    <>
-                      <Text fontSize={14} fontWeight="700" color="$primary">
-                        Load more
-                      </Text>
-                      <Feather name="arrow-down" size={15} color={theme.primary.val} />
-                    </>
-                  )}
-                </XStack>
-              </PressableScale>
-            ) : null}
-
           </SectionCard>
         </Animated.View>
       </AppScreen>
@@ -711,7 +682,7 @@ export default function HomeScreen() {
                           {memory.title || "Untitled memory"}
                         </Text>
                         <Text fontSize={12} color="$colorMuted">
-                          {new Date(memory.reminderDate!).toLocaleString(undefined, {
+                          {new Date(getReminderDate(memory)!).toLocaleString(undefined, {
                             month: "short",
                             day: "numeric",
                             hour: "numeric",
@@ -786,7 +757,7 @@ export default function HomeScreen() {
                           {memory.title || "Untitled memory"}
                         </Text>
                         <Text fontSize={12} color="$colorMuted">
-                          {new Date(memory.reminderDate!).toLocaleString(undefined, {
+                          {new Date(getReminderDate(memory)!).toLocaleString(undefined, {
                             weekday: "short",
                             month: "short",
                             day: "numeric",

@@ -11,7 +11,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   useAnimatedStyle,
   withSpring,
@@ -263,14 +263,14 @@ function LiquidGlassTabBar({
   }));
 
   const glassColor = isDark
-    ? "rgba(30,22,16,0.84)"
-    : "rgba(255,252,247,0.82)";
+    ? theme.backgroundStrong.val + "D9"
+    : theme.backgroundStrong.val + "D1";
   const overlayColor = isDark
-    ? "rgba(24,18,13,0.28)"
-    : "rgba(255,248,238,0.38)";
+    ? theme.background.val + "47"
+    : theme.background.val + "61";
   const borderColor = isDark
-    ? "rgba(233,173,74,0.16)"
-    : "rgba(123,87,34,0.12)";
+    ? theme.borderColor.val + "5C"
+    : theme.borderColor.val + "47";
   const indicatorBg = primaryColor + "22"; // ~13% opacity tint
 
   const handleTabPress = (routeName: string) => {
@@ -366,9 +366,7 @@ function LiquidGlassTabBar({
               style={[
                 StyleSheet.absoluteFill,
                 {
-                  backgroundColor: isDark
-                    ? "rgba(18,18,30,0.97)"
-                    : "rgba(255,255,255,0.97)",
+                  backgroundColor: theme.backgroundStrong.val + "F7",
                 },
               ]}
             />
@@ -488,7 +486,6 @@ function DesktopSidebarLayout() {
   const theme = useAppTheme();
   const router = useRouter();
   const pathname = usePathname();
-  const insets = useSafeAreaInsets();
   const isCommandOpen = useUIStore((s) => s.isCommandOpen);
   const openCommand = useUIStore((s) => s.openCommand);
   const closeCommand = useUIStore((s) => s.closeCommand);
@@ -504,16 +501,17 @@ function DesktopSidebarLayout() {
   };
 
   return (
-    <XStack flex={1} backgroundColor="$background">
-      <YStack
-        width={292}
-        borderRightWidth={1}
-        borderRightColor="$borderColor"
-        backgroundColor="$background"
-        paddingHorizontal={20}
-        paddingTop={insets.top + 18}
-        paddingBottom={insets.bottom + 20}
-      >
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top", "bottom"]}>
+      <XStack flex={1} backgroundColor="$background">
+        <YStack
+          width={292}
+          borderRightWidth={1}
+          borderRightColor="$borderColor"
+          backgroundColor="$background"
+          paddingHorizontal={20}
+          paddingTop={18}
+          paddingBottom={20}
+        >
         <YStack
           borderRadius={28}
           padding={18}
@@ -637,26 +635,27 @@ function DesktopSidebarLayout() {
             New Memory
           </Text>
         </Pressable>
-      </YStack>
-
-      <YStack flex={1} padding={14}>
-        <YStack
-          flex={1}
-          borderRadius={32}
-          overflow="hidden"
-          borderWidth={1}
-          borderColor="$borderColor"
-          backgroundColor="$background"
-        >
-          <Slot />
         </YStack>
-      </YStack>
 
-      <UnifiedCommandPanel
-        visible={isCommandOpen}
-        onClose={closeCommand}
-      />
-    </XStack>
+        <YStack flex={1} padding={14}>
+          <YStack
+            flex={1}
+            borderRadius={32}
+            overflow="hidden"
+            borderWidth={1}
+            borderColor="$borderColor"
+            backgroundColor="$background"
+          >
+            <Slot />
+          </YStack>
+        </YStack>
+
+        <UnifiedCommandPanel
+          visible={isCommandOpen}
+          onClose={closeCommand}
+        />
+      </XStack>
+    </SafeAreaView>
   );
 }
 

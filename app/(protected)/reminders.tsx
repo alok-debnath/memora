@@ -1,11 +1,8 @@
 import React, { useMemo, useState } from "react";
-import { ScrollView, Platform, Pressable } from "react-native";
+import { ScrollView, Pressable } from "react-native";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { Feather } from "@expo/vector-icons";
-import { router } from "expo-router";
 import Animated, { FadeInUp } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -13,13 +10,19 @@ import { useAuth } from "@/hooks/useAuth";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { PressableScale } from "@/components/ui/PressableScale";
+import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
+import { getReminderDate, isReminder } from "@/types/memoryKind";
 
 type ReminderItem = {
   _id: Id<"memories">;
   title: string;
   content: string;
-  reminderDate?: string;
+  entryKind?: "memory" | "reminder";
+  schedule?: {
+    dueAt: string;
+    isRecurring: boolean;
+    recurrenceType?: "daily" | "weekly" | "monthly" | "yearly";
+  };
   _creationTime: number;
 };
 
@@ -41,8 +44,9 @@ function getFilteredReminders(memories: ReminderItem[], filter: FilterKey) {
   const yearEnd = new Date(now.getTime() + 365 * 86400000);
 
   return memories.filter((m) => {
-    if (!m.reminderDate) return false;
-    const d = new Date(m.reminderDate);
+    const dueAt = getReminderDate(m);
+    if (!dueAt) return false;
+    const d = new Date(dueAt);
     switch (filter) {
       case "today":
         return d < todayEnd;
@@ -64,21 +68,33 @@ function isOverdue(dateStr: string) {
 
 export default function RemindersScreen() {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const { token } = useAuth();
   const [activeFilter, setActiveFilter] = useState<FilterKey>("week");
 
-  const memoryResult = useQuery(api.memories.list, token ? { token, limit: 200 } : "skip");
-  const memories = (memoryResult?.memories ?? []) as ReminderItem[];
+  const dueNow = useQuery(api.memories.reminders, token ? { token } : "skip") ?? [];
+  const upcoming = useQuery(
+    api.memories.upcomingReminders,
+    token ? { token, range: "all" } : "skip"
+  ) ?? [];
+  const memories = useMemo(() => {
+    const merged = new Map<string, ReminderItem>();
+    for (const memory of [...(dueNow as ReminderItem[]), ...(upcoming as ReminderItem[])]) {
+      merged.set(String(memory._id), memory);
+    }
+    return Array.from(merged.values()).sort((a, b) => {
+      const aDue = getReminderDate(a) ?? "";
+      const bDue = getReminderDate(b) ?? "";
+      return aDue.localeCompare(bDue);
+    });
+  }, [dueNow, upcoming]);
 
-  const withReminders = useMemo(() => memories.filter((m) => m.reminderDate), [memories]);
+  const withReminders = useMemo(() => memories.filter((m) => isReminder(m)), [memories]);
   const filtered = useMemo(() => getFilteredReminders(withReminders, activeFilter), [withReminders, activeFilter]);
   const overdueCount = useMemo(
-    () => withReminders.filter((m) => m.reminderDate && isOverdue(m.reminderDate)).length,
+    () => withReminders.filter((m) => getReminderDate(m) && isOverdue(getReminderDate(m)!)).length,
     [withReminders]
   );
   const todayCount = useMemo(() => getFilteredReminders(withReminders, "today").length, [withReminders]);
-  const webTopPadding = Platform.OS === "web" ? 67 : 0;
 
   const metrics = [
     { label: "Total", value: withReminders.length },
@@ -87,15 +103,7 @@ export default function RemindersScreen() {
   ];
 
   return (
-    <YStack flex={1} backgroundColor="$background">
-      <ScrollView
-        contentContainerStyle={{
-          paddingHorizontal: 16,
-          paddingTop: insets.top + webTopPadding + 12,
-          paddingBottom: 28,
-        }}
-        showsVerticalScrollIndicator={false}
-      >
+    <MorePageScaffold title="Reminders">
         <Animated.View entering={FadeInUp.duration(400)}>
           <Card
             style={{
@@ -105,31 +113,15 @@ export default function RemindersScreen() {
               marginBottom: 14,
             }}
           >
-            <XStack alignItems="flex-start" justifyContent="space-between" gap={12}>
-              <YStack flex={1} gap={6}>
-                <Badge label="Time aware" color={theme.primary.val} />
-                <Text fontSize={28} lineHeight={32} fontFamily="$heading" fontWeight="700" color="$color">
-                  Reminders
-                </Text>
-                <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
-                  Keep the pending moments in view. Overdue items are surfaced first so nothing slips.
-                </Text>
-              </YStack>
-              <PressableScale onPress={() => router.back()} hitSlop={8}>
-                <YStack
-                  width={42}
-                  height={42}
-                  borderRadius={14}
-                  alignItems="center"
-                  justifyContent="center"
-                  backgroundColor={theme.secondary.val}
-                  borderWidth={1}
-                  borderColor={theme.borderColor.val}
-                >
-                  <Feather name="arrow-left" size={20} color={theme.color.val} />
-                </YStack>
-              </PressableScale>
-            </XStack>
+            <YStack flex={1} gap={6}>
+              <Badge label="Time aware" color={theme.primary.val} />
+              <Text fontSize={28} lineHeight={32} fontFamily="$heading" fontWeight="700" color="$color">
+                Reminders
+              </Text>
+              <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
+                Keep the pending moments in view. Overdue items are surfaced first so nothing slips.
+              </Text>
+            </YStack>
             <XStack gap={10} marginTop={16}>
               {metrics.map((metric) => (
                 <Card key={metric.label} style={{ flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 18 }}>
@@ -214,14 +206,14 @@ export default function RemindersScreen() {
                       width={10}
                       height={10}
                       borderRadius={5}
-                      backgroundColor={isOverdue(m.reminderDate!) ? theme.destructive.val : theme.primary.val}
+                      backgroundColor={isOverdue(getReminderDate(m)!) ? theme.destructive.val : theme.primary.val}
                     />
                     <YStack flex={1}>
                       <Text fontSize={15} fontFamily="$heading" fontWeight="600" color="$color" numberOfLines={1}>
                         {m.title}
                       </Text>
                       <Text fontSize={12} fontFamily="$body" marginTop={2} color="$colorMuted">
-                        {new Date(m.reminderDate!).toLocaleString(undefined, {
+                        {new Date(getReminderDate(m)!).toLocaleString(undefined, {
                           weekday: "short",
                           month: "short",
                           day: "numeric",
@@ -231,7 +223,7 @@ export default function RemindersScreen() {
                       </Text>
                     </YStack>
                     <YStack gap={6} alignItems="flex-end">
-                      {isOverdue(m.reminderDate!) && <Badge label="overdue" color={theme.destructive.val} small />}
+                      {isOverdue(getReminderDate(m)!) && <Badge label="overdue" color={theme.destructive.val} small />}
                     </YStack>
                   </XStack>
                 </Card>
@@ -239,7 +231,6 @@ export default function RemindersScreen() {
             ))
           )}
         </YStack>
-      </ScrollView>
-    </YStack>
+    </MorePageScaffold>
   );
 }

@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import {
+  Platform,
   TextInput,
   ScrollView,
-  Platform,
   Alert,
   Pressable,
   ActivityIndicator,
@@ -10,7 +10,7 @@ import {
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeInUp } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -49,7 +49,6 @@ type DiaryEntryItem = {
 
 export default function DiaryScreen() {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const { user, token } = useAuth();
 
   const entries = (useQuery(api.diary.list, token ? { token, limit: 100 } : "skip") ?? []) as DiaryEntryItem[];
@@ -100,20 +99,19 @@ export default function DiaryScreen() {
     }
   };
 
-  const webTopPadding = Platform.OS === "web" ? 67 : 0;
-
   return (
-    <YStack flex={1} backgroundColor="$background">
-      <ScrollView
-        contentContainerStyle={{
-          paddingHorizontal: 16,
-          paddingBottom: 28,
-          paddingTop: insets.top + webTopPadding + 12,
-        }}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        <Animated.View entering={FadeInUp.duration(400)}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top", "bottom"]}>
+      <YStack flex={1} backgroundColor="$background">
+        <ScrollView
+          contentContainerStyle={{
+            paddingHorizontal: 16,
+            paddingBottom: 28,
+            paddingTop: 12,
+          }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Animated.View entering={FadeInUp.duration(400)}>
           <Card
             style={{
               marginBottom: 14,
@@ -281,8 +279,9 @@ export default function DiaryScreen() {
           )}
         </YStack>
 
-        <YStack height={80} />
-      </ScrollView>
-    </YStack>
+          <YStack height={80} />
+        </ScrollView>
+      </YStack>
+    </SafeAreaView>
   );
 }

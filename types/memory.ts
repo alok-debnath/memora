@@ -1,5 +1,14 @@
 import type { Mood, Importance, LifeArea } from "@/constants/categories";
 
+export type MemoryEntryKind = "memory" | "reminder";
+export type MemoryRecurrenceType = "yearly" | "monthly" | "weekly" | "daily";
+
+export interface MemorySchedule {
+  dueAt: string;
+  isRecurring: boolean;
+  recurrenceType?: MemoryRecurrenceType;
+}
+
 export interface MemoryNote {
   id: string;
   userId: string;
@@ -25,9 +34,11 @@ export interface MemoryNote {
     completed: boolean;
     actionType?: "task" | "reminder" | "fact" | "decision";
   }>;
+  entryKind: MemoryEntryKind;
+  schedule?: MemorySchedule;
   reminderDate?: string;
   isRecurring: boolean;
-  recurrenceType?: "yearly" | "monthly" | "weekly" | "daily";
+  recurrenceType?: MemoryRecurrenceType;
   capsuleUnlockDate?: string;
   isPublic?: boolean;
   attachments: MemoryAttachment[];

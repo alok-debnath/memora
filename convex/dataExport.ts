@@ -97,11 +97,11 @@ export const exportAllData = query({
         encryptedLocations: m.encryptedLocations,
         importance: m.importance,
         lifeArea: m.lifeArea,
-        reminderDate: m.reminderDate,
-        isRecurring: m.isRecurring,
-        recurrenceType: m.recurrenceType,
+        entryKind: m.entryKind,
+        schedule: m.schedule,
         capsuleUnlockDate: m.capsuleUnlockDate,
         isPublic: m.isPublic,
+        deletedAt: m.deletedAt ? new Date(m.deletedAt).toISOString() : undefined,
       })),
       diaryEntries: diaryEntries.map((d) => ({
         id: d._id,
@@ -220,11 +220,12 @@ export const exportMemoriesOnly = query({
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .take(10000);
     
+    const active = memories.filter((m) => !m.isDeleted);
     return {
       exportedAt: new Date().toISOString(),
       format: "memories_v1",
-      count: memories.length,
-      memories: memories.map((m) => ({
+      count: active.length,
+      memories: active.map((m) => ({
         title: m.title ?? m.encryptedTitle,
         content: m.content ?? m.encryptedContent,
         primaryTopicId: m.primaryTopicId,
@@ -234,7 +235,8 @@ export const exportMemoriesOnly = query({
         locations: m.locations ?? m.encryptedLocations,
         importance: m.importance,
         createdAt: new Date(m._creationTime).toISOString(),
-        reminderDate: m.reminderDate,
+        entryKind: m.entryKind,
+        schedule: m.schedule,
       })),
     };
   },

@@ -11,7 +11,9 @@ export const createShareLink = mutation({
   handler: async (ctx, args) => {
     const { userId } = await resolveUser(ctx, args.token);
     const memory = await ctx.db.get(args.memoryId);
-    if (!memory || memory.userId !== userId) throw new Error("Not found");
+    if (!memory || memory.userId !== userId || memory.isDeleted) {
+      throw new Error("Not found");
+    }
 
     const bytes = new Uint8Array(32);
     crypto.getRandomValues(bytes);
@@ -78,6 +80,7 @@ export const getByToken = query({
     if (!share || !share.isActive) return null;
     if (share.expiresAt && share.expiresAt < Date.now()) return null;
     const memory = await ctx.db.get(share.memoryId);
+    if (!memory || memory.isDeleted) return null;
     return memory;
   },
 });

@@ -63,7 +63,9 @@ export const createSnapshot = mutation({
   handler: async (ctx, args) => {
     const { userId } = await resolveUser(ctx, args.token);
     const memory = await ctx.db.get(args.memoryId);
-    if (!memory || memory.userId !== userId) throw new Error("Not found");
+    if (!memory || memory.userId !== userId || memory.isDeleted) {
+      throw new Error("Not found");
+    }
 
     return await ctx.db.insert("memoryHistory", {
       memoryId: args.memoryId,

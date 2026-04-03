@@ -3,7 +3,7 @@
  * Handles deletion of existing plaintext data
  */
 import { v } from "convex/values";
-import { mutation, internalMutation } from "./_generated/server";
+import { mutation } from "./_generated/server";
 import { resolveUser } from "./lib/withAuth";
 
 /**

@@ -12,6 +12,12 @@ import {
   OPENAI_CHAT_MODEL,
 } from "../lib/openai";
 import { normalizeMemoryFields } from "../lib/aiNormalization";
+import {
+  getMemorySchedule,
+  isReminder,
+  toMemorySummaryFields,
+  toStoredMemoryFields,
+} from "../lib/memoryKind";
 
 type MemoryDoc = Doc<"memories">;
 type DocumentDoc = Doc<"documentExtractions">;
@@ -66,15 +72,26 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
         properties: {
           title: { type: "string", description: "Concise title, max 8 words, objective note-style (no 'I', 'me', 'my')" },
           content: { type: "string", description: "Full memory content in objective note-style language (no 'I', 'me', 'my')" },
-          reminder_date: {
+          entry_kind: {
             type: "string",
-            description:
-              "Exact ISO 8601 UTC datetime for the reminder. For relative times like 'after 6 hours' or 'tomorrow morning', compute from the CURRENT DATE & TIME and convert to UTC before returning.",
+            enum: ["memory", "reminder"],
+            description: "Default to memory. Use reminder only for explicit reminder intent with a resolvable schedule.",
           },
-          is_recurring: { type: "boolean" },
-          recurrence_type: {
-            type: "string",
-            enum: ["yearly", "monthly", "weekly", "daily"],
+          schedule: {
+            type: "object",
+            properties: {
+              due_at: {
+                type: "string",
+                description:
+                  "Exact ISO 8601 UTC datetime for an explicit reminder. Omit for normal memories.",
+              },
+              is_recurring: { type: "boolean" },
+              recurrence_type: {
+                type: "string",
+                enum: ["yearly", "monthly", "weekly", "daily"],
+              },
+            },
+            additionalProperties: false,
           },
           mood: { type: "string" },
           people: { type: "array", items: { type: "string" } },
@@ -97,15 +114,21 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           memory_id: { type: "string" },
           title: { type: "string", description: "Concise title, max 8 words, objective note-style (no 'I', 'me', 'my')" },
           content: { type: "string", description: "Full memory content in objective note-style language (no 'I', 'me', 'my')" },
-          reminder_date: {
+          entry_kind: {
             type: "string",
-            description:
-              "Exact ISO 8601 UTC datetime for the reminder. For relative times like 'after 6 hours' or 'tomorrow morning', compute from the CURRENT DATE & TIME and convert to UTC before returning.",
+            enum: ["memory", "reminder"],
           },
-          is_recurring: { type: "boolean" },
-          recurrence_type: {
-            type: "string",
-            enum: ["yearly", "monthly", "weekly", "daily"],
+          schedule: {
+            type: "object",
+            properties: {
+              due_at: { type: "string" },
+              is_recurring: { type: "boolean" },
+              recurrence_type: {
+                type: "string",
+                enum: ["yearly", "monthly", "weekly", "daily"],
+              },
+            },
+            additionalProperties: false,
           },
           mood: { type: "string" },
           people: { type: "array", items: { type: "string" } },
@@ -121,7 +144,7 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "delete_memory",
       description:
-        "Delete a memory permanently. Confirm unless the user is explicit.",
+        "Soft-delete a memory (moves to trash). Can be restored later. Confirm unless the user is explicit.",
       parameters: {
         type: "object",
         properties: {
@@ -137,13 +160,44 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "delete_multiple_memories",
       description:
-        "Delete multiple memory notes at once. Use when the user asks to delete several or all matching memories.",
+        "Soft-delete multiple memory notes at once (moves to trash). Use when the user asks to delete several or all matching memories.",
       parameters: {
         type: "object",
         properties: {
           memory_ids: { type: "array", items: { type: "string" } },
         },
         required: ["memory_ids"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_deleted_memories",
+      description:
+        "List memories that have been soft-deleted (moved to trash). Use when the user asks to see deleted memories or wants to restore something.",
+      parameters: {
+        type: "object",
+        properties: {
+          limit: { type: "number", description: "Max items to return (default 20)" },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "restore_memory",
+      description:
+        "Restore a soft-deleted memory, bringing it back from the trash.",
+      parameters: {
+        type: "object",
+        properties: {
+          memory_id: { type: "string" },
+        },
+        required: ["memory_id"],
         additionalProperties: false,
       },
     },
@@ -285,6 +339,14 @@ function buildCreateMemoryDedupeKey(args: {
   });
 }
 
+function hasExplicitSchedulingFields(value: Record<string, unknown>) {
+  return (
+    value.entryKind !== undefined ||
+    value.entry_kind !== undefined ||
+    value.schedule !== undefined
+  );
+}
+
 function toMemorySummary(memory: MemoryDoc) {
   return {
     id: memory._id,
@@ -294,9 +356,7 @@ function toMemorySummary(memory: MemoryDoc) {
     people: memory.people,
     locations: memory.locations,
     primary_topic_id: memory.primaryTopicId ?? null,
-    reminder_date: memory.reminderDate ?? null,
-    is_recurring: memory.isRecurring,
-    recurrence_type: memory.recurrenceType ?? null,
+    ...toMemorySummaryFields(memory),
     created_at: new Date(memory._creationTime).toISOString(),
   };
 }
@@ -574,9 +634,16 @@ Always write the actual resolved date/time: e.g. "Meeting with Sarah on 9 Apr 20
 Also: write in objective, note-style language — no "I", "me", "my", "the user", "you".
 Your spoken REPLY to the user is still warm and personal — this rule only applies to the stored title/content.
 
+**CRITICAL MEMORY VS REMINDER RULE**:
+- Every saved item must be either a memory or a reminder.
+- Default to entry_kind=\"memory\".
+- Use entry_kind=\"reminder\" only when the user explicitly wants to be reminded and provides a resolvable date/time.
+- A future fact or event by itself is still a memory, not a reminder.
+- If the user wants a follow-up but gives no time, keep it as a memory and omit schedule.
+
 **CRITICAL TIMEZONE RULE**:
 - User-mentioned times ("9:30 AM", "3pm in 5 hours") are in THEIR timezone (${userTimezone}).
-- Compute the exact UTC datetime and store it in reminder_date as ISO 8601.
+- Compute the exact UTC datetime and store it in schedule.due_at as ISO 8601.
 - When confirming, state the time in the user's timezone. Never expose UTC to the user.
 
 Use markdown only when it genuinely helps readability.`;
@@ -730,14 +797,6 @@ export const chat = action({
                 normalized.content ||
                 (typeof fnArgs.content === "string" ? fnArgs.content.trim() : "") ||
                 (typeof fnArgs.title === "string" ? fnArgs.title.trim() : "");
-              const isRecurring =
-                typeof fnArgs.is_recurring === "boolean"
-                  ? fnArgs.is_recurring
-                  : undefined;
-              const recurrenceType =
-                typeof fnArgs.recurrence_type === "string"
-                  ? fnArgs.recurrence_type
-                  : undefined;
               const dedupeKey = buildCreateMemoryDedupeKey({
                 title:
                   normalized.title ||
@@ -745,6 +804,9 @@ export const chat = action({
                 content: contentToSave,
               });
               const existingCreated = createdMemoriesByDedupeKey.get(dedupeKey);
+              const schedulingFields = hasExplicitSchedulingFields(fnArgs)
+                ? toStoredMemoryFields(normalized)
+                : {};
               const memoryUpdatePatch = {
                 ...(normalized.title ? { title: normalized.title } : {}),
                 ...(normalized.mood ? { mood: normalized.mood } : {}),
@@ -753,21 +815,7 @@ export const chat = action({
                 ...(normalized.contextTags
                   ? { contextTags: normalized.contextTags }
                   : {}),
-                ...(normalized.reminderDate
-                  ? { reminderDate: normalized.reminderDate }
-                  : {}),
-                ...(isRecurring !== undefined
-                  ? { isRecurring }
-                  : {}),
-                ...(recurrenceType
-                  ? {
-                      recurrenceType: recurrenceType as
-                        | "yearly"
-                        | "monthly"
-                        | "weekly"
-                        | "daily",
-                    }
-                  : {}),
+                ...schedulingFields,
                 ...(typeof normalized.importance === "string"
                   ? {
                       importance: normalized.importance as
@@ -874,6 +922,9 @@ export const chat = action({
             } else if (fnName === "update_memory") {
               try {
                 const normalized = normalizeMemoryFields(fnArgs);
+                const schedulingFields = hasExplicitSchedulingFields(fnArgs)
+                  ? toStoredMemoryFields(normalized)
+                  : {};
                 await ctx.runMutation(api.memories.update, {
                   token: args.token,
                   id: fnArgs.memory_id as Id<"memories">,
@@ -885,21 +936,7 @@ export const chat = action({
                   ...(normalized.contextTags
                     ? { contextTags: normalized.contextTags }
                     : {}),
-                  ...(normalized.reminderDate
-                    ? { reminderDate: normalized.reminderDate }
-                    : {}),
-                  ...(typeof fnArgs.is_recurring === "boolean"
-                    ? { isRecurring: fnArgs.is_recurring }
-                    : {}),
-                  ...(typeof fnArgs.recurrence_type === "string"
-                    ? {
-                        recurrenceType: fnArgs.recurrence_type as
-                          | "yearly"
-                          | "monthly"
-                          | "weekly"
-                          | "daily",
-                      }
-                    : {}),
+                  ...schedulingFields,
                 });
                 recentMemoriesCache = undefined;
                 result = JSON.stringify({ success: true, memory_id: fnArgs.memory_id });
@@ -937,6 +974,43 @@ export const chat = action({
                 })
               );
               recentMemoriesCache = undefined;
+            } else if (fnName === "list_deleted_memories") {
+              try {
+                const limit =
+                  typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 50) : 20;
+                const deleted = await ctx.runQuery(api.memories.listDeleted, {
+                  token: args.token,
+                  limit,
+                });
+                result = JSON.stringify({
+                  deleted_memories: deleted.map((memory: MemoryDoc) => ({
+                    ...toMemorySummary(memory),
+                    deletedAt: memory.deletedAt
+                      ? new Date(memory.deletedAt).toISOString()
+                      : null,
+                  })),
+                  count: deleted.length,
+                });
+              } catch (error) {
+                result = JSON.stringify({
+                  error:
+                    error instanceof Error ? error.message : "Failed to list deleted memories",
+                });
+              }
+            } else if (fnName === "restore_memory") {
+              try {
+                await ctx.runMutation(api.memories.restore, {
+                  token: args.token,
+                  id: fnArgs.memory_id as Id<"memories">,
+                });
+                recentMemoriesCache = undefined;
+                result = JSON.stringify({ success: true });
+              } catch (error) {
+                result = JSON.stringify({
+                  error:
+                    error instanceof Error ? error.message : "Failed to restore memory",
+                });
+              }
             } else if (fnName === "list_memories") {
               const memories = await getRecentMemoriesCache();
               const limit =
@@ -959,8 +1033,8 @@ export const chat = action({
                 if (memory.mood) {
                   moods[memory.mood] = (moods[memory.mood] ?? 0) + 1;
                 }
-                if (memory.reminderDate) withReminders += 1;
-                if (memory.isRecurring) recurring += 1;
+                if (isReminder(memory)) withReminders += 1;
+                if (getMemorySchedule(memory)?.isRecurring) recurring += 1;
               }
 
               const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;

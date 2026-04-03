@@ -38,7 +38,7 @@ export default function LoginScreen() {
   return (
     <AuthShell
       title="Welcome back"
-      subtitle="Sign in to continue your private memory workspace."
+      subtitle="Sign in to continue."
       accentIcon="zap"
     >
       <YStack gap={18}>
@@ -88,9 +88,6 @@ export default function LoginScreen() {
               borderColor: theme.borderColor.val,
             }}
           />
-          <Text fontSize={12} lineHeight={18} color="$colorMuted">
-            Use the email connected to your Memora workspace.
-          </Text>
         </YStack>
 
         <YStack gap={7}>

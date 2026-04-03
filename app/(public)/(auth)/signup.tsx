@@ -49,7 +49,7 @@ export default function SignupScreen() {
   return (
     <AuthShell
       title="Create your account"
-      subtitle="Start capturing memories with AI from the first note."
+      subtitle="Create your account."
       accentIcon="user-plus"
     >
       <YStack gap={18}>
@@ -167,9 +167,6 @@ export default function SignupScreen() {
               </Text>
             </PressableScale>
           </XStack>
-          <Text fontSize={12} lineHeight={18} color="$colorMuted">
-            Use a strong password to protect your private notes.
-          </Text>
         </YStack>
 
         <YStack gap={7}>

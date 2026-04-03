@@ -6,6 +6,8 @@ import {
   importanceValidator,
   lifeAreaValidator,
   recurrenceValidator,
+  memoryEntryKindValidator,
+  memoryScheduleValidator,
   extractedActionsValidator,
   contextTagsValidator,
   energyLevelValidator,
@@ -66,19 +68,23 @@ export default defineSchema({
     sentimentScore: v.optional(v.float64()),
     linkedUrls: v.optional(v.array(v.string())),
     extractedActions: v.optional(extractedActionsValidator),
-    reminderDate: v.optional(v.string()),
-    isRecurring: v.boolean(),
-    recurrenceType: v.optional(recurrenceValidator),
+    entryKind: memoryEntryKindValidator,
+    schedule: v.optional(memoryScheduleValidator),
     capsuleUnlockDate: v.optional(v.string()),
     embedding: v.optional(v.array(v.float64())),
     shareToken: v.optional(v.string()),
     isPublic: v.optional(v.boolean()),
     /** Encryption version used (for migration tracking) */
     encryptionVersion: v.optional(v.number()),
+    /** Indexed soft-delete flag for dense active/deleted queries. */
+    isDeleted: v.boolean(),
+    /** Soft-delete timestamp — set when user deletes, cleared on restore */
+    deletedAt: v.optional(v.float64()),
   })
     .index("by_user", ["userId"])
+    .index("by_user_isDeleted", ["userId", "isDeleted"])
+    .index("by_user_isDeleted_entryKind", ["userId", "isDeleted", "entryKind"])
     .index("by_user_primaryTopic", ["userId", "primaryTopicId"])
-    .index("by_user_reminderDate", ["userId", "reminderDate"])
     .index("by_share_token", ["shareToken"])
     .searchIndex("search_content", {
       searchField: "content",

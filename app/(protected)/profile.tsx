@@ -1,6 +1,5 @@
 import React from "react";
 import {
-  ScrollView,
   Platform,
   Switch,
   Alert,
@@ -14,7 +13,6 @@ import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInUp } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -25,6 +23,7 @@ import { SectionLabel } from "@/components/ui/SectionLabel";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { Badge } from "@/components/ui/Badge";
+import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
 import { FontFamily } from "@/constants/fonts";
 import { Dropdown, type IDropdownRef } from "react-native-element-dropdown";
 import { getTimeZones } from "@vvo/tzdb";
@@ -60,7 +59,6 @@ const ALL_TIMEZONE_OPTIONS: TimezoneOption[] = getTimeZones({ includeUtc: true }
 
 export default function ProfileScreen() {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const { user, token, logout } = useAuth();
   const { mode, setMode, resolvedMode } = useThemeStore();
   const [displayName, setDisplayName] = React.useState(user?.name ?? "");
@@ -123,8 +121,6 @@ export default function ProfileScreen() {
     URL.revokeObjectURL(url);
     setExportRequested(false);
   }, [exportRequested, exportData]);
-
-  const webTopPadding = Platform.OS === "web" ? 67 : 0;
   const totalMemories = memoryStats?.totalMemories ?? 0;
   const totalReminders = memoryStats?.totalReminders ?? 0;
 
@@ -218,33 +214,10 @@ export default function ProfileScreen() {
   };
 
   return (
-    <YStack flex={1} backgroundColor="$background">
-      <XStack
-        alignItems="center"
-        justifyContent="space-between"
-        paddingHorizontal={16}
-        paddingBottom={12}
-        paddingTop={insets.top + webTopPadding + 12}
-      >
-        <PressableScale onPress={() => router.back()} hitSlop={8}>
-          <YStack
-            width={42}
-            height={42}
-            borderRadius={14}
-            alignItems="center"
-            justifyContent="center"
-            backgroundColor={theme.secondary.val}
-            borderWidth={1}
-            borderColor={theme.borderColor.val}
-          >
-            <Feather name="arrow-left" size={20} color={theme.color.val} />
-          </YStack>
-        </PressableScale>
-        <Text fontSize={18} fontFamily="$heading" fontWeight="600" color="$color">Profile</Text>
-        <YStack width={42} />
-      </XStack>
-
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <MorePageScaffold
+      title="Profile"
+      scrollProps={{ contentContainerStyle: styles.content }}
+    >
         <Animated.View entering={FadeInUp.duration(400)}>
           <Card style={{ ...styles.profileCard, padding: 18, borderRadius: 26 }}>
             <XStack alignItems="flex-start" justifyContent="space-between" gap={14}>
@@ -678,8 +651,7 @@ export default function ProfileScreen() {
         </Animated.View>
 
         <YStack height={40} />
-      </ScrollView>
-    </YStack>
+    </MorePageScaffold>
   );
 }
 

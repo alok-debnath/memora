@@ -1,23 +1,22 @@
 import React, { useMemo, useState } from "react";
-import { Platform, ScrollView, Pressable } from "react-native";
+import { ScrollView, Pressable } from "react-native";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { Feather } from "@expo/vector-icons";
-import { router } from "expo-router";
 import Svg, { Circle, Line, G, Text as SvgText } from "react-native-svg";
 import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useWindowDimensions } from "react-native";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/useAuth";
+import { getReminderDate } from "@/types/memoryKind";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { PressableScale } from "@/components/ui/PressableScale";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -206,7 +205,6 @@ function simulate<N extends { x: number; y: number; vx: number; vy: number }>(
 
 export default function KnowledgeGraphScreen() {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const { token } = useAuth();
 
@@ -219,7 +217,8 @@ export default function KnowledgeGraphScreen() {
   const rawMemories = (memoryResult?.memories ?? []) as Array<{
     _id: Id<"memories">; title: string; content: string;
     primaryTopicId?: string; topicIds?: string[]; people: string[];
-    mood?: string; reminderDate?: string;
+    mood?: string; reminderDate?: string; entryKind?: "memory" | "reminder";
+    schedule?: { dueAt: string; isRecurring: boolean; recurrenceType?: "daily" | "weekly" | "monthly" | "yearly" };
   }>;
   const topics = (useQuery(api.userTopics.list, token ? { token } : "skip") ?? []) as TopicDoc[];
 
@@ -287,48 +286,29 @@ export default function KnowledgeGraphScreen() {
     return new Set(memoryGraph.nodes.map((n) => find(n.id))).size;
   }, [memoryGraph]);
 
-  const webTopPadding = Platform.OS === "web" ? 67 : 0;
-
   const handleNodePress = (id: string) => {
     setSelectedId((prev) => (prev === id ? null : id));
   };
 
   return (
-    <YStack flex={1} backgroundColor="$background">
-      <ScrollView
-        contentContainerStyle={{
-          paddingHorizontal: 16,
-          paddingTop: insets.top + webTopPadding + 12,
-          paddingBottom: 32,
-          gap: 12,
-        }}
-        showsVerticalScrollIndicator={false}
-      >
+    <MorePageScaffold
+      title="Knowledge Graph"
+      scrollProps={{ contentContainerStyle: { gap: 12, paddingBottom: 32 } }}
+    >
         {/* ── Header ── */}
         <Animated.View entering={FadeInUp.duration(380)}>
           <Card style={{ padding: 18, borderRadius: 24 }}>
-            <XStack alignItems="flex-start" justifyContent="space-between" gap={12}>
-              <YStack flex={1} gap={5}>
-                <Badge label="Mind Map" color={theme.primary.val} />
-                <Text fontSize={26} lineHeight={30} fontFamily="$heading" fontWeight="700" color="$color">
-                  Knowledge graph
-                </Text>
-                <Text fontSize={13} lineHeight={19} fontFamily="$body" color="$colorMuted">
-                  {mode === "memories"
-                    ? "Memories linked by shared topics and people."
-                    : "Topic clusters derived from your AI taxonomy."}
-                </Text>
-              </YStack>
-              <PressableScale onPress={() => router.back()} hitSlop={8}>
-                <YStack
-                  width={42} height={42} borderRadius={14}
-                  alignItems="center" justifyContent="center"
-                  backgroundColor="$secondary" borderWidth={1} borderColor="$borderColor"
-                >
-                  <Feather name="arrow-left" size={20} color={theme.color.val} />
-                </YStack>
-              </PressableScale>
-            </XStack>
+            <YStack flex={1} gap={5}>
+              <Badge label="Mind Map" color={theme.primary.val} />
+              <Text fontSize={26} lineHeight={30} fontFamily="$heading" fontWeight="700" color="$color">
+                Knowledge graph
+              </Text>
+              <Text fontSize={13} lineHeight={19} fontFamily="$body" color="$colorMuted">
+                {mode === "memories"
+                  ? "Memories linked by shared topics and people."
+                  : "Topic clusters derived from your AI taxonomy."}
+              </Text>
+            </YStack>
 
             {/* Stats row */}
             <XStack gap={8} marginTop={14}>
@@ -602,11 +582,11 @@ export default function KnowledgeGraphScreen() {
                     {selectedMemory.mood && (
                       <Badge label={selectedMemory.mood} small />
                     )}
-                    {selectedMemory.reminderDate && (
+                    {getReminderDate(selectedMemory) && (
                       <XStack alignItems="center" gap={4}>
                         <Feather name="bell" size={11} color={theme.primary.val} />
                         <Text fontSize={11} fontFamily="$body" color="$primary">
-                          {new Date(selectedMemory.reminderDate).toLocaleDateString(undefined, {
+                          {new Date(getReminderDate(selectedMemory)!).toLocaleDateString(undefined, {
                             month: "short", day: "numeric",
                           })}
                         </Text>
@@ -744,7 +724,6 @@ export default function KnowledgeGraphScreen() {
             )}
           </Animated.View>
         )}
-      </ScrollView>
-    </YStack>
+    </MorePageScaffold>
   );
 }

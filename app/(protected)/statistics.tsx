@@ -1,25 +1,21 @@
 import React, { useMemo } from "react";
-import { ScrollView, Platform } from "react-native";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { Feather } from "@expo/vector-icons";
-import { router } from "expo-router";
 import Svg, { Rect, Text as SvgText } from "react-native-svg";
 import Animated, { FadeInUp } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/useAuth";
 import { Card } from "@/components/ui/Card";
 import { SectionLabel } from "@/components/ui/SectionLabel";
-import { PressableScale } from "@/components/ui/PressableScale";
 import { Badge } from "@/components/ui/Badge";
+import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
 import { moodLabels } from "@/constants/categories";
 
 export default function StatisticsScreen() {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const { token } = useAuth();
 
   const memoryResult = useQuery(api.memories.list, token ? { token, limit: 100 } : "skip");
@@ -34,8 +30,6 @@ export default function StatisticsScreen() {
   }>;
   const stats = useQuery(api.memories.stats, token ? { token } : "skip");
   const topics = useQuery(api.userTopics.list, token ? { token } : "skip") ?? [];
-
-  const webTopPadding = Platform.OS === "web" ? 67 : 0;
 
   const last7Days = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => {
@@ -98,43 +92,21 @@ export default function StatisticsScreen() {
   ];
 
   return (
-    <YStack flex={1} backgroundColor="$background">
-      <ScrollView
-        contentContainerStyle={{
-          paddingHorizontal: 16,
-          paddingTop: insets.top + webTopPadding + 12,
-          paddingBottom: 28,
-          gap: 20,
-        }}
-        showsVerticalScrollIndicator={false}
-      >
+    <MorePageScaffold
+      title="Statistics"
+      scrollProps={{ contentContainerStyle: { gap: 20 } }}
+    >
         <Animated.View entering={FadeInUp.duration(400)}>
           <Card style={{ padding: 18, borderRadius: 24, backgroundColor: theme.card.val }}>
-            <XStack alignItems="flex-start" justifyContent="space-between" gap={12}>
-              <YStack flex={1} gap={6}>
-                <Badge label="Analytics" color={theme.primary.val} />
-                <Text fontSize={28} lineHeight={32} fontFamily="$heading" fontWeight="700" color="$color">
-                  Statistics
-                </Text>
-                <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
-                  A compact view of rhythm, themes, and the amount of writing you are generating.
-                </Text>
-              </YStack>
-              <PressableScale onPress={() => router.back()} hitSlop={8}>
-                <YStack
-                  width={42}
-                  height={42}
-                  borderRadius={14}
-                  alignItems="center"
-                  justifyContent="center"
-                  backgroundColor={theme.secondary.val}
-                  borderWidth={1}
-                  borderColor={theme.borderColor.val}
-                >
-                  <Feather name="arrow-left" size={20} color={theme.color.val} />
-                </YStack>
-              </PressableScale>
-            </XStack>
+            <YStack flex={1} gap={6}>
+              <Badge label="Analytics" color={theme.primary.val} />
+              <Text fontSize={28} lineHeight={32} fontFamily="$heading" fontWeight="700" color="$color">
+                Statistics
+              </Text>
+              <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
+                A compact view of rhythm, themes, and the amount of writing you are generating.
+              </Text>
+            </YStack>
             <XStack gap={10} marginTop={16} flexWrap="wrap">
               <Badge label={`${streakDays} day streak`} color={theme.primary.val} />
               <Badge label={`${activeDays.length} active days`} />
@@ -275,7 +247,6 @@ export default function StatisticsScreen() {
             )}
           </Card>
         </Animated.View>
-      </ScrollView>
-    </YStack>
+    </MorePageScaffold>
   );
 }

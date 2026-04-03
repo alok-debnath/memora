@@ -11,7 +11,7 @@ import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInUp } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Text, XStack, YStack } from "tamagui";
 
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -79,11 +79,11 @@ function OnboardingSlide({
           backgroundColor="rgba(255,255,255,0.72)"
           borderWidth={1}
           borderColor="rgba(232,145,27,0.12)"
-          shadowColor="#000"
-          shadowOffset={{ width: 0, height: 16 }}
-          shadowOpacity={0.12}
-          shadowRadius={28}
-          elevation={5}
+          shadowColor="#B0670A"
+          shadowOffset={{ width: 0, height: 10 }}
+          shadowOpacity={Platform.OS === "web" ? 0.08 : 0.12}
+          shadowRadius={18}
+          elevation={3}
         >
           <XStack justifyContent="space-between" alignItems="center" marginBottom={20}>
             <YStack
@@ -152,7 +152,6 @@ function OnboardingSlide({
 
 export function OnboardingScreen() {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList<OnboardingStep>>(null);
@@ -177,7 +176,8 @@ export function OnboardingScreen() {
   };
 
   return (
-    <YStack flex={1} backgroundColor="$background">
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top", "bottom"]}>
+      <YStack flex={1} backgroundColor="$background">
       <View pointerEvents="none" style={styles.glowOne} />
       <View pointerEvents="none" style={styles.glowTwo} />
       <LinearGradient
@@ -187,7 +187,7 @@ export function OnboardingScreen() {
         <XStack
           justifyContent="space-between"
           alignItems="center"
-          paddingTop={insets.top + 14}
+          paddingTop={14}
           paddingHorizontal={20}
           marginBottom={8}
         >
@@ -233,12 +233,12 @@ export function OnboardingScreen() {
           })}
           initialNumToRender={1}
           windowSize={2}
-          removeClippedSubviews
+          removeClippedSubviews={false}
         />
 
         <YStack
           paddingHorizontal={20}
-          paddingBottom={insets.bottom + 20}
+          paddingBottom={20}
           paddingTop={10}
           gap={18}
         >
@@ -282,7 +282,8 @@ export function OnboardingScreen() {
           </Text>
         </YStack>
       </LinearGradient>
-    </YStack>
+      </YStack>
+    </SafeAreaView>
   );
 }
 
@@ -316,9 +317,9 @@ const styles = {
     minWidth: 200,
     alignSelf: "center" as const,
     shadowColor: "#E8911B",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.24,
-    shadowRadius: 18,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: Platform.OS === "web" ? 0.12 : 0.22,
+    shadowRadius: 14,
+    elevation: 4,
   },
 };

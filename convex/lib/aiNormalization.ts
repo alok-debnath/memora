@@ -32,6 +32,7 @@ const MEMORY_LIFE_AREAS = new Set([
 ] as const);
 
 const DIARY_ENERGY = new Set(["high", "medium", "low"] as const);
+const MEMORY_ENTRY_KINDS = new Set(["memory", "reminder"] as const);
 
 type MemoryMood =
   | "happy"
@@ -57,6 +58,7 @@ type MemoryLifeArea =
   | "self-care"
   | "relationships";
 type DiaryEnergy = "high" | "medium" | "low";
+type MemoryEntryKind = "memory" | "reminder";
 
 function asTrimmedString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -148,6 +150,53 @@ export function normalizeMemoryFields(value: Record<string, unknown>) {
         }
       : undefined;
 
+  const scheduleValue = value.schedule;
+  const normalizedSchedule = (() => {
+    if (!scheduleValue || typeof scheduleValue !== "object" || Array.isArray(scheduleValue)) {
+      return undefined;
+    }
+    const dueAt = asTrimmedString(
+      (scheduleValue as Record<string, unknown>).dueAt ??
+        (scheduleValue as Record<string, unknown>).due_at
+    );
+    if (!dueAt) {
+      return undefined;
+    }
+    return {
+      dueAt,
+      isRecurring:
+        asBoolean(
+          (scheduleValue as Record<string, unknown>).isRecurring ??
+            (scheduleValue as Record<string, unknown>).is_recurring
+        ) ?? false,
+      recurrenceType: asEnumValue(
+        (scheduleValue as Record<string, unknown>).recurrenceType ??
+          (scheduleValue as Record<string, unknown>).recurrence_type,
+        new Set(["yearly", "monthly", "weekly", "daily"] as const)
+      ),
+    };
+  })();
+
+  const reminderDate = asTrimmedString(value.reminderDate ?? value.reminder_date);
+  const explicitEntryKind = asEnumValue<MemoryEntryKind>(
+    value.entryKind ?? value.entry_kind,
+    MEMORY_ENTRY_KINDS
+  );
+  const schedule =
+    normalizedSchedule?.dueAt
+      ? normalizedSchedule
+      : reminderDate
+        ? {
+            dueAt: reminderDate,
+            isRecurring: asBoolean(value.isRecurring ?? value.is_recurring) ?? false,
+            recurrenceType: asEnumValue(
+              value.recurrenceType ?? value.recurrence_type,
+              new Set(["yearly", "monthly", "weekly", "daily"] as const)
+            ),
+          }
+        : undefined;
+  const entryKind = explicitEntryKind ?? (schedule?.dueAt ? "reminder" : "memory");
+
   return {
     title: asTrimmedString(value.title),
     content: asTrimmedString(value.content),
@@ -168,7 +217,11 @@ export function normalizeMemoryFields(value: Record<string, unknown>) {
         ? normalizedContext
         : undefined,
     linkedUrls: asStringArray(value.linkedUrls ?? value.linked_urls),
-    reminderDate: asTrimmedString(value.reminderDate ?? value.reminder_date),
+    entryKind,
+    schedule,
+    reminderDate: schedule?.dueAt,
+    isRecurring: schedule?.isRecurring ?? false,
+    recurrenceType: schedule?.recurrenceType,
     sentimentScore: asNumber(value.sentimentScore ?? value.sentiment_score),
     extractedActions: normalizeExtractedActions(
       value.extractedActions ?? value.extracted_actions

@@ -1,10 +1,11 @@
 import React from "react";
-import { ScrollView, Platform } from "react-native";
+import { ScrollView } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import Animated, { FadeInUp } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { XStack, YStack, Text } from "tamagui";
+
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { Card } from "@/components/ui/Card";
@@ -24,23 +25,23 @@ const menuItems: MenuItem[] = [
   { icon: "file-text", label: "Documents", description: "Document vault with AI extraction", route: "/documents", color: "#3B82F6" },
   { icon: "share-2", label: "Knowledge Graph", description: "Visual memory connections", route: "/knowledge-graph", color: "#10B981" },
   { icon: "bar-chart-2", label: "Statistics", description: "Memory analytics and trends", route: "/statistics", color: "#EC4899" },
+  { icon: "archive", label: "Data", description: "Deleted memories and clean-slate controls", route: "/data", color: "#D97706" },
   { icon: "user", label: "Profile", description: "Settings and preferences", route: "/profile", color: "#8B5CF6" },
 ];
 
 export default function MoreScreen() {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
-  const webTopPadding = Platform.OS === "web" ? 67 : 0;
   const totalRoutes = menuItems.length;
 
   return (
-    <YStack
-      flex={1}
-      backgroundColor="$background"
-      paddingHorizontal={16}
-      paddingTop={insets.top + webTopPadding + 12}
-    >
-      <Animated.View entering={FadeInUp.duration(420)}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top", "bottom"]}>
+      <YStack
+        flex={1}
+        backgroundColor="$background"
+        paddingHorizontal={16}
+        paddingTop={12}
+      >
+        <Animated.View entering={FadeInUp.duration(420)}>
         <Card
           style={{
             marginBottom: 16,
@@ -56,7 +57,7 @@ export default function MoreScreen() {
                 Explore the vault
               </Text>
               <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
-                Jump into timelines, analytics, reminders, and profile controls from one place.
+                Jump into timelines, analytics, reminders, data controls, and profile settings from one place.
               </Text>
             </YStack>
             <YStack
@@ -77,50 +78,51 @@ export default function MoreScreen() {
         </Card>
       </Animated.View>
 
-      <ScrollView contentContainerStyle={{ gap: 10, paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
-        {menuItems.map((item, i) => (
-          <Animated.View key={item.route} entering={FadeInUp.delay(i * 60).duration(400)}>
-            <PressableScale
-              onPress={() => router.push(item.route as `/${string}`)}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                padding: 16,
-                borderRadius: 22,
-                borderWidth: 1,
-                gap: 14,
-                backgroundColor: theme.card.val,
-                borderColor: theme.borderColor.val,
-                shadowColor: "#000",
-                shadowOpacity: 0.05,
-                shadowRadius: 12,
-                shadowOffset: { width: 0, height: 8 },
-              }}
-            >
-              <YStack
-                width={46}
-                height={46}
-                borderRadius={14}
-                backgroundColor={item.color + "15"}
-                alignItems="center"
-                justifyContent="center"
+        <ScrollView contentContainerStyle={{ gap: 10, paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
+          {menuItems.map((item, i) => (
+            <Animated.View key={item.route} entering={FadeInUp.delay(i * 60).duration(400)}>
+              <PressableScale
+                onPress={() => router.push(item.route as never)}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  padding: 16,
+                  borderRadius: 22,
+                  borderWidth: 1,
+                  gap: 14,
+                  backgroundColor: theme.card.val,
+                  borderColor: theme.borderColor.val,
+                  shadowColor: "#000",
+                  shadowOpacity: 0.05,
+                  shadowRadius: 12,
+                  shadowOffset: { width: 0, height: 8 },
+                }}
               >
-                <Feather name={item.icon} size={22} color={item.color} />
-              </YStack>
-              <YStack flex={1}>
-                <Text fontSize={16} fontFamily="$body" fontWeight="600" color="$color">
-                  {item.label}
-                </Text>
-                <Text fontSize={13} fontFamily="$body" color="$colorMuted" marginTop={2}>
-                  {item.description}
-                </Text>
-              </YStack>
-              <Feather name="chevron-right" size={18} color={theme.colorMuted.val} />
-            </PressableScale>
-          </Animated.View>
-        ))}
-        <YStack height={100} />
-      </ScrollView>
-    </YStack>
+                <YStack
+                  width={46}
+                  height={46}
+                  borderRadius={14}
+                  backgroundColor={item.color + "15"}
+                  alignItems="center"
+                  justifyContent="center"
+                >
+                  <Feather name={item.icon} size={22} color={item.color} />
+                </YStack>
+                <YStack flex={1}>
+                  <Text fontSize={16} fontFamily="$body" fontWeight="600" color="$color">
+                    {item.label}
+                  </Text>
+                  <Text fontSize={13} fontFamily="$body" color="$colorMuted" marginTop={2}>
+                    {item.description}
+                  </Text>
+                </YStack>
+                <Feather name="chevron-right" size={18} color={theme.colorMuted.val} />
+              </PressableScale>
+            </Animated.View>
+          ))}
+          <YStack height={100} />
+        </ScrollView>
+      </YStack>
+    </SafeAreaView>
   );
 }

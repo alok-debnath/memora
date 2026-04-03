@@ -37,10 +37,16 @@ import {
 import { moodColors } from "@/constants/colors";
 import { FontFamily } from "@/constants/fonts";
 import type { MemoryNote } from "@/types/memory";
+import { getReminderDate, inferMemoryEntryKind } from "@/types/memoryKind";
 
 const MANUAL_OPTIONS = [
   { value: "manual" as const, label: "Manual" },
   { value: "voice" as const, label: "Voice" },
+];
+
+const ENTRY_KIND_OPTIONS = [
+  { value: "memory" as const, label: "Memory" },
+  { value: "reminder" as const, label: "Reminder" },
 ];
 
 const moodOptions: PickerOption[] = (Object.keys(moodLabels) as Mood[]).map((k) => ({
@@ -58,14 +64,16 @@ interface EditMemorySheetProps {
 }
 
 function createInitialState(memory?: MemoryNote) {
+  const schedule = memory?.schedule;
   return {
     title: memory?.title ?? "",
     content: memory?.content ?? "",
     mood: (memory?.mood ?? null) as Mood | null,
     people: memory?.people ?? [],
     locations: memory?.locations ?? [],
-    reminderDate: memory?.reminderDate ?? "",
-    isRecurring: memory?.isRecurring ?? false,
+    entryKind: inferMemoryEntryKind(memory ?? {}),
+    reminderDate: schedule?.dueAt ?? getReminderDate(memory ?? {}) ?? "",
+    isRecurring: schedule?.isRecurring ?? false,
     capsuleEnabled: !!(memory?.capsuleUnlockDate),
     capsuleDate: memory?.capsuleUnlockDate ?? "",
   };
@@ -111,6 +119,14 @@ export function EditMemorySheet({
   };
 
   const handleSave = () => {
+    if (form.entryKind === "reminder" && !form.reminderDate.trim()) {
+      if (Platform.OS === "web") {
+        window.alert("Reminder needs a date and time.");
+      } else {
+        Alert.alert("Reminder", "Add a date and time before saving.");
+      }
+      return;
+    }
     if (Platform.OS !== "web") {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
@@ -120,9 +136,15 @@ export function EditMemorySheet({
       mood: form.mood,
       people: form.people,
       locations: form.locations,
-      reminderDate: form.reminderDate.trim() || null,
-      isRecurring: form.isRecurring,
-      recurrenceType: form.isRecurring ? "monthly" : null,
+      entryKind: form.entryKind,
+      schedule:
+        form.entryKind === "reminder" && form.reminderDate.trim()
+          ? {
+              dueAt: form.reminderDate.trim(),
+              isRecurring: form.isRecurring,
+              recurrenceType: form.isRecurring ? "monthly" : undefined,
+            }
+          : null,
       capsuleUnlockDate:
         form.capsuleEnabled && form.capsuleDate.trim() ? form.capsuleDate.trim() : null,
     });
@@ -334,8 +356,35 @@ export function EditMemorySheet({
               placeholder="Add location..."
             />
 
-            {/* Reminder */}
             <YStack gap={6}>
+              <Text
+                fontSize={11}
+                fontFamily="$body"
+                fontWeight="600"
+                letterSpacing={0.8}
+                marginLeft={4}
+                textTransform="uppercase"
+                color="$colorMuted"
+              >
+                TYPE
+              </Text>
+              <SegmentedControl
+                options={ENTRY_KIND_OPTIONS}
+                value={form.entryKind}
+                onChange={(value) => {
+                  const entryKind = value as "memory" | "reminder";
+                  setField("entryKind", entryKind);
+                  if (entryKind === "memory") {
+                    setField("reminderDate", "");
+                    setField("isRecurring", false);
+                  }
+                }}
+              />
+            </YStack>
+
+            {form.entryKind === "reminder" ? (
+              <>
+                <YStack gap={6}>
               <Text
                 fontSize={11}
                 fontFamily="$body"
@@ -471,30 +520,32 @@ export function EditMemorySheet({
                   </Modal>
                 </YStack>
               )}
-            </YStack>
+                </YStack>
 
-            {/* Recurring */}
-            <XStack
-              alignItems="center"
-              gap={12}
-              borderWidth={0.5}
-              borderRadius={14}
-              padding={14}
-              borderColor="$borderColor"
-              backgroundColor="$card"
-            >
-              <Feather name="refresh-cw" size={16} color={theme.colorMuted.val} />
-              <YStack flex={1}>
-                <Text fontSize={14} fontFamily="$body" fontWeight="600" color="$color">Recurring</Text>
-                <Text fontSize={12} fontFamily="$body" marginTop={1} color="$colorMuted">Repeat this reminder</Text>
-              </YStack>
-              <Switch
-                value={form.isRecurring}
-                onValueChange={(v) => setField("isRecurring", v)}
-                trackColor={{ true: theme.primary.val, false: theme.borderColor.val }}
-                thumbColor="#FFFFFF"
-              />
-            </XStack>
+                {/* Recurring */}
+                <XStack
+                  alignItems="center"
+                  gap={12}
+                  borderWidth={0.5}
+                  borderRadius={14}
+                  padding={14}
+                  borderColor="$borderColor"
+                  backgroundColor="$card"
+                >
+                  <Feather name="refresh-cw" size={16} color={theme.colorMuted.val} />
+                  <YStack flex={1}>
+                    <Text fontSize={14} fontFamily="$body" fontWeight="600" color="$color">Recurring</Text>
+                    <Text fontSize={12} fontFamily="$body" marginTop={1} color="$colorMuted">Repeat this reminder</Text>
+                  </YStack>
+                  <Switch
+                    value={form.isRecurring}
+                    onValueChange={(v) => setField("isRecurring", v)}
+                    trackColor={{ true: theme.primary.val, false: theme.borderColor.val }}
+                    thumbColor="#FFFFFF"
+                  />
+                </XStack>
+              </>
+            ) : null}
 
             {/* AI Topics (readonly) */}
             {resolvedTopics.length > 0 && (
