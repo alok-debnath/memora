@@ -30,14 +30,11 @@ import { TimeCapsuleToggle } from "./ui/TimeCapsuleToggle";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { KeyboardAwareScrollViewCompat } from "./KeyboardAwareScrollViewCompat";
 import {
-  categoryLabels,
-  categoryIcons,
   moodLabels,
   moodIcons,
-  type Category,
   type Mood,
 } from "@/constants/categories";
-import { categoryColors, moodColors } from "@/constants/colors";
+import { moodColors } from "@/constants/colors";
 import { FontFamily } from "@/constants/fonts";
 import type { MemoryNote } from "@/types/memory";
 
@@ -45,13 +42,6 @@ const MANUAL_OPTIONS = [
   { value: "manual" as const, label: "Manual" },
   { value: "voice" as const, label: "Voice" },
 ];
-
-const categoryOptions: PickerOption[] = (Object.keys(categoryLabels) as Category[]).map((k) => ({
-  value: k,
-  label: categoryLabels[k],
-  icon: categoryIcons[k],
-  color: categoryColors[k],
-}));
 
 const moodOptions: PickerOption[] = (Object.keys(moodLabels) as Mood[]).map((k) => ({
   value: k,
@@ -71,9 +61,7 @@ function createInitialState(memory?: MemoryNote) {
   return {
     title: memory?.title ?? "",
     content: memory?.content ?? "",
-    category: (memory?.category ?? "other") as Category,
     mood: (memory?.mood ?? null) as Mood | null,
-    tags: memory?.tags ?? [],
     people: memory?.people ?? [],
     locations: memory?.locations ?? [],
     reminderDate: memory?.reminderDate ?? "",
@@ -118,9 +106,7 @@ export function EditMemorySheet({
     onSave({
       title: form.title.trim() || "Untitled Memory",
       content: form.content.trim(),
-      category: form.category,
       mood: form.mood,
-      tags: form.tags,
       people: form.people,
       locations: form.locations,
       reminderDate: form.reminderDate.trim() || null,
@@ -171,10 +157,6 @@ export function EditMemorySheet({
     }
   };
 
-  const memoryCategory = (memory?.category ?? form.category) as Category;
-  const categoryIcon = categoryIcons[memoryCategory] ?? "file-text";
-  const categoryColor = categoryColors[memoryCategory] ?? theme.primary.val;
-
   return (
     <BaseSheet
       onOpenChange={(open) => { if (!open) onClose(); }}
@@ -188,15 +170,25 @@ export function EditMemorySheet({
           <Text fontSize={18}>✏️</Text>
           <Text fontSize={18} fontFamily="$body" fontWeight="600" color="$color">Edit Memory</Text>
         </XStack>
-        <Pressable onPress={onClose} hitSlop={8}>
-          <Feather name="x" size={22} color={theme.colorMuted.val} />
-        </Pressable>
+        <PressableScale onPress={onClose}>
+          <YStack
+            width={38}
+            height={38}
+            borderRadius={14}
+            alignItems="center"
+            justifyContent="center"
+            backgroundColor="$background"
+            borderWidth={1}
+            borderColor="$borderColor"
+          >
+            <Feather name="x" size={18} color={theme.color.val} />
+          </YStack>
+        </PressableScale>
       </XStack>
 
       {/* Memory subtitle */}
       {memory && (
         <XStack alignItems="center" justifyContent="center" gap={6} marginBottom={6}>
-          <Feather name={categoryIcon} size={13} color={categoryColor} />
           <Text fontSize={13} fontFamily="$body" color="$colorMuted" numberOfLines={1} maxWidth="80%">
             {memory.title}
           </Text>
@@ -301,32 +293,15 @@ export function EditMemorySheet({
               />
             </YStack>
 
-            {/* Category + Mood */}
-            <XStack gap={12} flexWrap="wrap">
-              <PickerField
-                label="CATEGORY"
-                options={categoryOptions}
-                value={form.category}
-                onChange={(v) => setField("category", (v ?? "other") as Category)}
-                stacked={stackPickers}
-              />
-              <PickerField
-                label="MOOD"
-                options={moodOptions}
-                value={form.mood}
-                onChange={(v) => setField("mood", v as Mood | null)}
-                allowClear
-                placeholder="None"
-                stacked={stackPickers}
-              />
-            </XStack>
-
-            {/* Tags */}
-            <TagInput
-              label="TAGS"
-              value={form.tags}
-              onChange={(v) => setField("tags", v)}
-              placeholder="Add tag..."
+            {/* Mood */}
+            <PickerField
+              label="MOOD"
+              options={moodOptions}
+              value={form.mood}
+              onChange={(v) => setField("mood", v as Mood | null)}
+              allowClear
+              placeholder="None"
+              stacked={stackPickers}
             />
 
             {/* People */}
@@ -616,7 +591,7 @@ function TipsCard() {
   const theme = useAppTheme();
   const tips = [
     "Use voice mode to describe changes naturally",
-    "Add tags to organize and find memories faster",
+    "Topics are assigned automatically by AI",
     "Set a mood to track how you felt",
   ];
   return (

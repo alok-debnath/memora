@@ -35,25 +35,21 @@ const TEMPLATES = [
   {
     name: "Meeting Notes",
     icon: "briefcase" as const,
-    category: "work",
     prompt: "Meeting Notes:\n\nDate: \nAttendees: \nAgenda: \nKey Points:\n- \n\nAction Items:\n- ",
   },
   {
     name: "Daily Journal",
     icon: "file-text" as const,
-    category: "personal",
     prompt: "Today I...\n\nGrateful for:\n- \n\nHighlights:\n- \n\nTomorrow I want to:\n- ",
   },
   {
     name: "Habit Tracker",
     icon: "check-square" as const,
-    category: "health",
     prompt: "Habit Check-in:\n\nExercise: \nWater intake: \nSleep: \nMeditation: \nReading: ",
   },
   {
     name: "Health Log",
     icon: "heart" as const,
-    category: "health",
     prompt: "Health Log:\n\nDate: \nSymptoms: \nMedications: \nMood: \nEnergy level: \nNotes: ",
   },
 ];
@@ -98,9 +94,6 @@ function TemplateCard({
         </XStack>
         <Text fontSize={14} fontFamily="$body" fontWeight="600" color="$color" numberOfLines={1}>
           {template.name}
-        </Text>
-        <Text fontSize={12} fontFamily="$body" color="$colorMuted">
-          {template.category.charAt(0).toUpperCase() + template.category.slice(1)}
         </Text>
       </YStack>
     </PressableScale>
@@ -268,9 +261,20 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
               </Pressable>
             </>
           )}
-          <Pressable onPress={onClose} style={{ width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" }}>
-            <Feather name="x" size={18} color={theme.colorMuted.val} />
-          </Pressable>
+          <PressableScale onPress={onClose}>
+            <YStack
+              width={38}
+              height={38}
+              borderRadius={14}
+              alignItems="center"
+              justifyContent="center"
+              backgroundColor="$background"
+              borderWidth={1}
+              borderColor="$borderColor"
+            >
+              <Feather name="x" size={18} color={theme.color.val} />
+            </YStack>
+          </PressableScale>
         </XStack>
       </XStack>
 
