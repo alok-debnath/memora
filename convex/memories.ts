@@ -354,6 +354,7 @@ export const create = mutation({
     isRecurring: v.optional(v.boolean()),
     recurrenceType: v.optional(recurrenceValidator),
     capsuleUnlockDate: v.optional(v.string()),
+    skipAiProcessing: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const user = await resolveUser(ctx, args.token);
@@ -385,13 +386,15 @@ export const create = mutation({
       capsuleUnlockDate: args.capsuleUnlockDate,
     });
 
-    await ctx.scheduler.runAfter(0, api.actions.processMemory.processMemory, {
-      memoryId,
-      title: args.title ?? "",
-      content: args.content ?? "",
-      userTimezone: user.timezone,
-      currentTime: new Date().toISOString(),
-    });
+    if (!args.skipAiProcessing) {
+      await ctx.scheduler.runAfter(0, api.actions.processMemory.processMemory, {
+        memoryId,
+        title: args.title ?? "",
+        content: args.content ?? "",
+        userTimezone: user.timezone,
+        currentTime: new Date().toISOString(),
+      });
+    }
 
     return memoryId;
   },

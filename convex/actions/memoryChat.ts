@@ -326,13 +326,25 @@ async function listMemoriesForAI(
 
 async function searchDocuments(
   ctx: ActionCtx,
-  args: { token: string; query: string; userId: Id<"users"> }
+  args: {
+    token: string;
+    query: string;
+    userId: Id<"users">;
+    documents?: DocumentDoc[];
+  }
 ) {
-  const documents: DocumentDoc[] = await ctx.runQuery(api.documents.list, {
-    token: args.token,
-  });
+  const documents: DocumentDoc[] =
+    args.documents ??
+    (await ctx.runQuery(api.documents.list, {
+      token: args.token,
+    }));
 
-  const keywordQuery = args.query.trim().toLowerCase();
+  const normalizedQuery = args.query.trim();
+  if (!normalizedQuery) {
+    return documents.slice(0, 10).map(toDocumentSummary);
+  }
+
+  const keywordQuery = normalizedQuery.toLowerCase();
   const keywordMatches = documents.filter((document) => {
     const haystack = [
       document.filename,
@@ -348,7 +360,7 @@ async function searchDocuments(
   });
 
   try {
-    const queryEmbedding = await embedText(args.query);
+    const queryEmbedding = await embedText(normalizedQuery);
     const vectorResults = await ctx.vectorSearch(
       "documentExtractions",
       "by_embedding",
@@ -390,16 +402,30 @@ async function searchDocuments(
 
 async function searchMemories(
   ctx: ActionCtx,
-  args: { token: string; query: string; userId: Id<"users"> }
+  args: {
+    token: string;
+    query: string;
+    userId: Id<"users">;
+    recentMemories?: MemoryDoc[];
+  }
 ) {
+  const recentMemories =
+    args.recentMemories ?? (await listMemoriesForAI(ctx, args.userId, 100));
+  const normalizedQuery = args.query.trim();
+  if (!normalizedQuery) {
+    return {
+      results: recentMemories.slice(0, 10).map(toMemorySummary),
+      count: recentMemories.length,
+    };
+  }
+
   const semanticResults = await ctx.runAction(api.actions.semanticSearch.search, {
     token: args.token,
-    query: args.query,
+    query: normalizedQuery,
     limit: 12,
   });
 
-  const recentMemories = await listMemoriesForAI(ctx, args.userId, 100);
-  const queryTerms = args.query
+  const queryTerms = normalizedQuery
     .toLowerCase()
     .split(/\s+/)
     .map((part) => part.trim())
@@ -442,9 +468,11 @@ async function resolveMemoryReference(
     token: string;
     userId: Id<"users">;
     reference?: string;
+    recentMemories?: MemoryDoc[];
   }
 ): Promise<Id<"memories"> | null> {
-  const recentMemories = await listMemoriesForAI(ctx, args.userId, 20);
+  const recentMemories =
+    args.recentMemories ?? (await listMemoriesForAI(ctx, args.userId, 20));
 
   if (!args.reference?.trim()) {
     return recentMemories[0]?._id ?? null;
@@ -592,6 +620,23 @@ export const chat = action({
 
     if (client) {
       try {
+        let documentsCachePromise: Promise<DocumentDoc[]> | undefined;
+        let recentMemoriesCache: MemoryDoc[] | undefined;
+        const getDocumentsCache = async () => {
+          if (!documentsCachePromise) {
+            documentsCachePromise = ctx.runQuery(api.documents.list, {
+              token: args.token,
+            });
+          }
+          return documentsCachePromise;
+        };
+        const getRecentMemoriesCache = async () => {
+          if (!recentMemoriesCache) {
+            recentMemoriesCache = await listMemoriesForAI(ctx, session._id, 100);
+          }
+          return recentMemoriesCache;
+        };
+
         const conversation: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
           {
             role: "system",
@@ -665,6 +710,7 @@ export const chat = action({
                   token: args.token,
                   query: String(fnArgs.query || ""),
                   userId: session._id,
+                  recentMemories: await getRecentMemoriesCache(),
                 })
               );
             } else if (fnName === "search_documents") {
@@ -674,6 +720,7 @@ export const chat = action({
                     token: args.token,
                     query: String(fnArgs.query || ""),
                     userId: session._id,
+                    documents: await getDocumentsCache(),
                   }),
                 }
               );
@@ -721,14 +768,50 @@ export const chat = action({
                         | "daily",
                     }
                   : {}),
+                ...(typeof normalized.importance === "string"
+                  ? {
+                      importance: normalized.importance as
+                        | "critical"
+                        | "high"
+                        | "normal"
+                        | "low",
+                    }
+                  : {}),
+                ...(typeof normalized.lifeArea === "string"
+                  ? {
+                      lifeArea: normalized.lifeArea as
+                        | "career"
+                        | "family"
+                        | "health"
+                        | "finance"
+                        | "social"
+                        | "hobbies"
+                        | "education"
+                        | "travel"
+                        | "self-care"
+                        | "relationships",
+                    }
+                  : {}),
+                ...(typeof normalized.sentimentScore === "number"
+                  ? { sentimentScore: normalized.sentimentScore }
+                  : {}),
+                ...(Array.isArray(normalized.linkedUrls)
+                  ? { linkedUrls: normalized.linkedUrls }
+                  : {}),
+                ...(Array.isArray(normalized.extractedActions)
+                  ? { extractedActions: normalized.extractedActions }
+                  : {}),
               };
 
               if (existingCreated) {
-                await ctx.runMutation(api.memories.update, {
-                  token: args.token,
-                  id: existingCreated.id,
-                  ...memoryUpdatePatch,
-                });
+                if (Object.keys(memoryUpdatePatch).length > 0) {
+                  await ctx.runMutation(api.memories.update, {
+                    token: args.token,
+                    id: existingCreated.id,
+                    ...memoryUpdatePatch,
+                  });
+                  recentMemoriesCache = undefined;
+                }
                 result = JSON.stringify({
                   success: true,
                   deduped: true,
@@ -748,11 +831,31 @@ export const chat = action({
                   }
                 );
 
-                await ctx.runMutation(api.memories.update, {
-                  token: args.token,
-                  id: created.memoryId,
-                  ...memoryUpdatePatch,
-                });
+                if (Object.keys(memoryUpdatePatch).length > 0) {
+                  await ctx.runMutation(api.memories.update, {
+                    token: args.token,
+                    id: created.memoryId,
+                    ...memoryUpdatePatch,
+                  });
+                }
+                recentMemoriesCache = undefined;
+
+                if (created.embedding && contentToSave) {
+                  await ctx.scheduler.runAfter(
+                    0,
+                    internal.actions.manageTopics.assignTopicsToMemory,
+                    {
+                      memoryId: created.memoryId,
+                      userId: session._id,
+                      title:
+                        normalized.title ||
+                        created.structured.title ||
+                        "New Memory",
+                      content: contentToSave,
+                      embedding: created.embedding,
+                    }
+                  );
+                }
 
                 const resolvedTitle =
                   normalized.title || created.structured.title || "New Memory";
@@ -798,6 +901,7 @@ export const chat = action({
                       }
                     : {}),
                 });
+                recentMemoriesCache = undefined;
                 result = JSON.stringify({ success: true, memory_id: fnArgs.memory_id });
               } catch (error) {
                 result = JSON.stringify({
@@ -811,6 +915,7 @@ export const chat = action({
                   token: args.token,
                   id: fnArgs.memory_id as Id<"memories">,
                 });
+                recentMemoriesCache = undefined;
                 result = JSON.stringify({ success: true });
               } catch (error) {
                 result = JSON.stringify({
@@ -831,22 +936,21 @@ export const chat = action({
                   ids: memoryIds,
                 })
               );
+              recentMemoriesCache = undefined;
             } else if (fnName === "list_memories") {
-              const memories = await listMemoriesForAI(
-                ctx,
-                session._id,
-                typeof fnArgs.limit === "number" ? fnArgs.limit : 20
-              );
+              const memories = await getRecentMemoriesCache();
+              const limit =
+                typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 100) : 20;
               const ordered =
                 fnArgs.sort === "oldest" ? [...memories].reverse() : memories;
               result = JSON.stringify({
                 memories: ordered
-                  .slice(0, typeof fnArgs.limit === "number" ? fnArgs.limit : 20)
+                  .slice(0, limit)
                   .map((memory: MemoryDoc) => toMemorySummary(memory)),
                 count: memories.length,
               });
             } else if (fnName === "get_stats") {
-              const memories = await listMemoriesForAI(ctx, session._id, 100);
+              const memories = await getRecentMemoriesCache();
               const moods: Record<string, number> = {};
               let withReminders = 0;
               let recurring = 0;
@@ -870,13 +974,13 @@ export const chat = action({
                 ).length,
               });
             } else if (fnName === "analyze_memories") {
-              const memories = await listMemoriesForAI(
-                ctx,
-                session._id,
-                typeof fnArgs.limit === "number" ? fnArgs.limit : 100
-              );
+              const memories = await getRecentMemoriesCache();
+              const limit =
+                typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 100) : 100;
               result = JSON.stringify({
-                memories: memories.map((memory: MemoryDoc) => toMemorySummary(memory)),
+                memories: memories
+                  .slice(0, limit)
+                  .map((memory: MemoryDoc) => toMemorySummary(memory)),
                 count: memories.length,
               });
             } else if (fnName === "history") {
@@ -901,6 +1005,7 @@ export const chat = action({
                       : {}),
                   })
                 );
+                recentMemoriesCache = undefined;
               } else if (fnArgs.action === "restore") {
                 result = JSON.stringify(
                   await ctx.runMutation(api.history.restore, {
@@ -908,6 +1013,7 @@ export const chat = action({
                     historyId: fnArgs.history_id as Id<"memoryHistory">,
                   })
                 );
+                recentMemoriesCache = undefined;
               }
             } else if (fnName === "manage_topics") {
               if (fnArgs.operation === "retag_memory") {
@@ -916,6 +1022,7 @@ export const chat = action({
                   userId: session._id,
                   reference:
                     typeof fnArgs.memory_id === "string" ? fnArgs.memory_id : undefined,
+                  recentMemories: await getRecentMemoriesCache(),
                 });
 
                 if (!resolvedMemoryId) {

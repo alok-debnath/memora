@@ -270,6 +270,7 @@ export const captureMemory = action({
   handler: async (ctx, args): Promise<{
     memoryId: Id<"memories">;
     structured: AIExtractedMemory;
+    embedding?: number[];
     conflicts: Array<{ existingMemoryId: string; description: string }>;
   }> => {
     const session = await ctx.runQuery(api.auth.me, { token: args.token });
@@ -382,9 +383,14 @@ export const captureMemory = action({
       extractedActions: structured.extractedActions || [],
       reminderDate: structured.reminderDate,
       isRecurring: false,
+      skipAiProcessing: true,
     });
 
-    if (embedding || structured.sentimentScore !== undefined || structured.extractedActions) {
+    if (
+      embedding ||
+      structured.sentimentScore !== undefined ||
+      structured.extractedActions !== undefined
+    ) {
       await ctx.runMutation(internal.processMemoryMutations.updateAIFields, {
         memoryId,
         title: structured.title,
@@ -400,10 +406,26 @@ export const captureMemory = action({
         extractedActions: structured.extractedActions,
         embedding,
       });
-    }
 
-    // Topic assignment is handled by the processMemory action that was already
-    // scheduled by memories.create — no need to schedule it again here.
+      if (embedding) {
+        await ctx.scheduler.runAfter(0, internal.actions.manageTopics.assignTopicsToMemory, {
+          memoryId,
+          userId: session._id,
+          title: structured.title || fallbackStructuredData(args.content).title || "New Memory",
+          content: args.content,
+          embedding,
+        });
+      }
+    } else {
+      await ctx.scheduler.runAfter(0, api.actions.processMemory.processMemory, {
+        memoryId,
+        title: structured.title || fallbackStructuredData(args.content).title || "New Memory",
+        content: args.content,
+        userTimezone: session.timezone,
+        currentTime: args.currentTime ?? new Date().toISOString(),
+        currentTimezone: args.currentTimezone,
+      });
+    }
 
     const conflictResult = await ctx.runAction(
       api.actions.detectConflicts.detectConflicts,
@@ -417,6 +439,7 @@ export const captureMemory = action({
     return {
       memoryId,
       structured,
+      embedding,
       conflicts: conflictResult.conflicts,
     };
   },
