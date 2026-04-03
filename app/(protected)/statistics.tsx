@@ -13,6 +13,7 @@ import { SectionLabel } from "@/components/ui/SectionLabel";
 import { Badge } from "@/components/ui/Badge";
 import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
 import { moodLabels } from "@/constants/categories";
+import { isReminder } from "@/types/memoryKind";
 
 export default function StatisticsScreen() {
   const theme = useAppTheme();
@@ -24,6 +25,12 @@ export default function StatisticsScreen() {
     _creationTime: number;
     content: string;
     mood?: string;
+    entryKind?: "memory" | "reminder";
+    schedule?: {
+      dueAt: string;
+      isRecurring: boolean;
+      recurrenceType?: "daily" | "weekly" | "monthly" | "yearly";
+    };
   }>;
   const diaryEntries = (useQuery(api.diary.list, token ? { token } : "skip") ?? []) as Array<{
     _id: Id<"diaryEntries">;
@@ -31,15 +38,17 @@ export default function StatisticsScreen() {
   const stats = useQuery(api.memories.stats, token ? { token } : "skip");
   const topics = useQuery(api.userTopics.list, token ? { token } : "skip") ?? [];
 
+  const memoryOnly = useMemo(() => memories.filter((memory) => !isReminder(memory)), [memories]);
+
   const last7Days = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => {
       const d = new Date();
       d.setDate(d.getDate() - (6 - i));
       const ds = d.toDateString();
-      const count = memories.filter((m) => new Date(m._creationTime).toDateString() === ds).length;
+      const count = memoryOnly.filter((m) => new Date(m._creationTime).toDateString() === ds).length;
       return { label: d.toLocaleDateString(undefined, { weekday: "short" }).slice(0, 2), count };
     });
-  }, [memories]);
+  }, [memoryOnly]);
 
   const maxCount = Math.max(...last7Days.map((d) => d.count), 1);
   const barWidth = 28;
@@ -48,27 +57,27 @@ export default function StatisticsScreen() {
   const chartWidth = (barWidth + barGap) * 7;
 
   const totalWords = useMemo(
-    () => memories.reduce((acc, m) => acc + (m.content || "").split(/\s+/).length, 0),
-    [memories]
+    () => memoryOnly.reduce((acc, m) => acc + (m.content || "").split(/\s+/).length, 0),
+    [memoryOnly]
   );
 
   const moodCounts = useMemo<[string, number][]>(() => {
     return Object.entries(
-      memories.reduce<Record<string, number>>((acc, memory) => {
+      memoryOnly.reduce<Record<string, number>>((acc, memory) => {
         if (memory.mood) {
           acc[memory.mood] = (acc[memory.mood] || 0) + 1;
         }
         return acc;
       }, {})
     ).sort((a, b) => b[1] - a[1]);
-  }, [memories]);
+  }, [memoryOnly]);
 
   const activeDays = useMemo(
     () =>
       Array.from(
-        new Set(memories.map((memory) => new Date(memory._creationTime).toISOString().slice(0, 10)))
+        new Set(memoryOnly.map((memory) => new Date(memory._creationTime).toISOString().slice(0, 10)))
       ).sort((a, b) => b.localeCompare(a)),
-    [memories]
+    [memoryOnly]
   );
 
   const streakDays = useMemo(() => {
@@ -85,7 +94,7 @@ export default function StatisticsScreen() {
   }, [activeDays]);
 
   const statCards = [
-    { label: "Total memories", value: stats?.totalMemories ?? memories.length, icon: "layers" as const, color: "#3B82F6" },
+    { label: "Total memories", value: stats?.totalMemories ?? memoryOnly.length, icon: "layers" as const, color: "#3B82F6" },
     { label: "Topics", value: topics.length, icon: "zap" as const, color: "#F59E0B" },
     { label: "Words written", value: totalWords, icon: "edit-3" as const, color: "#10B981" },
     { label: "Diary entries", value: diaryEntries.length, icon: "book" as const, color: "#8B5CF6" },
@@ -198,7 +207,7 @@ export default function StatisticsScreen() {
                 .slice()
                 .sort((a, b) => b.memoryCount - a.memoryCount)
                 .map((topic) => {
-                  const total = Math.max(memories.length, 1);
+                  const total = Math.max(memoryOnly.length, 1);
                   const pct = (topic.memoryCount / total) * 100;
                   const color = topic.color || theme.primary.val;
                   return (
@@ -229,7 +238,7 @@ export default function StatisticsScreen() {
               </Text>
             ) : (
               moodCounts.map(([mood, count]) => {
-                const pct = (count / memories.length) * 100;
+                const pct = (count / Math.max(memoryOnly.length, 1)) * 100;
                 return (
                   <XStack key={mood} alignItems="center" gap={10} paddingVertical={6}>
                     <Text fontSize={13} fontFamily="$body" fontWeight="500" width={70} color="$color">

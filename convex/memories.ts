@@ -1005,6 +1005,7 @@ export const stats = query({
     const topicCounts: Record<string, number> = {};
     let reminderCount = 0;
     let recurringCount = 0;
+    let memoryOnlyCount = 0;
 
     // Collect creation days in a Set for O(n) streak calculation
     const dayMs = 24 * 60 * 60 * 1000;
@@ -1017,7 +1018,11 @@ export const stats = query({
       if (m.primaryTopicId) {
         topicCounts[m.primaryTopicId] = (topicCounts[m.primaryTopicId] ?? 0) + 1;
       }
-      if (isReminder(m)) reminderCount++;
+      if (isReminder(m)) {
+        reminderCount++;
+      } else {
+        memoryOnlyCount++;
+      }
       if (getMemorySchedule(m)?.isRecurring) recurringCount++;
       creationDays.add(Math.floor(m._creationTime / dayMs));
     }
@@ -1040,7 +1045,7 @@ export const stats = query({
     }
 
     return {
-      totalMemories: memories.length,
+      totalMemories: memoryOnlyCount,
       totalReminders: reminderCount,
       moodCounts,
       topicCounts,

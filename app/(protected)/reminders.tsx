@@ -76,6 +76,7 @@ export default function RemindersScreen() {
     api.memories.upcomingReminders,
     token ? { token, range: "all" } : "skip"
   ) ?? [];
+  const stats = useQuery(api.memories.stats, token ? { token } : "skip");
   const memories = useMemo(() => {
     const merged = new Map<string, ReminderItem>();
     for (const memory of [...(dueNow as ReminderItem[]), ...(upcoming as ReminderItem[])]) {
@@ -97,7 +98,7 @@ export default function RemindersScreen() {
   const todayCount = useMemo(() => getFilteredReminders(withReminders, "today").length, [withReminders]);
 
   const metrics = [
-    { label: "Total", value: withReminders.length },
+    { label: "Total", value: stats?.totalReminders ?? 0 },
     { label: "Overdue", value: overdueCount },
     { label: "Today", value: todayCount },
   ];
