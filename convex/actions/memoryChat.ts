@@ -13,7 +13,6 @@ import {
 } from "../lib/openai";
 import { normalizeMemoryFields } from "../lib/aiNormalization";
 
-type MemoryCategory = "personal" | "work" | "finance" | "health" | "other";
 type MemoryDoc = Doc<"memories">;
 type DocumentDoc = Doc<"documentExtractions">;
 
@@ -67,22 +66,17 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
         properties: {
           title: { type: "string", description: "Concise title, max 8 words, objective note-style (no 'I', 'me', 'my')" },
           content: { type: "string", description: "Full memory content in objective note-style language (no 'I', 'me', 'my')" },
-          category: {
-            type: "string",
-            enum: ["personal", "work", "finance", "health", "other"],
-          },
           reminder_date: { type: "string" },
           is_recurring: { type: "boolean" },
           recurrence_type: {
             type: "string",
             enum: ["yearly", "monthly", "weekly", "daily"],
           },
-          tags: { type: "array", items: { type: "string" } },
           mood: { type: "string" },
           people: { type: "array", items: { type: "string" } },
           locations: { type: "array", items: { type: "string" } },
         },
-        required: ["title", "content", "category"],
+        required: ["title", "content"],
         additionalProperties: false,
       },
     },
@@ -99,17 +93,12 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           memory_id: { type: "string" },
           title: { type: "string", description: "Concise title, max 8 words, objective note-style (no 'I', 'me', 'my')" },
           content: { type: "string", description: "Full memory content in objective note-style language (no 'I', 'me', 'my')" },
-          category: {
-            type: "string",
-            enum: ["personal", "work", "finance", "health", "other"],
-          },
           reminder_date: { type: "string" },
           is_recurring: { type: "boolean" },
           recurrence_type: {
             type: "string",
             enum: ["yearly", "monthly", "weekly", "daily"],
           },
-          tags: { type: "array", items: { type: "string" } },
           mood: { type: "string" },
           people: { type: "array", items: { type: "string" } },
           locations: { type: "array", items: { type: "string" } },
@@ -161,10 +150,6 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
         type: "object",
         properties: {
           limit: { type: "number" },
-          category: {
-            type: "string",
-            enum: ["personal", "work", "finance", "health", "other"],
-          },
           sort: { type: "string", enum: ["newest", "oldest"] },
         },
         additionalProperties: false,
@@ -176,7 +161,7 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "get_stats",
       description:
-        "Get statistics about the user's memories including categories, moods, tags, reminders, recurring items, and recent activity.",
+        "Get statistics about the user's memories including moods, reminders, recurring items, and recent activity.",
       parameters: {
         type: "object",
         properties: {},
@@ -193,10 +178,6 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       parameters: {
         type: "object",
         properties: {
-          category: {
-            type: "string",
-            enum: ["personal", "work", "finance", "health", "other"],
-          },
           limit: { type: "number" },
         },
         additionalProperties: false,
@@ -241,6 +222,30 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "manage_topics",
+      description:
+        "Manage the AI-generated topic taxonomy. List topics, rename, merge, recolor, or trigger a full re-analysis. Topics are AI-owned — never created manually by the user.",
+      parameters: {
+        type: "object",
+        properties: {
+          operation: {
+            type: "string",
+            enum: ["list", "rename", "merge", "recolor", "trigger_reanalysis"],
+          },
+          topic_slug: { type: "string", description: "Slug of the topic to operate on." },
+          target_slug: { type: "string", description: "For merge: the slug of the topic to merge into topic_slug." },
+          new_name: { type: "string", description: "For rename: the new display name." },
+          new_icon: { type: "string", description: "For recolor: Feather icon name." },
+          new_color: { type: "string", description: "For recolor: hex color string." },
+        },
+        required: ["operation"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 function parseAttachments(message: string): ParsedAttachment[] {
@@ -260,11 +265,10 @@ function toMemorySummary(memory: MemoryDoc) {
     id: memory._id,
     title: memory.title,
     content: memory.content,
-    category: memory.category,
     mood: memory.mood ?? null,
-    tags: memory.tags,
     people: memory.people,
     locations: memory.locations,
+    primary_topic_id: memory.primaryTopicId ?? null,
     reminder_date: memory.reminderDate ?? null,
     is_recurring: memory.isRecurring,
     recurrence_type: memory.recurrenceType ?? null,
@@ -380,9 +384,7 @@ async function searchMemories(
     const haystack = [
       memory.title,
       memory.content,
-      memory.category,
       memory.mood,
-      ...(memory.tags ?? []),
       ...(memory.people ?? []),
       ...(memory.locations ?? []),
     ]
@@ -428,7 +430,7 @@ function buildSystemPrompt(userTimezone: string) {
    - Provide statistics and insights
    - Search uploaded documents (warranties, receipts, etc.)
    - Set reminders and recurring tasks
-   - Categorize and tag information
+   - Manage topics via manage_topics (rename, merge, recolor, trigger re-analysis, or list)
 
 5. **BE PROACTIVE**:
    - If you notice conflicting information, flag it naturally
@@ -443,7 +445,7 @@ function buildSystemPrompt(userTimezone: string) {
 
 9. **FILE ATTACHMENTS**: When user shares files, file URLs appear as [Attached file: name (type) — URL: ...]. Create or update a memory and call attach_file_to_memory when relevant.
 
-**CATEGORY GUIDANCE**: "personal" (daily life, education, exams, relationships, hobbies, social events — this is the default), "work" (job tasks, meetings, professional projects — only for clearly work-related content), "finance" (money, payments, invoices), "health" (medical, fitness, mental health). When in doubt, use "personal".
+**TOPIC GUIDANCE**: Topics are AI-assigned automatically — never add them manually. When the user asks about topics (rename, merge, recolor, re-analyse), use the manage_topics tool. When they ask "what topics do I have", use manage_topics with operation="list".
 
 Today's date: ${today}. The user's timezone is ${userTimezone}.
 
@@ -581,11 +583,6 @@ export const chat = action({
                 {
                   token: args.token,
                   content: contentToSave,
-                  category:
-                    normalized.category ||
-                    (typeof fnArgs.category === "string"
-                      ? (fnArgs.category as MemoryCategory)
-                      : "other"),
                 }
               );
 
@@ -594,7 +591,6 @@ export const chat = action({
                 id: created.memoryId,
                 ...(normalized.title ? { title: normalized.title } : {}),
                 ...(normalized.mood ? { mood: normalized.mood } : {}),
-                ...(normalized.tags ? { tags: normalized.tags } : {}),
                 ...(normalized.people ? { people: normalized.people } : {}),
                 ...(normalized.locations ? { locations: normalized.locations } : {}),
                 ...(normalized.contextTags
@@ -622,8 +618,6 @@ export const chat = action({
                 memory: {
                   id: created.memoryId,
                   title: normalized.title || created.structured.title || "New Memory",
-                  category:
-                    normalized.category || created.structured.category || "other",
                 },
               });
             } else if (fnName === "update_memory") {
@@ -634,9 +628,7 @@ export const chat = action({
                   id: fnArgs.memory_id as Id<"memories">,
                   ...(normalized.title ? { title: normalized.title } : {}),
                   ...(normalized.content ? { content: normalized.content } : {}),
-                  ...(normalized.category ? { category: normalized.category } : {}),
                   ...(normalized.mood ? { mood: normalized.mood } : {}),
-                  ...(normalized.tags ? { tags: normalized.tags } : {}),
                   ...(normalized.people ? { people: normalized.people } : {}),
                   ...(normalized.locations ? { locations: normalized.locations } : {}),
                   ...(normalized.contextTags
@@ -697,51 +689,32 @@ export const chat = action({
                 session._id,
                 typeof fnArgs.limit === "number" ? fnArgs.limit : 20
               );
-              const filtered = memories.filter(
-                (memory: MemoryDoc) =>
-                  typeof fnArgs.category !== "string" ||
-                  memory.category === fnArgs.category
-              );
               const ordered =
-                fnArgs.sort === "oldest" ? [...filtered].reverse() : filtered;
+                fnArgs.sort === "oldest" ? [...memories].reverse() : memories;
               result = JSON.stringify({
                 memories: ordered
                   .slice(0, typeof fnArgs.limit === "number" ? fnArgs.limit : 20)
                   .map((memory: MemoryDoc) => toMemorySummary(memory)),
-                count: filtered.length,
+                count: memories.length,
               });
             } else if (fnName === "get_stats") {
               const memories = await listMemoriesForAI(ctx, session._id, 100);
-              const categories: Record<string, number> = {};
               const moods: Record<string, number> = {};
-              const tagCounts: Record<string, number> = {};
               let withReminders = 0;
               let recurring = 0;
 
               for (const memory of memories) {
-                categories[memory.category] = (categories[memory.category] ?? 0) + 1;
                 if (memory.mood) {
                   moods[memory.mood] = (moods[memory.mood] ?? 0) + 1;
                 }
-                for (const tag of memory.tags ?? []) {
-                  tagCounts[tag] = (tagCounts[tag] ?? 0) + 1;
-                }
-                if (memory.reminderDate) {
-                  withReminders += 1;
-                }
-                if (memory.isRecurring) {
-                  recurring += 1;
-                }
+                if (memory.reminderDate) withReminders += 1;
+                if (memory.isRecurring) recurring += 1;
               }
 
               const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
               result = JSON.stringify({
                 total: memories.length,
-                categories,
                 moods,
-                topTags: Object.entries(tagCounts)
-                  .sort((a, b) => b[1] - a[1])
-                  .slice(0, 10),
                 withReminders,
                 recurring,
                 recentCount: memories.filter(
@@ -754,14 +727,9 @@ export const chat = action({
                 session._id,
                 typeof fnArgs.limit === "number" ? fnArgs.limit : 100
               );
-              const filtered = memories.filter(
-                (memory: MemoryDoc) =>
-                  typeof fnArgs.category !== "string" ||
-                  memory.category === fnArgs.category
-              );
               result = JSON.stringify({
-                memories: filtered.map((memory: MemoryDoc) => toMemorySummary(memory)),
-                count: filtered.length,
+                memories: memories.map((memory: MemoryDoc) => toMemorySummary(memory)),
+                count: memories.length,
               });
             } else if (fnName === "history") {
               if (fnArgs.action === "list") {
@@ -793,6 +761,18 @@ export const chat = action({
                   })
                 );
               }
+            } else if (fnName === "manage_topics") {
+              result = JSON.stringify(
+                await ctx.runAction(internal.actions.manageTopics.handleManageTopic, {
+                  userId: session._id,
+                  operation: fnArgs.operation as "list" | "rename" | "merge" | "recolor" | "trigger_reanalysis",
+                  topicSlug: typeof fnArgs.topic_slug === "string" ? fnArgs.topic_slug : undefined,
+                  targetSlug: typeof fnArgs.target_slug === "string" ? fnArgs.target_slug : undefined,
+                  newName: typeof fnArgs.new_name === "string" ? fnArgs.new_name : undefined,
+                  newIcon: typeof fnArgs.new_icon === "string" ? fnArgs.new_icon : undefined,
+                  newColor: typeof fnArgs.new_color === "string" ? fnArgs.new_color : undefined,
+                })
+              );
             } else if (fnName === "attach_file_to_memory") {
               try {
                 const attachmentId = await ctx.runMutation(api.memories.attachFile, {
