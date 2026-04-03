@@ -1,5 +1,5 @@
-import React from "react";
-import { Alert, Platform } from "react-native";
+import React, { useState } from "react";
+import { Alert, Platform, Pressable } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useMutation, useQuery } from "convex/react";
 import { Text, XStack, YStack } from "tamagui";
@@ -28,15 +28,19 @@ function formatDeletedAt(value?: number) {
 export default function DataScreen() {
   const theme = useAppTheme();
   const { token } = useAuth();
+  const [openMenuId, setOpenMenuId] = useState<Id<"memories"> | null>(null);
   const deletedMemories = useQuery(
     api.memories.listDeleted,
     token ? { token, limit: 100 } : "skip"
   ) ?? [];
   const restoreMemory = useMutation(api.memories.restore);
+  const permanentlyRemoveMemory = useMutation(api.memories.permanentlyRemove);
+  const permanentlyRemoveAllDeleted = useMutation(api.memories.permanentlyRemoveAllDeleted);
   const clearAllMemoryData = useMutation(api.memories.clearAllUserMemoryData);
 
   const handleRestore = (memoryId: Id<"memories">) => {
     if (!token) return;
+    setOpenMenuId(null);
 
     const runRestore = async () => {
       try {
@@ -97,6 +101,70 @@ export default function DataScreen() {
     ]);
   };
 
+  const handlePermanentDelete = (memoryId: Id<"memories">) => {
+    if (!token) return;
+    setOpenMenuId(null);
+
+    const runDelete = async () => {
+      try {
+        await permanentlyRemoveMemory({ token, id: memoryId });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to permanently delete memory.";
+        if (Platform.OS === "web") {
+          window.alert(message);
+        } else {
+          Alert.alert("Delete failed", message);
+        }
+      }
+    };
+
+    const message = "Permanently delete this memory? This cannot be undone.";
+    if (Platform.OS === "web") {
+      if (window.confirm(message)) {
+        void runDelete();
+      }
+      return;
+    }
+
+    Alert.alert("Permanent Delete", message, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete forever", style: "destructive", onPress: () => void runDelete() },
+    ]);
+  };
+
+  const handlePermanentDeleteAll = () => {
+    if (!token) return;
+
+    const runDelete = async () => {
+      try {
+        await permanentlyRemoveAllDeleted({ token });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to permanently delete deleted memories.";
+        if (Platform.OS === "web") {
+          window.alert(message);
+        } else {
+          Alert.alert("Delete failed", message);
+        }
+      }
+    };
+
+    const message =
+      "Permanently delete all items currently in Deleted memories? This cannot be undone.";
+    if (Platform.OS === "web") {
+      if (window.confirm(message)) {
+        void runDelete();
+      }
+      return;
+    }
+
+    Alert.alert("Permanent Delete All", message, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete all forever", style: "destructive", onPress: () => void runDelete() },
+    ]);
+  };
+
   return (
     <MorePageScaffold title="Data">
       <Card style={{ padding: 18, borderRadius: 26 }}>
@@ -144,9 +212,27 @@ export default function DataScreen() {
               Deleted memories
             </Text>
             <Text fontSize={13} fontFamily="$body" color="$colorMuted">
-              Only deleted memories appear here. Restoring brings them back into the main app immediately.
+              Restore deleted memories or permanently delete them one by one or all together.
             </Text>
           </YStack>
+
+          {deletedMemories.length > 0 ? (
+            <XStack justifyContent="flex-end">
+              <PressableScale
+                onPress={handlePermanentDeleteAll}
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  borderRadius: 14,
+                  backgroundColor: theme.destructive.val + "16",
+                }}
+              >
+                <Text fontSize={12} fontFamily="$body" fontWeight="700" color="$destructive">
+                  Delete all forever
+                </Text>
+              </PressableScale>
+            </XStack>
+          ) : null}
 
           {deletedMemories.length === 0 ? (
             <EmptyState
@@ -166,6 +252,7 @@ export default function DataScreen() {
                   borderWidth={1}
                   borderColor={theme.borderColor.val}
                   backgroundColor={theme.background.val}
+                  position="relative"
                 >
                   <YStack
                     width={40}
@@ -195,18 +282,74 @@ export default function DataScreen() {
                     </Text>
                   </YStack>
                   <PressableScale
-                    onPress={() => handleRestore(memory._id)}
+                    onPress={() =>
+                      setOpenMenuId((current) => (current === memory._id ? null : memory._id))
+                    }
                     style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 10,
-                      borderRadius: 14,
-                      backgroundColor: theme.primary.val + "18",
+                      width: 34,
+                      height: 34,
+                      borderRadius: 17,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: theme.secondary.val,
                     }}
                   >
-                    <Text fontSize={12} fontFamily="$body" fontWeight="700" color={theme.primary.val}>
-                      Restore
-                    </Text>
+                    <Feather name="more-vertical" size={16} color={theme.colorMuted.val} />
                   </PressableScale>
+
+                  {openMenuId === memory._id ? (
+                    <Pressable
+                      onPress={() => setOpenMenuId(null)}
+                      style={{
+                        position: "absolute",
+                        top: -2000,
+                        right: -2000,
+                        bottom: -2000,
+                        left: -2000,
+                        zIndex: 9,
+                      }}
+                    />
+                  ) : null}
+
+                  {openMenuId === memory._id ? (
+                    <YStack
+                      position="absolute"
+                      right={10}
+                      top={52}
+                      zIndex={10}
+                      borderRadius={14}
+                      borderWidth={1}
+                      borderColor={theme.borderColor.val}
+                      backgroundColor={theme.card.val}
+                      overflow="hidden"
+                    >
+                      <PressableScale
+                        onPress={() => handleRestore(memory._id)}
+                        style={{
+                          paddingHorizontal: 14,
+                          paddingVertical: 11,
+                          minWidth: 150,
+                        }}
+                      >
+                        <Text fontSize={13} fontFamily="$body" fontWeight="600" color={theme.primary.val}>
+                          Restore
+                        </Text>
+                      </PressableScale>
+                      <YStack height={1} backgroundColor={theme.borderColor.val} />
+                      <PressableScale
+                        onPress={() => handlePermanentDelete(memory._id)}
+                        style={{
+                          paddingHorizontal: 14,
+                          paddingVertical: 11,
+                          minWidth: 150,
+                        }}
+                      >
+                        <Text fontSize={13} fontFamily="$body" fontWeight="600" color="$destructive">
+                          Delete forever
+                        </Text>
+                      </PressableScale>
+                    </YStack>
+                  ) : null}
                 </XStack>
               ))}
             </YStack>

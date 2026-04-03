@@ -77,31 +77,57 @@ export const activeSummaries = query({
         q.eq("userId", userId).eq("isArchived", false)
       )
       .collect();
-    const activeTopics = await Promise.all(
-      topics.map(async (topic) => {
-        if (topic.memoryCount <= 0) return null;
+    const summaries: Array<{
+      _id: Id<"userTopics">;
+      name: string;
+      icon: string;
+      color: string;
+      memoryCount: number;
+    }> = [];
+
+    for (const topic of topics) {
+      if (topic.memoryCount <= 0) continue;
+
+      if (topic.memoryCount <= 5) {
+        const links = await ctx.db
+          .query("memoryTopicLinks")
+          .withIndex("by_user_and_topic", (q) =>
+            q.eq("userId", userId).eq("topicId", topic._id)
+          )
+          .take(50);
+        if (links.length === 0) {
+          continue;
+        }
+        summaries.push({
+          _id: topic._id,
+          name: topic.name,
+          icon: topic.icon,
+          color: topic.color,
+          memoryCount: links.length,
+        });
+        continue;
+      } else {
         const hasLink = await ctx.db
           .query("memoryTopicLinks")
           .withIndex("by_user_and_topic", (q) =>
             q.eq("userId", userId).eq("topicId", topic._id)
           )
           .take(1);
-        return hasLink.length > 0 ? topic : null;
-      })
-    );
+        if (hasLink.length === 0) {
+          continue;
+        }
+      }
 
-    return activeTopics
-      .filter(
-        (topic): topic is NonNullable<(typeof activeTopics)[number]> => topic !== null
-      )
-      .map((topic) => ({
+      summaries.push({
         _id: topic._id,
         name: topic.name,
         icon: topic.icon,
         color: topic.color,
         memoryCount: topic.memoryCount,
-      }))
-      .sort((a, b) => b.memoryCount - a.memoryCount);
+      });
+    }
+
+    return summaries.sort((a, b) => b.memoryCount - a.memoryCount);
   },
 });
 
@@ -213,7 +239,7 @@ export const createTopic = internalMutation({
       icon: args.icon,
       color: args.color,
       centroid: args.centroid,
-      memoryCount: 1,
+      memoryCount: 0,
       relatedTopics: [],
       isArchived: false,
       createdAt: Date.now(),
@@ -455,7 +481,11 @@ export const mergeTopic = internalMutation({
       });
     }
 
-    const totalCount = keep.memoryCount + merge.memoryCount;
+    const keepLinks = await ctx.db
+      .query("memoryTopicLinks")
+      .withIndex("by_topic", (q) => q.eq("topicId", args.keepId))
+      .take(10000);
+    const totalCount = keepLinks.length;
     const newCentroid =
       totalCount > 0
         ? keep.centroid.map(

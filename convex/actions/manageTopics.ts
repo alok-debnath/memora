@@ -23,25 +23,6 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return denom === 0 ? 0 : dot / denom;
 }
 
-function incrementalCentroid(
-  old: number[],
-  newVec: number[],
-  oldCount: number
-): number[] {
-  return old.map((v, i) => (v * oldCount + newVec[i]) / (oldCount + 1));
-}
-
-function getMemoryTopicIds(memory: Doc<"memories"> | null): Id<"userTopics">[] {
-  if (!memory) return [];
-  return Array.from(
-    new Set(
-      [memory.primaryTopicId, ...(memory.topicIds ?? [])].filter(
-        (topicId): topicId is Id<"userTopics"> => Boolean(topicId)
-      )
-    )
-  );
-}
-
 async function reconcileUserTopicUsage(
   ctx: {
     runQuery: ActionCtx["runQuery"];
@@ -431,13 +412,6 @@ export const assignTopicsToMemory = internalAction({
     embedding: v.array(v.float64()),
   },
   handler: async (ctx, args) => {
-    const existingMemory: Doc<"memories"> | null = await ctx.runQuery(
-      internal.memories.getInternal,
-      { memoryId: args.memoryId }
-    );
-    const previousTopicIds = new Set<Id<"userTopics">>(
-      getMemoryTopicIds(existingMemory)
-    );
     const topics: TopicRecord[] = await ctx.runQuery(
       internal.userTopics.listWithCentroids,
       {
@@ -477,34 +451,9 @@ export const assignTopicsToMemory = internalAction({
         centroid: args.embedding,
         incrementExistingCount: false,
       });
-      const matchedExistingTopic = topics.find(
-        (topic) => topic._id === primaryTopicId
-      );
-      if (matchedExistingTopic && !previousTopicIds.has(primaryTopicId)) {
-        await ctx.runMutation(internal.userTopics.updateCentroidAndCount, {
-          topicId: primaryTopicId,
-          newCentroid: incrementalCentroid(
-            matchedExistingTopic.centroid,
-            args.embedding,
-            matchedExistingTopic.memoryCount
-          ),
-          delta: 1,
-        });
-      }
     } else if (bestMatch.similarity >= AUTO_ASSIGN_THRESHOLD) {
       // Clear vector match — no LLM needed
       primaryTopicId = bestMatch._id;
-      if (!previousTopicIds.has(primaryTopicId)) {
-        await ctx.runMutation(internal.userTopics.updateCentroidAndCount, {
-          topicId: primaryTopicId,
-          newCentroid: incrementalCentroid(
-            bestMatch.centroid,
-            args.embedding,
-            bestMatch.memoryCount
-          ),
-          delta: 1,
-        });
-      }
     } else {
       // Ambiguous — let the LLM review only the strongest ranked candidates.
       const curatedTopics = scored.slice(0, MAX_LLM_CANDIDATES);
@@ -532,17 +481,6 @@ export const assignTopicsToMemory = internalAction({
           (t: TopicRecord & { similarity: number }) => t._id === result.topicId
         )!;
         primaryTopicId = matched._id;
-        if (!previousTopicIds.has(primaryTopicId)) {
-          await ctx.runMutation(internal.userTopics.updateCentroidAndCount, {
-            topicId: primaryTopicId,
-            newCentroid: incrementalCentroid(
-              matched.centroid,
-              args.embedding,
-              matched.memoryCount
-            ),
-            delta: 1,
-          });
-        }
       } else {
         const reconciled = await aiReconcileTopicProposal(
           args.title,
@@ -559,17 +497,6 @@ export const assignTopicsToMemory = internalAction({
             throw new Error("Reconciled topic no longer exists");
           }
           primaryTopicId = matched._id;
-          if (!previousTopicIds.has(primaryTopicId)) {
-            await ctx.runMutation(internal.userTopics.updateCentroidAndCount, {
-              topicId: primaryTopicId,
-              newCentroid: incrementalCentroid(
-                matched.centroid,
-                args.embedding,
-                matched.memoryCount
-              ),
-              delta: 1,
-            });
-          }
         } else {
           // Enforce topic cap by merging the most similar pair before creating
           if (topics.length >= MAX_TOPICS_PER_USER && topics.length >= 2) {
@@ -604,20 +531,6 @@ export const assignTopicsToMemory = internalAction({
             centroid: args.embedding,
             incrementExistingCount: false,
           });
-          const matchedExistingTopic = topics.find(
-            (topic: TopicRecord) => topic._id === primaryTopicId
-          );
-          if (matchedExistingTopic && !previousTopicIds.has(primaryTopicId)) {
-            await ctx.runMutation(internal.userTopics.updateCentroidAndCount, {
-              topicId: primaryTopicId,
-              newCentroid: incrementalCentroid(
-                matchedExistingTopic.centroid,
-                args.embedding,
-                matchedExistingTopic.memoryCount
-              ),
-              delta: 1,
-            });
-          }
         }
       }
     }
@@ -629,20 +542,6 @@ export const assignTopicsToMemory = internalAction({
           t._id !== primaryTopicId && t.similarity >= SECONDARY_THRESHOLD
       )
       .slice(0, 2);
-
-    for (const t of secondaryMatches) {
-      if (!previousTopicIds.has(t._id)) {
-        await ctx.runMutation(internal.userTopics.updateCentroidAndCount, {
-          topicId: t._id,
-          newCentroid: incrementalCentroid(
-            t.centroid,
-            args.embedding,
-            t.memoryCount
-          ),
-          delta: 1,
-        });
-      }
-    }
 
     const nextTopicIds = [
       primaryTopicId,
@@ -656,15 +555,6 @@ export const assignTopicsToMemory = internalAction({
       primaryTopicId,
       topicIds: nextTopicIds,
     });
-
-    const removedTopicIds = getMemoryTopicIds(existingMemory).filter(
-      (topicId) => !nextTopicIds.includes(topicId)
-    );
-    if (removedTopicIds.length > 0) {
-      await ctx.runMutation(internal.userTopics.decrementOrArchiveTopics, {
-        topicIds: removedTopicIds,
-      });
-    }
 
     // Trigger re-analysis every 15 memories
     const updatedTopics = await ctx.runQuery(internal.userTopics.listWithCentroids, { userId: args.userId });
@@ -814,7 +704,6 @@ export const handleManageTopic = internalAction({
         null;
 
       let targetTopicId: Id<"userTopics">;
-      let createdNewTopic = false;
       if (matchedTopic) {
         targetTopicId = matchedTopic._id;
       } else {
@@ -829,10 +718,8 @@ export const handleManageTopic = internalAction({
           centroid: embedding,
           incrementExistingCount: false,
         });
-        createdNewTopic = true;
       }
 
-      const previousTopicIds = new Set(getMemoryTopicIds(memory));
       const retainedSecondaryTopics = (memory.topicIds ?? []).filter(
         (topicId) => topicId !== memory.primaryTopicId && topicId !== targetTopicId
       );
@@ -843,41 +730,6 @@ export const handleManageTopic = internalAction({
         primaryTopicId: targetTopicId,
         topicIds: nextTopicIds,
       });
-
-      if (!createdNewTopic && !previousTopicIds.has(targetTopicId)) {
-        const updatedTopics: TopicRecord[] = await ctx.runQuery(
-          internal.userTopics.listWithCentroids,
-          { userId: args.userId }
-        );
-        const topic = updatedTopics.find((entry) => entry._id === targetTopicId);
-        if (topic) {
-          const memoryEmbedding =
-            memory.embedding ??
-            (await embedText(
-              [memory.title ?? "", memory.content ?? ""].filter(Boolean).join("\n\n")
-            ));
-          await ctx.runMutation(internal.userTopics.updateCentroidAndCount, {
-            topicId: targetTopicId,
-            newCentroid: incrementalCentroid(
-              topic.centroid,
-              memoryEmbedding,
-              topic.memoryCount
-            ),
-            delta: 1,
-          });
-        }
-      }
-
-      const removedTopicIds = getMemoryTopicIds(memory).filter(
-        (topicId) => !nextTopicIds.includes(topicId)
-      );
-      if (removedTopicIds.length > 0) {
-        await ctx.runMutation(internal.userTopics.decrementOrArchiveTopics, {
-          topicIds: removedTopicIds,
-        });
-      }
-
-      await reconcileUserTopicUsage(ctx, args.userId);
 
       return {
         success: true,

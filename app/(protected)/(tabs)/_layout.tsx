@@ -430,6 +430,7 @@ function LiquidGlassTabBar({
 // ─── Custom floating pill layout (mobile + web) ───────────────────────────────
 
 function CustomTabLayout() {
+  const resolvedMode = useThemeStore((s) => s.resolvedMode);
   const isCommandOpen = useUIStore((s) => s.isCommandOpen);
   const openCommand = useUIStore((s) => s.openCommand);
   const closeCommand = useUIStore((s) => s.closeCommand);
@@ -439,6 +440,7 @@ function CustomTabLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
+          sceneStyle: { backgroundColor: resolvedMode === "dark" ? "#18120D" : "#F7F1E8" },
           // Prevent React Navigation from rendering its own opaque tab bar background
           tabBarStyle: {
             position: "absolute",

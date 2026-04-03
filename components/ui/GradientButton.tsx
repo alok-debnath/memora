@@ -29,7 +29,7 @@ export function GradientButton({
     <PressableScale
       onPress={onPress}
       disabled={disabled || loading}
-      style={[styles.shadowWrap, style || {}]}
+      style={style || {}}
     >
       <View style={[styles.clipWrap, (disabled || loading) && styles.disabledWrap]}>
         <LinearGradient
@@ -60,13 +60,6 @@ export function GradientButton({
 }
 
 const styles = StyleSheet.create({
-  shadowWrap: {
-    shadowColor: "#E8911B",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    elevation: 6,
-  },
   clipWrap: {
     borderRadius: 14,
     overflow: "hidden",

@@ -196,7 +196,7 @@ function DesktopProtectedShell() {
             borderColor="$borderColor"
             backgroundColor="$background"
           >
-            <Stack screenOptions={{ headerShown: false }} />
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.background?.val } }} />
           </YStack>
         </YStack>
 
@@ -232,5 +232,5 @@ export default function ProtectedLayout() {
     return <DesktopProtectedShell />;
   }
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.background?.val } }} />;
 }

@@ -64,13 +64,78 @@ async function deleteTopicLinksForMemory(
   ctx: MutationCtx,
   memoryId: Id<"memories">
 ) {
-  const existingLinks = await ctx.db
-    .query("memoryTopicLinks")
-    .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
-    .take(10);
-  for (const link of existingLinks) {
-    await ctx.db.delete(link._id);
+  const batchSize = 50;
+  while (true) {
+    const existingLinks = await ctx.db
+      .query("memoryTopicLinks")
+      .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
+      .take(batchSize);
+    for (const link of existingLinks) {
+      await ctx.db.delete(link._id);
+    }
+    if (existingLinks.length < batchSize) break;
   }
+}
+
+const RELATED_DELETE_BATCH = 200;
+
+async function deleteMemoryRelatedData(
+  ctx: MutationCtx,
+  memoryId: Id<"memories">
+) {
+  while (true) {
+    const attachments = await ctx.db
+      .query("memoryAttachments")
+      .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
+      .take(RELATED_DELETE_BATCH);
+    for (const doc of attachments) {
+      await ctx.db.delete(doc._id);
+    }
+    if (attachments.length < RELATED_DELETE_BATCH) break;
+  }
+
+  while (true) {
+    const historyItems = await ctx.db
+      .query("memoryHistory")
+      .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
+      .take(RELATED_DELETE_BATCH);
+    for (const doc of historyItems) {
+      await ctx.db.delete(doc._id);
+    }
+    if (historyItems.length < RELATED_DELETE_BATCH) break;
+  }
+
+  while (true) {
+    const reviewCards = await ctx.db
+      .query("reviewCards")
+      .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
+      .take(RELATED_DELETE_BATCH);
+    for (const doc of reviewCards) {
+      await ctx.db.delete(doc._id);
+    }
+    if (reviewCards.length < RELATED_DELETE_BATCH) break;
+  }
+
+  while (true) {
+    const sharedMemories = await ctx.db
+      .query("sharedMemories")
+      .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
+      .take(RELATED_DELETE_BATCH);
+    for (const doc of sharedMemories) {
+      await ctx.db.delete(doc._id);
+    }
+    if (sharedMemories.length < RELATED_DELETE_BATCH) break;
+  }
+
+  await deleteTopicLinksForMemory(ctx, memoryId);
+}
+
+async function permanentlyDeleteMemory(
+  ctx: MutationCtx,
+  memory: Doc<"memories">
+) {
+  await deleteMemoryRelatedData(ctx, memory._id);
+  await ctx.db.delete(memory._id);
 }
 
 function hasSchedulingInput(value: {
@@ -691,6 +756,53 @@ export const restore = mutation({
   },
 });
 
+export const permanentlyRemove = mutation({
+  args: { token: v.string(), id: v.id("memories") },
+  handler: async (ctx, args) => {
+    const { userId } = await resolveUser(ctx, args.token);
+    const memory = await ctx.db.get(args.id);
+    if (!memory || memory.userId !== userId) throw new Error("Not found");
+    if (!memory.isDeleted) {
+      throw new Error("Memory must be in deleted state before permanent removal.");
+    }
+    await permanentlyDeleteMemory(ctx, memory);
+  },
+});
+
+export const permanentlyRemoveAllDeleted = mutation({
+  args: {
+    token: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = await resolveUser(ctx, args.token);
+    const BATCH = 10;
+
+    const deletedMemories = await ctx.db
+      .query("memories")
+      .withIndex("by_user_isDeleted", (q) =>
+        q.eq("userId", userId).eq("isDeleted", true)
+      )
+      .take(BATCH);
+
+    for (const memory of deletedMemories) {
+      await permanentlyDeleteMemory(ctx, memory);
+    }
+
+    const hasMore = deletedMemories.length === BATCH;
+    if (hasMore) {
+      await ctx.scheduler.runAfter(0, api.memories.permanentlyRemoveAllDeleted, {
+        token: args.token,
+      });
+    }
+
+    return {
+      success: !hasMore,
+      deletedThisBatch: deletedMemories.length,
+      scheduledContinuation: hasMore,
+    };
+  },
+});
+
 export const clearAllUserMemoryData = mutation({
   args: {
     token: v.string(),
@@ -1053,15 +1165,39 @@ export const setTopics = internalMutation({
   handler: async (ctx, args) => {
     const memory = await ctx.db.get(args.memoryId);
     if (!memory || memory.isDeleted) return;
+    const previousTopicIds = Array.from(
+      new Set(
+        [memory.primaryTopicId, ...(memory.topicIds ?? [])].filter(
+          (topicId): topicId is Id<"userTopics"> => topicId !== undefined
+        )
+      )
+    );
+    const nextTopicIds = Array.from(
+      new Set([args.primaryTopicId, ...args.topicIds])
+    );
     await ctx.db.patch(args.memoryId, {
       primaryTopicId: args.primaryTopicId,
-      topicIds: args.topicIds,
+      topicIds: nextTopicIds,
     });
     await replaceTopicLinksForMemory(ctx, {
       ...memory,
       primaryTopicId: args.primaryTopicId,
-      topicIds: args.topicIds,
+      topicIds: nextTopicIds,
     });
+    const previousSet = new Set(previousTopicIds);
+    const nextSet = new Set(nextTopicIds);
+    const addedTopicIds = nextTopicIds.filter((topicId) => !previousSet.has(topicId));
+    const removedTopicIds = previousTopicIds.filter((topicId) => !nextSet.has(topicId));
+    if (addedTopicIds.length > 0) {
+      await ctx.runMutation(internal.userTopics.incrementTopicCounts, {
+        topicIds: addedTopicIds,
+      });
+    }
+    if (removedTopicIds.length > 0) {
+      await ctx.runMutation(internal.userTopics.decrementOrArchiveTopics, {
+        topicIds: removedTopicIds,
+      });
+    }
   },
 });
 

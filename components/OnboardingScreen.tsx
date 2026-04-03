@@ -1,16 +1,20 @@
-import React, { useRef, useState } from "react";
-import {
-  FlatList,
-  Platform,
-  Pressable,
-  useWindowDimensions,
-  View,
-} from "react-native";
+import React, { useCallback, useState } from "react";
+import { Platform, Pressable, StyleSheet, useWindowDimensions } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import Animated, { FadeInUp } from "react-native-reanimated";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, {
+  interpolate,
+  runOnJS,
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  Easing,
+  type SharedValue,
+} from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Text, XStack, YStack } from "tamagui";
 
@@ -59,94 +63,284 @@ const steps: OnboardingStep[] = [
     color: "#F59E0B",
     label: "Conversational",
   },
+  {
+    icon: "lock",
+    title: "Your memories stay yours",
+    description:
+      "All data is encrypted and private by default. Memora never shares, sells, or trains on your personal memories. You own everything.",
+    color: "#8B5CF6",
+    label: "Private & secure",
+  },
 ];
 
-function OnboardingSlide({
+const ARCH_SLOTS = [
+  { x: 0, y: 0, rotate: 0, scale: 1 },
+  { x: -22, y: 16, rotate: -5, scale: 0.94 },
+  { x: -8, y: 9, rotate: -2.25, scale: 0.9 },
+  { x: 8, y: 9, rotate: 2.25, scale: 0.9 },
+  { x: 22, y: 16, rotate: 5, scale: 0.94 },
+] as const;
+const MAX_VISIBLE_BEHIND = 4;
+const SWIPE_THRESHOLD = 60;
+const TIMING_CONFIG = { duration: 280, easing: Easing.out(Easing.cubic) };
+
+function CardContent({
   item,
   index,
-  width,
+  isDark,
 }: {
   item: OnboardingStep;
   index: number;
-  width: number;
+  isDark: boolean;
 }) {
+  const cardBg = isDark ? "#221913" : "#FFFDFC";
+  const cardBorder = isDark ? "rgba(67,51,37,0.6)" : "rgba(231,215,194,0.7)";
+
   return (
-    <YStack width={width} flex={1} paddingHorizontal={20} justifyContent="center">
-      <Animated.View entering={FadeInUp.delay(120).duration(500)}>
+    <YStack
+      borderRadius={28}
+      padding={24}
+      backgroundColor={cardBg}
+      borderWidth={1}
+      borderColor={cardBorder}
+    >
+      <XStack justifyContent="space-between" alignItems="center" marginBottom={24}>
         <YStack
-          borderRadius={30}
-          padding={22}
-          backgroundColor="rgba(255,255,255,0.72)"
+          paddingHorizontal={12}
+          paddingVertical={6}
+          borderRadius={999}
+          backgroundColor={item.color + "18"}
           borderWidth={1}
-          borderColor="rgba(232,145,27,0.12)"
-          shadowColor="#B0670A"
-          shadowOffset={{ width: 0, height: 10 }}
-          shadowOpacity={Platform.OS === "web" ? 0.08 : 0.12}
-          shadowRadius={18}
-          elevation={3}
+          borderColor={item.color + "28"}
         >
-          <XStack justifyContent="space-between" alignItems="center" marginBottom={20}>
-            <YStack
-              paddingHorizontal={12}
-              paddingVertical={7}
-              borderRadius={999}
-              backgroundColor={item.color + "18"}
-              borderWidth={1}
-              borderColor={item.color + "22"}
-            >
-              <Text fontSize={12} fontFamily={FontFamily.medium} color={item.color}>
-                {item.label}
-              </Text>
-            </YStack>
-            <Text fontSize={12} color="$colorMuted">
-              {String(index + 1).padStart(2, "0")}
-            </Text>
-          </XStack>
-
-          <XStack marginBottom={22} justifyContent="center">
-            <YStack
-              width={118}
-              height={118}
-              borderRadius={38}
-              alignItems="center"
-              justifyContent="center"
-              backgroundColor={item.color + "15"}
-            >
-              <YStack
-                width={86}
-                height={86}
-                borderRadius={28}
-                alignItems="center"
-                justifyContent="center"
-                backgroundColor={item.color + "24"}
-              >
-                <Feather name={item.icon} size={40} color={item.color} />
-              </YStack>
-            </YStack>
-          </XStack>
-
-          <Text
-            fontSize={28}
-            lineHeight={34}
-            fontFamily="$heading"
-            fontWeight="800"
-            textAlign="center"
-            color="$color"
-          >
-            {item.title}
-          </Text>
-          <Text
-            fontSize={16}
-            lineHeight={24}
-            textAlign="center"
-            color="$colorMuted"
-            marginTop={12}
-          >
-            {item.description}
+          <Text fontSize={12} fontFamily={FontFamily.medium} color={item.color}>
+            {item.label}
           </Text>
         </YStack>
-      </Animated.View>
+        <Text fontSize={12} fontFamily={FontFamily.medium} color="$colorMuted">
+          {String(index + 1).padStart(2, "0")} / {String(steps.length).padStart(2, "0")}
+        </Text>
+      </XStack>
+
+      <XStack marginBottom={24} justifyContent="center">
+        <YStack
+          width={96}
+          height={96}
+          borderRadius={32}
+          alignItems="center"
+          justifyContent="center"
+          backgroundColor={item.color + "14"}
+        >
+          <Feather name={item.icon} size={38} color={item.color} />
+        </YStack>
+      </XStack>
+
+      <Text
+        fontSize={26}
+        lineHeight={32}
+        fontFamily="$heading"
+        fontWeight="800"
+        textAlign="center"
+        color="$color"
+      >
+        {item.title}
+      </Text>
+      <Text
+        fontSize={15}
+        lineHeight={23}
+        textAlign="center"
+        color="$colorMuted"
+        marginTop={12}
+      >
+        {item.description}
+      </Text>
     </YStack>
+  );
+}
+
+/**
+ * Every card is rendered once with a stable key. Position is driven entirely
+ * by shared values so there is zero React re-render on swipe.
+ */
+function FanCard({
+  stepIndex,
+  activeIndex,
+  dragX,
+  swipeOrigin,
+  swipeDirection,
+  screenWidth,
+  isDark,
+}: {
+  stepIndex: number;
+  activeIndex: SharedValue<number>;
+  dragX: SharedValue<number>;
+  swipeOrigin: SharedValue<number>;
+  swipeDirection: SharedValue<-1 | 0 | 1>;
+  screenWidth: number;
+  isDark: boolean;
+}) {
+  const step = steps[stepIndex];
+
+  const animStyle = useAnimatedStyle(() => {
+    const depth = stepIndex - activeIndex.value;
+    const currentIndex = Math.round(activeIndex.value);
+    const direction = swipeDirection.value;
+    const isOutgoing = direction !== 0 && stepIndex === swipeOrigin.value;
+
+    const getSlotTransform = (slotProgress: number) => {
+      "worklet";
+      const lowerSlot = Math.floor(slotProgress);
+      const upperSlot = Math.min(Math.ceil(slotProgress), MAX_VISIBLE_BEHIND);
+      const progress = slotProgress - lowerSlot;
+      const from = ARCH_SLOTS[Math.min(lowerSlot, MAX_VISIBLE_BEHIND)];
+      const to = ARCH_SLOTS[upperSlot];
+
+      return {
+        translateX: interpolate(progress, [0, 1], [from.x, to.x]),
+        translateY: interpolate(progress, [0, 1], [from.y, to.y]),
+        rotate: interpolate(progress, [0, 1], [from.rotate, to.rotate]),
+        scale: interpolate(progress, [0, 1], [from.scale, to.scale]),
+      };
+    };
+
+    if (isOutgoing) {
+      return {
+        opacity: 1,
+        zIndex: 20,
+        transform: [
+          { translateX: dragX.value },
+          {
+            rotate: `${interpolate(
+              dragX.value,
+              [-screenWidth, 0, screenWidth],
+              [-15, 0, 15],
+            )}deg`,
+          },
+        ],
+      };
+    }
+
+    // Already dismissed — park off-screen
+    if (depth < -1) {
+      return {
+        opacity: 0,
+        zIndex: -100,
+        transform: [{ translateX: -screenWidth * 2 }],
+      };
+    }
+
+    // Too deep — hide
+    if (depth > MAX_VISIBLE_BEHIND) {
+      return {
+        opacity: 0,
+        zIndex: -100,
+        transform: [{ translateY: 0 }],
+      };
+    }
+
+    if (depth === 0) {
+      return {
+        opacity: 1,
+        zIndex: 10,
+        transform: [
+          { translateX: dragX.value },
+          {
+            rotate: `${interpolate(
+              dragX.value,
+              [-screenWidth, 0, screenWidth],
+              [-15, 0, 15],
+            )}deg`,
+          },
+        ],
+      };
+    }
+
+    if (depth > 0) {
+      const isImmediateNext = stepIndex === currentIndex + 1 && dragX.value < 0 && direction === 0;
+      const slotProgress = isImmediateNext
+        ? 1 - Math.min(Math.abs(dragX.value) / (screenWidth * 0.75), 1)
+        : depth;
+      const { translateX, translateY, rotate, scale } = getSlotTransform(slotProgress);
+
+      return {
+        opacity: 1,
+        zIndex: -depth,
+        transform: [
+          { translateX },
+          { translateY },
+          { rotate: `${rotate}deg` },
+          { scale },
+        ],
+      };
+    }
+
+    const canRevealPrevious = stepIndex === currentIndex - 1;
+    if (!canRevealPrevious) {
+      return {
+        opacity: 0,
+        zIndex: -100,
+        transform: [{ translateX: -screenWidth * 2 }],
+      };
+    }
+
+    const revealProgress = direction === 1
+      ? 1 + depth
+      : direction === 0 && dragX.value > 0
+        ? Math.min(dragX.value / (screenWidth * 0.75), 1)
+        : 0;
+    const previousSlotProgress = 1 - revealProgress;
+    const { translateX, translateY, rotate, scale } = getSlotTransform(previousSlotProgress);
+
+    return {
+      opacity: revealProgress > 0 ? 1 : 0,
+      zIndex: 0,
+      transform: [
+        { translateX },
+        { translateY },
+        { rotate: `${rotate}deg` },
+        { scale },
+      ],
+    };
+  });
+
+  return (
+    <Animated.View style={[s.cardAbsolute, animStyle]}>
+      <CardContent item={step} index={stepIndex} isDark={isDark} />
+    </Animated.View>
+  );
+}
+
+function CardStack({
+  activeIndex,
+  dragX,
+  swipeOrigin,
+  swipeDirection,
+  isDark,
+}: {
+  activeIndex: SharedValue<number>;
+  dragX: SharedValue<number>;
+  swipeOrigin: SharedValue<number>;
+  swipeDirection: SharedValue<-1 | 0 | 1>;
+  isDark: boolean;
+}) {
+  const { width } = useWindowDimensions();
+
+  return (
+    <Animated.View style={s.stackContainer}>
+      {/* Render every card once — position driven by shared values */}
+      {steps.map((_, i) => (
+        <FanCard
+          key={i}
+          stepIndex={i}
+          activeIndex={activeIndex}
+          dragX={dragX}
+          swipeOrigin={swipeOrigin}
+          swipeDirection={swipeDirection}
+          screenWidth={width}
+          isDark={isDark}
+        />
+      ))}
+    </Animated.View>
   );
 }
 
@@ -154,16 +348,75 @@ export function OnboardingScreen() {
   const theme = useAppTheme();
   const { width } = useWindowDimensions();
   const [currentIndex, setCurrentIndex] = useState(0);
-  const flatListRef = useRef<FlatList<OnboardingStep>>(null);
   const { setOnboardingSeen } = useAuth();
+  const isDark = theme.background.val === "#18120D";
+
+  // Single shared value drives all card positions — no React re-render needed
+  const activeIndex = useSharedValue(0);
+  const dragX = useSharedValue(0);
+  const swipeOrigin = useSharedValue(0);
+  const swipeDirection = useSharedValue<-1 | 0 | 1>(0);
+
+  useAnimatedReaction(
+    () => Math.round(activeIndex.value),
+    (next, prev) => {
+      if (next === prev) return;
+      runOnJS(setCurrentIndex)(next);
+      if (Platform.OS !== "web") {
+        runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
+      }
+    },
+    [activeIndex],
+  );
+
+  const animateToIndex = useCallback((nextIndex: number, direction: -1 | 1) => {
+    swipeOrigin.value = Math.round(activeIndex.value);
+    swipeDirection.value = direction;
+    activeIndex.value = withTiming(nextIndex, TIMING_CONFIG, (finished) => {
+      if (!finished) return;
+      dragX.value = 0;
+      swipeOrigin.value = nextIndex;
+      swipeDirection.value = 0;
+    });
+  }, [activeIndex, dragX, swipeDirection, swipeOrigin]);
+
+  const pan = Gesture.Pan()
+    .onUpdate((e) => {
+      if (e.translationX > 0 && activeIndex.value === 0) {
+        dragX.value = e.translationX * 0.2;
+        return;
+      }
+      if (e.translationX < 0 && activeIndex.value === steps.length - 1) {
+        dragX.value = e.translationX * 0.2;
+        return;
+      }
+      dragX.value = e.translationX;
+    })
+    .onEnd((e) => {
+      if (e.translationX < -SWIPE_THRESHOLD && activeIndex.value < steps.length - 1) {
+        dragX.value = withTiming(-width * 1.2, TIMING_CONFIG, (finished) => {
+          if (!finished) return;
+          const next = Math.round(activeIndex.value) + 1;
+          runOnJS(animateToIndex)(next, -1);
+        });
+      } else if (e.translationX > SWIPE_THRESHOLD && activeIndex.value > 0) {
+        dragX.value = withTiming(width * 1.2, TIMING_CONFIG, (finished) => {
+          if (!finished) return;
+          const prev = Math.round(activeIndex.value) - 1;
+          runOnJS(animateToIndex)(prev, 1);
+        });
+      } else {
+        dragX.value = withTiming(0, { duration: 200 });
+      }
+    });
 
   const handleNext = () => {
-    if (Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
     if (currentIndex < steps.length - 1) {
-      flatListRef.current?.scrollToIndex({ index: currentIndex + 1, animated: true });
-      setCurrentIndex(currentIndex + 1);
+      dragX.value = withTiming(-width * 1.2, TIMING_CONFIG, (finished) => {
+        if (!finished) return;
+        const next = Math.round(activeIndex.value) + 1;
+        runOnJS(animateToIndex)(next, -1);
+      });
       return;
     }
     setOnboardingSeen();
@@ -175,27 +428,34 @@ export function OnboardingScreen() {
     router.replace("/(public)/(auth)/login");
   };
 
+  const accentGlow = isDark ? "rgba(232,145,27,0.06)" : "rgba(232,145,27,0.10)";
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top", "bottom"]}>
       <YStack flex={1} backgroundColor="$background">
-      <View pointerEvents="none" style={styles.glowOne} />
-      <View pointerEvents="none" style={styles.glowTwo} />
-      <LinearGradient
-        colors={["rgba(255,247,230,0.92)", "rgba(255,252,247,0.82)", "rgba(255,255,255,0.96)"] as const}
-        style={{ flex: 1 }}
-      >
+        <LinearGradient
+          colors={
+            isDark
+              ? ([accentGlow, theme.background.val] as const)
+              : (["rgba(243,226,193,0.5)", theme.background.val] as const)
+          }
+          start={{ x: 0.3, y: 0 }}
+          end={{ x: 0.7, y: 0.5 }}
+          style={StyleSheet.absoluteFill}
+        />
+
         <XStack
           justifyContent="space-between"
           alignItems="center"
           paddingTop={14}
-          paddingHorizontal={20}
+          paddingHorizontal={24}
           marginBottom={8}
         >
           <YStack>
-            <Text fontSize={12} letterSpacing={2} color="#8A7C67">
+            <Text fontSize={12} letterSpacing={2} color="$colorMuted">
               MEMORA
             </Text>
-            <Text fontSize={13} color="#6A655C">
+            <Text fontSize={13} color="$colorMuted">
               A calmer way to remember your life
             </Text>
           </YStack>
@@ -210,45 +470,24 @@ export function OnboardingScreen() {
           )}
         </XStack>
 
-        <FlatList
-          ref={flatListRef}
-          data={steps}
-          renderItem={({ item, index }) => (
-            <OnboardingSlide item={item} index={index} width={width} />
-          )}
-          keyExtractor={(_, i) => i.toString()}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          scrollEventThrottle={16}
-          style={{ flex: 1 }}
-          onMomentumScrollEnd={(e) => {
-            const idx = Math.round(e.nativeEvent.contentOffset.x / width);
-            setCurrentIndex(idx);
-          }}
-          getItemLayout={(_, index) => ({
-            length: width,
-            offset: width * index,
-            index,
-          })}
-          initialNumToRender={1}
-          windowSize={2}
-          removeClippedSubviews={false}
-        />
+        <GestureDetector gesture={pan}>
+          <CardStack
+            activeIndex={activeIndex}
+            dragX={dragX}
+            swipeOrigin={swipeOrigin}
+            swipeDirection={swipeDirection}
+            isDark={isDark}
+          />
+        </GestureDetector>
 
-        <YStack
-          paddingHorizontal={20}
-          paddingBottom={20}
-          paddingTop={10}
-          gap={18}
-        >
+        <YStack paddingHorizontal={24} paddingBottom={20} paddingTop={10} gap={18}>
           <XStack gap={8} alignItems="center" justifyContent="center">
             {steps.map((step, i) => (
               <XStack
                 key={step.title}
-                height={8}
+                height={6}
                 borderRadius={999}
-                width={i === currentIndex ? 28 : 8}
+                width={i === currentIndex ? 24 : 6}
                 backgroundColor={i === currentIndex ? "$primary" : "$borderColor"}
               />
             ))}
@@ -259,7 +498,7 @@ export function OnboardingScreen() {
               colors={["#E8911B", "#D4710F", "#B96208"] as const}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={styles.cta}
+              style={s.cta}
             >
               <Text color="#FFFFFF" fontSize={16} fontFamily={FontFamily.semiBold}>
                 {currentIndex === steps.length - 1 ? "Get Started" : "Next"}
@@ -272,54 +511,34 @@ export function OnboardingScreen() {
             </LinearGradient>
           </Pressable>
 
-          <Text
-            fontSize={12}
-            lineHeight={18}
-            color={theme.colorMuted.val}
-            textAlign="center"
-          >
+          <Text fontSize={12} lineHeight={18} color="$colorMuted" textAlign="center">
             Your workspace is private and can be explored at your own pace.
           </Text>
         </YStack>
-      </LinearGradient>
       </YStack>
     </SafeAreaView>
   );
 }
 
-const styles = {
-  glowOne: {
-    position: "absolute" as const,
-    width: 340,
-    height: 340,
-    borderRadius: 340,
-    top: -100,
-    right: -120,
-    backgroundColor: "rgba(232,145,27,0.12)",
+const s = StyleSheet.create({
+  stackContainer: {
+    flex: 1,
+    justifyContent: "center",
   },
-  glowTwo: {
-    position: "absolute" as const,
-    width: 260,
-    height: 260,
-    borderRadius: 260,
-    bottom: 100,
-    left: -100,
-    backgroundColor: "rgba(245,166,35,0.10)",
+  cardAbsolute: {
+    position: "absolute",
+    left: 36,
+    right: 36,
   },
   cta: {
-    flexDirection: "row" as const,
-    alignItems: "center" as const,
-    justifyContent: "center" as const,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 16,
     paddingHorizontal: 32,
     borderRadius: 28,
     gap: 8,
     minWidth: 200,
-    alignSelf: "center" as const,
-    shadowColor: "#E8911B",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: Platform.OS === "web" ? 0.12 : 0.22,
-    shadowRadius: 14,
-    elevation: 4,
+    alignSelf: "center",
   },
-};
+});

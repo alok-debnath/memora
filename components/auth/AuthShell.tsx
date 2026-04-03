@@ -67,11 +67,6 @@ export function AuthShell({
                   borderWidth={1}
                   borderColor={theme.borderColor.val}
                   backgroundColor={theme.card.val}
-                  shadowColor={theme.shadowColor.val}
-                  shadowOffset={{ width: 0, height: 14 }}
-                  shadowOpacity={Platform.OS === "web" ? 0.08 : 0.12}
-                  shadowRadius={24}
-                  elevation={4}
                   overflow="hidden"
                 >
                   <LinearGradient

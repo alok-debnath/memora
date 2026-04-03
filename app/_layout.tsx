@@ -25,7 +25,7 @@ import { authClient } from "@/lib/auth-client";
 import { logDevError } from "@/lib/devLog";
 import tamaguiConfig from "@/tamagui.config";
 import { AppToastProvider, AppToastRenderer } from "@/components/ui/toast";
-import { GlobalTopFadeProvider } from "@/components/ui/GlobalTopFade";
+
 
 SplashScreen.preventAutoHideAsync();
 
@@ -54,10 +54,8 @@ function RootLayoutNav() {
     return (
       <TamaguiProvider config={tamaguiConfig} defaultTheme={resolvedMode}>
         <AuthContext.Provider value={auth}>
-          <GlobalTopFadeProvider>
-            <OnboardingScreen />
-            <AppToastRenderer />
-          </GlobalTopFadeProvider>
+          <OnboardingScreen />
+          <AppToastRenderer />
         </AuthContext.Provider>
       </TamaguiProvider>
     );
@@ -66,14 +64,12 @@ function RootLayoutNav() {
   return (
     <TamaguiProvider config={tamaguiConfig} defaultTheme={resolvedMode}>
       <AuthContext.Provider value={auth}>
-        <GlobalTopFadeProvider>
-          <StatusBar style={resolvedMode === "dark" ? "light" : "dark"} />
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(public)" options={{ headerShown: false }} />
-            <Stack.Screen name="(protected)" options={{ headerShown: false }} />
-          </Stack>
-          <AppToastRenderer />
-        </GlobalTopFadeProvider>
+        <StatusBar style={resolvedMode === "dark" ? "light" : "dark"} />
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: resolvedMode === "dark" ? "#18120D" : "#F7F1E8" } }}>
+          <Stack.Screen name="(public)" options={{ headerShown: false }} />
+          <Stack.Screen name="(protected)" options={{ headerShown: false }} />
+        </Stack>
+        <AppToastRenderer />
       </AuthContext.Provider>
     </TamaguiProvider>
   );
