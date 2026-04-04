@@ -136,7 +136,12 @@ export function VoiceRecorder({
   };
 
   // ── Speech events ────────────────────────────────────────────────────────────
+  // NOTE: useSpeechRecognitionEvent is a global emitter — ALL mounted VoiceRecorder
+  // instances receive every event. Guard each handler so only the instance that
+  // called startRecording actually responds.
+
   useSpeechRecognitionEvent("start", () => {
+    if (!wasInitiatedByMeRef.current) return;
     setStatusMessage(null);
     setIsRecording(true);
     setDuration(0);
@@ -148,10 +153,12 @@ export function VoiceRecorder({
   });
 
   useSpeechRecognitionEvent("speechstart", () => {
+    if (!wasInitiatedByMeRef.current) return;
     clearSilenceTimer();
   });
 
   useSpeechRecognitionEvent("speechend", () => {
+    if (!wasInitiatedByMeRef.current) return;
     // Only use silence timer in standard mode
     if (inputMode !== "standard") return;
     clearSilenceTimer();
@@ -166,6 +173,7 @@ export function VoiceRecorder({
   });
 
   useSpeechRecognitionEvent("result", (event) => {
+    if (!wasInitiatedByMeRef.current) return;
     const transcript = getBestTranscript(event.results);
     if (!transcript) return;
     transcriptRef.current = transcript;
@@ -173,6 +181,7 @@ export function VoiceRecorder({
   });
 
   useSpeechRecognitionEvent("end", () => {
+    if (!wasInitiatedByMeRef.current) return;
     clearSilenceTimer();
     clearTimer();
     setIsRecording(false);
@@ -194,6 +203,7 @@ export function VoiceRecorder({
   });
 
   useSpeechRecognitionEvent("error", (event) => {
+    if (!wasInitiatedByMeRef.current) return;
     clearSilenceTimer();
     clearTimer();
     setIsRecording(false);
