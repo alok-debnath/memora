@@ -26,7 +26,7 @@ import {
 import { logDevError } from "@/lib/devLog";
 import { showToastImperative } from "@/components/ui/toast";
 
-export type VoiceInputMode = "standard" | "continuous" | "walkie-talkie";
+export type VoiceInputMode = "standard" | "continuous" | "walkie-talkie" | "auto";
 
 interface VoiceRecorderProps {
   onTranscription: (text: string) => void;
@@ -284,11 +284,18 @@ export function VoiceRecorder({
 
   const handlePress = () => {
     if (inputMode === "walkie-talkie") return; // WT handled via pressIn/Out
+    if (inputMode === "auto" && walkieTalkieActiveRef.current) return; // auto WT handled via longPress/pressOut
     if (isRecording) {
       stopRecording();
     } else {
       void startRecording();
     }
+  };
+
+  const handleLongPress = () => {
+    if (inputMode !== "auto") return;
+    walkieTalkieActiveRef.current = true;
+    void startRecording();
   };
 
   const handlePressIn = () => {
@@ -298,11 +305,13 @@ export function VoiceRecorder({
   };
 
   const handlePressOut = () => {
-    if (inputMode !== "walkie-talkie") return;
-    if (walkieTalkieActiveRef.current && isRecording) {
-      stopRecording();
+    if (inputMode === "walkie-talkie") {
+      if (walkieTalkieActiveRef.current && isRecording) stopRecording();
+      walkieTalkieActiveRef.current = false;
+    } else if (inputMode === "auto") {
+      if (walkieTalkieActiveRef.current && isRecording) stopRecording();
+      walkieTalkieActiveRef.current = false;
     }
-    walkieTalkieActiveRef.current = false;
   };
 
   const formatDuration = (s: number) => {
@@ -326,7 +335,7 @@ export function VoiceRecorder({
   const size = compact ? 44 : 80;
   const innerSize = compact ? 40 : 72;
 
-  const wtHint = inputMode === "walkie-talkie" && compact;
+  const wtHint = (inputMode === "walkie-talkie" || inputMode === "auto") && compact;
 
   return (
     <YStack alignItems="center" justifyContent="center" gap={compact ? (wtHint ? 4 : 0) : 12} paddingVertical={compact ? 0 : 16}>
@@ -341,8 +350,10 @@ export function VoiceRecorder({
         )}
         <Pressable
           onPress={handlePress}
+          onLongPress={handleLongPress}
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
+          delayLongPress={350}
           style={{
             width: innerSize,
             height: innerSize,
@@ -358,7 +369,10 @@ export function VoiceRecorder({
           }}
         >
           <Feather
-            name={isRecording ? (inputMode === "walkie-talkie" ? "mic" : "square") : "mic"}
+            name={isRecording
+              ? (inputMode === "walkie-talkie" || (inputMode === "auto" && walkieTalkieActiveRef.current)) ? "mic" : "square"
+              : "mic"
+            }
             size={compact ? 18 : 28}
             color="#FFFFFF"
           />
@@ -373,19 +387,27 @@ export function VoiceRecorder({
 
       {wtHint && (
         <Text fontSize={10} fontFamily="$body" textAlign="center" color="$colorMuted" opacity={0.7}>
-          {isRecording ? "Release to send" : "Hold to talk"}
+          {isRecording
+            ? "Release to send"
+            : inputMode === "auto"
+            ? "Tap or hold to talk"
+            : "Hold to talk"}
         </Text>
       )}
 
       {!compact && (
         <Text fontSize={14} fontFamily="$body" textAlign="center" color="$colorMuted">
           {isRecording
-            ? inputMode === "continuous"
-              ? "Listening — tap to stop"
-              : inputMode === "walkie-talkie"
+            ? walkieTalkieActiveRef.current || inputMode === "walkie-talkie"
               ? "Release to send"
+              : inputMode === "continuous" || inputMode === "auto"
+              ? "Listening — tap to stop"
               : "Listening..."
-            : statusMessage ?? (inputMode === "walkie-talkie" ? "Hold to talk" : "Tap to dictate")}
+            : statusMessage ?? (
+                inputMode === "walkie-talkie" ? "Hold to talk" :
+                inputMode === "auto" ? "Tap or hold to talk" :
+                "Tap to dictate"
+              )}
         </Text>
       )}
     </YStack>

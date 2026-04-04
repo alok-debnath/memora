@@ -960,27 +960,16 @@ function ChatInputBar({
             </YStack>
           ) : null}
           <XStack alignItems="center" justifyContent="center" position="relative" minHeight={56}>
-              {/* Voice buttons: continuous (tap) + walkie-talkie (hold) */}
-              <XStack alignItems="center" gap={16}>
-                <VoiceRecorder
-                  onTranscription={setVoiceLiveTranscript}
-                  onTranscriptionComplete={(text) => {
-                    setVoiceLiveTranscript("");
-                    handleVoiceComplete(text);
-                  }}
-                  compact
-                  inputMode="continuous"
-                />
-                <VoiceRecorder
-                  onTranscription={setVoiceLiveTranscript}
-                  onTranscriptionComplete={(text) => {
-                    setVoiceLiveTranscript("");
-                    handleVoiceComplete(text);
-                  }}
-                  compact
-                  inputMode="walkie-talkie"
-                />
-              </XStack>
+              {/* Single mic: tap = continuous, long-press = walkie-talkie */}
+              <VoiceRecorder
+                onTranscription={setVoiceLiveTranscript}
+                onTranscriptionComplete={(text) => {
+                  setVoiceLiveTranscript("");
+                  handleVoiceComplete(text);
+                }}
+                compact
+                inputMode="auto"
+              />
 
                {/* Right Keyboard Button */}
                <Pressable

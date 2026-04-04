@@ -114,7 +114,8 @@ export function EditMemorySheet({
       setMode("manual");
       setVoiceTranscript("");
     }
-  }, [memory, visible]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   const setField = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
