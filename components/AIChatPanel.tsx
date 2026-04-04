@@ -5,6 +5,7 @@ import {
   Pressable,
   Platform,
   Clipboard,
+  View,
 } from "react-native";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -300,6 +301,310 @@ type ChatMsg = {
   _creationTime: number;
 };
 
+type DeletionItem = {
+  id: string;
+  title: string;
+  content: string;
+  entry_kind: string;
+};
+
+// ─── Deletion Proposal Helpers ────────────────────────────────────────────────
+
+function parseDeletionProposal(content: string): { items: DeletionItem[]; cleanText: string } | null {
+  const marker = "<!--MEMORA_DELETION_PROPOSAL:";
+  const endMarker = "-->";
+  const startIdx = content.indexOf(marker);
+  if (startIdx === -1) return null;
+  const endIdx = content.indexOf(endMarker, startIdx + marker.length);
+  if (endIdx === -1) return null;
+  try {
+    const jsonStr = content.slice(startIdx + marker.length, endIdx);
+    const items = JSON.parse(jsonStr) as DeletionItem[];
+    const cleanText = content.slice(0, startIdx).trim();
+    return { items, cleanText };
+  } catch {
+    return null;
+  }
+}
+
+// ─── Deletion Proposal Card ───────────────────────────────────────────────────
+
+type CardState = "idle" | "deleting" | "done" | "cancelled";
+
+function DeletionProposalCard({
+  items,
+  token,
+  theme,
+}: {
+  items: DeletionItem[];
+  token: string | null | undefined;
+  theme: ReturnType<typeof useAppTheme>;
+}) {
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(items.map((i) => i.id)));
+  const [cardState, setCardState] = useState<CardState>("idle");
+  const [resultCount, setResultCount] = useState(0);
+  const removeMany = useMutation(api.memories.removeMany);
+
+  const toggleItem = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleConfirm = useCallback(async () => {
+    if (!token) return;
+    const ids = Array.from(selected);
+    if (!ids.length) {
+      setCardState("cancelled");
+      return;
+    }
+    setCardState("deleting");
+    try {
+      await removeMany({ token, ids });
+      setResultCount(ids.length);
+      setCardState("done");
+    } catch {
+      setCardState("idle");
+    }
+  }, [token, selected, removeMany]);
+
+  const handleCancel = useCallback(() => setCardState("cancelled"), []);
+
+  const selectedCount = selected.size;
+
+  // ── Done state ──────────────────────────────────────────────────────────────
+  if (cardState === "done") {
+    return (
+      <Animated.View entering={FadeIn.duration(300)} style={{ marginTop: 6 }}>
+        <XStack
+          backgroundColor={theme.backgroundStrong.val}
+          borderWidth={1}
+          borderColor="rgba(52, 199, 89, 0.35)"
+          borderRadius={16}
+          padding={14}
+          gap={12}
+          alignItems="center"
+          style={BUBBLE_SHADOW}
+        >
+          <View style={{
+            width: 34, height: 34, borderRadius: 17,
+            backgroundColor: "rgba(52, 199, 89, 0.15)",
+            alignItems: "center", justifyContent: "center",
+          }}>
+            <Feather name="check" size={16} color="#34C759" />
+          </View>
+          <YStack flex={1}>
+            <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
+              {resultCount === 1 ? "1 item deleted" : `${resultCount} items deleted`}
+            </Text>
+            <Text fontSize={11} fontFamily="$body" color="$colorMuted" marginTop={2}>
+              Moved to trash · Restore anytime from Data
+            </Text>
+          </YStack>
+        </XStack>
+      </Animated.View>
+    );
+  }
+
+  // ── Cancelled state ─────────────────────────────────────────────────────────
+  if (cardState === "cancelled") {
+    return (
+      <Animated.View entering={FadeIn.duration(300)} style={{ marginTop: 6 }}>
+        <XStack
+          backgroundColor={theme.backgroundStrong.val}
+          borderWidth={1}
+          borderColor="$borderColor"
+          borderRadius={16}
+          padding={14}
+          gap={12}
+          alignItems="center"
+          style={BUBBLE_SHADOW}
+        >
+          <View style={{
+            width: 34, height: 34, borderRadius: 17,
+            backgroundColor: theme.accent.val,
+            alignItems: "center", justifyContent: "center",
+          }}>
+            <Feather name="x" size={16} color={theme.colorMuted.val} />
+          </View>
+          <Text fontSize={13} fontFamily="$body" color="$colorMuted">
+            Nothing was deleted
+          </Text>
+        </XStack>
+      </Animated.View>
+    );
+  }
+
+  // ── Idle / deleting state ───────────────────────────────────────────────────
+  return (
+    <Animated.View entering={FadeInDown.duration(300)} style={{ marginTop: 6 }}>
+      <YStack
+        backgroundColor={theme.backgroundStrong.val}
+        borderWidth={1}
+        borderColor="$borderColor"
+        borderRadius={16}
+        overflow="hidden"
+        style={BUBBLE_SHADOW}
+      >
+        {/* Header */}
+        <XStack
+          paddingHorizontal={14}
+          paddingTop={12}
+          paddingBottom={10}
+          alignItems="center"
+          justifyContent="space-between"
+          borderBottomWidth={1}
+          borderBottomColor="$borderColor"
+        >
+          <XStack gap={7} alignItems="center">
+            <Feather name="trash-2" size={13} color={theme.colorMuted.val} />
+            <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
+              {items.length === 1 ? "1 item found" : `${items.length} items found`}
+            </Text>
+          </XStack>
+          {selectedCount < items.length ? (
+            <Pressable
+              onPress={() => setSelected(new Set(items.map((i) => i.id)))}
+              hitSlop={8}
+            >
+              <Text fontSize={11} fontFamily={FontFamily.semiBold} color={theme.primary.val}>
+                {selectedCount === 0 ? "Select all" : `${selectedCount} of ${items.length} · Select all`}
+              </Text>
+            </Pressable>
+          ) : (
+            <Text fontSize={11} fontFamily="$body" color="$colorMuted">
+              All selected
+            </Text>
+          )}
+        </XStack>
+
+        {/* Item rows */}
+        <YStack>
+          {items.map((item, index) => {
+            const isSelected = selected.has(item.id);
+            const isReminder = item.entry_kind === "reminder";
+            return (
+              <Pressable
+                key={item.id}
+                onPress={() => cardState !== "deleting" && toggleItem(item.id)}
+                style={({ pressed }) => ({
+                  opacity: pressed ? 0.75 : 1,
+                })}
+              >
+                <XStack
+                  paddingHorizontal={14}
+                  paddingVertical={11}
+                  gap={12}
+                  alignItems="center"
+                  borderTopWidth={index > 0 ? 1 : 0}
+                  borderTopColor="$borderColor"
+                  backgroundColor={isSelected ? `${theme.primary.val}08` : "transparent"}
+                >
+                  {/* Checkbox */}
+                  <View style={{
+                    width: 22, height: 22, borderRadius: 11,
+                    borderWidth: 1.5,
+                    borderColor: isSelected ? theme.primary.val : theme.borderColor.val,
+                    backgroundColor: isSelected ? theme.primary.val : "transparent",
+                    alignItems: "center", justifyContent: "center",
+                    flexShrink: 0,
+                  }}>
+                    {isSelected && <Feather name="check" size={12} color="#FFFFFF" />}
+                  </View>
+
+                  {/* Content */}
+                  <YStack flex={1} gap={3}>
+                    <XStack gap={5} alignItems="center">
+                      <Feather
+                        name={isReminder ? "bell" : "archive"}
+                        size={11}
+                        color={isSelected ? theme.primary.val : theme.colorMuted.val}
+                      />
+                      <Text
+                        fontSize={13}
+                        fontFamily={FontFamily.semiBold}
+                        color={isSelected ? "$color" : "$colorMuted"}
+                        numberOfLines={1}
+                        flex={1}
+                      >
+                        {item.title}
+                      </Text>
+                    </XStack>
+                    {item.content ? (
+                      <Text
+                        fontSize={11}
+                        fontFamily="$body"
+                        color="$colorMuted"
+                        numberOfLines={1}
+                        opacity={isSelected ? 1 : 0.6}
+                      >
+                        {item.content}
+                      </Text>
+                    ) : null}
+                  </YStack>
+                </XStack>
+              </Pressable>
+            );
+          })}
+        </YStack>
+
+        {/* Action buttons */}
+        <XStack
+          padding={12}
+          gap={8}
+          borderTopWidth={1}
+          borderTopColor="$borderColor"
+        >
+          <Pressable
+            onPress={handleCancel}
+            disabled={cardState === "deleting"}
+            style={({ pressed }) => ({
+              flex: 1,
+              paddingVertical: 11,
+              borderRadius: 12,
+              alignItems: "center",
+              backgroundColor: theme.accent.val,
+              opacity: pressed || cardState === "deleting" ? 0.6 : 1,
+            })}
+          >
+            <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$colorMuted">
+              Cancel
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={handleConfirm}
+            disabled={cardState === "deleting" || selectedCount === 0}
+            style={({ pressed }) => ({
+              flex: 2,
+              paddingVertical: 11,
+              borderRadius: 12,
+              alignItems: "center",
+              backgroundColor: selectedCount === 0 ? theme.accent.val : "#FF3B30",
+              opacity: pressed || cardState === "deleting" || selectedCount === 0 ? 0.6 : 1,
+            })}
+          >
+            <Text
+              fontSize={13}
+              fontFamily={FontFamily.semiBold}
+              color={selectedCount === 0 ? "$colorMuted" : "#FFFFFF"}
+            >
+              {cardState === "deleting"
+                ? "Deleting…"
+                : selectedCount === 0
+                  ? "Select items"
+                  : `Delete ${selectedCount}`}
+            </Text>
+          </Pressable>
+        </XStack>
+      </YStack>
+    </Animated.View>
+  );
+}
+
 // ─── Thinking Indicator ───────────────────────────────────────────────────────
 
 // Each dot is its own component so hooks are called at the top level (not inside map)
@@ -373,6 +678,8 @@ const ChatBubble = React.memo(function ChatBubble({
   speakingId,
   onSpeak,
   onCopy,
+  token,
+  deletionItems,
 }: {
   msg: ChatMsg;
   isUser: boolean;
@@ -380,6 +687,8 @@ const ChatBubble = React.memo(function ChatBubble({
   speakingId: string | null;
   onSpeak: (id: string, text: string) => void;
   onCopy: (text: string) => void;
+  token?: string | null;
+  deletionItems?: DeletionItem[];
 }) {
   const theme = useAppTheme();
   const isSpeaking = speakingId === msg._id;
@@ -516,6 +825,11 @@ const ChatBubble = React.memo(function ChatBubble({
           ) : null}
         </YStack>
       </XStack>
+
+      {/* Deletion confirmation card — full width, below AI bubble */}
+      {!isUser && deletionItems && deletionItems.length > 0 && (
+        <DeletionProposalCard items={deletionItems} token={token} theme={theme} />
+      )}
     </Animated.View>
   );
 });
@@ -566,6 +880,7 @@ function VoiceWaveform({ color }: { color: string }) {
 // ─── Chat Input Bar ───────────────────────────────────────────────────────────
 
 import { VoiceRecorder } from "./VoiceRecorder";
+import { PopoverMenu } from "@/components/ui/PopoverMenu";
 
 function ChatInputBar({
   isSending,
@@ -645,15 +960,27 @@ function ChatInputBar({
             </YStack>
           ) : null}
           <XStack alignItems="center" justifyContent="center" position="relative" minHeight={56}>
-              {/* Center Voice Button */}
-              <VoiceRecorder
-                 onTranscription={setVoiceLiveTranscript}
-                 onTranscriptionComplete={(text) => {
-                   setVoiceLiveTranscript("");
-                   handleVoiceComplete(text);
-                 }}
-                 compact
-               />
+              {/* Voice buttons: continuous (tap) + walkie-talkie (hold) */}
+              <XStack alignItems="center" gap={16}>
+                <VoiceRecorder
+                  onTranscription={setVoiceLiveTranscript}
+                  onTranscriptionComplete={(text) => {
+                    setVoiceLiveTranscript("");
+                    handleVoiceComplete(text);
+                  }}
+                  compact
+                  inputMode="continuous"
+                />
+                <VoiceRecorder
+                  onTranscription={setVoiceLiveTranscript}
+                  onTranscriptionComplete={(text) => {
+                    setVoiceLiveTranscript("");
+                    handleVoiceComplete(text);
+                  }}
+                  compact
+                  inputMode="walkie-talkie"
+                />
+              </XStack>
 
                {/* Right Keyboard Button */}
                <Pressable
@@ -693,34 +1020,22 @@ function ChatInputBar({
       backgroundColor="$backgroundStrong"
       style={SURFACE_SHADOW}
     >
-      <Pressable
-        onPress={onPickDoc}
-        hitSlop={6}
-        style={({ pressed }) => ({
-          width: 36,
-          height: 36,
-          alignItems: "center",
-          justifyContent: "center",
-          borderRadius: 18,
-          opacity: pressed ? 0.6 : 1,
-        })}
+      <PopoverMenu
+        items={[
+          { label: "Attach document", icon: "paperclip", onPress: onPickDoc },
+          { label: "Pick image", icon: "image", onPress: onPickImage },
+        ]}
       >
-        <Feather name="paperclip" size={18} color={theme.colorMuted.val} />
-      </Pressable>
-      <Pressable
-        onPress={onPickImage}
-        hitSlop={6}
-        style={({ pressed }) => ({
-          width: 36,
-          height: 36,
-          alignItems: "center",
-          justifyContent: "center",
-          borderRadius: 18,
-          opacity: pressed ? 0.6 : 1,
-        })}
-      >
-        <Feather name="image" size={18} color={theme.colorMuted.val} />
-      </Pressable>
+        <YStack
+          width={36}
+          height={36}
+          alignItems="center"
+          justifyContent="center"
+          borderRadius={18}
+        >
+          <Feather name="paperclip" size={18} color={theme.colorMuted.val} />
+        </YStack>
+      </PopoverMenu>
 
       <TextInput
         ref={inputRef}
@@ -868,9 +1183,10 @@ function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => void }) 
 interface ExtendedAIChatPanelProps extends AIChatPanelProps {
   chatInputMode?: "voice" | "keyboard";
   setChatInputMode?: (mode: "voice" | "keyboard") => void;
+  autoVoiceOutput?: boolean;
 }
 
-export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatInputMode }: ExtendedAIChatPanelProps) {
+export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatInputMode, autoVoiceOutput = true }: ExtendedAIChatPanelProps) {
   const theme = useAppTheme();
   const auth = useAuth();
   const { showToast } = useAppToast();
@@ -929,7 +1245,7 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
       }, 120);
 
       // Auto-readout logic
-      if (lastInputModeRef.current === "voice" && messages.length > 0) {
+      if (autoVoiceOutput && lastInputModeRef.current === "voice" && messages.length > 0) {
         const lastMsg = messages[messages.length - 1]; // Assume latest message is at end of array (since query sorts ascending)
         if (lastMsg && lastMsg.role !== "user" && !unreadVoiceResponsesRef.current.has(lastMsg._id)) {
             unreadVoiceResponsesRef.current.add(lastMsg._id);
@@ -1198,18 +1514,22 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
   const renderMessage = useCallback(
     ({ item }: { item: any }) => {
       if (item.role === "thinking") return <ThinkingIndicator />;
+      const parsed = item.role !== "user" ? parseDeletionProposal(item.content ?? "") : null;
+      const displayMsg = parsed ? { ...item, content: parsed.cleanText } : item;
       return (
         <ChatBubble
-          msg={item}
+          msg={displayMsg}
           isUser={item.role === "user"}
           mdStyles={item.role === "user" ? userMdStyles : aiMdStyles}
           speakingId={speakingId}
           onSpeak={speakMessage}
           onCopy={copyMessage}
+          token={token}
+          deletionItems={parsed?.items}
         />
       );
     },
-    [aiMdStyles, userMdStyles, speakingId, speakMessage, copyMessage],
+    [aiMdStyles, userMdStyles, speakingId, speakMessage, copyMessage, token],
   );
 
   const keyExtractor = useCallback((item: any) => item._id, []);
