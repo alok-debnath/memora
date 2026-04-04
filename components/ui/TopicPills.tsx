@@ -1,6 +1,7 @@
 import React from "react";
 import { ScrollView } from "react-native";
 import { Feather } from "@expo/vector-icons";
+import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming, Easing } from "react-native-reanimated";
 import { PressableScale } from "./PressableScale";
 import { Text, XStack } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -15,16 +16,40 @@ interface TopicPillsProps {
     color?: string | null;
     memoryCount: number;
   }>;
+  onSync?: () => void;
+  isSyncing?: boolean;
 }
 
-export function TopicPills({ selected, onSelect, topics }: TopicPillsProps) {
+export function TopicPills({ selected, onSelect, topics, onSync, isSyncing }: TopicPillsProps) {
   const theme = useAppTheme();
+
+  const rotation = useSharedValue(0);
+
+  React.useEffect(() => {
+    if (isSyncing) {
+      rotation.value = withRepeat(
+        withTiming(360, { duration: 800, easing: Easing.linear }),
+        -1,
+        false
+      );
+    } else {
+      rotation.value = 0;
+    }
+  }, [isSyncing, rotation]);
+
+  const spinStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation.value}deg` }],
+  }));
 
   const activeTopics = topics
     .filter((t) => t.memoryCount > 0)
     .sort((a, b) => b.memoryCount - a.memoryCount);
 
   if (activeTopics.length < 2) return null;
+
+  const syncBg = theme.card.val;
+  const syncBorder = theme.borderColor.val;
+  const syncIconColor = theme.colorMuted.val;
 
   return (
     <ScrollView
@@ -100,6 +125,32 @@ export function TopicPills({ selected, onSelect, topics }: TopicPillsProps) {
           </PressableScale>
         );
       })}
+
+      {onSync ? (
+        <PressableScale
+          onPress={isSyncing ? undefined : onSync}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            borderRadius: 20,
+            gap: 6,
+            borderWidth: 0.5,
+            borderStyle: "dashed",
+            backgroundColor: syncBg,
+            borderColor: syncBorder,
+            opacity: isSyncing ? 0.6 : 1,
+          }}
+        >
+          <Animated.View style={spinStyle}>
+            <Feather name="refresh-cw" size={13} color={syncIconColor} />
+          </Animated.View>
+          <Text fontSize={13} fontFamily="$body" fontWeight="500" color="$colorMuted">
+            {isSyncing ? "Syncing…" : "Sync"}
+          </Text>
+        </PressableScale>
+      ) : null}
     </ScrollView>
   );
 }

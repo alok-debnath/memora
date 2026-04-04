@@ -1283,6 +1283,20 @@ export const complete = mutation({
       await ctx.db.delete(card._id);
     }
 
+    // Decrement topic counts so the filter bar hides topics with no active memories
+    const topicIds = Array.from(
+      new Set(
+        [memory.primaryTopicId, ...(memory.topicIds ?? [])].filter(
+          (id): id is Id<"userTopics"> => id !== undefined
+        )
+      )
+    );
+    if (topicIds.length > 0) {
+      await ctx.runMutation(internal.userTopics.decrementOrArchiveTopics, {
+        topicIds,
+      });
+    }
+
     await ctx.db.patch(args.id, { status: "completed", completedAt: Date.now() });
   },
 });
@@ -1295,6 +1309,21 @@ export const uncomplete = mutation({
     const memory = await ctx.db.get(args.id);
     if (!memory || memory.userId !== userId) throw new Error("Not found");
     if (memory.status !== "completed") return; // not completed
+
+    // Re-increment topic counts now that the memory is active again
+    const topicIds = Array.from(
+      new Set(
+        [memory.primaryTopicId, ...(memory.topicIds ?? [])].filter(
+          (id): id is Id<"userTopics"> => id !== undefined
+        )
+      )
+    );
+    if (topicIds.length > 0) {
+      await ctx.runMutation(internal.userTopics.incrementTopicCounts, {
+        topicIds,
+      });
+    }
+
     await ctx.db.patch(args.id, { status: "active", completedAt: undefined });
   },
 });

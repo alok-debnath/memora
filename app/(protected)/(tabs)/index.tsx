@@ -20,7 +20,8 @@ import { XStack, YStack, Text } from "tamagui";
 
 import { EditMemorySheet } from "@/components/EditMemorySheet";
 import { FlashbackCard } from "@/components/FlashbackCard";
-import { MemoryCard } from "@/components/MemoryCard";
+import { MemoryCard, CardBody } from "@/components/MemoryCard";
+import { ContextMenu } from "@/components/ui/ContextMenu";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/useAuth";
@@ -187,6 +188,8 @@ export default function HomeScreen() {
     useQuery(api.memories.stats, token ? { token, asOf: querySnapshot.nowMs } : "skip") ?? null;
 
   const semanticSearch = useAction(api.actions.semanticSearch.search);
+  const reconcileTopics = useAction(api.actions.manageTopics.reconcileTopics);
+  const [isSyncingTopics, setIsSyncingTopics] = useState(false);
   const deleteMemory = useMutation(api.memories.remove);
   const completeMemory = useMutation(api.memories.complete);
   const updateMemory = useMutation(api.memories.update);
@@ -240,6 +243,16 @@ export default function HomeScreen() {
       setSelectedTopic(null);
     }
   }, [activeTopicSummaries, selectedTopic]);
+
+  const handleSyncTopics = async () => {
+    if (!token || isSyncingTopics) return;
+    setIsSyncingTopics(true);
+    try {
+      await reconcileTopics({ token });
+    } finally {
+      setIsSyncingTopics(false);
+    }
+  };
 
   const handleDelete = async (id: Id<"memories">) => {
     if (!token) return;
@@ -439,6 +452,8 @@ export default function HomeScreen() {
                   memoryCount: number;
                 }>
               }
+              onSync={handleSyncTopics}
+              isSyncing={isSyncingTopics}
             />
             {searchMode && relatedCount > 0 ? (
               <Text fontSize={12} color="$colorMuted">
@@ -491,50 +506,87 @@ export default function HomeScreen() {
               action={<Badge label={`${topReminders.length}`} color={theme.warning.val} small />}
             >
               <YStack gap={10}>
-                {topReminders.map((memory) => (
-                  <PressableScale
-                    key={memory._id}
-                    onPress={() => {
-                      setEditMemory(memory as MemoryItem);
-                      openEditMemory();
-                    }}
-                  >
-                    <XStack
-                      alignItems="center"
-                      gap={12}
-                      padding={14}
-                      borderRadius={20}
-                      backgroundColor="$background"
-                      borderWidth={1}
-                      borderColor="$borderColor"
+                {topReminders.map((memory) => {
+                  const note = toMemoryNote(memory);
+                  const resolvedTopics = note.topicIds
+                    ?.map((id) => topicById[id])
+                    .filter(Boolean) as Array<{ name: string; color?: string | null }> | undefined;
+                  return (
+                    <ContextMenu
+                      key={memory._id}
+                      openOn="press"
+                      preview={
+                        <CardBody
+                          memory={note}
+                          resolvedTopics={resolvedTopics}
+                          showActions={false}
+                        />
+                      }
+                      items={[
+                        {
+                          label: "Mark as Completed",
+                          icon: "check-circle",
+                          iconColor: "#16a34a",
+                          onPress: () => token && completeMemory({ token, id: memory._id }),
+                        },
+                        {
+                          label: "Edit Memory",
+                          icon: "edit-2",
+                          onPress: () => {
+                            setEditMemory(memory as MemoryItem);
+                            openEditMemory();
+                          },
+                        },
+                        {
+                          label: "Share",
+                          icon: "share-2",
+                          onPress: () => handleShare(memory._id),
+                        },
+                        {
+                          label: "Delete",
+                          icon: "trash-2",
+                          destructive: true,
+                          onPress: () => handleDelete(memory._id),
+                        },
+                      ]}
                     >
-                      <YStack
-                        width={42}
-                        height={42}
-                        borderRadius={14}
+                      <XStack
                         alignItems="center"
-                        justifyContent="center"
-                        backgroundColor={theme.warning.val + "18"}
+                        gap={12}
+                        padding={14}
+                        borderRadius={20}
+                        backgroundColor="$background"
+                        borderWidth={1}
+                        borderColor="$borderColor"
                       >
-                        <Feather name="bell" size={16} color={theme.warning.val} />
-                      </YStack>
-                      <YStack flex={1} gap={3}>
-                        <Text fontSize={15} fontWeight="700" color="$color" numberOfLines={1}>
-                          {memory.title || "Untitled memory"}
-                        </Text>
-                        <Text fontSize={13} color="$colorMuted" numberOfLines={1}>
-                          {new Date(getReminderDate(memory)!).toLocaleString(undefined, {
-                            month: "short",
-                            day: "numeric",
-                            hour: "numeric",
-                            minute: "2-digit",
-                          })}
-                        </Text>
-                      </YStack>
-                      <Feather name="chevron-right" size={18} color={theme.colorMuted.val} />
-                    </XStack>
-                  </PressableScale>
-                ))}
+                        <YStack
+                          width={42}
+                          height={42}
+                          borderRadius={14}
+                          alignItems="center"
+                          justifyContent="center"
+                          backgroundColor={theme.warning.val + "18"}
+                        >
+                          <Feather name="bell" size={16} color={theme.warning.val} />
+                        </YStack>
+                        <YStack flex={1} gap={3}>
+                          <Text fontSize={15} fontWeight="700" color="$color" numberOfLines={1}>
+                            {memory.title || "Untitled memory"}
+                          </Text>
+                          <Text fontSize={13} color="$colorMuted" numberOfLines={1}>
+                            {new Date(getReminderDate(memory)!).toLocaleString(undefined, {
+                              month: "short",
+                              day: "numeric",
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })}
+                          </Text>
+                        </YStack>
+                        <Feather name="chevron-right" size={18} color={theme.colorMuted.val} />
+                      </XStack>
+                    </ContextMenu>
+                  );
+                })}
               </YStack>
             </SectionCard>
           </Animated.View>

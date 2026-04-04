@@ -1,8 +1,8 @@
 "use node";
 
 import { v } from "convex/values";
-import { internalAction } from "../_generated/server";
-import { internal } from "../_generated/api";
+import { action, internalAction } from "../_generated/server";
+import { api, internal } from "../_generated/api";
 import { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { embedText, getOpenAIClient, OPENAI_CHAT_MODEL } from "../lib/openai";
@@ -801,5 +801,15 @@ export const handleManageTopic = internalAction({
     }
 
     return { success: false, message: "Invalid operation or missing arguments" };
+  },
+});
+
+/** Reconcile topic memory counts for the current user. */
+export const reconcileTopics = action({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const session = await ctx.runQuery(api.auth.me, { token: args.token });
+    if (!session) return;
+    await reconcileUserTopicUsage(ctx, session._id);
   },
 });
