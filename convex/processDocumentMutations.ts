@@ -85,7 +85,7 @@ export const createExtractedMemory = internalMutation({
       embedding: args.embedding,
       linkedUrls: [],
       entryKind: "memory" as const,
-      isDeleted: false,
+      status: "active",
     });
   },
 });

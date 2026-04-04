@@ -28,7 +28,7 @@ export const updateEmbedding = internalMutation({
   },
   handler: async (ctx, args) => {
     const memory = await ctx.db.get(args.memoryId);
-    if (!memory || memory.isDeleted) {
+    if (!memory || memory.status !== "active") {
       return;
     }
     await ctx.db.patch(args.memoryId, { embedding: args.embedding });
@@ -43,7 +43,7 @@ export const updateAnalysis = internalMutation({
   },
   handler: async (ctx, args) => {
     const memory = await ctx.db.get(args.memoryId);
-    if (!memory || memory.isDeleted) {
+    if (!memory || memory.status !== "active") {
       return;
     }
     await ctx.db.patch(args.memoryId, {
@@ -72,7 +72,7 @@ export const updateAIFields = internalMutation({
   },
   handler: async (ctx, args) => {
     const memory = await ctx.db.get(args.memoryId);
-    if (!memory || memory.isDeleted) {
+    if (!memory || memory.status !== "active") {
       return;
     }
     const updates: Record<string, unknown> = {};

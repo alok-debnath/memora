@@ -24,7 +24,7 @@ export const list = query({
     const result: Array<Doc<"reviewCards"> & { memory: Doc<"memories"> }> = [];
     for (let i = 0; i < cards.length; i++) {
       const memory = memoryResults[i];
-      if (memory && !memory.isDeleted) {
+      if (memory && memory.status === "active") {
         result.push({ ...cards[i], memory });
       }
     }
@@ -57,7 +57,7 @@ export const getDue = query({
     const result: Array<Doc<"reviewCards"> & { memory: Doc<"memories"> }> = [];
     for (let i = 0; i < cards.length; i++) {
       const memory = memoryResults[i];
-      if (memory && !memory.isDeleted) {
+      if (memory && memory.status === "active") {
         result.push({ ...cards[i], memory });
       }
     }
@@ -73,7 +73,7 @@ export const addToReview = mutation({
   handler: async (ctx, args) => {
     const { userId } = await resolveUser(ctx, args.token);
     const memory = await ctx.db.get(args.memoryId);
-    if (!memory || memory.userId !== userId || memory.isDeleted) {
+    if (!memory || memory.userId !== userId || memory.status !== "active") {
       throw new Error("Not found");
     }
     const existing = await ctx.db

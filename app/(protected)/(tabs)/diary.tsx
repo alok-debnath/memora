@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/Badge";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { FontFamily } from "@/constants/fonts";
+import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
 
 type DiaryEntryItem = {
   _id: Id<"diaryEntries">;
@@ -50,6 +51,7 @@ type DiaryEntryItem = {
 export default function DiaryScreen() {
   const theme = useAppTheme();
   const { user, token } = useAuth();
+  const tabBarPadding = useTabBarBottomPadding();
 
   const entries = (useQuery(api.diary.list, token ? { token, limit: 100 } : "skip") ?? []) as DiaryEntryItem[];
   const createEntry = useMutation(api.diary.create);
@@ -105,7 +107,7 @@ export default function DiaryScreen() {
         <ScrollView
           contentContainerStyle={{
             paddingHorizontal: 16,
-            paddingBottom: 28,
+            paddingBottom: tabBarPadding,
             paddingTop: 12,
           }}
           showsVerticalScrollIndicator={false}
@@ -279,7 +281,6 @@ export default function DiaryScreen() {
           )}
         </YStack>
 
-          <YStack height={80} />
         </ScrollView>
       </YStack>
     </SafeAreaView>

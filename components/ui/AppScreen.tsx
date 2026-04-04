@@ -6,6 +6,7 @@ import { XStack, YStack, Text } from "tamagui";
 
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
+import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
 
 type AppScreenProps = {
   children: React.ReactNode;
@@ -26,6 +27,7 @@ export function AppScreen({
 }: AppScreenProps) {
   const theme = useAppTheme();
   const isLargeScreen = useIsLargeScreen();
+  const tabBarPadding = useTabBarBottomPadding();
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top", "bottom"]}>
@@ -60,7 +62,7 @@ export function AppScreen({
           contentContainerStyle={[
             {
               paddingTop: 8,
-              paddingBottom: 144,
+              paddingBottom: tabBarPadding,
               paddingHorizontal: padded ? 18 : 0,
             },
             scrollProps?.contentContainerStyle,

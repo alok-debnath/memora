@@ -10,6 +10,7 @@ import { useAppTheme } from "@/hooks/useAppTheme";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
 
 interface MenuItem {
   icon: keyof typeof Feather.glyphMap;
@@ -32,6 +33,7 @@ const menuItems: MenuItem[] = [
 export default function MoreScreen() {
   const theme = useAppTheme();
   const totalRoutes = menuItems.length;
+  const tabBarPadding = useTabBarBottomPadding();
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top", "bottom"]}>
@@ -78,7 +80,7 @@ export default function MoreScreen() {
         </Card>
       </Animated.View>
 
-        <ScrollView contentContainerStyle={{ gap: 10, paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={{ gap: 10, paddingBottom: tabBarPadding }} showsVerticalScrollIndicator={false}>
           {menuItems.map((item, i) => (
             <Animated.View key={item.route} entering={FadeInUp.delay(i * 60).duration(400)}>
               <PressableScale
@@ -120,7 +122,6 @@ export default function MoreScreen() {
               </PressableScale>
             </Animated.View>
           ))}
-          <YStack height={100} />
         </ScrollView>
       </YStack>
     </SafeAreaView>

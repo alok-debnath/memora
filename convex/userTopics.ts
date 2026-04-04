@@ -63,8 +63,8 @@ export const activeSummaries = query({
     const { userId } = await resolveUser(ctx, args.token);
     const hasAnyMemory = await ctx.db
       .query("memories")
-      .withIndex("by_user_isDeleted", (q) =>
-        q.eq("userId", userId).eq("isDeleted", false)
+      .withIndex("by_user_status", (q) =>
+        q.eq("userId", userId).eq("status", "active")
       )
       .take(1);
     if (hasAnyMemory.length === 0) {
@@ -460,7 +460,7 @@ export const mergeTopic = internalMutation({
       .collect();
 
     for (const m of allMemories) {
-      if (m.isDeleted) continue;
+      if (m.status !== "active") continue;
       const hasTopicIds = m.topicIds?.includes(args.mergeId);
       const isPrimary = m.primaryTopicId === args.mergeId;
       if (!hasTopicIds && !isPrimary) continue;

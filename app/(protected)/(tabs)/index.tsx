@@ -188,6 +188,7 @@ export default function HomeScreen() {
 
   const semanticSearch = useAction(api.actions.semanticSearch.search);
   const deleteMemory = useMutation(api.memories.remove);
+  const completeMemory = useMutation(api.memories.complete);
   const updateMemory = useMutation(api.memories.update);
   const addToReview = useMutation(api.review.addToReview);
   const createShareLink = useMutation(api.sharing.createShareLink);
@@ -604,9 +605,10 @@ export default function HomeScreen() {
                         setEditMemory(raw);
                         openEditMemory();
                       }}
-                      onDelete={() => handleDelete(raw._id)}
+                      onDelete={() => token && deleteMemory({ token, id: raw._id })}
                       onShare={() => handleShare(raw._id)}
                       onAddToReview={() => token && addToReview({ token, memoryId: raw._id })}
+                      onComplete={() => token && completeMemory({ token, id: raw._id })}
                     />
                   );
                 })}

@@ -220,7 +220,7 @@ export const exportMemoriesOnly = query({
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .take(10000);
     
-    const active = memories.filter((m) => !m.isDeleted);
+    const active = memories.filter((m) => m.status === "active");
     return {
       exportedAt: new Date().toISOString(),
       format: "memories_v1",

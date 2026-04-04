@@ -76,14 +76,25 @@ export default defineSchema({
     isPublic: v.optional(v.boolean()),
     /** Encryption version used (for migration tracking) */
     encryptionVersion: v.optional(v.number()),
-    /** Indexed soft-delete flag for dense active/deleted queries. */
-    isDeleted: v.boolean(),
-    /** Soft-delete timestamp — set when user deletes, cleared on restore */
+    /**
+     * Lifecycle status of the memory.
+     * - "active"    — visible everywhere (default)
+     * - "deleted"   — soft-deleted, recoverable from Data page
+     * - "completed" — completed reminder, hidden from all active APIs
+     */
+    status: v.union(
+      v.literal("active"),
+      v.literal("deleted"),
+      v.literal("completed")
+    ),
+    /** When the memory was completed (ms timestamp) */
+    completedAt: v.optional(v.float64()),
+    /** Timestamp of soft-delete (ms) */
     deletedAt: v.optional(v.float64()),
   })
     .index("by_user", ["userId"])
-    .index("by_user_isDeleted", ["userId", "isDeleted"])
-    .index("by_user_isDeleted_entryKind", ["userId", "isDeleted", "entryKind"])
+    .index("by_user_status", ["userId", "status"])
+    .index("by_user_status_entryKind", ["userId", "status", "entryKind"])
     .index("by_user_primaryTopic", ["userId", "primaryTopicId"])
     .index("by_share_token", ["shareToken"])
     .searchIndex("search_content", {

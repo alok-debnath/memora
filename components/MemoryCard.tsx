@@ -18,6 +18,7 @@ interface MemoryCardProps {
   onDelete?: () => void;
   onShare?: () => void;
   onAddToReview?: () => void;
+  onComplete?: () => void;
   index?: number;
 }
 
@@ -28,6 +29,7 @@ export const MemoryCard = React.memo(function MemoryCard({
   onDelete,
   onShare,
   onAddToReview,
+  onComplete,
   index = 0,
 }: MemoryCardProps) {
   const theme = useAppTheme();
@@ -186,6 +188,11 @@ export const MemoryCard = React.memo(function MemoryCard({
                   )}
                 </XStack>
                 <XStack gap={2}>
+                  {onComplete && isReminder(memory) && (
+                    <Pressable onPress={onComplete} hitSlop={6} style={{ width: 32, height: 32, alignItems: "center", justifyContent: "center", borderRadius: 16 }}>
+                      <Feather name="check-circle" size={14} color="#16a34a" />
+                    </Pressable>
+                  )}
                   {onShare && (
                     <Pressable onPress={onShare} hitSlop={6} style={{ width: 32, height: 32, alignItems: "center", justifyContent: "center", borderRadius: 16 }}>
                       <Feather name="share-2" size={14} color={theme.colorMuted.val} />
