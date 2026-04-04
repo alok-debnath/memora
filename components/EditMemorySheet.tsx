@@ -105,12 +105,14 @@ export function EditMemorySheet({
   const [form, setForm] = useState(() => createInitialState(memory));
   const [mode, setMode] = useState<"manual" | "voice">("manual");
   const [voiceLoading, setVoiceLoading] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState("");
   const [showPicker, setShowPicker] = useState(false);
 
   useEffect(() => {
     if (visible) {
       setForm(createInitialState(memory));
       setMode("manual");
+      setVoiceTranscript("");
     }
   }, [memory, visible]);
 
@@ -176,11 +178,12 @@ export function EditMemorySheet({
     try {
       await chatAction({
         token,
-        message: `For the memory titled "${memory.title}" (ID: ${memory.id}): ${text}`,
+        message: `Update the memory with ID "${memory.id}" titled "${memory.title}". Instruction: ${text}`,
         currentTime: new Date().toISOString(),
         currentTimezone:
           Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       });
+      setVoiceTranscript("");
       onClose();
     } catch {
       if (Platform.OS === "web") {
@@ -690,17 +693,39 @@ export function EditMemorySheet({
                 </Text>
               </YStack>
             ) : (
-              <YStack alignItems="center" gap={12} paddingTop={28} paddingHorizontal={4}>
+              <YStack alignItems="center" gap={14} paddingTop={28} paddingHorizontal={4}>
                 <VoiceRecorder
-                  onTranscription={() => {}}
-                  onTranscriptionComplete={handleVoiceTranscription}
+                  onTranscription={setVoiceTranscript}
+                  onTranscriptionComplete={setVoiceTranscript}
                 />
                 <Text fontSize={16} fontFamily="$body" fontWeight="600" color="$color">
-                  Tap to describe your edit
+                  Describe your edit
                 </Text>
                 <Text fontSize={13} fontFamily="$body" textAlign="center" color="$colorMuted">
-                  e.g. "Change the title" or "Add a reminder"
+                  e.g. "Change the title" · "Add a reminder for Monday"
                 </Text>
+
+                {/* Live / captured transcript */}
+                {voiceTranscript.trim().length > 0 && (
+                  <YStack
+                    width="100%"
+                    backgroundColor="$accent"
+                    borderRadius={14}
+                    borderWidth={1}
+                    borderColor="$primary"
+                    padding={14}
+                    gap={10}
+                  >
+                    <Text fontSize={14} fontFamily="$body" color="$color" lineHeight={20}>
+                      {voiceTranscript}
+                    </Text>
+                    <GradientButton
+                      title="Send edit"
+                      icon="send"
+                      onPress={() => void handleVoiceTranscription(voiceTranscript)}
+                    />
+                  </YStack>
+                )}
               </YStack>
             )}
             <TipsCard />
