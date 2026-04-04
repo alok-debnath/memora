@@ -139,6 +139,7 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
   const { token } = useAuth();
   const [activeTab, setActiveTab] = useState<"chat" | "note">("chat");
   const [chatInputMode, setChatInputMode] = useState<"voice" | "keyboard">("voice");
+  const [autoVoiceOutput, setAutoVoiceOutput] = useState(true);
   const [noteSubTab, setNoteSubTab] = useState<"type" | "template">("type");
   const [noteText, setNoteText] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -241,17 +242,26 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
           {activeTab === "chat" && (
             <>
               <Pressable
-                onPress={() => {}}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setAutoVoiceOutput((v) => !v);
+                }}
                 style={{
                   width: 34,
                   height: 34,
                   borderRadius: 17,
                   alignItems: "center",
                   justifyContent: "center",
-                  backgroundColor: theme.primary.val + "15",
+                  backgroundColor: autoVoiceOutput
+                    ? theme.primary.val + "15"
+                    : theme.secondary.val,
                 }}
               >
-                <Feather name="volume-2" size={16} color={theme.primary.val} />
+                <Feather
+                  name={autoVoiceOutput ? "volume-2" : "volume-x"}
+                  size={16}
+                  color={autoVoiceOutput ? theme.primary.val : theme.colorMuted.val}
+                />
               </Pressable>
               <Pressable
                 onPress={() =>
@@ -306,7 +316,12 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
 
       {/* ── Content ── */}
       {activeTab === "chat" ? (
-        <AIChatPanel token={token} chatInputMode={chatInputMode} setChatInputMode={setChatInputMode} />
+        <AIChatPanel
+          token={token}
+          chatInputMode={chatInputMode}
+          setChatInputMode={setChatInputMode}
+          autoVoiceOutput={autoVoiceOutput}
+        />
       ) : (
         /* ── New Memory Tab ── */
         <YStack flex={1}>
