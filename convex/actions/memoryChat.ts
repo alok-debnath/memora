@@ -18,6 +18,7 @@ import {
   toMemorySummaryFields,
   toStoredMemoryFields,
 } from "../lib/memoryKind";
+import { stripIntentWords } from "./semanticSearch";
 
 type MemoryDoc = Doc<"memories">;
 type DocumentDoc = Doc<"documentExtractions">;
@@ -142,31 +143,20 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: "function",
     function: {
-      name: "delete_memory",
+      name: "propose_deletion",
       description:
-        "Soft-delete a memory (moves to trash). Can be restored later. Confirm unless the user is explicit.",
+        "Search for memories or reminders to delete and surface them to the user for confirmation. You do NOT delete directly — the user will review and confirm in the app UI. Use this whenever the user asks to delete one or more items.",
       parameters: {
         type: "object",
         properties: {
-          memory_id: { type: "string" },
+          query: { type: "string", description: "Search query to find the matching items." },
+          entry_kind: {
+            type: "string",
+            enum: ["memory", "reminder", "any"],
+            description: "Filter by item type. Default: any.",
+          },
         },
-        required: ["memory_id"],
-        additionalProperties: false,
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "delete_multiple_memories",
-      description:
-        "Soft-delete multiple memory notes at once (moves to trash). Use when the user asks to delete several or all matching memories.",
-      parameters: {
-        type: "object",
-        properties: {
-          memory_ids: { type: "array", items: { type: "string" } },
-        },
-        required: ["memory_ids"],
+        required: ["query"],
         additionalProperties: false,
       },
     },
@@ -485,25 +475,24 @@ async function searchMemories(
     limit: 12,
   });
 
-  const queryTerms = normalizedQuery
-    .toLowerCase()
-    .split(/\s+/)
-    .map((part) => part.trim())
-    .filter((part) => part.length > 1);
+  // Strip stop/intent words so "forget my sisters name" → ["sisters", "name"]
+  const queryTerms = stripIntentWords(normalizedQuery);
 
-  const fuzzyResults = recentMemories.filter((memory: MemoryDoc) => {
-    const haystack = [
-      memory.title,
-      memory.content,
-      memory.mood,
-      ...(memory.people ?? []),
-      ...(memory.locations ?? []),
-    ]
-      .filter(Boolean)
-      .join("\n")
-      .toLowerCase();
-    return queryTerms.some((term) => haystack.includes(term));
-  });
+  const fuzzyResults = queryTerms.length > 0
+    ? recentMemories.filter((memory: MemoryDoc) => {
+        const haystack = [
+          memory.title,
+          memory.content,
+          memory.mood,
+          ...(memory.people ?? []),
+          ...(memory.locations ?? []),
+        ]
+          .filter(Boolean)
+          .join("\n")
+          .toLowerCase();
+        return queryTerms.some((term) => haystack.includes(term));
+      })
+    : [];
 
   const merged: MemoryDoc[] = [];
   const seen = new Set<Id<"memories">>();
@@ -614,11 +603,14 @@ function buildSystemPrompt(userTimezone: string, currentTime: string) {
    - If a deadline or reminder is near, mention it
    - Suggest connections between memories when relevant
 
-6. **SMART DELETION**: Search first, confirm before deleting unless the user is explicit.
+6. **DELETION VIA PROPOSAL**: You no longer have direct delete access. When the user asks to delete memories or reminders, use propose_deletion to find and surface matching items. The user confirms or cancels directly in the app — you never delete yourself. Never claim you deleted something; instead say you've found the items and the user can confirm below.
 
 7. **ANALYSIS**: When asked to analyze, use the analyze_memories tool, then share insights conversationally.
 
-8. **UNDO & HISTORY**: Every edit and delete is versioned for 7 days. Use 'history' tool with action='list', action='undo', or action='restore'.
+8. **UNDO & HISTORY**:
+   - To undo a **deletion** (user says "undo", "restore", "bring it back" after a recent delete): use restore_memory if you know the ID, otherwise call list_deleted_memories to find it, then restore_memory. Do NOT use the history tool for undoing deletions.
+   - To undo an **edit** (user says "revert", "undo that change", "go back to the old version"): use the history tool with action='undo' (optionally with memory_id).
+   - To view edit history or restore a specific snapshot: use the history tool with action='list' or action='restore'.
 
 9. **FILE ATTACHMENTS**: When user shares files, file URLs appear as [Attached file: name (type) — URL: ...]. Create or update a memory and call attach_file_to_memory when relevant.
 
@@ -646,7 +638,9 @@ Your spoken REPLY to the user is still warm and personal — this rule only appl
 - Compute the exact UTC datetime and store it in schedule.due_at as ISO 8601.
 - When confirming, state the time in the user's timezone. Never expose UTC to the user.
 
-Use markdown only when it genuinely helps readability.`;
+Use markdown only when it genuinely helps readability.
+
+**CRITICAL — ALWAYS CALL create_memory BEFORE CONFIRMING**: When the user wants to save, remember, note, or be reminded of something — including continuations like "another one for X", "also add X", "and remind me of X" — you MUST call create_memory immediately and then confirm with the result. Never say "Got it" or acknowledge an intent to save without first calling the tool in the same response turn. Each distinct item needs its own separate create_memory call.`;
 }
 
 export const chat = action({
@@ -727,6 +721,7 @@ export const chat = action({
         ];
 
         let finalText = "";
+        let pendingDeletionItems: Array<{ id: string; title: string; content: string; entry_kind: string }> = [];
         const createdMemoriesByDedupeKey = new Map<
           string,
           { id: Id<"memories">; title: string }
@@ -946,34 +941,37 @@ export const chat = action({
                     error instanceof Error ? error.message : "Failed to update memory",
                 });
               }
-            } else if (fnName === "delete_memory") {
-              try {
-                await ctx.runMutation(api.memories.remove, {
-                  token: args.token,
-                  id: fnArgs.memory_id as Id<"memories">,
-                });
-                recentMemoriesCache = undefined;
-                result = JSON.stringify({ success: true });
-              } catch (error) {
-                result = JSON.stringify({
-                  error:
-                    error instanceof Error ? error.message : "Failed to delete memory",
-                });
+            } else if (fnName === "propose_deletion") {
+              const entryKind = typeof fnArgs.entry_kind === "string" ? fnArgs.entry_kind : "any";
+              const searchResult = await searchMemories(ctx, {
+                token: args.token,
+                query: String(fnArgs.query || ""),
+                userId: session._id,
+                recentMemories: await getRecentMemoriesCache(),
+              });
+
+              let matchedItems = searchResult.results;
+              if (entryKind === "reminder") {
+                matchedItems = matchedItems.filter((m: any) => m.entry_kind === "reminder");
+              } else if (entryKind === "memory") {
+                matchedItems = matchedItems.filter((m: any) => m.entry_kind !== "reminder");
               }
-            } else if (fnName === "delete_multiple_memories") {
-              const memoryIds = Array.isArray(fnArgs.memory_ids)
-                ? fnArgs.memory_ids.filter(
-                    (value): value is string =>
-                      typeof value === "string" && value.trim().length > 0
-                  )
-                : [];
+
+              pendingDeletionItems = matchedItems.map((m: any) => ({
+                id: String(m.id),
+                title: String(m.title || "Untitled"),
+                content: String(m.content || ""),
+                entry_kind: String(m.entry_kind || "memory"),
+              }));
+
               result = JSON.stringify(
-                await ctx.runMutation(api.memories.removeMany, {
-                  token: args.token,
-                  ids: memoryIds,
-                })
+                pendingDeletionItems.length > 0
+                  ? {
+                      found: pendingDeletionItems.length,
+                      message: `Found ${pendingDeletionItems.length} item(s). They are being shown to the user for confirmation. Do NOT delete them yourself — wait for the user to confirm in the app.`,
+                    }
+                  : { found: 0, message: "No matching items found." }
               );
-              recentMemoriesCache = undefined;
             } else if (fnName === "list_deleted_memories") {
               try {
                 const limit =
@@ -1178,8 +1176,10 @@ export const chat = action({
           }
         }
 
-        aiResponse =
-          finalText || "I processed that, but I couldn't generate a clear reply.";
+        const resolvedText = finalText || "I processed that, but I couldn't generate a clear reply.";
+        aiResponse = pendingDeletionItems.length > 0
+          ? `${resolvedText}\n<!--MEMORA_DELETION_PROPOSAL:${JSON.stringify(pendingDeletionItems)}-->`
+          : resolvedText;
       } catch {
         aiResponse =
           "I'm having trouble connecting right now. Please try again in a moment.";
@@ -1192,6 +1192,7 @@ export const chat = action({
       role: "assistant",
     });
 
-    return { reply: aiResponse };
+    const proposalIdx = aiResponse.indexOf("\n<!--MEMORA_DELETION_PROPOSAL:");
+    return { reply: (proposalIdx !== -1 ? aiResponse.slice(0, proposalIdx) : aiResponse).trim() };
   },
 });

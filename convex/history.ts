@@ -3,6 +3,7 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { resolveUser } from "./lib/withAuth";
 import { parseMemorySnapshot, serializeMemorySnapshot } from "./lib/memorySnapshot";
+import type { Id } from "./_generated/dataModel";
 
 export const getMemoryHistory = query({
   args: {
@@ -109,12 +110,40 @@ export const undo = mutation({
     }
 
     const existing = await ctx.db.get(entry.memoryId);
+
+    if (entry.changeReason === "deleted") {
+      // Undo a deletion: restore status and re-increment topic counts, same as
+      // memories.restore. We do NOT do a full db.replace here — we just flip
+      // the soft-delete flag so nothing else changes.
+      if (existing && existing.status === "deleted") {
+        await ctx.db.patch(entry.memoryId, { status: "active", deletedAt: undefined });
+      } else if (!existing) {
+        // Permanently deleted since undo window — full re-insert from snapshot
+        await ctx.db.insert("memories", snapshot);
+      }
+      // Re-increment topic counts that were decremented on deletion
+      const topicIds = Array.from(
+        new Set(
+          [snapshot.primaryTopicId, ...(snapshot.topicIds ?? [])].filter(
+            (id): id is Id<"userTopics"> => id !== undefined
+          )
+        )
+      );
+      if (topicIds.length > 0) {
+        await ctx.runMutation(internal.userTopics.incrementTopicCounts, { topicIds });
+      }
+      await ctx.db.delete(entry._id); // consume the undo entry
+      return { success: true, action: "restored", memoryId: entry.memoryId };
+    }
+
     if (existing) {
       await ctx.db.replace(entry.memoryId, snapshot);
+      await ctx.db.delete(entry._id); // consume the undo entry
       return { success: true, action: "reverted", memoryId: entry.memoryId };
     }
 
     const restoredId = await ctx.db.insert("memories", snapshot);
+    await ctx.db.delete(entry._id);
     return { success: true, action: "restored", memoryId: restoredId };
   },
 });
