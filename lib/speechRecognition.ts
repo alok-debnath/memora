@@ -41,6 +41,25 @@ export function buildSpeechRecognitionOptions(): ExpoSpeechRecognitionOptions {
   };
 }
 
+export function buildContinuousSpeechOptions(): ExpoSpeechRecognitionOptions {
+  const lang = getLocale();
+  if (Platform.OS === "ios") {
+    return {
+      lang,
+      interimResults: true,
+      continuous: true,
+      iosTaskHint: "dictation",
+      addsPunctuation: true,
+    };
+  }
+  return {
+    lang,
+    interimResults: true,
+    continuous: true,
+    maxAlternatives: 1,
+  };
+}
+
 export async function startSpeechRecognition(): Promise<{ ok: boolean; reason?: string }> {
   try {
     ExpoSpeechRecognitionModule.start(buildSpeechRecognitionOptions());

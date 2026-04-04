@@ -21,14 +21,18 @@ import {
   isSpeechRecognitionAvailable,
   requestSpeechPermission,
   startSpeechRecognition,
+  buildContinuousSpeechOptions,
 } from "@/lib/speechRecognition";
 import { logDevError } from "@/lib/devLog";
 import { showToastImperative } from "@/components/ui/toast";
+
+export type VoiceInputMode = "standard" | "continuous" | "walkie-talkie";
 
 interface VoiceRecorderProps {
   onTranscription: (text: string) => void;
   onTranscriptionComplete?: (text: string) => void;
   compact?: boolean;
+  inputMode?: VoiceInputMode;
 }
 
 const SPEECH_END_STOP_MS = 2500;
@@ -37,6 +41,7 @@ export function VoiceRecorder({
   onTranscription,
   onTranscriptionComplete,
   compact,
+  inputMode = "standard",
 }: VoiceRecorderProps) {
   const theme = useAppTheme();
   const [isRecording, setIsRecording] = useState(false);
@@ -50,14 +55,15 @@ export function VoiceRecorder({
   const hasCompletedRef = useRef(false);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasInitiatedByMeRef = useRef(false);
+  const shouldRestartRef = useRef(false); // continuous mode: restart on natural end
+  const walkieTalkieActiveRef = useRef(false); // walkie-talkie: true while held
 
   const pulseScale = useSharedValue(1);
   const pulseOpacity = useSharedValue(0.3);
 
-  // ── Init: check availability & permission ──────────────────────────────
+  // ── Init ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     let active = true;
-
     const init = async () => {
       if (!isSpeechRecognitionAvailable()) {
         if (active) setStatusMessage("Speech recognition is unavailable on this device.");
@@ -70,17 +76,16 @@ export function VoiceRecorder({
         logDevError("VoiceRecorder.init", error);
       }
     };
-
     init();
-
     return () => {
       active = false;
+      shouldRestartRef.current = false;
       clearTimer();
       clearSilenceTimer();
     };
   }, []);
 
-  // ── Pulse animation ────────────────────────────────────────────────────
+  // ── Pulse animation ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (isRecording) {
       pulseScale.value = withRepeat(
@@ -104,19 +109,12 @@ export function VoiceRecorder({
     opacity: pulseOpacity.value,
   }));
 
-  // ── Helpers ────────────────────────────────────────────────────────────
+  // ── Helpers ──────────────────────────────────────────────────────────────────
   const clearTimer = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
   };
-
   const clearSilenceTimer = () => {
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
-    }
+    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
   };
 
   const broadcastTranscript = (text: string) => {
@@ -137,7 +135,7 @@ export function VoiceRecorder({
     onTranscriptionComplete?.(text);
   };
 
-  // ── Speech Recognition Events ──────────────────────────────────────────
+  // ── Speech events ────────────────────────────────────────────────────────────
   useSpeechRecognitionEvent("start", () => {
     setStatusMessage(null);
     setIsRecording(true);
@@ -154,6 +152,8 @@ export function VoiceRecorder({
   });
 
   useSpeechRecognitionEvent("speechend", () => {
+    // Only use silence timer in standard mode
+    if (inputMode !== "standard") return;
     clearSilenceTimer();
     silenceTimerRef.current = setTimeout(() => {
       try {
@@ -176,6 +176,20 @@ export function VoiceRecorder({
     clearSilenceTimer();
     clearTimer();
     setIsRecording(false);
+
+    if (inputMode === "continuous" && shouldRestartRef.current) {
+      // Restart automatically — preserve accumulated transcript
+      const savedTranscript = transcriptRef.current;
+      const savedBroadcast = lastBroadcastRef.current;
+      hasCompletedRef.current = false;
+      wasInitiatedByMeRef.current = true;
+      ExpoSpeechRecognitionModule.start(buildContinuousSpeechOptions());
+      // Restore so accumulated text isn't lost between restarts
+      transcriptRef.current = savedTranscript;
+      lastBroadcastRef.current = savedBroadcast;
+      return;
+    }
+
     publishComplete();
   });
 
@@ -183,6 +197,8 @@ export function VoiceRecorder({
     clearSilenceTimer();
     clearTimer();
     setIsRecording(false);
+    shouldRestartRef.current = false;
+    walkieTalkieActiveRef.current = false;
 
     if (event.error === "aborted") return;
 
@@ -192,48 +208,30 @@ export function VoiceRecorder({
     });
 
     const title =
-      event.error === "not-allowed"
-        ? "Microphone access denied"
-        : event.error === "no-speech"
-          ? "No speech detected"
-          : "Dictation failed";
+      event.error === "not-allowed" ? "Microphone access denied" :
+      event.error === "no-speech" ? "No speech detected" : "Dictation failed";
     const message =
-      event.error === "not-allowed"
-        ? "Allow microphone access in your device settings."
-        : event.error === "no-speech"
-          ? "Try speaking louder or closer to the mic."
-          : "Speech recognition could not complete. Please try again.";
+      event.error === "not-allowed" ? "Allow microphone access in your device settings." :
+      event.error === "no-speech" ? "Try speaking louder or closer to the mic." :
+      "Speech recognition could not complete. Please try again.";
 
-    showToastImperative({
-      title,
-      message,
-      tone: event.error === "no-speech" ? "warning" : "error",
-    });
+    showToastImperative({ title, message, tone: event.error === "no-speech" ? "warning" : "error" });
   });
 
-  // ── Controls ───────────────────────────────────────────────────────────
-  const startRecording = async () => {
+  // ── Controls ─────────────────────────────────────────────────────────────────
+  const startRecording = async (opts?: { continuous?: boolean }) => {
     if (isRecording) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     if (!isSpeechRecognitionAvailable()) {
-      showToastImperative({
-        title: "Dictation unavailable",
-        message: "Speech recognition is not supported on this device.",
-        tone: "error",
-      });
+      showToastImperative({ title: "Dictation unavailable", message: "Speech recognition is not supported on this device.", tone: "error" });
       return;
     }
 
     const granted = await requestSpeechPermission();
     setPermissionGranted(granted);
-
     if (!granted) {
-      showToastImperative({
-        title: "Microphone access denied",
-        message: "Allow microphone access in your device settings to use dictation.",
-        tone: "error",
-      });
+      showToastImperative({ title: "Microphone access denied", message: "Allow microphone access in your device settings to use dictation.", tone: "error" });
       return;
     }
 
@@ -244,18 +242,35 @@ export function VoiceRecorder({
     setDuration(0);
     setStatusMessage(null);
 
-    const result = await startSpeechRecognition();
+    shouldRestartRef.current = opts?.continuous ?? (inputMode === "continuous");
+
+    const options = opts?.continuous || inputMode === "continuous"
+      ? buildContinuousSpeechOptions()
+      : undefined; // undefined = startSpeechRecognition() uses its own defaults
+
+    let result: { ok: boolean; reason?: string };
+    if (options) {
+      try {
+        ExpoSpeechRecognitionModule.start(options);
+        result = { ok: true };
+      } catch (error) {
+        logDevError("VoiceRecorder.start", error);
+        result = { ok: false, reason: "Speech recognition could not be started." };
+      }
+    } else {
+      result = await startSpeechRecognition();
+    }
+
     if (!result.ok) {
       wasInitiatedByMeRef.current = false;
-      showToastImperative({
-        title: "Could not start dictation",
-        message: result.reason,
-        tone: "error",
-      });
+      shouldRestartRef.current = false;
+      showToastImperative({ title: "Could not start dictation", message: result.reason ?? "", tone: "error" });
     }
   };
 
   const stopRecording = () => {
+    shouldRestartRef.current = false;
+    walkieTalkieActiveRef.current = false;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     clearSilenceTimer();
     try {
@@ -267,26 +282,42 @@ export function VoiceRecorder({
     }
   };
 
+  const handlePress = () => {
+    if (inputMode === "walkie-talkie") return; // WT handled via pressIn/Out
+    if (isRecording) {
+      stopRecording();
+    } else {
+      void startRecording();
+    }
+  };
+
+  const handlePressIn = () => {
+    if (inputMode !== "walkie-talkie") return;
+    walkieTalkieActiveRef.current = true;
+    void startRecording();
+  };
+
+  const handlePressOut = () => {
+    if (inputMode !== "walkie-talkie") return;
+    if (walkieTalkieActiveRef.current && isRecording) {
+      stopRecording();
+    }
+    walkieTalkieActiveRef.current = false;
+  };
+
   const formatDuration = (s: number) => {
     const m = Math.floor(s / 60);
     const sec = s % 60;
     return `${m}:${sec.toString().padStart(2, "0")}`;
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────────────────────
   if (!permissionGranted && statusMessage && !isRecording) {
     return (
-      <YStack
-        alignItems="center"
-        justifyContent="center"
-        gap={compact ? 0 : 12}
-        paddingVertical={compact ? 0 : 16}
-      >
+      <YStack alignItems="center" justifyContent="center" gap={compact ? 0 : 12} paddingVertical={compact ? 0 : 16}>
         <Feather name="mic-off" size={compact ? 20 : 32} color={theme.colorMuted.val} />
         {!compact && (
-          <Text fontSize={14} fontFamily="$body" textAlign="center" color="$colorMuted">
-            {statusMessage}
-          </Text>
+          <Text fontSize={14} fontFamily="$body" textAlign="center" color="$colorMuted">{statusMessage}</Text>
         )}
       </YStack>
     );
@@ -295,30 +326,23 @@ export function VoiceRecorder({
   const size = compact ? 44 : 80;
   const innerSize = compact ? 40 : 72;
 
+  const wtHint = inputMode === "walkie-talkie" && compact;
+
   return (
-    <YStack
-      alignItems="center"
-      justifyContent="center"
-      gap={compact ? 0 : 12}
-      paddingVertical={compact ? 0 : 16}
-    >
+    <YStack alignItems="center" justifyContent="center" gap={compact ? (wtHint ? 4 : 0) : 12} paddingVertical={compact ? 0 : 16}>
       <YStack width={size} height={size} alignItems="center" justifyContent="center">
         {isRecording && (
           <Animated.View
             style={[
-              {
-                position: "absolute",
-                width: size,
-                height: size,
-                borderRadius: size / 2,
-                backgroundColor: theme.destructive.val,
-              },
+              { position: "absolute", width: size, height: size, borderRadius: size / 2, backgroundColor: theme.destructive.val },
               pulseStyle,
             ]}
           />
         )}
         <Pressable
-          onPress={isRecording ? stopRecording : startRecording}
+          onPress={handlePress}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
           style={{
             width: innerSize,
             height: innerSize,
@@ -334,7 +358,7 @@ export function VoiceRecorder({
           }}
         >
           <Feather
-            name={isRecording ? "square" : "mic"}
+            name={isRecording ? (inputMode === "walkie-talkie" ? "mic" : "square") : "mic"}
             size={compact ? 18 : 28}
             color="#FFFFFF"
           />
@@ -347,9 +371,21 @@ export function VoiceRecorder({
         </Text>
       )}
 
+      {wtHint && (
+        <Text fontSize={10} fontFamily="$body" textAlign="center" color="$colorMuted" opacity={0.7}>
+          {isRecording ? "Release to send" : "Hold to talk"}
+        </Text>
+      )}
+
       {!compact && (
         <Text fontSize={14} fontFamily="$body" textAlign="center" color="$colorMuted">
-          {isRecording ? "Listening..." : statusMessage ?? "Tap to dictate"}
+          {isRecording
+            ? inputMode === "continuous"
+              ? "Listening — tap to stop"
+              : inputMode === "walkie-talkie"
+              ? "Release to send"
+              : "Listening..."
+            : statusMessage ?? (inputMode === "walkie-talkie" ? "Hold to talk" : "Tap to dictate")}
         </Text>
       )}
     </YStack>
