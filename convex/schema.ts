@@ -53,7 +53,6 @@ export default defineSchema({
     primaryTopicId: v.optional(v.id("userTopics")),
     /** All AI-assigned topics (1–3) */
     topicIds: v.optional(v.array(v.id("userTopics"))),
-    mood: v.optional(moodValidator),
     /** Plain text people */
     people: v.optional(v.array(v.string())),
     /** Encrypted people array */

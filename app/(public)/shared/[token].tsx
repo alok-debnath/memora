@@ -103,14 +103,6 @@ export default function SharedMemoryScreen() {
           {memory.title}
         </Text>
 
-        {memory.mood && (
-          <XStack alignItems="center" gap={12} marginBottom={16}>
-            <Text fontSize={13} fontFamily={FontFamily.regular} color="$colorMuted">
-              Mood: {memory.mood}
-            </Text>
-          </XStack>
-        )}
-
         <Text fontSize={16} fontFamily={FontFamily.regular} lineHeight={24} marginBottom={16} color="$color">
           {memory.content}
         </Text>

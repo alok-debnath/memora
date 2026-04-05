@@ -11,7 +11,6 @@ import { Doc, Id } from "./_generated/dataModel";
 import { resolveUser } from "./lib/withAuth";
 import { serializeMemorySnapshot } from "./lib/memorySnapshot";
 import {
-  moodValidator,
   importanceValidator,
   lifeAreaValidator,
   recurrenceValidator,
@@ -467,7 +466,6 @@ export const create = mutation({
     encryptedLocations: v.optional(encryptedEnvelopeValidator),
     titleBlindIndex: v.optional(v.string()),
     // Other fields
-    mood: v.optional(moodValidator),
     importance: importanceValidator,
     lifeArea: v.optional(lifeAreaValidator),
     contextTags: v.optional(contextTagsValidator),
@@ -503,7 +501,6 @@ export const create = mutation({
       encryptedLocations: args.encryptedLocations,
       titleBlindIndex: args.titleBlindIndex,
       // Other fields
-      mood: args.mood,
       importance: args.importance,
       lifeArea: args.lifeArea,
       contextTags: args.contextTags,
@@ -546,7 +543,6 @@ export const update = mutation({
     encryptedLocations: v.optional(encryptedEnvelopeValidator),
     titleBlindIndex: v.optional(v.string()),
     // Other fields
-    mood: v.optional(v.union(moodValidator, v.null())),
     importance: v.optional(importanceValidator),
     lifeArea: v.optional(v.union(lifeAreaValidator, v.null())),
     contextTags: v.optional(v.union(contextTagsValidator, v.null())),
@@ -986,7 +982,6 @@ export const exportMemories = query({
     return memories.filter(isActiveMemory).map((m) => ({
       title: m.title,
       content: m.content,
-      mood: m.mood,
       people: m.people,
       locations: m.locations,
       importance: m.importance,
@@ -1012,7 +1007,6 @@ export const stats = query({
       )
       .take(1000);
 
-    const moodCounts: Record<string, number> = {};
     const topicCounts: Record<string, number> = {};
     let reminderCount = 0;
     let recurringCount = 0;
@@ -1023,9 +1017,6 @@ export const stats = query({
     const creationDays = new Set<number>();
 
     for (const m of memories.filter(isActiveMemory)) {
-      if (m.mood) {
-        moodCounts[m.mood] = (moodCounts[m.mood] ?? 0) + 1;
-      }
       if (m.primaryTopicId) {
         topicCounts[m.primaryTopicId] = (topicCounts[m.primaryTopicId] ?? 0) + 1;
       }
@@ -1058,7 +1049,6 @@ export const stats = query({
     return {
       totalMemories: memoryOnlyCount,
       totalReminders: reminderCount,
-      moodCounts,
       topicCounts,
       recurringCount,
       recentCount,

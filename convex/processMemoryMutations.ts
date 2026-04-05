@@ -1,7 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
 import {
-  moodValidator,
   importanceValidator,
   lifeAreaValidator,
   extractedActionsValidator,
@@ -57,7 +56,6 @@ export const updateAIFields = internalMutation({
   args: {
     memoryId: v.id("memories"),
     title: v.optional(v.string()),
-    mood: v.optional(moodValidator),
     people: v.optional(v.array(v.string())),
     locations: v.optional(v.array(v.string())),
     importance: v.optional(importanceValidator),

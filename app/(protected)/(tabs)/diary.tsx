@@ -17,6 +17,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/useAuth";
 import type { DiaryEntry } from "@/types/memory";
 import { DiaryEntryCard } from "@/components/DiaryEntryCard";
+import { MoodTrendStrip } from "@/components/MoodTrendStrip";
 import { VoiceRecorder } from "@/components/VoiceRecorder";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -238,6 +239,7 @@ export default function DiaryScreen() {
         </Card>
 
         <YStack marginTop={16}>
+          <MoodTrendStrip entries={entries} />
           <Text
             fontSize={11}
             fontFamily="$body"

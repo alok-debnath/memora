@@ -29,12 +29,6 @@ import { PickerField, type PickerOption } from "./ui/PickerField";
 import { TimeCapsuleToggle } from "./ui/TimeCapsuleToggle";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { KeyboardAwareScrollViewCompat } from "./KeyboardAwareScrollViewCompat";
-import {
-  moodLabels,
-  moodIcons,
-  type Mood,
-} from "@/constants/categories";
-import { moodColors } from "@/constants/colors";
 import { FontFamily } from "@/constants/fonts";
 import type { MemoryNote } from "@/types/memory";
 import { getReminderDate, inferMemoryEntryKind } from "@/types/memoryKind";
@@ -49,13 +43,6 @@ const ENTRY_KIND_OPTIONS = [
   { value: "reminder" as const, label: "Reminder" },
 ];
 
-const moodOptions: PickerOption[] = (Object.keys(moodLabels) as Mood[]).map((k) => ({
-  value: k,
-  label: moodLabels[k],
-  icon: moodIcons[k],
-  color: moodColors[k],
-}));
-
 interface EditMemorySheetProps {
   memory?: MemoryNote;
   visible: boolean;
@@ -68,7 +55,6 @@ function createInitialState(memory?: MemoryNote) {
   return {
     title: memory?.title ?? "",
     content: memory?.content ?? "",
-    mood: (memory?.mood ?? null) as Mood | null,
     people: memory?.people ?? [],
     locations: memory?.locations ?? [],
     entryKind: inferMemoryEntryKind(memory ?? {}),
@@ -136,7 +122,6 @@ export function EditMemorySheet({
     onSave({
       title: form.title.trim() || "Untitled Memory",
       content: form.content.trim(),
-      mood: form.mood,
       people: form.people,
       locations: form.locations,
       entryKind: form.entryKind,
@@ -332,17 +317,6 @@ export function EditMemorySheet({
                 }}
               />
             </YStack>
-
-            {/* Mood */}
-            <PickerField
-              label="MOOD"
-              options={moodOptions}
-              value={form.mood}
-              onChange={(v) => setField("mood", v as Mood | null)}
-              allowClear
-              placeholder="None"
-              stacked={stackPickers}
-            />
 
             {/* People */}
             <TagInput
@@ -742,7 +716,6 @@ function TipsCard() {
   const tips = [
     "Use voice mode to describe changes naturally",
     "Topics are assigned automatically by AI",
-    "Set a mood to track how you felt",
   ];
   return (
     <YStack

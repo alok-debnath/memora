@@ -12,7 +12,6 @@ import { Card } from "@/components/ui/Card";
 import { SectionLabel } from "@/components/ui/SectionLabel";
 import { Badge } from "@/components/ui/Badge";
 import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
-import { moodLabels } from "@/constants/categories";
 import { isReminder } from "@/types/memoryKind";
 
 export default function StatisticsScreen() {
@@ -24,7 +23,6 @@ export default function StatisticsScreen() {
     _id: Id<"memories">;
     _creationTime: number;
     content: string;
-    mood?: string;
     entryKind?: "memory" | "reminder";
     schedule?: {
       dueAt: string;
@@ -60,17 +58,6 @@ export default function StatisticsScreen() {
     () => memoryOnly.reduce((acc, m) => acc + (m.content || "").split(/\s+/).length, 0),
     [memoryOnly]
   );
-
-  const moodCounts = useMemo<[string, number][]>(() => {
-    return Object.entries(
-      memoryOnly.reduce<Record<string, number>>((acc, memory) => {
-        if (memory.mood) {
-          acc[memory.mood] = (acc[memory.mood] || 0) + 1;
-        }
-        return acc;
-      }, {})
-    ).sort((a, b) => b[1] - a[1]);
-  }, [memoryOnly]);
 
   const activeDays = useMemo(
     () =>
@@ -229,33 +216,6 @@ export default function StatisticsScreen() {
           </Card>
         </Animated.View>
 
-        <Animated.View entering={FadeInUp.delay(340).duration(400)}>
-          <SectionLabel>Mood tracker</SectionLabel>
-          <Card>
-            {moodCounts.length === 0 ? (
-              <Text fontSize={14} fontFamily="$body" textAlign="center" paddingVertical={16} color="$colorMuted">
-                No mood data yet
-              </Text>
-            ) : (
-              moodCounts.map(([mood, count]) => {
-                const pct = (count / Math.max(memoryOnly.length, 1)) * 100;
-                return (
-                  <XStack key={mood} alignItems="center" gap={10} paddingVertical={6}>
-                    <Text fontSize={13} fontFamily="$body" fontWeight="500" width={70} color="$color">
-                      {moodLabels[mood as keyof typeof moodLabels] || mood}
-                    </Text>
-                    <YStack flex={1} height={8} borderRadius={4} backgroundColor="$borderColor" overflow="hidden">
-                      <YStack height="100%" borderRadius={4} width={`${pct}%`} backgroundColor="$primary" />
-                    </YStack>
-                    <Text fontSize={12} fontFamily="$body" fontWeight="500" width={24} textAlign="right" color="$colorMuted">
-                      {count}
-                    </Text>
-                  </XStack>
-                );
-              })
-            )}
-          </Card>
-        </Animated.View>
     </MorePageScaffold>
   );
 }

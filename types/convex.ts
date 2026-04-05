@@ -11,7 +11,6 @@ export interface ConvexMemory {
     recurrenceType?: "daily" | "weekly" | "monthly" | "yearly";
   };
   category: "personal" | "work" | "finance" | "health" | "other";
-  mood?: string;
   tags: string[];
   people: string[];
   locations: string[];

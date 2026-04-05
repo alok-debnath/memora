@@ -217,7 +217,7 @@ export default function KnowledgeGraphScreen() {
   const rawMemories = (memoryResult?.memories ?? []) as Array<{
     _id: Id<"memories">; title: string; content: string;
     primaryTopicId?: string; topicIds?: string[]; people: string[];
-    mood?: string; reminderDate?: string; entryKind?: "memory" | "reminder";
+    reminderDate?: string; entryKind?: "memory" | "reminder";
     schedule?: { dueAt: string; isRecurring: boolean; recurrenceType?: "daily" | "weekly" | "monthly" | "yearly" };
   }>;
   const topics = (useQuery(api.userTopics.list, token ? { token } : "skip") ?? []) as TopicDoc[];
@@ -579,9 +579,6 @@ export default function KnowledgeGraphScreen() {
                     </Text>
                   </YStack>
                   <XStack gap={10} flexWrap="wrap">
-                    {selectedMemory.mood && (
-                      <Badge label={selectedMemory.mood} small />
-                    )}
                     {getReminderDate(selectedMemory) && (
                       <XStack alignItems="center" gap={4}>
                         <Feather name="bell" size={11} color={theme.primary.val} />

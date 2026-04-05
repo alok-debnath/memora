@@ -200,7 +200,6 @@ export function normalizeMemoryFields(value: Record<string, unknown>) {
   return {
     title: asTrimmedString(value.title),
     content: asTrimmedString(value.content),
-    mood: asEnumValue<MemoryMood>(value.mood, MEMORY_MOODS),
     people: asStringArray(value.people),
     locations: asStringArray(value.locations),
     importance: asEnumValue<MemoryImportance>(value.importance, MEMORY_IMPORTANCE),

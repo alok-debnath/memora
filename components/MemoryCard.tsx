@@ -4,8 +4,6 @@ import { Feather } from "@expo/vector-icons";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { moodLabels, moodIcons } from "@/constants/categories";
-import { moodColors } from "@/constants/colors";
 import type { MemoryNote } from "@/types/memory";
 import { getReminderDate, isReminder } from "@/types/memoryKind";
 import { ContextMenu, type ContextMenuItemDef } from "./ui/ContextMenu";
@@ -102,32 +100,8 @@ export const CardBody = React.memo(function CardBody({
             {memory.content}
           </Text>
 
-          {(memory.mood || (resolvedTopics && resolvedTopics.length > 0)) && (
+          {(resolvedTopics && resolvedTopics.length > 0) && (
             <XStack flexWrap="wrap" alignItems="center" gap={6} marginBottom={10}>
-              {memory.mood && (
-                <XStack
-                  backgroundColor={(moodColors[memory.mood] || theme.secondary.val) + "15"}
-                  alignItems="center"
-                  gap={4}
-                  paddingHorizontal={8}
-                  paddingVertical={3}
-                  borderRadius={8}
-                >
-                  <Feather
-                    name={moodIcons[memory.mood] as any}
-                    size={11}
-                    color={moodColors[memory.mood] || theme.colorMuted.val}
-                  />
-                  <Text
-                    fontSize={11}
-                    fontFamily="$body"
-                    fontWeight="500"
-                    color={moodColors[memory.mood] || theme.colorMuted.val}
-                  >
-                    {moodLabels[memory.mood]}
-                  </Text>
-                </XStack>
-              )}
               {resolvedTopics?.slice(0, 2).map((topic, i) => (
                 <XStack
                   key={i}

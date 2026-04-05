@@ -94,7 +94,6 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
             },
             additionalProperties: false,
           },
-          mood: { type: "string" },
           people: { type: "array", items: { type: "string" } },
           locations: { type: "array", items: { type: "string" } },
         },
@@ -131,7 +130,6 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
             },
             additionalProperties: false,
           },
-          mood: { type: "string" },
           people: { type: "array", items: { type: "string" } },
           locations: { type: "array", items: { type: "string" } },
         },
@@ -213,7 +211,7 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "get_stats",
       description:
-        "Get statistics about the user's memories including moods, reminders, recurring items, and recent activity.",
+        "Get statistics about the user's memories including reminders, recurring items, and recent activity.",
       parameters: {
         type: "object",
         properties: {},
@@ -342,7 +340,6 @@ function toMemorySummary(memory: MemoryDoc) {
     id: memory._id,
     title: memory.title,
     content: memory.content,
-    mood: memory.mood ?? null,
     people: memory.people,
     locations: memory.locations,
     primary_topic_id: memory.primaryTopicId ?? null,
@@ -483,7 +480,6 @@ async function searchMemories(
         const haystack = [
           memory.title,
           memory.content,
-          memory.mood,
           ...(memory.people ?? []),
           ...(memory.locations ?? []),
         ]
@@ -804,7 +800,6 @@ export const chat = action({
                 : {};
               const memoryUpdatePatch = {
                 ...(normalized.title ? { title: normalized.title } : {}),
-                ...(normalized.mood ? { mood: normalized.mood } : {}),
                 ...(normalized.people ? { people: normalized.people } : {}),
                 ...(normalized.locations ? { locations: normalized.locations } : {}),
                 ...(normalized.contextTags
@@ -925,7 +920,6 @@ export const chat = action({
                   id: fnArgs.memory_id as Id<"memories">,
                   ...(normalized.title ? { title: normalized.title } : {}),
                   ...(normalized.content ? { content: normalized.content } : {}),
-                  ...(normalized.mood ? { mood: normalized.mood } : {}),
                   ...(normalized.people ? { people: normalized.people } : {}),
                   ...(normalized.locations ? { locations: normalized.locations } : {}),
                   ...(normalized.contextTags
@@ -1023,14 +1017,10 @@ export const chat = action({
               });
             } else if (fnName === "get_stats") {
               const memories = await getRecentMemoriesCache();
-              const moods: Record<string, number> = {};
               let withReminders = 0;
               let recurring = 0;
 
               for (const memory of memories) {
-                if (memory.mood) {
-                  moods[memory.mood] = (moods[memory.mood] ?? 0) + 1;
-                }
                 if (isReminder(memory)) withReminders += 1;
                 if (getMemorySchedule(memory)?.isRecurring) recurring += 1;
               }
@@ -1038,7 +1028,6 @@ export const chat = action({
               const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
               result = JSON.stringify({
                 total: memories.length,
-                moods,
                 withReminders,
                 recurring,
                 recentCount: memories.filter(

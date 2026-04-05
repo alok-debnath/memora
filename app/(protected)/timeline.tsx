@@ -18,7 +18,6 @@ function groupByDate(
     _id: string;
     title: string;
     content: string;
-    mood?: string;
     _creationTime: number;
   }>
 ) {

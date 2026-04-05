@@ -17,17 +17,6 @@ import { toStoredMemoryFields } from "../lib/memoryKind";
 type AIExtractedMemory = {
   title?: string;
   content?: string;
-  mood?:
-    | "happy"
-    | "sad"
-    | "anxious"
-    | "excited"
-    | "neutral"
-    | "grateful"
-    | "frustrated"
-    | "hopeful"
-    | "nostalgic"
-    | "motivated";
   people?: string[];
   locations?: string[];
   importance?: "critical" | "high" | "normal" | "low";
@@ -99,7 +88,6 @@ CRITICAL TYPE RULE:
 
 CRITICAL TIMEZONE RULE: When the user mentions times, that time is in THEIR timezone (${userTz}). Convert to UTC ISO-8601 for schedule.due_at. Example: if user is in Asia/Kolkata (UTC+5:30) and says "9:30 AM", UTC time is 04:00 AM — output "2026-03-09T04:00:00Z".
 
-For mood: happy, sad, anxious, excited, neutral, grateful, frustrated, hopeful, nostalgic, motivated.
 For people: extract ALL people names mentioned.
 For locations: extract ALL locations, places, venues, cities, countries mentioned.
 For importance: "critical", "high", "normal", or "low" based on urgency/consequence/emotional weight.
@@ -203,10 +191,6 @@ export const processMemory = action({
                     },
                     additionalProperties: false,
                   },
-                  mood: {
-                    type: "string",
-                    enum: ["happy", "sad", "anxious", "excited", "neutral", "grateful", "frustrated", "hopeful", "nostalgic", "motivated"],
-                  },
                   people: { type: "array", items: { type: "string" } },
                   locations: { type: "array", items: { type: "string" } },
                   importance: {
@@ -277,7 +261,6 @@ export const processMemory = action({
       await ctx.runMutation(internal.processMemoryMutations.updateAIFields, {
         memoryId: args.memoryId,
         title: normalized.title,
-        mood: normalized.mood,
         people: normalized.people,
         locations: normalized.locations,
         importance: normalized.importance,
@@ -369,7 +352,6 @@ export const captureMemory = action({
                         },
                         additionalProperties: false,
                       },
-                      mood: { type: "string", enum: ["happy", "sad", "anxious", "excited", "neutral", "grateful", "frustrated", "hopeful", "nostalgic", "motivated"] },
                       people: { type: "array", items: { type: "string" } },
                       locations: { type: "array", items: { type: "string" } },
                       importance: { type: "string", enum: ["critical", "high", "normal", "low"] },
@@ -431,7 +413,6 @@ export const captureMemory = action({
       token: args.token,
       title: structured.title || fallbackStructuredData(args.content).title || "New Memory",
       content: args.content,
-      mood: structured.mood,
       people: structured.people || [],
       locations: structured.locations || [],
       importance: structured.importance || "normal",
@@ -453,7 +434,6 @@ export const captureMemory = action({
       await ctx.runMutation(internal.processMemoryMutations.updateAIFields, {
         memoryId,
         title: structured.title,
-        mood: structured.mood,
         people: structured.people,
         locations: structured.locations,
         importance: structured.importance,
