@@ -972,13 +972,15 @@ export const chat = action({
                   token: args.token,
                   limit,
                 });
-                result = JSON.stringify({
-                  deleted_memories: deleted.map((memory: MemoryDoc) => ({
+                const results = deleted.map((memory: MemoryDoc) => ({
                     ...toMemorySummary(memory),
                     deletedAt: memory.deletedAt
                       ? new Date(memory.deletedAt).toISOString()
                       : null,
-                  })),
+                  }));
+                pendingSearchItems = results;
+                result = JSON.stringify({
+                  deleted_memories: results,
                   count: deleted.length,
                 });
               } catch (error) {
@@ -1007,10 +1009,12 @@ export const chat = action({
                 typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 100) : 20;
               const ordered =
                 fnArgs.sort === "oldest" ? [...memories].reverse() : memories;
-              result = JSON.stringify({
-                memories: ordered
+              const results = ordered
                   .slice(0, limit)
-                  .map((memory: MemoryDoc) => toMemorySummary(memory)),
+                  .map((memory: MemoryDoc) => toMemorySummary(memory));
+              pendingSearchItems = results;
+              result = JSON.stringify({
+                memories: results,
                 count: memories.length,
               });
             } else if (fnName === "get_stats") {
@@ -1036,10 +1040,12 @@ export const chat = action({
               const memories = await getRecentMemoriesCache();
               const limit =
                 typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 100) : 100;
-              result = JSON.stringify({
-                memories: memories
+              const results = memories
                   .slice(0, limit)
-                  .map((memory: MemoryDoc) => toMemorySummary(memory)),
+                  .map((memory: MemoryDoc) => toMemorySummary(memory));
+              pendingSearchItems = results;
+              result = JSON.stringify({
+                memories: results,
                 count: memories.length,
               });
             } else if (fnName === "history") {
