@@ -423,5 +423,27 @@ export default defineSchema({
     ipHash: v.optional(v.string()),
   }).index("by_user", ["userId"]),
 
+  /**
+   * Transient per-user state written by the chat action while a search tool
+   * is in-flight. The client subscribes reactively and shows a live indicator.
+   * Rows are created/updated on tool invocation and deleted when done.
+   */
+  chatSearchStatus: defineTable({
+    userId: v.id("users"),
+    query: v.string(),
+    startedAt: v.number(),
+  }).index("by_user", ["userId"]),
+
+  searchQueryCache: defineTable({
+    userId: v.id("users"),
+    queryHash: v.string(), // lowercase trimmed query (first 100 chars)
+    expandedQuery: v.optional(v.string()), // GPT-expanded query string
+    embedding: v.optional(v.array(v.float64())), // text-embedding vector
+    lastUsedAt: v.number(), // ms timestamp — used for TTL eviction
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_hash", ["userId", "queryHash"])
+    .index("by_last_used_at", ["lastUsedAt"]),
+
   ...authTables,
 });

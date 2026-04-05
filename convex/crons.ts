@@ -12,4 +12,7 @@ crons.interval("advance recurring reminders", { hours: 1 }, internal.memories.ad
 // Backfill embeddings for memories that don't have them
 crons.interval("backfill embeddings", { hours: 6 }, internal.actions.backfillEmbeddings.backfill, {});
 
+// Evict search query cache entries older than 30 days
+crons.interval("purge stale query cache", { hours: 24 }, internal.memories.purgeStaleQueryCache, {});
+
 export default crons;

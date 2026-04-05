@@ -479,8 +479,9 @@ async function searchMemories(
   });
 
   return {
-    results: semanticResults.slice(0, 10).map(toMemorySummary),
-    count: semanticResults.length,
+    results: semanticResults.results.slice(0, 10).map(toMemorySummary),
+    count: semanticResults.results.length,
+    isCached: semanticResults.isCached,
   };
 }
 
@@ -580,12 +581,14 @@ function buildSystemPrompt(userTimezone: string, currentTime: string) {
 
 7. **ANALYSIS**: When asked to analyze, use the analyze_memories tool, then share insights conversationally.
 
-8. **UNDO & HISTORY**:
+8. **SEARCH RESULTS UI**: When you use search_memories, the app will automatically display interactive cards for the results underneath your message. Keep your text response extremely brief (e.g. "Here's what I found:") and **DO NOT** summarize or list the individual memory details in your text.
+
+9. **UNDO & HISTORY**:
    - To undo a **deletion** (user says "undo", "restore", "bring it back" after a recent delete): use restore_memory if you know the ID, otherwise call list_deleted_memories to find it, then restore_memory. Do NOT use the history tool for undoing deletions.
    - To undo an **edit** (user says "revert", "undo that change", "go back to the old version"): use the history tool with action='undo' (optionally with memory_id).
    - To view edit history or restore a specific snapshot: use the history tool with action='list' or action='restore'.
 
-9. **FILE ATTACHMENTS**: When user shares files, file URLs appear as [Attached file: name (type) — URL: ...]. Create or update a memory and call attach_file_to_memory when relevant.
+10. **FILE ATTACHMENTS**: When user shares files, file URLs appear as [Attached file: name (type) — URL: ...]. Create or update a memory and call attach_file_to_memory when relevant.
 
 **TOPIC GUIDANCE**: Topics are AI-assigned by the system, but if the user explicitly wants a specific memory moved under a different topic, use manage_topics with operation="retag_memory". First identify the target memory: use a real memory_id if you already have it, otherwise search memories or infer the most recent relevant memory from context. Do not pass plain text like "class topic" into memory_id. Use rename/merge/recolor only for taxonomy-wide changes. When they ask "what topics do I have", use manage_topics with operation="list".
 
@@ -693,8 +696,12 @@ export const chat = action({
           { role: "user", content: args.message },
         ];
 
+        type MemorySummary = ReturnType<typeof toMemorySummary>;
+
         let finalText = "";
         let pendingDeletionItems: Array<{ id: string; title: string; content: string; entry_kind: string }> = [];
+        let pendingSearchItems: MemorySummary[] = [];
+        let pendingSearchIsCached = false;
         const createdMemoriesByDedupeKey = new Map<
           string,
           { id: Id<"memories">; title: string }
@@ -740,14 +747,28 @@ export const chat = action({
             let result = JSON.stringify({ error: "Unknown tool" });
 
             if (fnName === "search_memories") {
-              result = JSON.stringify(
-                await searchMemories(ctx, {
+              const searchQuery = String(fnArgs.query || "");
+              // Write streaming status so the client can show a live indicator
+              await ctx.runMutation(internal.chat.setSearchStatus, {
+                userId: session._id,
+                query: searchQuery,
+              });
+              try {
+                const searchRes = await searchMemories(ctx, {
                   token: args.token,
-                  query: String(fnArgs.query || ""),
+                  query: searchQuery,
                   userId: session._id,
                   recentMemories: await getRecentMemoriesCache(),
-                })
-              );
+                });
+                result = JSON.stringify(searchRes);
+                pendingSearchItems = searchRes.results;
+                pendingSearchIsCached = searchRes.isCached ?? false;
+              } finally {
+                // Always clear the status, even if search throws
+                await ctx.runMutation(internal.chat.clearSearchStatus, {
+                  userId: session._id,
+                });
+              }
             } else if (fnName === "search_documents") {
               result = JSON.stringify(
                 {
@@ -1143,9 +1164,16 @@ export const chat = action({
         }
 
         const resolvedText = finalText || "I processed that, but I couldn't generate a clear reply.";
-        aiResponse = pendingDeletionItems.length > 0
-          ? `${resolvedText}\n<!--MEMORA_DELETION_PROPOSAL:${JSON.stringify(pendingDeletionItems)}-->`
-          : resolvedText;
+        
+        let appendedComments = "";
+        if (pendingDeletionItems.length > 0) {
+          appendedComments += `\n<!--MEMORA_DELETION_PROPOSAL:${JSON.stringify(pendingDeletionItems)}-->`;
+        }
+        if (pendingSearchItems.length > 0) {
+          appendedComments += `\n<!--MEMORA_SEARCH_RESULTS:${JSON.stringify({ items: pendingSearchItems, isCached: pendingSearchIsCached })}-->`;
+        }
+        
+        aiResponse = resolvedText + appendedComments;
       } catch {
         aiResponse =
           "I'm having trouble connecting right now. Please try again in a moment.";
@@ -1158,7 +1186,12 @@ export const chat = action({
       role: "assistant",
     });
 
-    const proposalIdx = aiResponse.indexOf("\n<!--MEMORA_DELETION_PROPOSAL:");
-    return { reply: (proposalIdx !== -1 ? aiResponse.slice(0, proposalIdx) : aiResponse).trim() };
+    const deletionIdx = aiResponse.indexOf("\n<!--MEMORA_DELETION_PROPOSAL:");
+    const searchIdx = aiResponse.indexOf("\n<!--MEMORA_SEARCH_RESULTS:");
+    const minIdxStr = Math.min(
+      deletionIdx !== -1 ? deletionIdx : Infinity,
+      searchIdx !== -1 ? searchIdx : Infinity
+    );
+    return { reply: (minIdxStr !== Infinity ? aiResponse.slice(0, minIdxStr) : aiResponse).trim() };
   },
 });

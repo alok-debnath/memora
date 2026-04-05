@@ -1,5 +1,4 @@
 import React, {
-  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -15,7 +14,16 @@ import * as Clipboard from "expo-clipboard";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useAction, useMutation, useQuery } from "convex/react";
-import Animated, { FadeIn, FadeInRight, FadeInUp } from "react-native-reanimated";
+import Animated, {
+  FadeIn,
+  FadeInRight,
+  FadeInUp,
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import { XStack, YStack, Text } from "tamagui";
 
 import { EditMemorySheet } from "@/components/EditMemorySheet";
@@ -31,6 +39,7 @@ import { useUIStore } from "@/store/ui";
 import type { MemoryNote } from "@/types/memory";
 import { getReminderDate, inferMemoryEntryKind, isReminder } from "@/types/memoryKind";
 import { Badge } from "@/components/ui/Badge";
+import { FontFamily } from "@/constants/fonts";
 import { TopicPills } from "@/components/ui/TopicPills";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AppScreen, SectionCard } from "@/components/ui/AppScreen";
@@ -40,6 +49,26 @@ import { SearchBar } from "@/components/ui/SearchBar";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 
 const INITIAL_FEED_SIZE = 6;
+
+function PulsingDot({ color }: { color: string }) {
+  const opacity = useSharedValue(1);
+  useEffect(() => {
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(0.25, { duration: 550 }),
+        withTiming(1, { duration: 550 }),
+      ),
+      -1,
+      false,
+    );
+  }, []);
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return (
+    <Animated.View
+      style={[{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }, style]}
+    />
+  );
+}
 
 const toMemoryNote = (m: Record<string, unknown>): MemoryNote => ({
   id: m._id as string,
@@ -137,10 +166,11 @@ export default function HomeScreen() {
   const { resolvedMode, setMode } = useThemeStore();
 
   const [searchQuery, setSearchQuery] = useState("");
-  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [semanticResults, setSemanticResults] = useState<MemoryItem[] | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [isSemanticCached, setIsSemanticCached] = useState(false);
   const [editMemory, setEditMemory] = useState<MemoryItem | null>(null);
   const [isOverviewOpen, setIsOverviewOpen] = useState(false);
   const [showFullFeed, setShowFullFeed] = useState(false);
@@ -154,8 +184,18 @@ export default function HomeScreen() {
     }),
     []
   );
-  const trimmedSearchQuery = deferredSearchQuery.trim().toLowerCase();
+  // Drives network calls (debounced — waits 400 ms after typing stops)
+  const trimmedSearchQuery = debouncedSearchQuery.trim().toLowerCase();
+  // Drives local-only filters (instant — no network cost)
+  const localSearchQuery = searchQuery.trim().toLowerCase();
+  // searchMode reacts to the raw query so the UI (clear button, status bar) responds instantly
   const searchMode = searchQuery.trim().length > 0;
+
+  // Debounce: fire 400ms after the user stops typing
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery), 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const allMemoryResult = useQuery(api.memories.listAll, token ? { token, limit: 500 } : "skip");
   const topicList = useQuery(api.userTopics.list, token ? { token } : "skip") ?? [];
@@ -187,6 +227,15 @@ export default function HomeScreen() {
   const stats =
     useQuery(api.memories.stats, token ? { token, asOf: querySnapshot.nowMs } : "skip") ?? null;
 
+  // Instant DB Search for low-latency feedback
+  const instantSearchResult = useQuery(
+    api.memories.searchInstant,
+    token && trimmedSearchQuery && trimmedSearchQuery.length >= 3
+      ? { token, query: trimmedSearchQuery, limit: 12 }
+      : "skip"
+  );
+  const instantResults = (instantSearchResult ?? []) as MemoryItem[];
+
   const semanticSearch = useAction(api.actions.semanticSearch.search);
   const reconcileTopics = useAction(api.actions.manageTopics.reconcileTopics);
   const [isSyncingTopics, setIsSyncingTopics] = useState(false);
@@ -212,14 +261,16 @@ export default function HomeScreen() {
     setIsSearching(true);
 
     semanticSearch({ token, query: trimmedSearchQuery, limit: 12 })
-      .then((results) => {
+      .then((data) => {
         if (requestIdRef.current === currentRequestId) {
-          setSemanticResults(results as MemoryItem[]);
+          setSemanticResults(data.results as MemoryItem[]);
+          setIsSemanticCached(data.isCached);
         }
       })
       .catch(() => {
         if (requestIdRef.current === currentRequestId) {
           setSemanticResults(null);
+          setIsSemanticCached(false);
         }
       })
       .finally(() => {
@@ -316,8 +367,8 @@ export default function HomeScreen() {
   };
 
   const exactMatches = useMemo(
-    () => getExactSearchMatches(allMemories, trimmedSearchQuery),
-    [allMemories, trimmedSearchQuery]
+    () => getExactSearchMatches(allMemories, localSearchQuery),
+    [allMemories, localSearchQuery]
   );
 
   const filteredMemories = useMemo(() => {
@@ -329,15 +380,26 @@ export default function HomeScreen() {
     }
 
     const merged = new Map<Id<"memories">, MemoryItem>();
+    
+    // Stage 1: Exact matches (Keyword hits + Substring)
     for (const memory of exactMatches) {
       merged.set(memory._id, memory);
     }
-    for (const memory of semanticResults ?? []) {
+
+    // Stage 2: Instant Results from Fast DB Index
+    for (const memory of instantResults) {
       if (!merged.has(memory._id)) {
         merged.set(memory._id, memory);
       }
     }
 
+    // Stage 3: Semantic results (GPT expanded/Vector searched)
+    for (const memory of semanticResults ?? []) {
+      if (!merged.has(memory._id)) {
+        merged.set(memory._id, memory);
+      }
+    }
+ 
     const searchPool = Array.from(merged.values());
     const byTopic = selectedTopic
       ? searchPool.filter(
@@ -349,8 +411,9 @@ export default function HomeScreen() {
 
     return [...byTopic].sort((a, b) => b._creationTime - a._creationTime);
   }, [
-    feedMemories,
     exactMatches,
+    feedMemories,
+    instantResults,
     searchMode,
     selectedTopic,
     semanticResults,
@@ -455,10 +518,57 @@ export default function HomeScreen() {
               onSync={handleSyncTopics}
               isSyncing={isSyncingTopics}
             />
-            {searchMode && relatedCount > 0 ? (
-              <Text fontSize={12} color="$colorMuted">
-                Exact matches are shown first, then related semantic results.
-              </Text>
+            {searchMode ? (
+              <XStack gap={10} alignItems="center" marginTop={8}>
+                {isSearching ? (
+                  <Animated.View entering={FadeIn.duration(300)}>
+                    <XStack gap={6} alignItems="center">
+                      <PulsingDot color={theme.primary.val} />
+                      <Text fontSize={12} color="$colorMuted">Finding deeper matches…</Text>
+                    </XStack>
+                  </Animated.View>
+                ) : (
+                  <Animated.View entering={FadeIn.duration(300)}>
+                    <XStack gap={8} alignItems="center">
+                      <Badge
+                        label={isSemanticCached ? "⚡ Fast" : "✓ Full scan"}
+                        color={isSemanticCached ? "#F59E0B" : theme.primary.val}
+                        small
+                      />
+                      {isSemanticCached && (
+                        <PressableScale
+                          onPress={() => {
+                            setIsSearching(true);
+                            setIsSemanticCached(false);
+                            semanticSearch({ token: token!, query: trimmedSearchQuery, limit: 12, forceDeepSearch: true })
+                              .then((r) => {
+                                setSemanticResults(r.results as MemoryItem[]);
+                                setIsSemanticCached(false);
+                              })
+                              .finally(() => setIsSearching(false));
+                          }}
+                        >
+                          <XStack
+                            paddingHorizontal={10}
+                            paddingVertical={4}
+                            borderRadius={20}
+                            borderWidth={1}
+                            borderColor={theme.primary.val + "50"}
+                            backgroundColor={theme.primary.val + "12"}
+                            gap={5}
+                            alignItems="center"
+                          >
+                            <Feather name="refresh-cw" size={10} color={theme.primary.val} />
+                            <Text fontSize={12} fontFamily={FontFamily.semiBold} color={theme.primary.val}>
+                              Deep scan
+                            </Text>
+                          </XStack>
+                        </PressableScale>
+                      )}
+                    </XStack>
+                  </Animated.View>
+                )}
+              </XStack>
             ) : null}
 
             {!searchMode ? (

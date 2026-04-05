@@ -209,16 +209,17 @@ export const search = action({
     token: v.string(),
     query: v.string(),
     limit: v.optional(v.float64()),
+    forceDeepSearch: v.optional(v.boolean()),
   },
-  handler: async (ctx, args): Promise<SearchableMemory[]> => {
+  handler: async (ctx, args): Promise<{ results: SearchableMemory[]; isCached: boolean }> => {
     const session = await ctx.runQuery(api.auth.me, { token: args.token });
     if (!session) {
-      return [];
+      return { results: [], isCached: false };
     }
 
     const maxResults = args.limit ? Math.min(args.limit, 20) : 10;
     const rawQuery = args.query.trim();
-    if (!rawQuery) return [];
+    if (!rawQuery) return { results: [], isCached: false };
 
     // ── Step 1: Prepare synchronous query parts ──────────────────────
     const contentTerms = extractContentTerms(rawQuery);
@@ -232,6 +233,9 @@ export const search = action({
     /** Source 2: Full-text search (Convex search indexes) */
     const fulltextRanked: Id<"memories">[] = [];
 
+    /** Track caching state for UI */
+    let isCached = false;
+
     /** Source 3: Keyword / metadata match */
     const keywordRanked: Array<{ id: Id<"memories">; kwScore: number }> = [];
 
@@ -241,8 +245,29 @@ export const search = action({
       (async () => {
         if (!hasOpenAI()) return;
         try {
-          const expandedQuery = await expandQuery(rawQuery);
-          const queryEmbedding = await embedText(expandedQuery);
+          const queryHash = rawQuery.toLowerCase().substring(0, 100);
+          const cached = await ctx.runQuery(internal.memories.getQueryCache, { userId: session._id, queryHash });
+          
+          let queryEmbedding;
+          if (cached && cached.embedding && !args.forceDeepSearch) {
+            queryEmbedding = cached.embedding;
+            isCached = true;
+          } else {
+            // Use LLM expansion for longer queries or when forced;
+            // short queries (≤3 words) just get noise-stripped and embedded directly.
+            const needsExpansion = rawQuery.split(/\s+/).length > 3 || args.forceDeepSearch;
+            const expandedQuery = needsExpansion
+              ? await expandQuery(rawQuery)
+              : buildCleanQuery(rawQuery);
+            queryEmbedding = await embedText(expandedQuery);
+            await ctx.runMutation(internal.memories.setQueryCache, {
+              userId: session._id,
+              queryHash,
+              expandedQuery,
+              embedding: queryEmbedding,
+            });
+          }
+
           const vectorResults = await ctx.vectorSearch("memories", "by_embedding", {
             vector: queryEmbedding,
             limit: 30, // fetch more to compensate for filtering
@@ -280,7 +305,9 @@ export const search = action({
         if (contentTerms.length === 0) return;
         try {
           const userTopics = await ctx.runQuery(api.userTopics.list, { token: args.token });
-          const topicMap = new Map(userTopics.map(t => [t._id, t.name.toLowerCase()]));
+          const topicMap = new Map<Id<"userTopics">, string>(
+            userTopics.map(t => [t._id, t.name.toLowerCase()] as [Id<"userTopics">, string])
+          );
           
           const results: Doc<"memories">[] = await ctx.runQuery(
             internal.memories.searchByKeyword,
@@ -354,7 +381,7 @@ export const search = action({
       .slice(0, maxResults)
       .map(([id]) => id);
 
-    if (rankedIds.length === 0) return [];
+    if (rankedIds.length === 0) return { results: [], isCached };
 
     // Hydrate the top results with full memory documents
     const memories: Doc<"memories">[] = await ctx.runQuery(
@@ -373,6 +400,6 @@ export const search = action({
       }
     }
 
-    return results;
+    return { results, isCached };
   },
 });

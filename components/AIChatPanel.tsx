@@ -5,6 +5,7 @@ import {
   Pressable,
   Platform,
   Clipboard,
+  Alert,
   View,
 } from "react-native";
 import { XStack, YStack, Text } from "tamagui";
@@ -36,6 +37,11 @@ import { useAuth } from "@/hooks/useAuth";
 import { FontFamily } from "@/constants/fonts";
 import { useAppToast } from "@/components/ui/toast";
 import { logDevError } from "@/lib/devLog";
+import { Badge } from "@/components/ui/Badge";
+import { ContextMenu, type ContextMenuHandle, type ContextMenuItemDef } from "@/components/ui/ContextMenu";
+import { EditMemorySheet } from "@/components/EditMemorySheet";
+import type { MemoryNote } from "@/types/memory";
+import { getReminderDate, inferMemoryEntryKind } from "@/types/memoryKind";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -308,6 +314,47 @@ type DeletionItem = {
   entry_kind: string;
 };
 
+// Matches the shape produced by toMemorySummary() in convex/actions/memoryChat.ts
+type SearchResultItem = {
+  id: string;           // Convex _id, re-keyed to 'id' by toMemorySummary
+  title?: string;
+  content?: string;
+  entry_kind: string;   // snake_case from toMemorySummaryFields
+  _score?: number;
+};
+
+// ─── Memory Note Conversion ───────────────────────────────────────────────────
+
+function chatToMemoryNote(m: Record<string, unknown>): MemoryNote {
+  return {
+    id: m._id as string,
+    userId: (m.userId as string) || "",
+    title: (m.title as string) || "",
+    content: (m.content as string) || "",
+    primaryTopicId: m.primaryTopicId as string | undefined,
+    topicIds: m.topicIds as string[] | undefined,
+    people: (m.people as string[]) || [],
+    locations: (m.locations as string[]) || [],
+    importance: (m.importance || "normal") as MemoryNote["importance"],
+    lifeArea: m.lifeArea as MemoryNote["lifeArea"],
+    contextTags: m.contextTags as Record<string, string> | undefined,
+    sentimentScore: m.sentimentScore as number | undefined,
+    linkedUrls: Array.isArray(m.linkedUrls) ? m.linkedUrls : [],
+    extractedActions: m.extractedActions as MemoryNote["extractedActions"],
+    entryKind: inferMemoryEntryKind(m as Parameters<typeof inferMemoryEntryKind>[0]),
+    schedule: m.schedule as MemoryNote["schedule"] | undefined,
+    reminderDate: getReminderDate(m as Parameters<typeof getReminderDate>[0]),
+    isRecurring: (m.schedule as { isRecurring?: boolean } | undefined)?.isRecurring ?? false,
+    recurrenceType: (m.schedule as { recurrenceType?: MemoryNote["recurrenceType"] } | undefined)
+      ?.recurrenceType,
+    capsuleUnlockDate: m.capsuleUnlockDate as string | undefined,
+    attachments: [],
+    isPublic: m.isPublic as boolean | undefined,
+    createdAt: new Date(m._creationTime as number).toISOString(),
+    updatedAt: new Date(m._creationTime as number).toISOString(),
+  };
+}
+
 // ─── Deletion Proposal Helpers ────────────────────────────────────────────────
 
 function parseDeletionProposal(content: string): { items: DeletionItem[]; cleanText: string } | null {
@@ -320,8 +367,29 @@ function parseDeletionProposal(content: string): { items: DeletionItem[]; cleanT
   try {
     const jsonStr = content.slice(startIdx + marker.length, endIdx);
     const items = JSON.parse(jsonStr) as DeletionItem[];
+    // We only clean the text from the FIRST marker we find (usually at the end)
     const cleanText = content.slice(0, startIdx).trim();
     return { items, cleanText };
+  } catch {
+    return null;
+  }
+}
+
+function parseSearchResults(content: string): { items: SearchResultItem[]; isCached: boolean; cleanText: string } | null {
+  const marker = "<!--MEMORA_SEARCH_RESULTS:";
+  const endMarker = "-->";
+  const startIdx = content.indexOf(marker);
+  if (startIdx === -1) return null;
+  const endIdx = content.indexOf(endMarker, startIdx + marker.length);
+  if (endIdx === -1) return null;
+  try {
+    const jsonStr = content.slice(startIdx + marker.length, endIdx);
+    const parsed = JSON.parse(jsonStr);
+    // Support both legacy array format and new {items, isCached} format
+    const items: SearchResultItem[] = Array.isArray(parsed) ? parsed : (parsed.items ?? []);
+    const isCached: boolean = Array.isArray(parsed) ? false : (parsed.isCached ?? false);
+    const cleanText = content.slice(0, startIdx).trim();
+    return { items, isCached, cleanText };
   } catch {
     return null;
   }
@@ -605,6 +673,342 @@ function DeletionProposalCard({
   );
 }
 
+// ─── Search Result Row (extracted so each row has its own ContextMenu ref) ─────
+
+function SearchResultRow({
+  item,
+  index,
+  theme,
+  token,
+  isCompleted,
+  onComplete,
+  onDelete,
+  onEdit,
+}: {
+  item: SearchResultItem;
+  index: number;
+  theme: ReturnType<typeof useAppTheme>;
+  token?: string | null;
+  isCompleted: boolean;
+  onComplete: (item: SearchResultItem) => void;
+  onDelete: (id: string) => void;
+  onEdit: (id: string) => void;
+}) {
+  const menuRef = useRef<ContextMenuHandle>(null);
+  const isReminder = item.entry_kind === "reminder";
+  const SUCCESS = theme.success?.val ?? "#22C55E";
+
+  const menuItems: ContextMenuItemDef[] = [
+    ...(isReminder && !isCompleted
+      ? [{
+          label: "Mark as Completed",
+          icon: "check-circle" as const,
+          iconColor: SUCCESS,
+          onPress: () => onComplete(item),
+        }]
+      : []),
+    {
+      label: "Edit Memory",
+      icon: "edit-2" as const,
+      onPress: () => onEdit(item.id),
+    },
+    {
+      label: "Delete",
+      icon: "trash-2" as const,
+      destructive: true as const,
+      onPress: () => onDelete(item.id),
+    },
+  ];
+
+  // Preview card shown in the blur overlay (mirroring the home screen style)
+  const previewCard = (
+    <YStack
+      backgroundColor="$card"
+      borderColor="$borderColor"
+      borderWidth={1}
+      borderRadius={16}
+      padding={14}
+      gap={8}
+    >
+      <XStack gap={10} alignItems="center">
+        <View style={{
+          width: 36, height: 36, borderRadius: 18,
+          backgroundColor: isReminder ? theme.warning.val + "18" : theme.primary.val + "15",
+          alignItems: "center", justifyContent: "center",
+        }}>
+          <Feather
+            name={isReminder ? "bell" : "file-text"}
+            size={16}
+            color={isReminder ? theme.warning.val : theme.primary.val}
+          />
+        </View>
+        <YStack flex={1} gap={2}>
+          <Text fontSize={14} fontFamily={FontFamily.semiBold} color="$color" numberOfLines={2}>
+            {item.title || "Untitled memory"}
+          </Text>
+          {item.entry_kind && (
+            <Text fontSize={11} color="$colorMuted">
+              {isReminder ? "Reminder" : "Memory"}
+            </Text>
+          )}
+        </YStack>
+      </XStack>
+      {item.content ? (
+        <Text fontSize={12} fontFamily="$body" color="$colorMuted" numberOfLines={3}>
+          {item.content}
+        </Text>
+      ) : null}
+    </YStack>
+  );
+
+  return (
+    <Animated.View entering={FadeInDown.duration(260).delay(index * 55)}>
+      <ContextMenu ref={menuRef} items={menuItems} preview={previewCard}>
+        <XStack
+          paddingHorizontal={14}
+          paddingVertical={11}
+          gap={12}
+          alignItems="center"
+          borderTopWidth={index > 0 ? 1 : 0}
+          borderTopColor="$borderColor"
+          opacity={isCompleted ? 0.45 : 1}
+        >
+          {/* Icon */}
+          <View style={{
+            width: 32, height: 32, borderRadius: 16,
+            backgroundColor: isCompleted ? SUCCESS + "20" : theme.accent.val,
+            alignItems: "center", justifyContent: "center",
+            flexShrink: 0,
+          }}>
+            <Feather
+              name={isCompleted ? "check" : isReminder ? "bell" : "file-text"}
+              size={14}
+              color={isCompleted ? SUCCESS : theme.colorMuted.val}
+            />
+          </View>
+
+          {/* Content */}
+          <YStack flex={1} gap={2}>
+            <Text
+              fontSize={13}
+              fontFamily={FontFamily.semiBold}
+              color="$color"
+              numberOfLines={1}
+              textDecorationLine={isCompleted ? "line-through" : "none"}
+            >
+              {item.title || "Untitled memory"}
+            </Text>
+            {item.content ? (
+              <Text fontSize={11} fontFamily="$body" color="$colorMuted" numberOfLines={1}>
+                {item.content}
+              </Text>
+            ) : null}
+          </YStack>
+
+          {/* 3-dot menu button — tap opens the same context menu as long press */}
+          <XStack gap={4} alignItems="center">
+            {item._score !== undefined && (
+              <Text fontSize={10} color="$colorMuted" opacity={0.5}>
+                {Math.round(item._score * 100)}%
+              </Text>
+            )}
+            {/* 3-dot menu button */}
+            <Pressable
+              onPress={() => menuRef.current?.open()}
+              hitSlop={8}
+              style={({ pressed }) => ({
+                width: 28, height: 28, borderRadius: 14,
+                alignItems: "center", justifyContent: "center",
+                backgroundColor: pressed ? theme.accent.val : "transparent",
+                opacity: pressed ? 0.6 : 1,
+              })}
+            >
+              <Feather name="more-horizontal" size={16} color={theme.colorMuted.val} />
+            </Pressable>
+          </XStack>
+        </XStack>
+      </ContextMenu>
+    </Animated.View>
+  );
+}
+
+// ─── Search Results Card ──────────────────────────────────────────────────────
+
+function SearchResultsCard({
+  items,
+  isCached,
+  token,
+  theme,
+  onDeepSearch,
+  onEdit,
+}: {
+  items: SearchResultItem[];
+  isCached: boolean;
+  token?: string | null;
+  theme: ReturnType<typeof useAppTheme>;
+  onDeepSearch?: (query: string) => void;
+  onEdit?: (id: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
+  const [isDeepSearching, setIsDeepSearching] = useState(false);
+  const completeMemory = useMutation(api.memories.complete);
+  const deleteMemory = useMutation(api.memories.remove);
+  const { showToast } = useAppToast();
+
+  const displayItems = expanded ? items : items.slice(0, 3);
+  const hasMore = items.length > 3;
+
+  const handleComplete = useCallback(async (item: SearchResultItem) => {
+    if (!token) return;
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      await completeMemory({ token, id: item.id as any });
+      setCompletedIds((prev) => new Set([...prev, item.id]));
+      showToast({ title: "Marked complete", tone: "success" });
+    } catch {
+      showToast({ title: "Couldn't complete — try again", tone: "error" });
+    }
+  }, [token, completeMemory, showToast]);
+
+  const handleDelete = useCallback((id: string) => {
+    if (!token) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    Alert.alert("Delete Memory", "This will move the memory to trash.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteMemory({ token, id: id as any });
+            showToast({ title: "Memory deleted", tone: "success" });
+          } catch {
+            showToast({ title: "Couldn't delete — try again", tone: "error" });
+          }
+        },
+      },
+    ]);
+  }, [token, deleteMemory, showToast]);
+
+  const handleEdit = useCallback((id: string) => {
+    onEdit?.(id);
+  }, [onEdit]);
+
+  const handleDeepSearch = async () => {
+    if (!onDeepSearch || isDeepSearching) return;
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setIsDeepSearching(true);
+    try {
+      const inferredQuery = items.slice(0, 3).map(i => i.title ?? "").filter(Boolean).join(" ");
+      onDeepSearch(inferredQuery);
+    } finally {
+      setIsDeepSearching(false);
+    }
+  };
+
+  const badgeLabel = isCached ? "⚡ Fast" : "✓ Full scan";
+  const badgeColor = isCached ? "#F59E0B" : theme.primary.val;
+
+  return (
+    <Animated.View entering={FadeInDown.duration(320)} style={{ marginTop: 8 }}>
+      <YStack
+        backgroundColor={theme.backgroundStrong.val}
+        borderWidth={1}
+        borderColor="$borderColor"
+        borderRadius={16}
+        overflow="hidden"
+        style={BUBBLE_SHADOW}
+      >
+        {/* Header */}
+        <XStack
+          paddingHorizontal={14}
+          paddingTop={12}
+          paddingBottom={10}
+          alignItems="center"
+          justifyContent="space-between"
+          borderBottomWidth={1}
+          borderBottomColor="$borderColor"
+        >
+          <XStack gap={7} alignItems="center">
+            <View style={{
+              width: 24, height: 24, borderRadius: 12,
+              backgroundColor: theme.primary.val + "15",
+              alignItems: "center", justifyContent: "center",
+            }}>
+              <Feather name="search" size={12} color={theme.primary.val} />
+            </View>
+            <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
+              {items.length} {items.length === 1 ? "memory" : "memories"} found
+            </Text>
+          </XStack>
+          <XStack gap={6} alignItems="center">
+            <Badge label={badgeLabel} color={badgeColor} small />
+            {isCached && onDeepSearch && (
+              <Pressable
+                onPress={handleDeepSearch}
+                disabled={isDeepSearching}
+                hitSlop={6}
+                style={({ pressed }) => ({
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  borderRadius: 20,
+                  borderWidth: 1,
+                  borderColor: theme.primary.val + "50",
+                  backgroundColor: pressed ? theme.primary.val + "25" : theme.primary.val + "12",
+                  opacity: isDeepSearching ? 0.5 : 1,
+                })}
+              >
+                <Feather name="refresh-cw" size={10} color={theme.primary.val} />
+                <Text style={{ fontSize: 11, fontFamily: FontFamily.semiBold, color: theme.primary.val }}>
+                  {isDeepSearching ? "Scanning..." : "Deep scan"}
+                </Text>
+              </Pressable>
+            )}
+          </XStack>
+        </XStack>
+
+        {/* Item rows — each row is its own component so useRef works per-row */}
+        <YStack>
+          {displayItems.map((item, index) => (
+            <SearchResultRow
+              key={item.id}
+              item={item}
+              index={index}
+              theme={theme}
+              token={token}
+              isCompleted={completedIds.has(item.id)}
+              onComplete={handleComplete}
+              onDelete={handleDelete}
+              onEdit={handleEdit}
+            />
+          ))}
+        </YStack>
+
+        {hasMore && (
+          <Pressable
+            onPress={() => setExpanded(!expanded)}
+            style={({ pressed }) => ({
+              paddingVertical: 10,
+              alignItems: "center",
+              borderTopWidth: 1,
+              borderTopColor: theme.borderColor.val,
+              backgroundColor: pressed ? theme.accent.val : "transparent",
+            })}
+          >
+            <Text fontSize={12} color={theme.primary.val} fontFamily={FontFamily.semiBold}>
+              {expanded ? "Show less" : `Show all ${items.length} results`}
+            </Text>
+          </Pressable>
+        )}
+      </YStack>
+    </Animated.View>
+  );
+}
+
 // ─── Thinking Indicator ───────────────────────────────────────────────────────
 
 // Each dot is its own component so hooks are called at the top level (not inside map)
@@ -669,6 +1073,74 @@ function ThinkingIndicator() {
   );
 }
 
+// ─── Tool Searching Bubble ─────────────────────────────────────────────────────
+
+function ToolSearchingBubble({ query }: { query: string }) {
+  const theme = useAppTheme();
+  const shimmer = useSharedValue(0);
+
+  useEffect(() => {
+    shimmer.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 900 }),
+        withTiming(0, { duration: 900 }),
+      ),
+      -1,
+      false,
+    );
+  }, []);
+
+  const dotStyle = useAnimatedStyle(() => ({ opacity: 0.35 + shimmer.value * 0.65 }));
+
+  return (
+    <Animated.View entering={FadeInDown.duration(220)} style={{ marginBottom: CHAT.messageGap }}>
+      <XStack gap={8} alignSelf="flex-start" alignItems="flex-end">
+        <YStack
+          paddingHorizontal={14}
+          paddingVertical={12}
+          borderRadius={CHAT.bubbleRadius}
+          borderBottomLeftRadius={6}
+          backgroundColor="$backgroundStrong"
+          borderWidth={1}
+          borderColor="$borderColor"
+          gap={8}
+          style={BUBBLE_SHADOW}
+        >
+          <XStack gap={8} alignItems="center">
+            {/* Animated search icon */}
+            <Animated.View style={dotStyle}>
+              <View style={{
+                width: 26, height: 26, borderRadius: 13,
+                backgroundColor: theme.primary.val + "20",
+                alignItems: "center", justifyContent: "center",
+              }}>
+                <Feather name="search" size={13} color={theme.primary.val} />
+              </View>
+            </Animated.View>
+            <YStack gap={2}>
+              <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
+                Searching memories
+              </Text>
+              {query ? (
+                <Text fontSize={11} color="$colorMuted" numberOfLines={1} maxWidth={220}>
+                  for "{query}"
+                </Text>
+              ) : null}
+            </YStack>
+          </XStack>
+
+          {/* Three animated dots */}
+          <XStack gap={5} paddingLeft={34}>
+            <ThinkingDot delay={0}   color={theme.primary.val} />
+            <ThinkingDot delay={160} color={theme.primary.val} />
+            <ThinkingDot delay={320} color={theme.primary.val} />
+          </XStack>
+        </YStack>
+      </XStack>
+    </Animated.View>
+  );
+}
+
 // ─── Chat Bubble ──────────────────────────────────────────────────────────────
 
 const ChatBubble = React.memo(function ChatBubble({
@@ -680,6 +1152,10 @@ const ChatBubble = React.memo(function ChatBubble({
   onCopy,
   token,
   deletionItems,
+  searchItems,
+  searchIsCached,
+  onDeepSearch,
+  onEditMemory,
 }: {
   msg: ChatMsg;
   isUser: boolean;
@@ -689,6 +1165,10 @@ const ChatBubble = React.memo(function ChatBubble({
   onCopy: (text: string) => void;
   token?: string | null;
   deletionItems?: DeletionItem[];
+  searchItems?: SearchResultItem[];
+  searchIsCached?: boolean;
+  onDeepSearch?: (messageId: string, query: string) => void;
+  onEditMemory?: (id: string) => void;
 }) {
   const theme = useAppTheme();
   const isSpeaking = speakingId === msg._id;
@@ -829,6 +1309,18 @@ const ChatBubble = React.memo(function ChatBubble({
       {/* Deletion confirmation card — full width, below AI bubble */}
       {!isUser && deletionItems && deletionItems.length > 0 && (
         <DeletionProposalCard items={deletionItems} token={token} theme={theme} />
+      )}
+
+      {/* Search results card — full width, below AI bubble */}
+      {!isUser && searchItems && searchItems.length > 0 && (
+        <SearchResultsCard
+          items={searchItems}
+          isCached={searchIsCached ?? false}
+          token={token}
+          theme={theme}
+          onDeepSearch={onDeepSearch ? (q) => onDeepSearch(msg._id, q) : undefined}
+          onEdit={onEditMemory}
+        />
       )}
     </Animated.View>
   );
@@ -1207,16 +1699,41 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
   }));
 
   const messages = useQuery(api.chat.list, token ? { token, limit: 100 } : "skip") ?? [];
+  const searchStatus = useQuery(api.chat.getSearchStatus, token ? { token } : "skip");
   const sendMessage = useAction(api.actions.memoryChat.chat);
+  const runDeepSearch = useAction(api.chat.deepSearch);
   const clearChat = useMutation(api.chat.clear);
+  const updateMemory = useMutation(api.memories.update);
+  const deleteMemoryMutation = useMutation(api.memories.remove);
 
   const [isSending, setIsSending] = useState(false);
+  const [editTargetId, setEditTargetId] = useState<string | null>(null);
+  const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
   const [optimisticMessage, setOptimisticMessage] = useState<ChatMsg | null>(null);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [speechLocale, setSpeechLocale] = useState(getPreferredSpeechLocale);
   const [speechVoiceId, setSpeechVoiceId] = useState<string | undefined>(undefined);
   const flatListRef = useRef<FlatList>(null);
   const speechPlaybackTokenRef = useRef(0);
+
+  // ── Edit memory flow ────────────────────────────────────────────────────────
+  // Fetch the full memory doc only when the user taps "Edit" on a search result card
+  const editMemoryResult = useQuery(
+    api.memories.listByIds,
+    editTargetId && token ? { token, ids: [editTargetId as any] } : "skip",
+  );
+  const editMemoryNote = useMemo(() => {
+    const doc = editMemoryResult?.[0];
+    if (!doc) return null;
+    return chatToMemoryNote(doc as Record<string, unknown>);
+  }, [editMemoryResult]);
+
+  // Auto-open edit sheet as soon as the memory document arrives
+  useEffect(() => {
+    if (editMemoryNote && editTargetId && !isEditSheetOpen) {
+      setIsEditSheetOpen(true);
+    }
+  }, [editMemoryNote, editTargetId, isEditSheetOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1441,6 +1958,31 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
     showToast({ title: "Chat cleared", tone: "info", duration: 2500 });
   }, [token, clearChat, showToast]);
 
+  const handleEditMemory = useCallback((id: string) => {
+    setEditTargetId(id);
+  }, []);
+
+  const handleCloseEdit = useCallback(() => {
+    setIsEditSheetOpen(false);
+    setEditTargetId(null);
+  }, []);
+
+  const handleSaveEdit = useCallback(async (data: Record<string, unknown>) => {
+    if (!editTargetId || !token) return;
+    try {
+      if (data._delete) {
+        await deleteMemoryMutation({ token, id: editTargetId as any });
+        showToast({ title: "Memory deleted", tone: "success" });
+      } else {
+        await updateMemory({ token, id: editTargetId as any, ...data });
+        showToast({ title: "Memory updated", tone: "success" });
+      }
+    } catch {
+      showToast({ title: "Couldn't save — try again", tone: "error" });
+    }
+    handleCloseEdit();
+  }, [editTargetId, token, updateMemory, deleteMemoryMutation, showToast, handleCloseEdit]);
+
   // ── Markdown styles ────────────────────────────────────────────────────────
   const aiMdStyles = useMemo(
     () => ({
@@ -1513,19 +2055,58 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
     base = base.reverse();
 
     if (isSending) {
+      // If a live search is in-flight, replace generic thinking with the specific searching bubble
+      if (searchStatus?.query) {
+        return [
+          { _id: "__tool_searching__", role: "tool_searching", content: searchStatus.query, _creationTime: 0 } as any,
+          ...base,
+        ];
+      }
       return [
         { _id: "__thinking__", role: "thinking", content: "", _creationTime: 0 } as any,
         ...base,
       ];
     }
     return base;
-  }, [messages, isSending, optimisticMessage]);
+  }, [messages, isSending, optimisticMessage, searchStatus]);
+
+  const handleDeepSearch = useCallback(
+    async (messageId: string, query: string) => {
+      if (!token) return;
+      try {
+        await runDeepSearch({ token, query, messageId: messageId as any });
+        showToast({ title: "Deep scan complete", tone: "success" });
+      } catch {
+        showToast({ title: "Deep scan failed — try again", tone: "error" });
+      }
+    },
+    [token, runDeepSearch, showToast],
+  );
 
   const renderMessage = useCallback(
     ({ item }: { item: any }) => {
       if (item.role === "thinking") return <ThinkingIndicator />;
-      const parsed = item.role !== "user" ? parseDeletionProposal(item.content ?? "") : null;
-      const displayMsg = parsed ? { ...item, content: parsed.cleanText } : item;
+      if (item.role === "tool_searching") return <ToolSearchingBubble query={item.content ?? ""} />;
+
+      let deletionItems: DeletionItem[] | undefined;
+      let searchItems: SearchResultItem[] | undefined;
+      let displayMsg = item;
+      let searchIsCached: boolean | undefined;
+
+      if (item.role !== "user") {
+          const dParsed = parseDeletionProposal(item.content ?? "");
+          if (dParsed) {
+              deletionItems = dParsed.items;
+              displayMsg = { ...displayMsg, content: dParsed.cleanText };
+          }
+          const sParsed = parseSearchResults(displayMsg.content ?? "");
+          if (sParsed) {
+              searchItems = sParsed.items;
+              searchIsCached = sParsed.isCached;
+              displayMsg = { ...displayMsg, content: sParsed.cleanText };
+          }
+      }
+
       return (
         <ChatBubble
           msg={displayMsg}
@@ -1535,11 +2116,15 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
           onSpeak={speakMessage}
           onCopy={copyMessage}
           token={token}
-          deletionItems={parsed?.items}
+          deletionItems={deletionItems}
+          searchItems={searchItems}
+          searchIsCached={searchIsCached}
+          onDeepSearch={handleDeepSearch}
+          onEditMemory={handleEditMemory}
         />
       );
     },
-    [aiMdStyles, userMdStyles, speakingId, speakMessage, copyMessage, token],
+    [aiMdStyles, userMdStyles, speakingId, speakMessage, copyMessage, token, handleDeepSearch, handleEditMemory],
   );
 
   const keyExtractor = useCallback((item: any) => item._id, []);
@@ -1668,6 +2253,14 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
       </YStack>
 
       {inputBar}
+
+      {/* Edit memory sheet — opens when user taps Edit on a search result card */}
+      <EditMemorySheet
+        memory={editMemoryNote ?? undefined}
+        visible={isEditSheetOpen}
+        onClose={handleCloseEdit}
+        onSave={handleSaveEdit}
+      />
     </YStack>
   );
 }

@@ -5,6 +5,7 @@ import {
   mutation,
   query,
   MutationCtx,
+  QueryCtx,
 } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
@@ -440,6 +441,71 @@ export const searchByContent = internalQuery({
   },
 });
 
+async function executeKeywordSearch(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  queryTerms: string[]
+): Promise<{ memory: Doc<"memories">; proportion: number; matched: number }[]> {
+  const memories = await ctx.db
+    .query("memories")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .order("desc")
+    .take(200);
+
+  const userTopics = await ctx.db
+    .query("userTopics")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  const topicMap = new Map<Id<"userTopics">, string>();
+  for (const t of userTopics) {
+    if (!t.isArchived) topicMap.set(t._id, t.name.toLowerCase());
+  }
+
+  return memories
+    .filter(isActiveMemory)
+    .map((m) => {
+      const topicNames = (m.topicIds ?? [])
+        .map((id) => topicMap.get(id))
+        .filter(Boolean);
+      const primaryTopic = m.primaryTopicId ? topicMap.get(m.primaryTopicId) : "";
+      if (primaryTopic) topicNames.push(primaryTopic);
+
+      const haystack = [
+        m.title ?? "",
+        m.content ?? "",
+        ...(m.people ?? []),
+        ...(m.locations ?? []),
+        m.lifeArea,
+        m.entryKind,
+        ...topicNames,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      let matched = 0;
+      for (const term of queryTerms) {
+        let singular = term;
+        if (term.endsWith("ies") && term.length > 4) {
+          singular = term.substring(0, term.length - 3) + "y";
+        } else if (term.endsWith("s") && term.length > 3) {
+          singular = term.substring(0, term.length - 1);
+        }
+        
+        if (haystack.includes(term) || (singular !== term && haystack.includes(singular))) {
+          matched++;
+        }
+      }
+      const proportion = matched / queryTerms.length;
+      return { memory: m, proportion, matched };
+    })
+    .filter(({ matched, proportion }) => {
+      if (queryTerms.length === 1) return matched >= 1;
+      return proportion >= 0.4;
+    })
+    .sort((a, b) => b.proportion - a.proportion || b.matched - a.matched);
+}
+
 export const searchByKeyword = internalQuery({
   args: {
     userId: v.id("users"),
@@ -451,71 +517,71 @@ export const searchByKeyword = internalQuery({
     const queryTerms = extractSearchTerms(args.query);
     if (queryTerms.length === 0) return [];
 
-    // Scan recent memories for keyword matches across ALL text fields
-    const memories = await ctx.db
-      .query("memories")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .order("desc")
-      .take(200);
-
-    // Fetch user topics for integration
-    const userTopics = await ctx.db
-      .query("userTopics")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .collect();
-    const topicMap = new Map<Id<"userTopics">, string>();
-    for (const t of userTopics) {
-      if (!t.isArchived) topicMap.set(t._id, t.name.toLowerCase());
-    }
-
-    // Score each memory by proportion of query terms matched
-    const scored = memories
-      .filter(isActiveMemory)
-      .map((m) => {
-        const topicNames = (m.topicIds ?? [])
-          .map((id) => topicMap.get(id))
-          .filter(Boolean);
-        const primaryTopic = m.primaryTopicId ? topicMap.get(m.primaryTopicId) : "";
-        if (primaryTopic) topicNames.push(primaryTopic);
-
-        const haystack = [
-          m.title ?? "",
-          m.content ?? "",
-          ...(m.people ?? []),
-          ...(m.locations ?? []),
-          m.lifeArea,
-          m.entryKind,
-          ...topicNames,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-
-        let matched = 0;
-        for (const term of queryTerms) {
-          let singular = term;
-          if (term.endsWith("ies") && term.length > 4) {
-            singular = term.substring(0, term.length - 3) + "y";
-          } else if (term.endsWith("s") && term.length > 3) {
-            singular = term.substring(0, term.length - 1);
-          }
-          
-          if (haystack.includes(term) || (singular !== term && haystack.includes(singular))) {
-            matched++;
-          }
-        }
-        const proportion = matched / queryTerms.length;
-        return { memory: m, proportion, matched };
-      })
-      // Require at least 1 term matched AND ≥40% of terms for multi-term queries
-      .filter(({ matched, proportion }) => {
-        if (queryTerms.length === 1) return matched >= 1;
-        return proportion >= 0.4;
-      })
-      .sort((a, b) => b.proportion - a.proportion || b.matched - a.matched);
-
+    const scored = await executeKeywordSearch(ctx, args.userId, queryTerms);
     return scored.slice(0, maxResults).map((s) => s.memory);
   },
+});
+
+export const searchInstant = query({
+  args: {
+    token: v.optional(v.union(v.string(), v.null())),
+    query: v.string(),
+    limit: v.optional(v.float64()),
+  },
+  handler: async (ctx, args) => {
+    const session = await resolveUser(ctx, args.token ?? undefined);
+    if (!session) return [];
+
+    const rawQuery = args.query.trim();
+    if (rawQuery.length < 3) return [];
+    const maxResults = args.limit ? Math.min(args.limit, 30) : 12;
+    const cleanedQuery = cleanSearchQuery(rawQuery);
+    const queryTerms = extractSearchTerms(args.query);
+
+    const [contentResults, titleResults, keywordResults] = await Promise.all([
+      cleanedQuery.length > 0 ? ctx.db
+        .query("memories")
+        .withSearchIndex("search_content", (q) =>
+          q.search("content", cleanedQuery).eq("userId", session._id)
+        )
+        .take(maxResults) : Promise.resolve([] as Doc<"memories">[]),
+      cleanedQuery.length > 0 ? ctx.db
+        .query("memories")
+        .withSearchIndex("search_title", (q) =>
+          q.search("title", cleanedQuery).eq("userId", session._id)
+        )
+        .take(maxResults) : Promise.resolve([] as Doc<"memories">[]),
+      queryTerms.length > 0 ? executeKeywordSearch(ctx, session._id, queryTerms) : Promise.resolve([])
+    ]);
+
+    // RRF Merge — title hits get highest boost (1.4x) since titles are the
+    // most information-dense field; content and keyword get 1.0x / 0.8x
+    const rrfScores = new Map<string, number>();
+    const RRF_K = 60;
+    const addRRF = (id: string, rank: number, boost: number) => {
+      const current = rrfScores.get(id) ?? 0;
+      rrfScores.set(id, current + boost * (1 / (RRF_K + rank)));
+    };
+
+    contentResults.forEach((m, idx) => addRRF(m._id, idx, 1.0));
+    titleResults.forEach((m, idx) => addRRF(m._id, idx, 1.4));
+    keywordResults.slice(0, maxResults).forEach((kr, idx) => {
+      addRRF(kr.memory._id, idx, 0.8 * kr.proportion);
+    });
+
+    const memoryMap = new Map<string, Doc<"memories">>();
+    for (const m of contentResults) if (isActiveMemory(m)) memoryMap.set(m._id, m);
+    for (const m of titleResults) if (isActiveMemory(m)) memoryMap.set(m._id, m);
+    for (const kr of keywordResults) if (isActiveMemory(kr.memory)) memoryMap.set(kr.memory._id, kr.memory);
+
+    const merged = Array.from(rrfScores.entries())
+      .map(([id, score]) => ({ memory: memoryMap.get(id), score }))
+      .filter((item) => item.memory !== undefined)
+      .sort((a, b) => b.score - a.score)
+      .map(item => item.memory!);
+
+    return merged.slice(0, maxResults);
+  }
 });
 
 export const listForAI = internalQuery({
@@ -1513,5 +1579,79 @@ export const permanentlyRemoveCompleted = mutation({
       throw new Error("Memory must be in completed state.");
     }
     await permanentlyDeleteMemory(ctx, memory);
+  },
+});
+
+// ─── Search query cache TTL eviction ─────────────────────────────────────────
+
+const QUERY_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const QUERY_CACHE_PURGE_BATCH = 50;
+
+/**
+ * Delete searchQueryCache entries that haven't been used in 30+ days.
+ * Runs as a scheduled cron. Processes in bounded batches to stay within
+ * Convex mutation transaction limits.
+ */
+export const purgeStaleQueryCache = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const cutoff = Date.now() - QUERY_CACHE_TTL_MS;
+    const stale = await ctx.db
+      .query("searchQueryCache")
+      .withIndex("by_last_used_at", (q) => q.lt("lastUsedAt", cutoff))
+      .take(QUERY_CACHE_PURGE_BATCH);
+
+    for (const entry of stale) {
+      await ctx.db.delete(entry._id);
+    }
+
+    // If a full batch was deleted, schedule another pass immediately
+    if (stale.length === QUERY_CACHE_PURGE_BATCH) {
+      await ctx.scheduler.runAfter(0, internal.memories.purgeStaleQueryCache, {});
+    }
+  },
+});
+
+export const getQueryCache = internalQuery({
+  args: {
+    userId: v.id("users"),
+    queryHash: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("searchQueryCache")
+      .withIndex("by_user_hash", (q) => q.eq("userId", args.userId).eq("queryHash", args.queryHash))
+      .first();
+  },
+});
+
+export const setQueryCache = internalMutation({
+  args: {
+    userId: v.id("users"),
+    queryHash: v.string(),
+    expandedQuery: v.optional(v.string()),
+    embedding: v.optional(v.array(v.float64())),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("searchQueryCache")
+      .withIndex("by_user_hash", (q) => q.eq("userId", args.userId).eq("queryHash", args.queryHash))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        expandedQuery: args.expandedQuery,
+        embedding: args.embedding,
+        lastUsedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("searchQueryCache", {
+        userId: args.userId,
+        queryHash: args.queryHash,
+        expandedQuery: args.expandedQuery,
+        embedding: args.embedding,
+        lastUsedAt: Date.now(),
+      });
+    }
   },
 });

@@ -21,7 +21,7 @@
  *   </ContextMenu>
  */
 
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useImperativeHandle } from "react";
 import {
   Modal,
   Pressable,
@@ -45,6 +45,11 @@ import { useAppTheme } from "@/hooks/useAppTheme";
 import { useThemeStore } from "@/store/theme";
 
 // ─── Public types ─────────────────────────────────────────────────────────────
+
+export interface ContextMenuHandle {
+  /** Imperatively open the menu (same as user tapping with openOn="press"). */
+  open: () => void;
+}
 
 export interface ContextMenuItemDef {
   label: string;
@@ -118,13 +123,13 @@ function MenuItem({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function ContextMenu({
+export const ContextMenu = React.forwardRef<ContextMenuHandle, ContextMenuProps>(function ContextMenu({
   children,
   preview,
   items,
   onPress,
   openOn = "longPress",
-}: ContextMenuProps) {
+}: ContextMenuProps, ref) {
   const { resolvedMode } = useThemeStore();
   const cardRef = useRef<View>(null);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -200,6 +205,8 @@ export function ContextMenu({
       runOnJS(setMenuVisible)(false);
     });
   }, []);
+
+  useImperativeHandle(ref, () => ({ open: openMenuOnPress }), [openMenuOnPress]);
 
   // ── Animated styles ───────────────────────────────────────────────────────
 
@@ -322,6 +329,6 @@ export function ContextMenu({
       )}
     </>
   );
-}
+});
 
 const styles = StyleSheet.create({});
