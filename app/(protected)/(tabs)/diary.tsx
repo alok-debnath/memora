@@ -198,7 +198,7 @@ export default function DiaryScreen() {
               </YStack>
             ) : (
               <YStack alignItems="center" justifyContent="center" paddingVertical={28} gap={16}>
-                <VoiceRecorder onTranscription={() => {}} onTranscriptionComplete={handleVoiceComplete} />
+                <VoiceRecorder onTranscription={() => {}} onTranscriptionComplete={handleVoiceComplete} inputMode="auto" />
                 <Text fontSize={14} fontFamily="$body" color="$colorMuted" textAlign="center">
                   Tap the microphone and speak naturally. The entry is analyzed after capture.
                 </Text>

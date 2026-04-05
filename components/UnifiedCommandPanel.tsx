@@ -22,7 +22,6 @@ import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
 import { FontFamily } from "@/constants/fonts";
 import { AIChatPanel } from "./AIChatPanel";
-import { VoiceRecorder } from "./VoiceRecorder";
 import { BaseSheet } from "./ui/BaseSheet";
 import { PressableScale } from "./ui/PressableScale";
 import { SegmentedControl } from "./ui/SegmentedControl";

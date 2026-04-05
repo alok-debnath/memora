@@ -672,6 +672,7 @@ export function EditMemorySheet({
                 <VoiceRecorder
                   onTranscription={setVoiceTranscript}
                   onTranscriptionComplete={setVoiceTranscript}
+                  inputMode="auto"
                 />
                 <Text fontSize={16} fontFamily="$body" fontWeight="600" color="$color">
                   Describe your edit
