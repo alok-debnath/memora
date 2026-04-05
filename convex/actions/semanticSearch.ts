@@ -4,7 +4,14 @@ import { v } from "convex/values";
 import { Doc, Id } from "../_generated/dataModel";
 import { action } from "../_generated/server";
 import { api, internal } from "../_generated/api";
-import { embedText, hasOpenAI } from "../lib/openai";
+import {
+  embedText,
+  getOpenAIClient,
+  hasOpenAI,
+  OPENAI_CHAT_MODEL,
+  extractTextContent,
+  safeJsonParse,
+} from "../lib/openai";
 
 type SearchableMemory = Doc<"memories"> & { _score?: number };
 
@@ -14,43 +21,188 @@ type ScoredEntry = {
   sources: string[];
 };
 
-// ─── Score thresholds ─────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-// text-embedding-3-small cosine similarity ranges:
-//   > 0.85  → very similar (same topic)
-//   0.70-0.85 → related
-//   0.55-0.70 → loosely related (often noise)
-//   < 0.55  → unrelated
-const VECTOR_ABSOLUTE_MIN = 0.70;  // hard floor — discard anything below
-const VECTOR_RELATIVE_FLOOR = 0.80; // result must be ≥ 80% of the top result's score
+/**
+ * Absolute minimum cosine similarity for vector results.
+ * text-embedding-3-small returns lower scores than many expect:
+ *   > 0.75  → very similar (same topic, close phrasing)
+ *   0.55–0.75 → semantically related (paraphrases, synonyms)
+ *   0.40–0.55 → loosely related (same domain but different focus)
+ *   < 0.40  → unrelated
+ *
+ * We use a permissive threshold here because the ranking layer (RRF)
+ * will push truly relevant results to the top.
+ */
+const VECTOR_MIN_SCORE = 0.40;
 
-// ─── Stop/intent words to strip before fuzzy matching ────────────────────────
+/** RRF constant — higher k reduces the impact of individual rankings */
+const RRF_K = 60;
 
-const FUZZY_STRIP_WORDS = new Set([
+// ─── Query preprocessing ─────────────────────────────────────────────────────
+
+/**
+ * Stop words and intent/action words that should be stripped before
+ * embedding OR keyword matching. These are words that carry user intent
+ * but don't appear in stored memory content.
+ */
+const NOISE_WORDS = new Set([
   // English stop words
-  "a","an","the","and","or","but","in","on","at","to","for","of","with","by","from","as",
-  "is","was","are","were","be","been","being","have","has","had","do","does","did","will",
-  "would","could","should","may","might","shall","can","need","dare","ought","used",
-  "it","its","this","that","these","those","he","she","they","we","you","i","me","my",
-  "his","her","their","our","your","its","him","them","us",
-  "what","which","who","whom","whose","where","when","why","how",
+  "a","an","the","and","or","but","in","on","at","to","for","of","with","by",
+  "from","as","is","was","are","were","be","been","being","have","has","had",
+  "do","does","did","will","would","could","should","may","might","shall",
+  "can","need","dare","ought","used","it","its","this","that","these","those",
+  "he","she","they","we","you","i","me","my","his","her","their","our","your",
+  "him","them","us","what","which","who","whom","whose","where","when","why","how",
   "all","both","each","every","no","not","only","own","same","so","than","too",
   "very","just","more","most","other","some","such","then","there",
-  // Intent/action words that don't appear in stored memories
-  "forget","remember","remind","delete","remove","find","search","show","get","tell",
-  "what","give","let","know","please","want","need","make","put","set","add","create",
+  // Intent/action words — user commands that don't exist in memory content
+  "forget","remember","remind","delete","remove","find","search","show","get",
+  "tell","give","let","know","please","want","make","put","set","add","create",
   "save","store","note","list","look","see","check","about","any","also",
+  "data","everything","anything","info","information","stuff","things","related",
 ]);
 
-function stripIntentWords(query: string): string[] {
+/**
+ * Strip noise/intent words from a query, returning only meaningful content terms.
+ */
+function extractContentTerms(query: string): string[] {
   return query
     .toLowerCase()
     .split(/\s+/)
     .map((t) => t.replace(/[^a-z0-9']/g, "").trim())
-    .filter((t) => t.length > 1 && !FUZZY_STRIP_WORDS.has(t));
+    .filter((t) => t.length > 1 && !NOISE_WORDS.has(t));
 }
 
-export { stripIntentWords };
+export { extractContentTerms };
+
+/**
+ * Build a clean search-optimized query by stripping noise words.
+ * This is a fast, no-LLM fallback for query preparation.
+ */
+function buildCleanQuery(query: string): string {
+  const terms = extractContentTerms(query);
+  return terms.length > 0 ? terms.join(" ") : query.trim();
+}
+
+/**
+ * Use LLM to expand and rewrite the user's query into an ideal search query.
+ * This handles synonyms, paraphrases, and intent understanding.
+ *
+ * Example: "delete all data about family names" →
+ *   "family member names mother father sister brother parent sibling"
+ *
+ * Falls back to simple noise-word stripping if LLM is unavailable.
+ */
+async function expandQuery(rawQuery: string): Promise<string> {
+  const client = getOpenAIClient();
+  if (!client) {
+    return buildCleanQuery(rawQuery);
+  }
+
+  try {
+    const response = await client.chat.completions.create({
+      model: OPENAI_CHAT_MODEL,
+      temperature: 0,
+      max_completion_tokens: 150,
+      messages: [
+        {
+          role: "system",
+          content: `You are a search query optimizer for a personal memory/notes app. The user's query may contain action words (delete, find, show, etc.) and noise. Your job is to extract the SEMANTIC MEANING of what they want to search for and produce an optimized search query.
+
+Rules:
+- Strip action/intent words (delete, find, show, search, remove, etc.)
+- Keep ALL content-bearing words
+- Add 2-3 closely related synonyms or elaborations that would help find matching notes
+- Output ONLY the optimized search terms, nothing else
+- Keep it concise: 5-15 words max
+- If the query mentions a category (family, work, health), include related terms
+
+Examples:
+- "delete all data about family names" → "family names mother father sister brother parent sibling relative"
+- "what is my sister's name" → "sister name sibling family"
+- "show me memories about visiting a marriage" → "marriage wedding visit attend ceremony celebration"
+- "find my wifi password" → "wifi password network internet credentials"
+- "names of my family" → "family names mother father sister brother children spouse relatives"`,
+        },
+        { role: "user", content: rawQuery },
+      ],
+    });
+
+    const expanded = extractTextContent(response.choices[0]?.message?.content)?.trim();
+    if (expanded && expanded.length > 0) {
+      return expanded;
+    }
+  } catch {
+    // LLM unavailable — fall back to simple cleaning
+  }
+
+  return buildCleanQuery(rawQuery);
+}
+
+// ─── Reciprocal Rank Fusion ──────────────────────────────────────────────────
+
+/**
+ * Compute RRF score contribution for a result at a given rank.
+ * RRF is the industry-standard method for fusing ranked lists from
+ * different retrieval systems (vector, full-text, keyword).
+ */
+function rrfScore(rank: number): number {
+  return 1 / (RRF_K + rank);
+}
+
+// ─── Keyword matching ────────────────────────────────────────────────────────
+
+/**
+ * Compute a keyword match score between 0 and 1 for a memory
+ * against a set of query terms.
+ *
+ * Uses PROPORTIONAL matching — the fraction of query terms that
+ * appear in the memory's combined text fields.
+ */
+function keywordMatchScore(
+  memory: Doc<"memories">,
+  queryTerms: string[],
+  topicMap: Map<Id<"userTopics">, string>
+): number {
+  if (queryTerms.length === 0) return 0;
+
+  const topicNames = (memory.topicIds ?? [])
+    .map((id) => topicMap.get(id))
+    .filter(Boolean);
+  const primaryTopic = memory.primaryTopicId ? topicMap.get(memory.primaryTopicId) : "";
+  if (primaryTopic) topicNames.push(primaryTopic);
+
+  const haystack = [
+    memory.title ?? "",
+    memory.content ?? "",
+    ...(memory.people ?? []),
+    ...(memory.locations ?? []),
+    memory.lifeArea,
+    ...topicNames,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  let matched = 0;
+  for (const term of queryTerms) {
+    let singular = term;
+    if (term.endsWith("ies") && term.length > 4) {
+      singular = term.substring(0, term.length - 3) + "y";
+    } else if (term.endsWith("s") && term.length > 3) {
+      singular = term.substring(0, term.length - 1);
+    }
+    
+    if (haystack.includes(term) || (singular !== term && haystack.includes(singular))) {
+      matched++;
+    }
+  }
+
+  return matched / queryTerms.length;
+}
+
+// ─── Main search action ──────────────────────────────────────────────────────
 
 export const search = action({
   args: {
@@ -65,91 +217,162 @@ export const search = action({
     }
 
     const maxResults = args.limit ? Math.min(args.limit, 20) : 10;
-    const scoreMap = new Map<Id<"memories">, ScoredEntry>();
+    const rawQuery = args.query.trim();
+    if (!rawQuery) return [];
 
-    function addResult(memory: Doc<"memories">, score: number, source: string) {
-      const existing = scoreMap.get(memory._id);
-      if (existing) {
-        // Multi-source boost: small bonus when confirmed by multiple layers
-        existing.sources.push(source);
-        existing.score = Math.max(existing.score, score) * 1.08;
-      } else {
-        scoreMap.set(memory._id, { memory, score, sources: [source] });
-      }
-    }
+    // ── Step 1: Prepare synchronous query parts ──────────────────────
+    const contentTerms = extractContentTerms(rawQuery);
 
-    // ── Layer 1: Vector semantic search ───────────────────────────────────────
-    if (hasOpenAI()) {
-      try {
-        const queryEmbedding = await embedText(args.query);
-        const vectorResults = await ctx.vectorSearch("memories", "by_embedding", {
-          vector: queryEmbedding,
-          limit: 20, // fetch more so filtering doesn't leave too few
-          filter: (q) => q.eq("userId", session._id),
-        });
+    // ── Step 2: Multi-source retrieval ──────────────────────────────────
+    // Collect ranked lists from 3 independent sources
 
-        // Apply absolute minimum score threshold
-        const aboveMin = vectorResults.filter((r) => r._score >= VECTOR_ABSOLUTE_MIN);
+    /** Source 1: Vector / semantic search */
+    const vectorRanked: Array<{ id: Id<"memories">; vectorScore: number }> = [];
 
-        // Apply relative floor: result must be at least VECTOR_RELATIVE_FLOOR × top score
-        if (aboveMin.length > 0) {
-          const topScore = aboveMin[0]._score; // already sorted desc by Convex
-          const relativeMin = topScore * VECTOR_RELATIVE_FLOOR;
+    /** Source 2: Full-text search (Convex search indexes) */
+    const fulltextRanked: Id<"memories">[] = [];
 
-          const thresholded = aboveMin.filter((r) => r._score >= relativeMin);
-          const orderedIds = thresholded.map((r) => r._id);
+    /** Source 3: Keyword / metadata match */
+    const keywordRanked: Array<{ id: Id<"memories">; kwScore: number }> = [];
 
-          const vectorMemories: Doc<"memories">[] = await ctx.runQuery(
-            api.memories.listByIds,
-            { token: args.token, ids: orderedIds }
-          );
+    // Run all retrieval sources concurrently
+    const [vectorResult, fulltextResult, keywordResult] = await Promise.allSettled([
+      // ── Source 1: Vector search (handles its own LLM expansion) ──
+      (async () => {
+        if (!hasOpenAI()) return;
+        try {
+          const expandedQuery = await expandQuery(rawQuery);
+          const queryEmbedding = await embedText(expandedQuery);
+          const vectorResults = await ctx.vectorSearch("memories", "by_embedding", {
+            vector: queryEmbedding,
+            limit: 30, // fetch more to compensate for filtering
+            filter: (q) => q.eq("userId", session._id),
+          });
 
-          const byId = new Map<Id<"memories">, Doc<"memories">>(
-            vectorMemories.map((m) => [m._id, m] as const)
-          );
-
-          for (const result of thresholded) {
-            const memory = byId.get(result._id);
-            if (memory) {
-              addResult(memory, result._score, "semantic");
+          for (const r of vectorResults) {
+            if (r._score >= VECTOR_MIN_SCORE) {
+              vectorRanked.push({ id: r._id, vectorScore: r._score });
             }
           }
+        } catch {
+          // Vector search failed — continue with other sources
         }
-      } catch {
-        // Vector search failed, continue with text search
+      })(),
+
+      // ── Source 2: Full-text search (clean query, no intent words) ──
+      (async () => {
+        try {
+          const cleanQuery = buildCleanQuery(rawQuery);
+          const results: Doc<"memories">[] = await ctx.runQuery(
+            internal.memories.searchByContent,
+            { userId: session._id, query: cleanQuery, limit: 20 }
+          );
+          for (const m of results) {
+            fulltextRanked.push(m._id);
+          }
+        } catch {
+          // Full-text search not available
+        }
+      })(),
+
+      // ── Source 3: Keyword / metadata search ──
+      (async () => {
+        if (contentTerms.length === 0) return;
+        try {
+          const userTopics = await ctx.runQuery(api.userTopics.list, { token: args.token });
+          const topicMap = new Map(userTopics.map(t => [t._id, t.name.toLowerCase()]));
+          
+          const results: Doc<"memories">[] = await ctx.runQuery(
+            internal.memories.searchByKeyword,
+            { userId: session._id, query: rawQuery, limit: 30 }
+          );
+          for (const m of results) {
+            const kwScore = keywordMatchScore(m, contentTerms, topicMap);
+            if (kwScore > 0) {
+              keywordRanked.push({ id: m._id, kwScore });
+            }
+          }
+          // Sort by match proportion descending
+          keywordRanked.sort((a, b) => b.kwScore - a.kwScore);
+        } catch {
+          // Keyword search failed
+        }
+      })(),
+    ]);
+
+    // ── Step 3: Reciprocal Rank Fusion ──────────────────────────────────
+    // Merge results from all sources using RRF scoring
+
+    const rrfScores = new Map<Id<"memories">, { score: number; sources: string[] }>();
+
+    function addRRF(id: Id<"memories">, rank: number, source: string, boost = 1.0) {
+      const existing = rrfScores.get(id);
+      const contribution = rrfScore(rank) * boost;
+      if (existing) {
+        existing.score += contribution;
+        if (!existing.sources.includes(source)) {
+          existing.sources.push(source);
+        }
+      } else {
+        rrfScores.set(id, { score: contribution, sources: [source] });
       }
     }
 
-    // ── Layer 2: Full-text search (Convex search indexes) ─────────────────────
-    try {
-      const contentResults: Doc<"memories">[] = await ctx.runQuery(
-        internal.memories.searchByContent,
-        { userId: session._id, query: args.query, limit: 15 }
-      );
-      for (const memory of contentResults) {
-        addResult(memory, 0.5, "fulltext");
-      }
-    } catch {
-      // Search index not yet available
+    // Vector results get highest weight (2x boost)
+    for (let i = 0; i < vectorRanked.length; i++) {
+      addRRF(vectorRanked[i].id, i, "vector", 2.0);
     }
 
-    // ── Layer 3: Keyword fallback (tags / people / locations) ─────────────────
-    try {
-      const keywordResults: Doc<"memories">[] = await ctx.runQuery(
-        internal.memories.searchByKeyword,
-        { userId: session._id, query: args.query, limit: 15 }
-      );
-      for (const memory of keywordResults) {
-        addResult(memory, 0.3, "keyword");
-      }
-    } catch {
-      // Fallback search failed
+    // Full-text results get standard weight
+    for (let i = 0; i < fulltextRanked.length; i++) {
+      addRRF(fulltextRanked[i], i, "fulltext", 1.0);
     }
 
-    // ── Rank and return ───────────────────────────────────────────────────────
-    return Array.from(scoreMap.values())
-      .sort((a, b) => b.score - a.score)
+    // Keyword results get weight proportional to their match quality
+    for (let i = 0; i < keywordRanked.length; i++) {
+      const item = keywordRanked[i];
+      // Only include if ≥40% of terms matched (prevents single-word noise)
+      if (item.kwScore >= 0.4) {
+        addRRF(item.id, i, "keyword", 0.8 * item.kwScore);
+      }
+    }
+
+    // ── Step 4: Multi-source bonus ────────────────────────────────────
+    // Results found by multiple sources are more likely to be relevant
+    for (const [, entry] of rrfScores) {
+      if (entry.sources.length >= 2) {
+        entry.score *= 1.15; // 15% bonus for multi-source confirmation
+      }
+      if (entry.sources.length >= 3) {
+        entry.score *= 1.10; // additional 10% for triple confirmation
+      }
+    }
+
+    // ── Step 5: Sort and hydrate ───────────────────────────────────────
+    const rankedIds = Array.from(rrfScores.entries())
+      .sort((a, b) => b[1].score - a[1].score)
       .slice(0, maxResults)
-      .map((entry) => ({ ...entry.memory, _score: entry.score }));
+      .map(([id]) => id);
+
+    if (rankedIds.length === 0) return [];
+
+    // Hydrate the top results with full memory documents
+    const memories: Doc<"memories">[] = await ctx.runQuery(
+      api.memories.listByIds,
+      { token: args.token, ids: rankedIds }
+    );
+
+    // Preserve the RRF ranking order
+    const byId = new Map(memories.map((m) => [m._id, m] as const));
+    const results: SearchableMemory[] = [];
+    for (const id of rankedIds) {
+      const memory = byId.get(id);
+      if (memory) {
+        const rrfEntry = rrfScores.get(id);
+        results.push({ ...memory, _score: rrfEntry?.score ?? 0 });
+      }
+    }
+
+    return results;
   },
 });

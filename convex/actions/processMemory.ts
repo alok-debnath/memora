@@ -119,6 +119,44 @@ function hasExplicitSchedulingFields(value: Record<string, unknown>) {
   );
 }
 
+/**
+ * Build a structured, metadata-enriched text for embedding generation.
+ * Including structured metadata (people, locations, life area, etc.)
+ * makes the embedding more semantically discoverable.
+ *
+ * Example output:
+ * ```
+ * Title: Sister's Name
+ * Content: Sister's name is Ananya.
+ * People: Ananya
+ * Category: family
+ * ```
+ */
+function buildEmbeddingText(args: {
+  title?: string;
+  content?: string;
+  people?: string[];
+  locations?: string[];
+  lifeArea?: string;
+  entryKind?: string;
+}): string {
+  const parts: string[] = [];
+  if (args.title) parts.push(`Title: ${args.title}`);
+  if (args.content) parts.push(`Content: ${args.content}`);
+  if (args.people && args.people.length > 0) {
+    parts.push(`People: ${args.people.join(", ")}`);
+  }
+  if (args.locations && args.locations.length > 0) {
+    parts.push(`Locations: ${args.locations.join(", ")}`);
+  }
+  if (args.lifeArea) parts.push(`Category: ${args.lifeArea}`);
+  if (args.entryKind === "reminder") parts.push(`Type: reminder`);
+  // Fall back to simple concatenation if no structured parts
+  return parts.length > 0 ? parts.join("\n") : `${args.title ?? ""}\n${args.content ?? ""}`;
+}
+
+export { buildEmbeddingText };
+
 export const processMemory = action({
   args: {
     memoryId: v.id("memories"),
@@ -134,7 +172,9 @@ export const processMemory = action({
       return;
     }
 
-    const embedding = await embedText(`${args.title}\n${args.content}`);
+    const embedding = await embedText(
+      buildEmbeddingText({ title: args.title, content: args.content })
+    );
 
     await ctx.runMutation(internal.processMemoryMutations.updateEmbedding, {
       memoryId: args.memoryId,
@@ -258,6 +298,18 @@ export const processMemory = action({
         hasExplicitSchedulingFields(extracted) &&
         (extractionHasSchedule || !existingIsReminder);
 
+      // Re-embed with enriched metadata from AI extraction
+      const enrichedEmbedding = await embedText(
+        buildEmbeddingText({
+          title: normalized.title ?? args.title,
+          content: args.content,
+          people: normalized.people,
+          locations: normalized.locations,
+          lifeArea: normalized.lifeArea,
+          entryKind: normalized.entryKind,
+        })
+      );
+
       await ctx.runMutation(internal.processMemoryMutations.updateAIFields, {
         memoryId: args.memoryId,
         title: normalized.title,
@@ -270,7 +322,7 @@ export const processMemory = action({
         ...(shouldUpdateScheduling ? toStoredMemoryFields(normalized) : {}),
         sentimentScore: normalized.sentimentScore,
         extractedActions: normalized.extractedActions,
-        embedding,
+        embedding: enrichedEmbedding,
       });
       if (memory) {
         await ctx.scheduler.runAfter(0, internal.actions.manageTopics.assignTopicsToMemory, {
@@ -278,7 +330,7 @@ export const processMemory = action({
           userId: memory.userId,
           title: normalized.title ?? args.title,
           content: args.content,
-          embedding,
+          embedding: enrichedEmbedding,
         });
       }
     } catch {
@@ -406,6 +458,24 @@ export const captureMemory = action({
 
       if (embeddingResult.status === "fulfilled") {
         embedding = embeddingResult.value;
+      }
+
+      // Re-embed with enriched metadata if we got good AI extraction
+      if (embedding && structured.people?.length || structured.locations?.length || structured.lifeArea) {
+        try {
+          embedding = await embedText(
+            buildEmbeddingText({
+              title: structured.title,
+              content: args.content,
+              people: structured.people,
+              locations: structured.locations,
+              lifeArea: structured.lifeArea,
+              entryKind: structured.entryKind,
+            })
+          );
+        } catch {
+          // Keep the original embedding if re-embedding fails
+        }
       }
     }
 

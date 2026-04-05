@@ -363,6 +363,44 @@ export const listByIds = query({
   },
 });
 
+/**
+ * Noise words to strip from search queries before passing to
+ * Convex full-text search or keyword matching.
+ * Kept here (query-side only) to avoid a "use node" dependency.
+ */
+const SEARCH_NOISE_WORDS = new Set([
+  "a","an","the","and","or","but","in","on","at","to","for","of","with","by",
+  "from","as","is","was","are","were","be","been","being","have","has","had",
+  "do","does","did","will","would","could","should","may","might","shall",
+  "can","need","it","its","this","that","these","those",
+  "he","she","they","we","you","i","me","my","his","her","their","our","your",
+  "him","them","us","what","which","who","whom","whose","where","when","why","how",
+  "all","both","each","every","no","not","only","own","same","so","than","too",
+  "very","just","more","most","other","some","such","then","there",
+  // Intent/action words
+  "forget","remember","remind","delete","remove","find","search","show","get",
+  "tell","give","let","know","please","want","make","put","set","add","create",
+  "save","store","note","list","look","see","check","about","any","also",
+  "data","everything","anything","info","information","stuff","things","related",
+]);
+
+function cleanSearchQuery(raw: string): string {
+  const terms = raw
+    .toLowerCase()
+    .split(/\s+/)
+    .map((t) => t.replace(/[^a-z0-9']/g, "").trim())
+    .filter((t) => t.length > 1 && !SEARCH_NOISE_WORDS.has(t));
+  return terms.length > 0 ? terms.join(" ") : raw.trim();
+}
+
+function extractSearchTerms(raw: string): string[] {
+  return raw
+    .toLowerCase()
+    .split(/\s+/)
+    .map((t) => t.replace(/[^a-z0-9']/g, "").trim())
+    .filter((t) => t.length > 1 && !SEARCH_NOISE_WORDS.has(t));
+}
+
 export const searchByContent = internalQuery({
   args: {
     userId: v.id("users"),
@@ -371,17 +409,21 @@ export const searchByContent = internalQuery({
   },
   handler: async (ctx, args) => {
     const maxResults = args.limit ? Math.min(args.limit, 20) : 10;
+    // Clean the query to remove intent/noise words before full-text search
+    const cleanedQuery = cleanSearchQuery(args.query);
+    if (!cleanedQuery) return [];
+
     const [contentResults, titleResults] = await Promise.all([
       ctx.db
         .query("memories")
         .withSearchIndex("search_content", (q) =>
-          q.search("content", args.query).eq("userId", args.userId)
+          q.search("content", cleanedQuery).eq("userId", args.userId)
         )
         .take(maxResults),
       ctx.db
         .query("memories")
         .withSearchIndex("search_title", (q) =>
-          q.search("title", args.query).eq("userId", args.userId)
+          q.search("title", cleanedQuery).eq("userId", args.userId)
         )
         .take(maxResults),
     ]);
@@ -405,20 +447,74 @@ export const searchByKeyword = internalQuery({
     limit: v.optional(v.float64()),
   },
   handler: async (ctx, args) => {
-    const maxResults = args.limit ? Math.min(args.limit, 20) : 10;
-    const queryLower = args.query.toLowerCase();
+    const maxResults = args.limit ? Math.min(args.limit, 30) : 15;
+    const queryTerms = extractSearchTerms(args.query);
+    if (queryTerms.length === 0) return [];
+
+    // Scan recent memories for keyword matches across ALL text fields
     const memories = await ctx.db
       .query("memories")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .order("desc")
-      .take(100);
+      .take(200);
 
-    return memories
-      .filter((m) =>
-        isActiveMemory(m) &&
-        ((m.people ?? []).some((person) => person.toLowerCase().includes(queryLower)) ||
-        (m.locations ?? []).some((loc) => loc.toLowerCase().includes(queryLower)))
-      ).slice(0, maxResults);
+    // Fetch user topics for integration
+    const userTopics = await ctx.db
+      .query("userTopics")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+    const topicMap = new Map<Id<"userTopics">, string>();
+    for (const t of userTopics) {
+      if (!t.isArchived) topicMap.set(t._id, t.name.toLowerCase());
+    }
+
+    // Score each memory by proportion of query terms matched
+    const scored = memories
+      .filter(isActiveMemory)
+      .map((m) => {
+        const topicNames = (m.topicIds ?? [])
+          .map((id) => topicMap.get(id))
+          .filter(Boolean);
+        const primaryTopic = m.primaryTopicId ? topicMap.get(m.primaryTopicId) : "";
+        if (primaryTopic) topicNames.push(primaryTopic);
+
+        const haystack = [
+          m.title ?? "",
+          m.content ?? "",
+          ...(m.people ?? []),
+          ...(m.locations ?? []),
+          m.lifeArea,
+          m.entryKind,
+          ...topicNames,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        let matched = 0;
+        for (const term of queryTerms) {
+          let singular = term;
+          if (term.endsWith("ies") && term.length > 4) {
+            singular = term.substring(0, term.length - 3) + "y";
+          } else if (term.endsWith("s") && term.length > 3) {
+            singular = term.substring(0, term.length - 1);
+          }
+          
+          if (haystack.includes(term) || (singular !== term && haystack.includes(singular))) {
+            matched++;
+          }
+        }
+        const proportion = matched / queryTerms.length;
+        return { memory: m, proportion, matched };
+      })
+      // Require at least 1 term matched AND ≥40% of terms for multi-term queries
+      .filter(({ matched, proportion }) => {
+        if (queryTerms.length === 1) return matched >= 1;
+        return proportion >= 0.4;
+      })
+      .sort((a, b) => b.proportion - a.proportion || b.matched - a.matched);
+
+    return scored.slice(0, maxResults).map((s) => s.memory);
   },
 });
 
@@ -1235,7 +1331,50 @@ export const listWithoutEmbeddings = internalQuery({
         _id: m._id,
         title: m.title,
         content: m.content,
+        people: m.people,
+        locations: m.locations,
+        lifeArea: m.lifeArea,
+        entryKind: m.entryKind,
       }));
+  },
+});
+
+/**
+ * Paginated query for re-embedding all active memories.
+ * Returns a batch of memories with metadata needed for enriched embeddings.
+ */
+export const listForReembedding = internalQuery({
+  args: {
+    limit: v.optional(v.float64()),
+    cursor: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const batchSize = args.limit ? Math.min(args.limit, 50) : 25;
+    const result = await ctx.db
+      .query("memories")
+      .order("desc")
+      .paginate({
+        numItems: batchSize,
+        cursor: (args.cursor ?? null) as string | null,
+      });
+
+    const batch = result.page
+      .filter(isActiveMemory)
+      .map((m) => ({
+        _id: m._id,
+        title: m.title,
+        content: m.content,
+        people: m.people,
+        locations: m.locations,
+        lifeArea: m.lifeArea,
+        entryKind: m.entryKind,
+      }));
+
+    return {
+      batch,
+      hasMore: !result.isDone,
+      nextCursor: result.continueCursor,
+    };
   },
 });
 

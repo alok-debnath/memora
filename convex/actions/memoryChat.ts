@@ -18,7 +18,7 @@ import {
   toMemorySummaryFields,
   toStoredMemoryFields,
 } from "../lib/memoryKind";
-import { stripIntentWords } from "./semanticSearch";
+
 
 type MemoryDoc = Doc<"memories">;
 type DocumentDoc = Doc<"documentExtractions">;
@@ -466,44 +466,21 @@ async function searchMemories(
     };
   }
 
+  // The rewritten semanticSearch already handles:
+  // 1. LLM query expansion (strips intent words, adds synonyms)
+  // 2. Vector search with permissive thresholds
+  // 3. Full-text search with cleaned query
+  // 4. Proportional keyword matching (prevents single-term noise)
+  // 5. RRF fusion ranking across all sources
   const semanticResults = await ctx.runAction(api.actions.semanticSearch.search, {
     token: args.token,
     query: normalizedQuery,
     limit: 12,
   });
 
-  // Strip stop/intent words so "forget my sisters name" → ["sisters", "name"]
-  const queryTerms = stripIntentWords(normalizedQuery);
-
-  const fuzzyResults = queryTerms.length > 0
-    ? recentMemories.filter((memory: MemoryDoc) => {
-        const haystack = [
-          memory.title,
-          memory.content,
-          ...(memory.people ?? []),
-          ...(memory.locations ?? []),
-        ]
-          .filter(Boolean)
-          .join("\n")
-          .toLowerCase();
-        return queryTerms.some((term) => haystack.includes(term));
-      })
-    : [];
-
-  const merged: MemoryDoc[] = [];
-  const seen = new Set<Id<"memories">>();
-
-  for (const memory of [...semanticResults, ...fuzzyResults]) {
-    if (seen.has(memory._id)) {
-      continue;
-    }
-    seen.add(memory._id);
-    merged.push(memory);
-  }
-
   return {
-    results: merged.slice(0, 10).map(toMemorySummary),
-    count: merged.length,
+    results: semanticResults.slice(0, 10).map(toMemorySummary),
+    count: semanticResults.length,
   };
 }
 
