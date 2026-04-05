@@ -8,7 +8,7 @@ import {
   type ViewStyle,
   View,
 } from "react-native";
-import { BlurView } from "expo-blur";
+
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -26,7 +26,7 @@ import { Text, XStack, YStack } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
 import { PressableScale } from "@/components/ui/PressableScale";
-import { useThemeStore } from "@/store/theme";
+
 
 const HEADER_HEIGHT = 48;
 const HEADER_TOP_MARGIN = 8;
@@ -44,27 +44,9 @@ function GlassPill({
   onLayout?: (event: LayoutChangeEvent) => void;
 }) {
   const theme = useAppTheme();
-  const resolvedMode = useThemeStore((state) => state.resolvedMode);
-  const isDark = resolvedMode === "dark";
   const flattened = StyleSheet.flatten(style) ?? {};
   const borderRadius =
     typeof flattened.borderRadius === "number" ? flattened.borderRadius : 999;
-
-  const glassColor = isDark
-    ? "rgba(34,25,19,0.94)"
-    : "rgba(255,250,244,0.92)";
-  const overlayColor = isDark
-    ? "rgba(17,12,8,0.42)"
-    : "rgba(255,244,232,0.44)";
-  const borderColor = isDark
-    ? theme.borderColor.val + "80"
-    : "rgba(120,83,27,0.18)";
-  const sheenStart = isDark
-    ? "rgba(255,255,255,0.06)"
-    : "rgba(255,255,255,0.78)";
-  const sheenEnd = isDark
-    ? "rgba(255,255,255,0.01)"
-    : "rgba(255,255,255,0.12)";
 
   return (
     <View
@@ -72,80 +54,16 @@ function GlassPill({
       style={[
         styles.glassShellBase,
         Platform.OS === "web" ? styles.glassShellWeb : styles.glassShellNative,
-        { borderRadius, shadowColor: theme.shadowColor.val },
+        { 
+          backgroundColor: theme.background.val,
+          borderColor: theme.borderColor.val,
+          borderWidth: 1,
+          borderRadius, 
+          shadowColor: theme.shadowColor.val, 
+        },
         flattened,
       ]}
     >
-      {Platform.OS === "web" ? (
-        <View
-          pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFill,
-            styles.glassBackdrop,
-            {
-              backgroundColor: glassColor,
-              // @ts-ignore web-only style
-              backdropFilter: "blur(28px)",
-            },
-          ]}
-        />
-      ) : Platform.OS === "ios" ? (
-        <>
-          <BlurView
-            pointerEvents="none"
-            style={StyleSheet.absoluteFill}
-            intensity={82}
-            tint={isDark ? "dark" : "light"}
-          />
-          <View
-            pointerEvents="none"
-            style={[
-              StyleSheet.absoluteFill,
-              styles.glassBackdrop,
-              { backgroundColor: overlayColor },
-            ]}
-          />
-        </>
-      ) : (
-        <View
-          pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFill,
-            styles.glassBackdrop,
-            {
-              backgroundColor: isDark
-                ? "rgba(27,22,18,0.96)"
-                : "rgba(255,250,245,0.96)",
-            },
-          ]}
-        />
-      )}
-
-      <LinearGradient
-        pointerEvents="none"
-        colors={[sheenStart, sheenEnd]}
-        start={{ x: 0.12, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[StyleSheet.absoluteFill, styles.glassSheen]}
-      />
-      {Platform.OS !== "web" ? (
-        <View
-          pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFill,
-            styles.glassRim,
-            { borderRadius },
-          ]}
-        />
-      ) : null}
-      <View
-        pointerEvents="none"
-        style={[
-          StyleSheet.absoluteFill,
-          styles.glassBorder,
-          { borderRadius, borderColor },
-        ]}
-      />
       <View style={styles.glassContent}>{children}</View>
     </View>
   );
@@ -216,7 +134,6 @@ export function MorePageScaffold({
         },
         { scale },
       ],
-      opacity: interpolate(offset, [0, 140], [1, 0.94], Extrapolation.CLAMP),
     };
   });
 
@@ -238,7 +155,6 @@ export function MorePageScaffold({
             keepTopEdgeOffset,
         },
       ],
-      opacity: interpolate(offset, [0, 140], [1, 0.97], Extrapolation.CLAMP),
     };
   });
 
@@ -455,16 +371,17 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   glassShellBase: {
-    overflow: "hidden",
   },
   glassShellNative: {
-    shadowOpacity: 0.2,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 10,
+    shadowOpacity: 0.22,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 16,
   },
   glassShellWeb: {
-    // Keep web stable: no extra shadow stack with backdrop blur to avoid first-frame artifacts
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
   },
   headerLayer: {
     position: "absolute",

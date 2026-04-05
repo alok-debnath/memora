@@ -347,8 +347,21 @@ export default function DataScreen() {
                     Deleted memories
                   </Text>
                   <Text fontSize={13} fontFamily="$body" color="$colorMuted">
-                    Restore or permanently delete soft-deleted memories.
+                    Deleted memories are moved to trash and stay here until you remove them forever. You can restore any item at any time — there is no auto-expiry.
                   </Text>
+                  <XStack
+                    marginTop={4}
+                    backgroundColor={theme.primary.val + "12"}
+                    borderRadius={12}
+                    padding={10}
+                    gap={8}
+                    alignItems="flex-start"
+                  >
+                    <Feather name="info" size={13} color={theme.primary.val} style={{ marginTop: 1 }} />
+                    <Text fontSize={12} fontFamily="$body" color={theme.primary.val} flex={1} lineHeight={17}>
+                      Edit &amp; undo history is kept for 7 days. After that, you can still restore deleted memories but cannot undo individual edits.
+                    </Text>
+                  </XStack>
                 </YStack>
                 {deletedMemories.length > 0 && (
                   <XStack justifyContent="flex-end">
