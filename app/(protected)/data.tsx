@@ -60,6 +60,7 @@ function MemoryRow({
       borderColor={theme.borderColor.val}
       backgroundColor={theme.background.val}
       position="relative"
+      zIndex={menuOpen ? 100 : 1}
     >
       <YStack
         width={40}

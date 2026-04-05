@@ -1774,8 +1774,8 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
         const lastMsg = messages[messages.length - 1]; // Assume latest message is at end of array (since query sorts ascending)
         if (lastMsg && lastMsg.role !== "user" && !unreadVoiceResponsesRef.current.has(lastMsg._id)) {
             unreadVoiceResponsesRef.current.add(lastMsg._id);
-            const parsed = parseDeletionProposal(lastMsg.content ?? "");
-            const textToSpeak = parsed ? parsed.cleanText : (lastMsg.content ?? "");
+            // Strip out all markdown comments (like MEMORA_SEARCH_RESULTS, MEMORA_DELETION_PROPOSAL, etc.)
+            const textToSpeak = (lastMsg.content ?? "").replace(/<!--[\s\S]*?-->/g, "").trim();
             speakMessage(lastMsg._id, textToSpeak);
         }
       }
@@ -1814,7 +1814,9 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
         return;
       }
 
-      const cleanText = cleanTextForSpeech(text);
+      // Strip out all markdown comments from the text before passing it to cleanTextForSpeech
+      const textWithoutComments = text.replace(/<!--[\s\S]*?-->/g, "").trim();
+      const cleanText = cleanTextForSpeech(textWithoutComments);
       if (!cleanText) return;
 
       const chunks = chunkTextForSpeech(cleanText, Math.max(120, Speech.maxSpeechInputLength));
