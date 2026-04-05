@@ -4,7 +4,7 @@ import * as Haptics from "expo-haptics";
 import { Tabs, useRouter, usePathname, Slot } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import {
   Platform,
   Pressable,
@@ -15,6 +15,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import Animated, {
   useAnimatedStyle,
   withSpring,
+  withSequence,
   withTiming,
   useSharedValue,
 } from "react-native-reanimated";
@@ -116,12 +117,12 @@ function TabItem({
   const scale = useSharedValue(1);
   const labelOpacity = useSharedValue(isFocused ? 1 : 0);
   const labelY = useSharedValue(isFocused ? 0 : 5);
-  const iconY = useSharedValue(isFocused ? -2 : 6);
+  const iconY = useSharedValue(isFocused ? 0 : 6);
 
   useEffect(() => {
     labelOpacity.value = withTiming(isFocused ? 1 : 0, { duration: 150 });
     labelY.value = withSpring(isFocused ? 0 : 5, ANIM.focus);
-    iconY.value = withSpring(isFocused ? -2 : 6, ANIM.focus);
+    iconY.value = withSpring(isFocused ? 0 : 6, ANIM.focus);
   }, [isFocused]);
 
   const pressStyle = useAnimatedStyle(() => ({
@@ -241,24 +242,53 @@ function LiquidGlassTabBar({
 
   // Sliding active indicator
   const indicatorX = useSharedValue(IND_X[displayIndex] ?? IND_X[0]);
+  const pillScaleX = useSharedValue(1);
+  const pillScaleY = useSharedValue(1);
+
   useEffect(() => {
     indicatorX.value = withSpring(IND_X[displayIndex] ?? IND_X[0], ANIM.indicator);
+    // Squish on launch → stretch on arrival (liquid glass morphing)
+    pillScaleX.value = withSequence(
+      withTiming(1.28, { duration: 90 }),
+      withSpring(1, { damping: 16, stiffness: 260, overshootClamping: false })
+    );
+    pillScaleY.value = withSequence(
+      withTiming(0.78, { duration: 90 }),
+      withSpring(1, { damping: 16, stiffness: 260, overshootClamping: false })
+    );
+    // Container micro-pulse: skip on mount, transform-only so it runs on UI thread
+    if (isMounted.current) {
+      barScale.value = withSequence(
+        withTiming(0.986, { duration: 65 }),
+        withSpring(1, { damping: 14, stiffness: 320, overshootClamping: false })
+      );
+    }
   }, [displayIndex]);
 
   const indicatorStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: indicatorX.value }],
+    transform: [
+      { translateX: indicatorX.value },
+      { scaleX: pillScaleX.value },
+      { scaleY: pillScaleY.value },
+    ],
   }));
 
   // Entrance: slide up from below on mount
   const barY = useSharedValue(100);
   const barOpacity = useSharedValue(0);
+  // Subtle container pulse on tab change (UI-thread only — no JS bridge cost)
+  const barScale = useSharedValue(1);
+  const isMounted = useRef(false);
+
   useEffect(() => {
     barY.value = withSpring(0, ANIM.entrance);
     barOpacity.value = withTiming(1, { duration: 280 });
+    isMounted.current = true;
   }, []);
 
+  // Single animated style merges entrance + pulse transforms so they don't clobber each other
   const barEntranceStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: barY.value }],
+    transform: [{ translateY: barY.value }, { scale: barScale.value }],
     opacity: barOpacity.value,
   }));
 

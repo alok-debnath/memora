@@ -906,6 +906,7 @@ function ChatInputBar({
   const setMode = setChatInputMode ?? setInternalMode;
 
   const [voiceLiveTranscript, setVoiceLiveTranscript] = useState("");
+  const [isVoicePaused, setIsVoicePaused] = useState(false);
   const hasLiveTranscript = voiceLiveTranscript.trim().length > 0;
 
   const handleVoiceComplete = useCallback((transcript: string) => {
@@ -952,11 +953,26 @@ function ChatInputBar({
               borderRadius={14}
               backgroundColor="$accent"
               borderWidth={1}
-              borderColor="$primary"
+              borderColor={isVoicePaused ? "$borderColor" : "$primary"}
             >
-              <Text fontSize={14} fontFamily="$body" color="$color" lineHeight={20}>
-                {voiceLiveTranscript}
-              </Text>
+              {isVoicePaused ? (
+                <TextInput
+                  value={voiceLiveTranscript}
+                  onChangeText={setVoiceLiveTranscript}
+                  multiline
+                  style={{
+                    fontSize: 14,
+                    color: theme.color.val,
+                    lineHeight: 20,
+                    padding: 0,
+                    textAlignVertical: "top",
+                  }}
+                />
+              ) : (
+                <Text fontSize={14} fontFamily="$body" color="$color" lineHeight={20}>
+                  {voiceLiveTranscript}
+                </Text>
+              )}
             </YStack>
           ) : null}
           <XStack alignItems="center" justifyContent="center" position="relative" minHeight={56}>
@@ -965,8 +981,11 @@ function ChatInputBar({
                 onTranscription={setVoiceLiveTranscript}
                 onTranscriptionComplete={(text) => {
                   setVoiceLiveTranscript("");
+                  setIsVoicePaused(false);
                   handleVoiceComplete(text);
                 }}
+                onPauseChange={setIsVoicePaused}
+                transcriptOverride={isVoicePaused ? voiceLiveTranscript : undefined}
                 compact
                 inputMode="auto"
               />
@@ -1238,7 +1257,9 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
         const lastMsg = messages[messages.length - 1]; // Assume latest message is at end of array (since query sorts ascending)
         if (lastMsg && lastMsg.role !== "user" && !unreadVoiceResponsesRef.current.has(lastMsg._id)) {
             unreadVoiceResponsesRef.current.add(lastMsg._id);
-            speakMessage(lastMsg._id, lastMsg.content ?? "");
+            const parsed = parseDeletionProposal(lastMsg.content ?? "");
+            const textToSpeak = parsed ? parsed.cleanText : (lastMsg.content ?? "");
+            speakMessage(lastMsg._id, textToSpeak);
         }
       }
 

@@ -92,6 +92,7 @@ export function EditMemorySheet({
   const [mode, setMode] = useState<"manual" | "voice">("manual");
   const [voiceLoading, setVoiceLoading] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [isVoicePaused, setIsVoicePaused] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
 
   useEffect(() => {
@@ -672,6 +673,7 @@ export function EditMemorySheet({
                 <VoiceRecorder
                   onTranscription={setVoiceTranscript}
                   onTranscriptionComplete={setVoiceTranscript}
+                  onPauseChange={setIsVoicePaused}
                   inputMode="auto"
                 />
                 <Text fontSize={16} fontFamily="$body" fontWeight="600" color="$color">
@@ -681,8 +683,8 @@ export function EditMemorySheet({
                   e.g. "Change the title" · "Add a reminder for Monday"
                 </Text>
 
-                {/* Live / captured transcript */}
-                {voiceTranscript.trim().length > 0 && (
+                {/* Live / captured transcript — hidden while paused (VoiceRecorder shows editable internally) */}
+                {!isVoicePaused && voiceTranscript.trim().length > 0 && (
                   <YStack
                     width="100%"
                     backgroundColor="$accent"
