@@ -581,7 +581,9 @@ function buildSystemPrompt(userTimezone: string, currentTime: string) {
 
 7. **ANALYSIS**: When asked to analyze, use the analyze_memories tool, then share insights conversationally.
 
-8. **SEARCH RESULTS UI**: When you use search_memories, the app will automatically display interactive cards for the results underneath your message. Keep your text response extremely brief (e.g. "Here's what I found:") and **DO NOT** summarize or list the individual memory details in your text.
+8. **EXPLICIT REFERENCES & UI CARDS**: Whenever you reference specific memories or reminders in your response (either from search_memories, list_memories, or other tools), you MUST append a markdown comment at the very end of your response containing a JSON array of the specific memory IDs you are talking about.
+   Format exactly like this: \`<!--MEMORA_REFERENCES:["id1", "id2"]-->\`
+   The app will automatically render interactive cards for ONLY those IDs you specify. Be sure to list them concisely.
 
 9. **UNDO & HISTORY**:
    - To undo a **deletion** (user says "undo", "restore", "bring it back" after a recent delete): use restore_memory if you know the ID, otherwise call list_deleted_memories to find it, then restore_memory. Do NOT use the history tool for undoing deletions.
@@ -761,8 +763,8 @@ export const chat = action({
                   recentMemories: await getRecentMemoriesCache(),
                 });
                 result = JSON.stringify(searchRes);
-                pendingSearchItems = searchRes.results;
-                pendingSearchIsCached = searchRes.isCached ?? false;
+              // Do NOT automatically populate pendingSearchItems here anymore.
+              // AI will append <!--MEMORA_REFERENCES:[...]--> which we parse below.
               } finally {
                 // Always clear the status, even if search throws
                 await ctx.runMutation(internal.chat.clearSearchStatus, {
@@ -972,15 +974,13 @@ export const chat = action({
                   token: args.token,
                   limit,
                 });
-                const results = deleted.map((memory: MemoryDoc) => ({
+                result = JSON.stringify({
+                  deleted_memories: deleted.map((memory: MemoryDoc) => ({
                     ...toMemorySummary(memory),
                     deletedAt: memory.deletedAt
                       ? new Date(memory.deletedAt).toISOString()
                       : null,
-                  }));
-                pendingSearchItems = results;
-                result = JSON.stringify({
-                  deleted_memories: results,
+                  })),
                   count: deleted.length,
                 });
               } catch (error) {
@@ -1009,12 +1009,10 @@ export const chat = action({
                 typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 100) : 20;
               const ordered =
                 fnArgs.sort === "oldest" ? [...memories].reverse() : memories;
-              const results = ordered
-                  .slice(0, limit)
-                  .map((memory: MemoryDoc) => toMemorySummary(memory));
-              pendingSearchItems = results;
               result = JSON.stringify({
-                memories: results,
+                memories: ordered
+                  .slice(0, limit)
+                  .map((memory: MemoryDoc) => toMemorySummary(memory)),
                 count: memories.length,
               });
             } else if (fnName === "get_stats") {
@@ -1040,12 +1038,10 @@ export const chat = action({
               const memories = await getRecentMemoriesCache();
               const limit =
                 typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 100) : 100;
-              const results = memories
-                  .slice(0, limit)
-                  .map((memory: MemoryDoc) => toMemorySummary(memory));
-              pendingSearchItems = results;
               result = JSON.stringify({
-                memories: results,
+                memories: memories
+                  .slice(0, limit)
+                  .map((memory: MemoryDoc) => toMemorySummary(memory)),
                 count: memories.length,
               });
             } else if (fnName === "history") {
@@ -1169,8 +1165,27 @@ export const chat = action({
           }
         }
 
-        const resolvedText = finalText || "I processed that, but I couldn't generate a clear reply.";
+        let resolvedText = finalText || "I processed that, but I couldn't generate a clear reply.";
         
+        // Parse MEMORA_REFERENCES
+        const refMatch = resolvedText.match(/<!--MEMORA_REFERENCES:\s*(\[[^\]]*\])\s*-->/);
+        if (refMatch) {
+          try {
+            const refIds = JSON.parse(refMatch[1]) as string[];
+            if (Array.isArray(refIds) && refIds.length > 0) {
+              const fetchedMemories = await ctx.runQuery(api.memories.listByIds, {
+                token: args.token,
+                ids: refIds as Id<"memories">[],
+              });
+              pendingSearchItems = fetchedMemories.map(m => toMemorySummary(m));
+            }
+          } catch (e) {
+            console.error("Failed to parse MEMORA_REFERENCES:", e);
+          }
+          // Remove the raw references marker
+          resolvedText = resolvedText.replace(/<!--MEMORA_REFERENCES:\s*\[[^\]]*\]\s*-->/g, "").trim();
+        }
+
         let appendedComments = "";
         if (pendingDeletionItems.length > 0) {
           appendedComments += `\n<!--MEMORA_DELETION_PROPOSAL:${JSON.stringify(pendingDeletionItems)}-->`;
