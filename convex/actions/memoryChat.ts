@@ -368,6 +368,22 @@ function toMemorySummary(memory: MemoryDoc) {
   };
 }
 
+// Compact form used for bulk tool results (list/analyze) to avoid context bloat
+function toMemoryCompact(memory: MemoryDoc) {
+  return {
+    id: memory._id,
+    title: memory.title,
+    content: (memory.content ?? "").slice(0, 300),
+    ...toMemorySummaryFields(memory),
+  };
+}
+
+const MARKER_STRIP_RE = /<!--MEMORA_[A-Z_]+:[\s\S]*?-->/g;
+
+function stripMarkersFromContent(content: string): string {
+  return content.replace(MARKER_STRIP_RE, "").trim();
+}
+
 function toDocumentSummary(document: DocumentDoc) {
   return {
     id: document._id,
@@ -668,7 +684,7 @@ export const chat = action({
     });
     const recentChat = chatHistory.slice(-12).map((message) => ({
       role: message.role as "user" | "assistant",
-      content: (message.content ?? "").slice(0, 4000),
+      content: stripMarkersFromContent(message.content ?? "").slice(0, 2000),
     }));
 
     const attachments = parseAttachments(args.message);
@@ -721,6 +737,8 @@ export const chat = action({
         const pendingCardIds = new Set<string>();
         let pendingSearchIsCached = false;
         let surfaceCardsCalled = false;
+        // Candidate memory ID+title pairs collected from search/list — used as minimal context for forced surface_cards
+        let surfaceCandidates: Array<{ id: string; title: string }> = [];
         const createdMemoriesByDedupeKey = new Map<
           string,
           { id: Id<"memories">; title: string }
@@ -780,6 +798,7 @@ export const chat = action({
                   recentMemories: await getRecentMemoriesCache(),
                 });
                 pendingSearchIsCached = searchRes.isCached ?? false;
+                surfaceCandidates = searchRes.results.map((r: { id: string; title?: string }) => ({ id: String(r.id), title: r.title ?? "" }));
                 result = JSON.stringify(searchRes);
               } finally {
                 // Always clear the status, even if search throws
@@ -1026,12 +1045,13 @@ export const chat = action({
             } else if (fnName === "list_memories") {
               const memories = await getRecentMemoriesCache();
               const limit =
-                typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 100) : 20;
+                typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 50) : 20;
               const ordered =
                 fnArgs.sort === "oldest" ? [...memories].reverse() : memories;
               const listed = ordered.slice(0, limit);
+              surfaceCandidates = listed.map((m: MemoryDoc) => ({ id: String(m._id), title: m.title ?? "" }));
               result = JSON.stringify({
-                memories: listed.map((memory: MemoryDoc) => toMemorySummary(memory)),
+                memories: listed.map((memory: MemoryDoc) => toMemoryCompact(memory)),
                 count: memories.length,
               });
             } else if (fnName === "get_stats") {
@@ -1056,11 +1076,11 @@ export const chat = action({
             } else if (fnName === "analyze_memories") {
               const memories = await getRecentMemoriesCache();
               const limit =
-                typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 100) : 100;
+                typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 50) : 50;
               result = JSON.stringify({
                 memories: memories
                   .slice(0, limit)
-                  .map((memory: MemoryDoc) => toMemorySummary(memory)),
+                  .map((memory: MemoryDoc) => toMemoryCompact(memory)),
                 count: memories.length,
               });
             } else if (fnName === "history") {
@@ -1204,18 +1224,28 @@ export const chat = action({
         }
 
         // Mandatory surface_cards call — always runs if AI didn't call it voluntarily.
-        // Uses a small token budget since only the function call JSON is needed.
-        if (!surfaceCardsCalled && finalText) {
+        // Uses minimal context (candidates + final answer only) to keep token cost low.
+        if (!surfaceCardsCalled && finalText && surfaceCandidates.length > 0) {
           try {
             const surfaceCardsToolDef = TOOLS.find(
               (t) => t.type === "function" && t.function.name === "surface_cards"
             );
             if (surfaceCardsToolDef) {
+              const candidateList = surfaceCandidates
+                .map((c) => `- ${c.id}: ${c.title}`)
+                .join("\n");
               const forcedRes = await client.chat.completions.create({
                 model: OPENAI_CHAT_MODEL,
                 messages: [
-                  ...conversation,
-                  { role: "assistant", content: finalText },
+                  {
+                    role: "system",
+                    content:
+                      "You are selecting which memory IDs to surface as cards. Call surface_cards with the IDs you referenced in your answer. Use an empty array if none apply.",
+                  },
+                  {
+                    role: "user",
+                    content: `Available memories:\n${candidateList}\n\nYour answer: ${finalText}`,
+                  },
                 ],
                 tools: [surfaceCardsToolDef],
                 tool_choice: { type: "function", name: "surface_cards" },
