@@ -1196,7 +1196,7 @@ export const chat = action({
 
           // If AI called surface_cards and provided response text in this turn, we're done
           const calledSurfaceCards = choice.tool_calls.some(
-            (tc) => tc.function.name === "surface_cards"
+            (tc) => tc.type === "function" && tc.function.name === "surface_cards"
           );
           if (calledSurfaceCards && content) {
             finalText = content;
