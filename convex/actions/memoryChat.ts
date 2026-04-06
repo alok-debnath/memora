@@ -601,7 +601,7 @@ function buildSystemPrompt(userTimezone: string, currentTime: string) {
 
 7. **ANALYSIS**: When asked to analyze, use the analyze_memories tool, then share insights conversationally.
 
-8. **MEMORY CARDS UI**: Whenever specific memories informed your answer, call `surface_cards` with only the IDs you actually referenced — even for factual questions like "what is X?" or "who is Y?". Only skip `surface_cards` for purely statistical or analytical queries (e.g. counts, topic lists, trends). Never include IDs you searched but didn't use to answer. When the user explicitly asks to browse or see memories, keep your text brief (e.g. "Here's what I found:") and let the cards do the work. For create/update/restore operations the card is shown automatically; no need to call `surface_cards` for those.
+8. **MEMORY CARDS UI**: Whenever specific memories informed your answer, call surface_cards with only the IDs you actually referenced — even for factual questions like "what is X?" or "who is Y?". Only skip surface_cards for purely statistical or analytical queries (e.g. counts, topic lists, trends). Never include IDs you searched but didn't use to answer. When the user explicitly asks to browse or see memories, keep your text brief (e.g. "Here's what I found:") and let the cards do the work. For create/update/restore operations the card is shown automatically; no need to call surface_cards for those.
 
 9. **UNDO & HISTORY**:
    - To undo a **deletion** (user says "undo", "restore", "bring it back" after a recent delete): use restore_memory if you know the ID, otherwise call list_deleted_memories to find it, then restore_memory. Do NOT use the history tool for undoing deletions.
