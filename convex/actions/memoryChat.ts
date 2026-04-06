@@ -601,7 +601,7 @@ function buildSystemPrompt(userTimezone: string, currentTime: string) {
 
 7. **ANALYSIS**: When asked to analyze, use the analyze_memories tool, then share insights conversationally.
 
-8. **MEMORY CARDS UI**: Whenever specific memories informed your answer, call surface_cards with only the IDs you actually referenced — even for factual questions like "what is X?" or "who is Y?". Only skip surface_cards for purely statistical or analytical queries (e.g. counts, topic lists, trends). Never include IDs you searched but didn't use to answer. When the user explicitly asks to browse or see memories, keep your text brief (e.g. "Here's what I found:") and let the cards do the work. For create/update/restore operations the card is shown automatically; no need to call surface_cards for those.
+8. **MEMORY CARDS UI**: After every response you will be asked to call surface_cards — pass the IDs of any memories you actually referenced, or an empty array if none. When the user explicitly asks to browse or see memories, keep your text brief (e.g. "Here's what I found:") and let the cards do the work.
 
 9. **UNDO & HISTORY**:
    - To undo a **deletion** (user says "undo", "restore", "bring it back" after a recent delete): use restore_memory if you know the ID, otherwise call list_deleted_memories to find it, then restore_memory. Do NOT use the history tool for undoing deletions.
@@ -720,6 +720,7 @@ export const chat = action({
         let pendingDeletionItems: Array<{ id: string; title: string; content: string; entry_kind: string }> = [];
         const pendingCardIds = new Set<string>();
         let pendingSearchIsCached = false;
+        let surfaceCardsCalled = false;
         const createdMemoriesByDedupeKey = new Map<
           string,
           { id: Id<"memories">; title: string }
@@ -779,12 +780,7 @@ export const chat = action({
                   recentMemories: await getRecentMemoriesCache(),
                 });
                 pendingSearchIsCached = searchRes.isCached ?? false;
-                result = JSON.stringify({
-                  ...searchRes,
-                  _instruction: searchRes.results.length > 0
-                    ? "REQUIRED: call surface_cards({ids:[...]}) with the IDs of any results you reference before giving your final answer."
-                    : undefined,
-                });
+                result = JSON.stringify(searchRes);
               } finally {
                 // Always clear the status, even if search throws
                 await ctx.runMutation(internal.chat.clearSearchStatus, {
@@ -1189,6 +1185,7 @@ export const chat = action({
             } else if (fnName === "surface_cards") {
               const ids = Array.isArray(fnArgs.ids) ? (fnArgs.ids as string[]) : [];
               for (const id of ids) pendingCardIds.add(id);
+              surfaceCardsCalled = true;
               result = JSON.stringify({ success: true });
             }
 
@@ -1200,12 +1197,39 @@ export const chat = action({
           }
 
           // If AI called surface_cards and provided response text in this turn, we're done
-          const calledSurfaceCards = choice.tool_calls.some(
-            (tc) => tc.type === "function" && tc.function.name === "surface_cards"
-          );
-          if (calledSurfaceCards && content) {
+          if (surfaceCardsCalled && content) {
             finalText = content;
             break;
+          }
+        }
+
+        // Mandatory surface_cards call — always runs if AI didn't call it voluntarily.
+        // Uses a small token budget since only the function call JSON is needed.
+        if (!surfaceCardsCalled && finalText) {
+          try {
+            const surfaceCardsToolDef = TOOLS.find(
+              (t) => t.type === "function" && t.function.name === "surface_cards"
+            );
+            if (surfaceCardsToolDef) {
+              const forcedRes = await client.chat.completions.create({
+                model: OPENAI_CHAT_MODEL,
+                messages: [
+                  ...conversation,
+                  { role: "assistant", content: finalText },
+                ],
+                tools: [surfaceCardsToolDef],
+                tool_choice: { type: "function", name: "surface_cards" },
+                temperature: 0,
+                max_completion_tokens: 150,
+              });
+              const scCall = forcedRes.choices[0]?.message?.tool_calls?.[0];
+              if (scCall && scCall.type === "function" && scCall.function.name === "surface_cards") {
+                const ids = (JSON.parse(scCall.function.arguments).ids ?? []) as string[];
+                for (const id of ids) pendingCardIds.add(String(id));
+              }
+            }
+          } catch {
+            // Non-fatal — cards just won't show for this response
           }
         }
 
