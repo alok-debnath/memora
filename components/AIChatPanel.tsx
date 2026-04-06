@@ -4,10 +4,10 @@ import {
   FlatList,
   Pressable,
   Platform,
-  Clipboard,
   Alert,
   View,
 } from "react-native";
+import Clipboard from "@react-native-clipboard/clipboard";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { Feather } from "@expo/vector-icons";
