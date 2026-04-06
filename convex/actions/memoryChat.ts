@@ -298,6 +298,26 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "surface_cards",
+      description:
+        "Show specific memories as interactive cards in the UI. Call this with only the IDs of memories you actually used or referenced in your response. Do NOT include memories you searched but didn't use to answer.",
+      parameters: {
+        type: "object",
+        properties: {
+          ids: {
+            type: "array",
+            items: { type: "string" },
+            description: "IDs of memories to surface as cards.",
+          },
+        },
+        required: ["ids"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 function parseAttachments(message: string): ParsedAttachment[] {
@@ -581,7 +601,7 @@ function buildSystemPrompt(userTimezone: string, currentTime: string) {
 
 7. **ANALYSIS**: When asked to analyze, use the analyze_memories tool, then share insights conversationally.
 
-8. **MEMORY CARDS UI**: The app automatically shows interactive memory cards for any memories you access (via search_memories, list_memories, create_memory, update_memory, etc.). When you search or list memories to **answer a general question** (e.g. "what names do I have?"), answer in plain text — do NOT suggest the user look at cards. When the user explicitly asks to **browse or see their memories**, keep your text brief (e.g. "Here's what I found:") and let the cards do the work. Never summarize card content in your text when cards are being shown.
+8. **MEMORY CARDS UI**: Use `surface_cards` to show specific memories as interactive cards — call it with only the IDs you actually used in your answer. Never call it with IDs you searched but didn't reference. When the user asks to browse or see memories, call `surface_cards` with the relevant IDs and keep your text brief (e.g. "Here's what I found:"). When you searched memories only to answer a general question, do NOT call `surface_cards` — just answer in plain text. For create/update/restore operations the card is shown automatically; no need to call `surface_cards` for those.
 
 9. **UNDO & HISTORY**:
    - To undo a **deletion** (user says "undo", "restore", "bring it back" after a recent delete): use restore_memory if you know the ID, otherwise call list_deleted_memories to find it, then restore_memory. Do NOT use the history tool for undoing deletions.
@@ -759,7 +779,6 @@ export const chat = action({
                   recentMemories: await getRecentMemoriesCache(),
                 });
                 result = JSON.stringify(searchRes);
-                for (const r of searchRes.results) pendingCardIds.add(String(r.id));
                 pendingSearchIsCached = searchRes.isCached ?? false;
               } finally {
                 // Always clear the status, even if search throws
@@ -1010,7 +1029,6 @@ export const chat = action({
               const ordered =
                 fnArgs.sort === "oldest" ? [...memories].reverse() : memories;
               const listed = ordered.slice(0, limit);
-              listed.slice(0, 10).forEach((m: MemoryDoc) => pendingCardIds.add(String(m._id)));
               result = JSON.stringify({
                 memories: listed.map((memory: MemoryDoc) => toMemorySummary(memory)),
                 count: memories.length,
@@ -1163,6 +1181,10 @@ export const chat = action({
                     error instanceof Error ? error.message : "Failed to attach file",
                 });
               }
+            } else if (fnName === "surface_cards") {
+              const ids = Array.isArray(fnArgs.ids) ? (fnArgs.ids as string[]) : [];
+              for (const id of ids) pendingCardIds.add(id);
+              result = JSON.stringify({ success: true });
             }
 
             conversation.push({
@@ -1170,6 +1192,15 @@ export const chat = action({
               tool_call_id: toolCall.id,
               content: result,
             });
+          }
+
+          // If AI called surface_cards and provided response text in this turn, we're done
+          const calledSurfaceCards = choice.tool_calls.some(
+            (tc) => tc.function.name === "surface_cards"
+          );
+          if (calledSurfaceCards && content) {
+            finalText = content;
+            break;
           }
         }
 
