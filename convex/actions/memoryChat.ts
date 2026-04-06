@@ -581,8 +581,8 @@ function buildSystemPrompt(userTimezone: string, currentTime: string) {
 
 7. **ANALYSIS**: When asked to analyze, use the analyze_memories tool, then share insights conversationally.
 
-8. **EXPLICIT REFERENCES & UI CARDS (CRITICAL)**: Whenever you reference specific memories or reminders in your response (from search_memories, list_memories, or other tools), you MUST append a data block at the very end of your response containing a JSON array of the specific memory IDs you are talking about.
-   Format exactly like this: \`===MEMORA_REFERENCES:["id1", "id2"]===\`
+8. **EXPLICIT REFERENCES & UI CARDS (CRITICAL)**: Whenever you reference specific memories or reminders in your response (from search_memories, list_memories, or other tools), you MUST append a hidden marker at the very end of your response containing a JSON array of the specific memory IDs you are talking about.
+   Format exactly like this: \`<!--MEMORA_REFERENCES:["id1", "id2"]-->\`
    The app will automatically render interactive cards for ONLY those IDs you specify. Be sure to list them concisely. This is a strict requirement for the UI to function correctly.
 
 9. **UNDO & HISTORY**:
@@ -704,7 +704,6 @@ export const chat = action({
         let pendingDeletionItems: Array<{ id: string; title: string; content: string; entry_kind: string }> = [];
         let pendingSearchItems: MemorySummary[] = [];
         let pendingSearchIsCached = false;
-        let lastToolFetchedItems: MemorySummary[] | null = null;
         const createdMemoriesByDedupeKey = new Map<
           string,
           { id: Id<"memories">; title: string }
@@ -764,7 +763,6 @@ export const chat = action({
                   recentMemories: await getRecentMemoriesCache(),
                 });
                 result = JSON.stringify(searchRes);
-              lastToolFetchedItems = searchRes.results;
               pendingSearchIsCached = searchRes.isCached ?? false;
               } finally {
                 // Always clear the status, even if search throws
@@ -1010,12 +1008,10 @@ export const chat = action({
                 typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 100) : 20;
               const ordered =
                 fnArgs.sort === "oldest" ? [...memories].reverse() : memories;
-              const mapped = ordered
-                .slice(0, limit)
-                .map((memory: MemoryDoc) => toMemorySummary(memory));
-              lastToolFetchedItems = mapped;
               result = JSON.stringify({
-                memories: mapped,
+                memories: ordered
+                  .slice(0, limit)
+                  .map((memory: MemoryDoc) => toMemorySummary(memory)),
                 count: memories.length,
               });
             } else if (fnName === "get_stats") {
@@ -1041,12 +1037,10 @@ export const chat = action({
               const memories = await getRecentMemoriesCache();
               const limit =
                 typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 100) : 100;
-              const mapped = memories
-                .slice(0, limit)
-                .map((memory: MemoryDoc) => toMemorySummary(memory));
-              lastToolFetchedItems = mapped;
               result = JSON.stringify({
-                memories: mapped,
+                memories: memories
+                  .slice(0, limit)
+                  .map((memory: MemoryDoc) => toMemorySummary(memory)),
                 count: memories.length,
               });
             } else if (fnName === "history") {
@@ -1172,32 +1166,23 @@ export const chat = action({
 
         let resolvedText = finalText || "I processed that, but I couldn't generate a clear reply.";
         
-        // Parse MEMORA_REFERENCES (Support both === and <!-- formats for reliability)
-        let foundRefs = false;
-        const refMatch = resolvedText.match(/(?:===|<!--)MEMORA_REFERENCES:\s*(\[[^\]]*\])\s*(?:===|-->)/i);
+        // Parse MEMORA_REFERENCES
+        const refMatch = resolvedText.match(/<!--MEMORA_REFERENCES:\s*(\[[^\]]*\])\s*-->/);
         if (refMatch) {
           try {
-            // Replace single quotes with double quotes just in case the LLM used them
-            const jsonString = refMatch[1].replace(/'/g, '"');
-            const refIds = JSON.parse(jsonString) as string[];
+            const refIds = JSON.parse(refMatch[1]) as string[];
             if (Array.isArray(refIds) && refIds.length > 0) {
               const fetchedMemories = await ctx.runQuery(api.memories.listByIds, {
                 token: args.token,
                 ids: refIds as Id<"memories">[],
               });
               pendingSearchItems = fetchedMemories.map(m => toMemorySummary(m));
-              foundRefs = true;
             }
           } catch (e) {
             console.error("Failed to parse MEMORA_REFERENCES:", e);
           }
           // Remove the raw references marker
-          resolvedText = resolvedText.replace(/(?:===|<!--)MEMORA_REFERENCES:\s*\[[^\]]*\]\s*(?:===|-->)/gi, "").trim();
-        }
-
-        // Fallback: If AI didn't provide explicit references but we recently fetched items, show them anyway
-        if (!foundRefs && lastToolFetchedItems !== null && lastToolFetchedItems.length > 0) {
-           pendingSearchItems = lastToolFetchedItems;
+          resolvedText = resolvedText.replace(/<!--MEMORA_REFERENCES:\s*\[[^\]]*\]\s*-->/g, "").trim();
         }
 
         let appendedComments = "";
