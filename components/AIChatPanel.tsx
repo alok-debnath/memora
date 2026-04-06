@@ -375,21 +375,31 @@ function parseDeletionProposal(content: string): { items: DeletionItem[]; cleanT
   }
 }
 
-function parseSearchResults(content: string): { items: SearchResultItem[]; isCached: boolean; cleanText: string } | null {
-  const marker = "<!--MEMORA_SEARCH_RESULTS:";
+function extractSpeakableText(content: string): string {
+  // Strip deletion proposal marker
+  const dParsed = parseDeletionProposal(content);
+  let text = dParsed ? dParsed.cleanText : content;
+  // Strip card IDs marker
+  const cParsed = parseCardIds(text);
+  text = cParsed ? cParsed.cleanText : text;
+  // Strip any remaining HTML comments (safety net)
+  text = text.replace(/<!--[\s\S]*?-->/g, "").trim();
+  return text;
+}
+
+function parseCardIds(content: string): { ids: string[]; isCached: boolean; cleanText: string } | null {
+  const marker = "<!--MEMORA_CARD_IDS:";
   const endMarker = "-->";
   const startIdx = content.indexOf(marker);
   if (startIdx === -1) return null;
   const endIdx = content.indexOf(endMarker, startIdx + marker.length);
   if (endIdx === -1) return null;
   try {
-    const jsonStr = content.slice(startIdx + marker.length, endIdx);
-    const parsed = JSON.parse(jsonStr);
-    // Support both legacy array format and new {items, isCached} format
-    const items: SearchResultItem[] = Array.isArray(parsed) ? parsed : (parsed.items ?? []);
-    const isCached: boolean = Array.isArray(parsed) ? false : (parsed.isCached ?? false);
+    const parsed = JSON.parse(content.slice(startIdx + marker.length, endIdx));
+    const ids: string[] = Array.isArray(parsed.ids) ? parsed.ids : [];
+    const isCached: boolean = parsed.isCached ?? false;
     const cleanText = content.slice(0, startIdx).trim();
-    return { items, isCached, cleanText };
+    return ids.length > 0 ? { ids, isCached, cleanText } : null;
   } catch {
     return null;
   }
@@ -835,14 +845,14 @@ function SearchResultRow({
 // ─── Search Results Card ──────────────────────────────────────────────────────
 
 function SearchResultsCard({
-  items,
+  ids,
   isCached,
   token,
   theme,
   onDeepSearch,
   onEdit,
 }: {
-  items: SearchResultItem[];
+  ids: string[];
   isCached: boolean;
   token?: string | null;
   theme: ReturnType<typeof useAppTheme>;
@@ -855,6 +865,18 @@ function SearchResultsCard({
   const completeMemory = useMutation(api.memories.complete);
   const deleteMemory = useMutation(api.memories.remove);
   const { showToast } = useAppToast();
+
+  // Fetch full memory docs by ID reactively
+  const fetchedDocs = useQuery(
+    api.memories.listByIds,
+    token && ids.length > 0 ? { token, ids: ids as any[] } : "skip"
+  );
+  const items: SearchResultItem[] = (fetchedDocs ?? []).map((doc) => ({
+    id: doc._id,
+    title: doc.title,
+    content: doc.content,
+    entry_kind: doc.entryKind ?? "memory",
+  }));
 
   const displayItems = expanded ? items : items.slice(0, 3);
   const hasMore = items.length > 3;
@@ -1152,8 +1174,8 @@ const ChatBubble = React.memo(function ChatBubble({
   onCopy,
   token,
   deletionItems,
-  searchItems,
-  searchIsCached,
+  cardIds,
+  cardIsCached,
   onDeepSearch,
   onEditMemory,
 }: {
@@ -1165,8 +1187,8 @@ const ChatBubble = React.memo(function ChatBubble({
   onCopy: (text: string) => void;
   token?: string | null;
   deletionItems?: DeletionItem[];
-  searchItems?: SearchResultItem[];
-  searchIsCached?: boolean;
+  cardIds?: string[];
+  cardIsCached?: boolean;
   onDeepSearch?: (messageId: string, query: string) => void;
   onEditMemory?: (id: string) => void;
 }) {
@@ -1225,7 +1247,7 @@ const ChatBubble = React.memo(function ChatBubble({
               isSpeaking ? (
                 <Animated.View entering={ZoomIn.duration(200)}>
                   <Pressable
-                    onPress={() => onSpeak(msg._id, msg.content)}
+                    onPress={() => onSpeak(msg._id, extractSpeakableText(msg.content ?? ""))}
                     hitSlop={8}
                     style={({ pressed }) => ({
                       opacity: pressed ? 0.6 : 1,
@@ -1243,7 +1265,7 @@ const ChatBubble = React.memo(function ChatBubble({
               ) : (
                 <Animated.View entering={FadeIn.duration(200)}>
                   <Pressable
-                    onPress={() => onSpeak(msg._id, msg.content)}
+                    onPress={() => onSpeak(msg._id, extractSpeakableText(msg.content ?? ""))}
                     hitSlop={8}
                     style={({ pressed }) => ({
                       opacity: pressed ? 0.6 : 1,
@@ -1311,11 +1333,11 @@ const ChatBubble = React.memo(function ChatBubble({
         <DeletionProposalCard items={deletionItems} token={token} theme={theme} />
       )}
 
-      {/* Search results card — full width, below AI bubble */}
-      {!isUser && searchItems && searchItems.length > 0 && (
+      {/* Memory cards — full width, below AI bubble */}
+      {!isUser && cardIds && cardIds.length > 0 && (
         <SearchResultsCard
-          items={searchItems}
-          isCached={searchIsCached ?? false}
+          ids={cardIds}
+          isCached={cardIsCached ?? false}
           token={token}
           theme={theme}
           onDeepSearch={onDeepSearch ? (q) => onDeepSearch(msg._id, q) : undefined}
@@ -1774,8 +1796,7 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
         const lastMsg = messages[messages.length - 1]; // Assume latest message is at end of array (since query sorts ascending)
         if (lastMsg && lastMsg.role !== "user" && !unreadVoiceResponsesRef.current.has(lastMsg._id)) {
             unreadVoiceResponsesRef.current.add(lastMsg._id);
-            const parsed = parseDeletionProposal(lastMsg.content ?? "");
-            const textToSpeak = parsed ? parsed.cleanText : (lastMsg.content ?? "");
+            const textToSpeak = extractSpeakableText(lastMsg.content ?? "");
             speakMessage(lastMsg._id, textToSpeak);
         }
       }
@@ -2089,9 +2110,9 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
       if (item.role === "tool_searching") return <ToolSearchingBubble query={item.content ?? ""} />;
 
       let deletionItems: DeletionItem[] | undefined;
-      let searchItems: SearchResultItem[] | undefined;
+      let cardIds: string[] | undefined;
       let displayMsg = item;
-      let searchIsCached: boolean | undefined;
+      let cardIsCached: boolean | undefined;
 
       if (item.role !== "user") {
           const dParsed = parseDeletionProposal(item.content ?? "");
@@ -2099,11 +2120,11 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
               deletionItems = dParsed.items;
               displayMsg = { ...displayMsg, content: dParsed.cleanText };
           }
-          const sParsed = parseSearchResults(displayMsg.content ?? "");
-          if (sParsed) {
-              searchItems = sParsed.items;
-              searchIsCached = sParsed.isCached;
-              displayMsg = { ...displayMsg, content: sParsed.cleanText };
+          const cParsed = parseCardIds(displayMsg.content ?? "");
+          if (cParsed) {
+              cardIds = cParsed.ids;
+              cardIsCached = cParsed.isCached;
+              displayMsg = { ...displayMsg, content: cParsed.cleanText };
           }
       }
 
@@ -2117,8 +2138,8 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
           onCopy={copyMessage}
           token={token}
           deletionItems={deletionItems}
-          searchItems={searchItems}
-          searchIsCached={searchIsCached}
+          cardIds={cardIds}
+          cardIsCached={cardIsCached}
           onDeepSearch={handleDeepSearch}
           onEditMemory={handleEditMemory}
         />
