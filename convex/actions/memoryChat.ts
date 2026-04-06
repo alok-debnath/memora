@@ -581,7 +581,7 @@ function buildSystemPrompt(userTimezone: string, currentTime: string) {
 
 7. **ANALYSIS**: When asked to analyze, use the analyze_memories tool, then share insights conversationally.
 
-8. **SEARCH RESULTS UI**: When you use search_memories, the app will automatically display interactive cards for the results underneath your message. Keep your text response extremely brief (e.g. "Here's what I found:") and **DO NOT** summarize or list the individual memory details in your text.
+8. **MEMORY CARDS UI**: The app automatically shows interactive memory cards for any memories you access (via search_memories, list_memories, create_memory, update_memory, etc.). When you search or list memories to **answer a general question** (e.g. "what names do I have?"), answer in plain text — do NOT suggest the user look at cards. When the user explicitly asks to **browse or see their memories**, keep your text brief (e.g. "Here's what I found:") and let the cards do the work. Never summarize card content in your text when cards are being shown.
 
 9. **UNDO & HISTORY**:
    - To undo a **deletion** (user says "undo", "restore", "bring it back" after a recent delete): use restore_memory if you know the ID, otherwise call list_deleted_memories to find it, then restore_memory. Do NOT use the history tool for undoing deletions.
