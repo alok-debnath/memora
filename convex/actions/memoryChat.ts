@@ -581,9 +581,8 @@ function buildSystemPrompt(userTimezone: string, currentTime: string) {
 
 7. **ANALYSIS**: When asked to analyze, use the analyze_memories tool, then share insights conversationally.
 
-8. **EXPLICIT REFERENCES & UI CARDS (CRITICAL)**: Whenever you reference specific memories or reminders in your response (from search_memories, list_memories, or other tools), you MUST append a hidden marker at the very end of your response containing a JSON array of the specific memory IDs you are talking about.
-   Format exactly like this: \`<!--MEMORA_REFERENCES:["id1", "id2"]-->\`
-   The app will automatically render interactive cards for ONLY those IDs you specify. Be sure to list them concisely. This is a strict requirement for the UI to function correctly.
+8. **EXPLICIT REFERENCES & UI CARDS (CRITICAL)**: Whenever you reference specific memories or reminders in your response (from search_memories, list_memories, or other tools), you MUST call the \`show_interactive_cards\` tool with the exact memory IDs you are talking about.
+   The app will automatically render interactive cards for ONLY those IDs you pass to the tool. This is a strict requirement for the UI to function correctly. Do NOT skip this step if you mention user data.
 
 9. **UNDO & HISTORY**:
    - To undo a **deletion** (user says "undo", "restore", "bring it back" after a recent delete): use restore_memory if you know the ID, otherwise call list_deleted_memories to find it, then restore_memory. Do NOT use the history tool for undoing deletions.
@@ -704,6 +703,7 @@ export const chat = action({
         let pendingDeletionItems: Array<{ id: string; title: string; content: string; entry_kind: string }> = [];
         let pendingSearchItems: MemorySummary[] = [];
         let pendingSearchIsCached = false;
+        let explicitlyRenderedItems: MemorySummary[] = [];
         const createdMemoriesByDedupeKey = new Map<
           string,
           { id: Id<"memories">; title: string }
@@ -1136,6 +1136,22 @@ export const chat = action({
                   topicName: typeof fnArgs.topic_name === "string" ? fnArgs.topic_name : undefined,
                 })
               );
+            } else if (fnName === "show_interactive_cards") {
+              try {
+                const refIds = fnArgs.memory_ids as string[];
+                if (Array.isArray(refIds) && refIds.length > 0) {
+                  const fetchedMemories = await ctx.runQuery(api.memories.listByIds, {
+                    token: args.token,
+                    ids: refIds as Id<"memories">[],
+                  });
+                  explicitlyRenderedItems = fetchedMemories.map(m => toMemorySummary(m));
+                  result = JSON.stringify({ success: true, message: "Cards will be rendered in the UI." });
+                } else {
+                  result = JSON.stringify({ error: "No memory_ids provided" });
+                }
+              } catch (error) {
+                result = JSON.stringify({ error: "Failed to load interactive cards" });
+              }
             } else if (fnName === "attach_file_to_memory") {
               try {
                 const attachmentId = await ctx.runMutation(api.memories.attachFile, {
@@ -1166,23 +1182,11 @@ export const chat = action({
 
         let resolvedText = finalText || "I processed that, but I couldn't generate a clear reply.";
         
-        // Parse MEMORA_REFERENCES
-        const refMatch = resolvedText.match(/<!--MEMORA_REFERENCES:\s*(\[[^\]]*\])\s*-->/);
-        if (refMatch) {
-          try {
-            const refIds = JSON.parse(refMatch[1]) as string[];
-            if (Array.isArray(refIds) && refIds.length > 0) {
-              const fetchedMemories = await ctx.runQuery(api.memories.listByIds, {
-                token: args.token,
-                ids: refIds as Id<"memories">[],
-              });
-              pendingSearchItems = fetchedMemories.map(m => toMemorySummary(m));
-            }
-          } catch (e) {
-            console.error("Failed to parse MEMORA_REFERENCES:", e);
-          }
-          // Remove the raw references marker
-          resolvedText = resolvedText.replace(/<!--MEMORA_REFERENCES:\s*\[[^\]]*\]\s*-->/g, "").trim();
+        // Just in case the LLM still tries to output the old marker, strip it out.
+        resolvedText = resolvedText.replace(/<!--MEMORA_REFERENCES:\s*\[[^\]]*\]\s*-->/g, "").trim();
+
+        if (explicitlyRenderedItems.length > 0) {
+          pendingSearchItems = explicitlyRenderedItems;
         }
 
         let appendedComments = "";
