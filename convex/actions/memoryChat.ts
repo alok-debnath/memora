@@ -778,8 +778,13 @@ export const chat = action({
                   userId: session._id,
                   recentMemories: await getRecentMemoriesCache(),
                 });
-                result = JSON.stringify(searchRes);
                 pendingSearchIsCached = searchRes.isCached ?? false;
+                result = JSON.stringify({
+                  ...searchRes,
+                  _instruction: searchRes.results.length > 0
+                    ? "REQUIRED: call surface_cards({ids:[...]}) with the IDs of any results you reference before giving your final answer."
+                    : undefined,
+                });
               } finally {
                 // Always clear the status, even if search throws
                 await ctx.runMutation(internal.chat.clearSearchStatus, {
