@@ -696,11 +696,9 @@ export const chat = action({
           { role: "user", content: args.message },
         ];
 
-        type MemorySummary = ReturnType<typeof toMemorySummary>;
-
         let finalText = "";
         let pendingDeletionItems: Array<{ id: string; title: string; content: string; entry_kind: string }> = [];
-        let pendingSearchItems: MemorySummary[] = [];
+        const pendingCardIds = new Set<string>();
         let pendingSearchIsCached = false;
         const createdMemoriesByDedupeKey = new Map<
           string,
@@ -761,7 +759,7 @@ export const chat = action({
                   recentMemories: await getRecentMemoriesCache(),
                 });
                 result = JSON.stringify(searchRes);
-                pendingSearchItems = searchRes.results;
+                for (const r of searchRes.results) pendingCardIds.add(String(r.id));
                 pendingSearchIsCached = searchRes.isCached ?? false;
               } finally {
                 // Always clear the status, even if search throws
@@ -848,6 +846,7 @@ export const chat = action({
                   });
                   recentMemoriesCache = undefined;
                 }
+                pendingCardIds.add(String(existingCreated.id));
                 result = JSON.stringify({
                   success: true,
                   deduped: true,
@@ -899,6 +898,7 @@ export const chat = action({
                   id: created.memoryId,
                   title: resolvedTitle,
                 });
+                pendingCardIds.add(String(created.memoryId));
                 result = JSON.stringify({
                   success: true,
                   memory: {
@@ -926,6 +926,7 @@ export const chat = action({
                   ...schedulingFields,
                 });
                 recentMemoriesCache = undefined;
+                pendingCardIds.add(String(fnArgs.memory_id));
                 result = JSON.stringify({ success: true, memory_id: fnArgs.memory_id });
               } catch (error) {
                 result = JSON.stringify({
@@ -994,6 +995,7 @@ export const chat = action({
                   id: fnArgs.memory_id as Id<"memories">,
                 });
                 recentMemoriesCache = undefined;
+                pendingCardIds.add(String(fnArgs.memory_id as string));
                 result = JSON.stringify({ success: true });
               } catch (error) {
                 result = JSON.stringify({
@@ -1007,10 +1009,10 @@ export const chat = action({
                 typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 100) : 20;
               const ordered =
                 fnArgs.sort === "oldest" ? [...memories].reverse() : memories;
+              const listed = ordered.slice(0, limit);
+              listed.slice(0, 10).forEach((m: MemoryDoc) => pendingCardIds.add(String(m._id)));
               result = JSON.stringify({
-                memories: ordered
-                  .slice(0, limit)
-                  .map((memory: MemoryDoc) => toMemorySummary(memory)),
+                memories: listed.map((memory: MemoryDoc) => toMemorySummary(memory)),
                 count: memories.length,
               });
             } else if (fnName === "get_stats") {
@@ -1056,23 +1058,29 @@ export const chat = action({
                   }),
                 });
               } else if (fnArgs.action === "undo") {
-                result = JSON.stringify(
-                  await ctx.runMutation(api.history.undo, {
-                    token: args.token,
-                    ...(typeof fnArgs.memory_id === "string"
-                      ? { memoryId: fnArgs.memory_id as Id<"memories"> }
-                      : {}),
-                  })
-                );
+                const undoResult = await ctx.runMutation(api.history.undo, {
+                  token: args.token,
+                  ...(typeof fnArgs.memory_id === "string"
+                    ? { memoryId: fnArgs.memory_id as Id<"memories"> }
+                    : {}),
+                });
+                result = JSON.stringify(undoResult);
                 recentMemoriesCache = undefined;
+                if (undoResult && typeof (undoResult as any).memoryId === "string") {
+                  pendingCardIds.add(String((undoResult as any).memoryId));
+                } else if (typeof fnArgs.memory_id === "string") {
+                  pendingCardIds.add(fnArgs.memory_id);
+                }
               } else if (fnArgs.action === "restore") {
-                result = JSON.stringify(
-                  await ctx.runMutation(api.history.restore, {
-                    token: args.token,
-                    historyId: fnArgs.history_id as Id<"memoryHistory">,
-                  })
-                );
+                const restoreResult = await ctx.runMutation(api.history.restore, {
+                  token: args.token,
+                  historyId: fnArgs.history_id as Id<"memoryHistory">,
+                });
+                result = JSON.stringify(restoreResult);
                 recentMemoriesCache = undefined;
+                if (restoreResult && typeof (restoreResult as any).memoryId === "string") {
+                  pendingCardIds.add(String((restoreResult as any).memoryId));
+                }
               }
             } else if (fnName === "manage_topics") {
               if (fnArgs.operation === "retag_memory") {
@@ -1106,6 +1114,7 @@ export const chat = action({
                       typeof fnArgs.topic_name === "string" ? fnArgs.topic_name : undefined,
                   })
                 );
+                pendingCardIds.add(String(resolvedMemoryId));
                 conversation.push({
                   role: "tool",
                   tool_call_id: toolCall.id,
@@ -1146,6 +1155,7 @@ export const chat = action({
                     fnArgs.file_type || "application/octet-stream"
                   ),
                 });
+                pendingCardIds.add(String(fnArgs.memory_id as string));
                 result = JSON.stringify({ success: true, attachment_id: attachmentId });
               } catch (error) {
                 result = JSON.stringify({
@@ -1169,10 +1179,10 @@ export const chat = action({
         if (pendingDeletionItems.length > 0) {
           appendedComments += `\n<!--MEMORA_DELETION_PROPOSAL:${JSON.stringify(pendingDeletionItems)}-->`;
         }
-        if (pendingSearchItems.length > 0) {
-          appendedComments += `\n<!--MEMORA_SEARCH_RESULTS:${JSON.stringify({ items: pendingSearchItems, isCached: pendingSearchIsCached })}-->`;
+        if (pendingCardIds.size > 0) {
+          appendedComments += `\n<!--MEMORA_CARD_IDS:${JSON.stringify({ ids: Array.from(pendingCardIds), isCached: pendingSearchIsCached })}-->`;
         }
-        
+
         aiResponse = resolvedText + appendedComments;
       } catch {
         aiResponse =
@@ -1187,10 +1197,10 @@ export const chat = action({
     });
 
     const deletionIdx = aiResponse.indexOf("\n<!--MEMORA_DELETION_PROPOSAL:");
-    const searchIdx = aiResponse.indexOf("\n<!--MEMORA_SEARCH_RESULTS:");
+    const cardIdsIdx = aiResponse.indexOf("\n<!--MEMORA_CARD_IDS:");
     const minIdxStr = Math.min(
       deletionIdx !== -1 ? deletionIdx : Infinity,
-      searchIdx !== -1 ? searchIdx : Infinity
+      cardIdsIdx !== -1 ? cardIdsIdx : Infinity
     );
     return { reply: (minIdxStr !== Infinity ? aiResponse.slice(0, minIdxStr) : aiResponse).trim() };
   },
