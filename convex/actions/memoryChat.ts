@@ -1248,7 +1248,7 @@ export const chat = action({
                   },
                 ],
                 tools: [surfaceCardsToolDef],
-                tool_choice: { type: "function", name: "surface_cards" },
+                tool_choice: { type: "function", function: { name: "surface_cards" } },
                 temperature: 0,
                 max_completion_tokens: 150,
               });
