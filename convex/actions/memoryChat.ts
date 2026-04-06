@@ -35,7 +35,7 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "search_memories",
       description:
-        "Search through the user's memories using semantic plus fuzzy search. Use whenever the user asks about stored facts or wants to recall information.",
+        "Search through the user's memories using semantic plus fuzzy search. Use whenever the user asks about stored facts, counts, or wants to recall information. You MUST call this (or list_memories) before answering any factual question about stored data — never answer from inference.",
       parameters: {
         type: "object",
         properties: {
@@ -195,7 +195,7 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "list_memories",
       description:
-        "List memories with optional filters for browsing or counting.",
+        "List memories with optional filters for browsing or counting. Use this for count questions ('how many X'), existence checks, or when the user asks to see/list stored items. You MUST call this (or search_memories) before answering any factual question about stored data.",
       parameters: {
         type: "object",
         properties: {
@@ -616,6 +616,8 @@ function buildSystemPrompt(userTimezone: string, currentTime: string) {
 6. **DELETION VIA PROPOSAL**: You no longer have direct delete access. When the user asks to delete memories or reminders, use propose_deletion to find and surface matching items. The user confirms or cancels directly in the app — you never delete yourself. Never claim you deleted something; instead say you've found the items and the user can confirm below.
 
 7. **ANALYSIS**: When asked to analyze, use the analyze_memories tool, then share insights conversationally.
+
+7a. **CRITICAL — ALWAYS FETCH BEFORE ANSWERING**: You have NO built-in knowledge of what is stored. For ANY question about stored data — counts ("how many friends"), existence ("do I have X"), details ("what are my friend names"), summaries, or statistics — you MUST call search_memories or list_memories FIRST. Never answer from inference or assumption. A wrong answer from hallucination is worse than saying you need to check.
 
 8. **MEMORY CARDS UI**: After every response you will be asked to call surface_cards — pass the IDs of any memories you actually referenced, or an empty array if none. When the user explicitly asks to browse or see memories, keep your text brief (e.g. "Here's what I found:") and let the cards do the work.
 
