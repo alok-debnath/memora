@@ -1109,12 +1109,13 @@ export const chat = action({
         // Candidate memory ID+title pairs collected from search/list — used as minimal context for forced surface_cards
         let surfaceCandidates: Array<{ id: string; title: string }> = [];
 
-        // Auto-seed cards from semantic search results — the exact memories matched.
-        // The AI can still call surface_cards to refine which IDs are shown.
+        // Keep grounding hits as fallback candidates only. Final surfaced cards
+        // should come from explicit surface_cards tool calls whenever possible.
         if (initialGrounding.shouldGround && initialGrounding.searchResults.length > 0) {
-          for (const mem of initialGrounding.searchResults.slice(0, 5)) {
-            pendingCardIds.add(String((mem as { id: string }).id));
-          }
+          surfaceCandidates = initialGrounding.searchResults.map((mem) => ({
+            id: String(mem.id),
+            title: mem.title ?? "",
+          }));
           pendingSearchIsCached = initialGrounding.isCached;
         }
         const createdMemoriesByDedupeKey = new Map<

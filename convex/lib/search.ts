@@ -11,6 +11,7 @@ export const SEARCH_NOISE_WORDS = new Set([
   "tell","give","let","know","please","want","make","put","set","add","create",
   "save","store","note","list","look","see","check","about","any","also",
   "data","everything","anything","info","information","stuff","things","related",
+  "name","names","named","called","call",
 ]);
 
 export function extractSearchTerms(query: string): string[] {
@@ -18,6 +19,9 @@ export function extractSearchTerms(query: string): string[] {
     .toLowerCase()
     .split(/\s+/)
     .map((term) => term.replace(/[^a-z0-9']/g, "").trim())
+    .map((term) => term.replace(/^'+|'+$/g, ""))
+    .map((term) => (term.endsWith("'s") ? term.slice(0, -2) : term))
+    .map((term) => (term.endsWith("s'") ? term.slice(0, -1) : term))
     .filter((term) => term.length > 1 && !SEARCH_NOISE_WORDS.has(term));
 }
 

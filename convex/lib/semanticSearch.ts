@@ -17,6 +17,8 @@ type SearchableMemory = Doc<"memories"> & { _score?: number };
 
 const VECTOR_MIN_SCORE = 0.4;
 const RRF_K = 60;
+const MIN_RRF_SCORE = 0.006;
+const RELATIVE_SCORE_FLOOR = 0.6;
 
 function rrfScore(rank: number) {
   return 1 / (RRF_K + rank);
@@ -214,8 +216,14 @@ export async function runSemanticSearch(
     }
   }
 
-  const rankedIds = Array.from(rrfScores.entries())
-    .sort((a, b) => b[1].score - a[1].score)
+  const rankedEntries = Array.from(rrfScores.entries()).sort(
+    (a, b) => b[1].score - a[1].score
+  );
+
+  const bestScore = rankedEntries[0]?.[1].score ?? 0;
+  const scoreFloor = Math.max(MIN_RRF_SCORE, bestScore * RELATIVE_SCORE_FLOOR);
+  const rankedIds = rankedEntries
+    .filter(([, entry], index) => index === 0 || entry.score >= scoreFloor)
     .slice(0, maxResults)
     .map(([id]) => id);
 
