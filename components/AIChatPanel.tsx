@@ -1040,33 +1040,7 @@ function SearchResultsCard({
 // ─── Thinking Indicator ───────────────────────────────────────────────────────
 
 // Each dot is its own component so hooks are called at the top level (not inside map)
-function ThinkingDot({ delay, color }: { delay: number; color: string }) {
-  const translateY = useSharedValue(0);
-
-  useEffect(() => {
-    translateY.value = withDelay(
-      delay,
-      withRepeat(
-        withSequence(
-          withTiming(-6, { duration: 350 }),
-          withTiming(0, { duration: 350 }),
-        ),
-        -1,
-        false,
-      ),
-    );
-  }, [delay, translateY]);
-
-  const style = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-  }));
-
-  return (
-    <Animated.View
-      style={[{ width: 7, height: 7, borderRadius: 4, backgroundColor: color, opacity: 0.75 }, style]}
-    />
-  );
-}
+// ThinkingDot removed — loading dots disabled
 
 type ProgressStatus = {
   query?: string | null;
@@ -1326,13 +1300,6 @@ function ThinkingIndicator() {
               </XStack>
             </Animated.View>
 
-            <Animated.View layout={PROGRESS_LAYOUT}>
-              <XStack gap={5} paddingLeft={36}>
-                <ThinkingDot delay={0} color={color} />
-                <ThinkingDot delay={160} color={color} />
-                <ThinkingDot delay={320} color={color} />
-              </XStack>
-            </Animated.View>
           </YStack>
         </Animated.View>
       </XStack>
@@ -1516,13 +1483,7 @@ function ToolProgressBubble({ status }: { status: ProgressStatus }) {
                 </YStack>
               </Animated.View>
             ) : (
-              <Animated.View layout={PROGRESS_LAYOUT}>
-                <XStack gap={5} paddingLeft={2} opacity={0.78}>
-                  <ThinkingDot delay={0} color={accentColor} />
-                  <ThinkingDot delay={160} color={accentColor} />
-                  <ThinkingDot delay={320} color={accentColor} />
-                </XStack>
-              </Animated.View>
+              <Animated.View layout={PROGRESS_LAYOUT} />
             )}
           </YStack>
         </Animated.View>

@@ -1105,6 +1105,7 @@ export const chat = action({
         const pendingCardIds = new Set<string>();
         let pendingSearchIsCached = false;
         let surfaceCardsCalled = false;
+        let writeToolCalled = false; // true once update_memory or create_memory actually executes
         // Candidate memory ID+title pairs collected from search/list — used as minimal context for forced surface_cards
         let surfaceCandidates: Array<{ id: string; title: string }> = [];
 
@@ -1146,6 +1147,23 @@ export const chat = action({
 
           const content = extractTextContent(choice.content);
           if (!choice.tool_calls?.length) {
+            // If the request required a write (edit/create) but no write tool was actually
+            // called yet, the AI hallucinated the action. Force it to make the real call.
+            if (
+              content &&
+              initialGrounding.shouldPreferUpdate &&
+              !writeToolCalled &&
+              iteration < 6
+            ) {
+              finalText = content;
+              conversation.push({ role: "assistant", content });
+              conversation.push({
+                role: "user",
+                content:
+                  "You described an edit but did not call update_memory. Call update_memory now with the correct memory_id and updated fields. Tool call only — no text.",
+              });
+              continue;
+            }
             // AI gave a direct text answer. If grounding was active and surface_cards
             // hasn't been called yet, do one more iteration to collect the exact IDs —
             // the AI already has them in the grounding context.
@@ -1598,6 +1616,7 @@ export const chat = action({
                   step: 3,
                   totalSteps: 4,
                 });
+                writeToolCalled = true;
                 result = JSON.stringify({
                   success: true,
                   memory: {
@@ -1645,6 +1664,7 @@ export const chat = action({
                   step: 3,
                   totalSteps: 4,
                 });
+                writeToolCalled = true;
                 result = JSON.stringify({ success: true, memory_id: fnArgs.memory_id });
               } catch (error) {
                 result = JSON.stringify({
@@ -1676,12 +1696,18 @@ export const chat = action({
                 matchedItems = matchedItems.filter((m: any) => m.entry_kind !== "reminder");
               }
 
-              pendingDeletionItems = matchedItems.map((m: any) => ({
+              const newItems = matchedItems.map((m: any) => ({
                 id: String(m.id),
                 title: String(m.title || "Untitled"),
                 content: String(m.content || ""),
                 entry_kind: String(m.entry_kind || "memory"),
               }));
+              // Accumulate across multiple propose_deletion calls (e.g. one for memories, one for reminders)
+              const existingIds = new Set(pendingDeletionItems.map((i) => i.id));
+              pendingDeletionItems = [
+                ...pendingDeletionItems,
+                ...newItems.filter((i) => !existingIds.has(i.id)),
+              ];
               await setStreamingStatus({
                 query: typeof fnArgs.query === "string" ? fnArgs.query : undefined,
                 phase: "searching",
