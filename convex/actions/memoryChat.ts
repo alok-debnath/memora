@@ -69,6 +69,7 @@ type GroundingContext = {
   searchCount: number;
   searchResults: ReturnType<typeof toMemorySummary>[];
   recentMemories: ReturnType<typeof toMemoryCompact>[];
+  isCached: boolean;
 };
 
 const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
@@ -817,6 +818,7 @@ async function buildGroundingContext(
       searchCount: 0,
       searchResults: [],
       recentMemories: [],
+      isCached: false,
     };
   }
 
@@ -836,6 +838,7 @@ async function buildGroundingContext(
     searchCount: searchRes.count,
     searchResults: searchRes.results.slice(0, 8),
     recentMemories: recentMemories.slice(0, 12).map(toMemoryCompact),
+    isCached: searchRes.isCached ?? false,
   };
 }
 
@@ -860,7 +863,7 @@ function buildSystemPrompt(userTimezone: string, currentTime: string) {
 
 ## Your Core Behaviors:
 
-1. **DIRECT, HUMAN ANSWERS**: Answer naturally — like a knowledgeable friend, not a database. Skip "I found a memory that says..." — just answer.
+1. **DIRECT, HUMAN ANSWERS**: Answer naturally — like a knowledgeable friend, not a database. Skip "I found a memory that says..." — just answer. Never narrate your tool use in text: don't mention memory IDs, don't say "I'll surface the card", don't describe what surface_cards does. Tool calls are invisible to the user — your text should read as if you simply know the answer. Never end responses with filler sign-offs — just stop after the answer.
 
 2. **WARM CONFIRMATIONS**: When you save/update/delete something, confirm it with personality. For example: "Done! Meeting reminder set for Friday 9 Apr at 2:00 PM — noted!" Never give a bland, robotic confirmation. Always echo the absolute date/time back so the user can verify it.
 
@@ -891,7 +894,12 @@ function buildSystemPrompt(userTimezone: string, currentTime: string) {
 
 7c. **CRITICAL — COUNTS MUST BE GROUNDED**: Never answer count questions from memory, chat history, or raw intuition. Use DB-backed tool/context results only. If the evidence is ambiguous, say that clearly and surface the matching memories instead of guessing.
 
-8. **MEMORY CARDS UI**: After every response you will be asked to call surface_cards — pass the IDs of any memories you actually referenced, or an empty array if none. When the user explicitly asks to browse or see memories, keep your text brief (e.g. "Here's what I found:") and let the cards do the work.
+8. **MEMORY CARDS UI**: You MUST call surface_cards at the end of EVERY response, no exceptions.
+   - Pass the IDs of every memory you drew on to produce your answer — whether they came from the grounding context, a search, or a list.
+   - If your answer referenced stored data, those memory IDs belong in surface_cards.
+   - If nothing stored was used, call surface_cards with ids=[].
+   - When the user asks to browse or see memories, keep your text brief and let the cards do the work.
+   - NEVER mention surface_cards, memory IDs, or card surfacing in your text response. The card UI appears automatically — you do not need to narrate it.
 
 9. **UNDO & HISTORY**:
    - To undo a **deletion** (user says "undo", "restore", "bring it back" after a recent delete): use restore_memory if you know the ID, otherwise call list_deleted_memories to find it, then restore_memory. Do NOT use the history tool for undoing deletions.
@@ -959,10 +967,29 @@ export const chat = action({
       token: args.token,
       limit: 50,
     });
-    const recentChat = chatHistory.slice(-12).map((message: { role: string; content?: string | null }) => ({
-      role: message.role as "user" | "assistant",
-      content: stripMarkersFromContent(message.content ?? "").slice(0, 2000),
-    }));
+    const recentChat: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
+    for (const message of chatHistory.slice(-12) as Array<{ role: string; content?: string | null }>) {
+      recentChat.push({
+        role: message.role as "user" | "assistant",
+        content: stripMarkersFromContent(message.content ?? "").slice(0, 2000),
+      });
+      // After each assistant message, inject referenced memory IDs as a system hint so the
+      // AI can resolve pronouns ("delete that", "edit it") in follow-up turns without a DB call.
+      if (message.role === "assistant" && message.content) {
+        const cardMatch = message.content.match(/<!--MEMORA_CARD_IDS:([\s\S]*?)-->/);
+        if (cardMatch) {
+          try {
+            const { ids } = JSON.parse(cardMatch[1]) as { ids: string[] };
+            if (Array.isArray(ids) && ids.length > 0) {
+              recentChat.push({
+                role: "system",
+                content: `[Memory reference: the above assistant response surfaced memory IDs: ${ids.join(", ")}. When the user says "that", "it", "this", or "the above" in a follow-up, these are the IDs they are referring to.]`,
+              });
+            }
+          } catch {}
+        }
+      }
+    }
 
     const attachments = parseAttachments(args.message);
     let aiResponse =
@@ -1043,8 +1070,8 @@ export const chat = action({
               initialGrounding.shouldPreferUpdate
                 ? "This request appears to modify an existing item. Prefer update_memory. Do not create a new item unless you explicitly determine there is no existing match."
                 : "This request is related to stored personal data. Answer only from DB-backed context or by calling tools again if needed.",
-              `Matched memories: ${JSON.stringify(initialGrounding.searchResults)}`,
-              `Recent memories: ${JSON.stringify(initialGrounding.recentMemories)}`,
+              `Matched memories (use the "id" field in surface_cards if you answer from any of these): ${JSON.stringify(initialGrounding.searchResults)}`,
+              `Recent memories (use the "id" field in surface_cards if you answer from any of these): ${JSON.stringify(initialGrounding.recentMemories)}`,
             ].join("\n"),
           });
         }
@@ -1080,6 +1107,15 @@ export const chat = action({
         let surfaceCardsCalled = false;
         // Candidate memory ID+title pairs collected from search/list — used as minimal context for forced surface_cards
         let surfaceCandidates: Array<{ id: string; title: string }> = [];
+
+        // Auto-seed cards from semantic search results — the exact memories matched.
+        // The AI can still call surface_cards to refine which IDs are shown.
+        if (initialGrounding.shouldGround && initialGrounding.searchResults.length > 0) {
+          for (const mem of initialGrounding.searchResults.slice(0, 5)) {
+            pendingCardIds.add(String((mem as { id: string }).id));
+          }
+          pendingSearchIsCached = initialGrounding.isCached;
+        }
         const createdMemoriesByDedupeKey = new Map<
           string,
           { id: Id<"memories">; title: string }
@@ -1110,6 +1146,18 @@ export const chat = action({
 
           const content = extractTextContent(choice.content);
           if (!choice.tool_calls?.length) {
+            // AI gave a direct text answer. If grounding was active and surface_cards
+            // hasn't been called yet, do one more iteration to collect the exact IDs —
+            // the AI already has them in the grounding context.
+            if (content && !surfaceCardsCalled && initialGrounding.shouldGround && iteration < 7) {
+              finalText = content;
+              conversation.push({ role: "assistant", content });
+              conversation.push({
+                role: "user",
+                content: "Call surface_cards with the id(s) of the memory/memories you used to answer. Do not add any text — tool call only.",
+              });
+              continue;
+            }
             finalText = content || finalText;
             break;
           }
@@ -2035,9 +2083,9 @@ export const chat = action({
             });
           }
 
-          // If AI called surface_cards and provided response text in this turn, we're done
-          if (surfaceCardsCalled && content) {
-            finalText = content;
+          // If AI called surface_cards, we're done. Preserve the original answer if already set.
+          if (surfaceCardsCalled) {
+            if (!finalText) finalText = content;
             break;
           }
         }
@@ -2048,6 +2096,7 @@ export const chat = action({
             pendingCardIds.add(candidate.id);
           }
         }
+
 
         await setStreamingStatus({
           phase: "finalizing",
