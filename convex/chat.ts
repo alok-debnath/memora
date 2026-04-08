@@ -3,7 +3,6 @@ import { action, mutation, query, internalMutation, internalQuery } from "./_gen
 import { api, internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { resolveUser } from "./lib/withAuth";
-import { encryptedEnvelopeValidator } from "./lib/validators";
 
 export const list = query({
   args: {
@@ -38,17 +37,13 @@ export const send = internalMutation({
     userId: v.id("users"),
     role: v.union(v.literal("user"), v.literal("assistant")),
     conversationId: v.optional(v.string()),
-    // Plaintext field (legacy, optional)
     content: v.optional(v.string()),
-    // Encrypted field
-    encryptedContent: v.optional(encryptedEnvelopeValidator),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("chatMessages", {
       userId: args.userId,
       role: args.role,
       content: args.content,
-      encryptedContent: args.encryptedContent,
       conversationId: args.conversationId,
     });
   },

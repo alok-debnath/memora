@@ -1,14 +1,11 @@
 "use node";
 
 import type { ActionCtx } from "../_generated/server";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import {
   embedText,
-  extractTextContent,
-  getOpenAIClient,
   hasOpenAI,
-  OPENAI_CHAT_MODEL,
 } from "./openai";
 import {
   cleanSearchQuery,
@@ -71,40 +68,6 @@ function keywordMatchScore(
   return matched / queryTerms.length;
 }
 
-async function expandQuery(rawQuery: string): Promise<string> {
-  const client = getOpenAIClient();
-  if (!client) {
-    return cleanSearchQuery(rawQuery);
-  }
-
-  try {
-    const response = await client.chat.completions.create({
-      model: OPENAI_CHAT_MODEL,
-      temperature: 0,
-      max_completion_tokens: 150,
-      messages: [
-        {
-          role: "system",
-          content: `You are a search query optimizer for a personal memory/notes app. The user's query may contain action words and noise. Extract the semantic meaning and output concise search terms only.
-
-Rules:
-- Strip intent words like delete, find, show, search, remove
-- Keep all content-bearing words
-- Add 2-3 nearby synonyms only when useful
-- Output only search terms
-- Keep it concise: 5-15 words max`,
-        },
-        { role: "user", content: rawQuery },
-      ],
-    });
-
-    const expanded = extractTextContent(response.choices[0]?.message?.content)?.trim();
-    return expanded || cleanSearchQuery(rawQuery);
-  } catch {
-    return cleanSearchQuery(rawQuery);
-  }
-}
-
 export async function runSemanticSearch(
   ctx: Pick<ActionCtx, "runQuery" | "runMutation" | "vectorSearch">,
   args: {
@@ -146,11 +109,7 @@ export async function runSemanticSearch(
           queryEmbedding = cached.embedding;
           isCached = true;
         } else {
-          const needsExpansion =
-            rawQuery.split(/\s+/).length > 3 || Boolean(args.forceDeepSearch);
-          const expandedQuery = needsExpansion
-            ? await expandQuery(rawQuery)
-            : cleanSearchQuery(rawQuery);
+          const expandedQuery = cleanSearchQuery(rawQuery);
           queryEmbedding = await embedText(expandedQuery);
           await ctx.runMutation(internal.memories.setQueryCache, {
             userId: args.userId,

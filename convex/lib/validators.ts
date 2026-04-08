@@ -86,27 +86,6 @@ export const priorityValidator = v.union(
 );
 
 /**
- * Validator for encrypted envelope format
- * All encrypted fields use this structure
- */
-export const encryptedEnvelopeValidator = v.object({
-  v: v.number(), // encryption version
-  n: v.string(), // base64 nonce
-  c: v.string(), // base64 ciphertext
-});
-
-/**
- * Validator for user encryption key material
- */
-export const keyMaterialValidator = v.object({
-  version: v.number(),
-  salt: v.string(),
-  encryptedDek: v.string(),
-  dekNonce: v.string(),
-  iterations: v.number(),
-});
-
-/**
  * Audit log action types
  */
 export const auditActionValidator = v.union(

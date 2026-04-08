@@ -11,6 +11,7 @@ import { api, internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { resolveUser } from "./lib/withAuth";
 import { serializeMemorySnapshot } from "./lib/memorySnapshot";
+import { applyUserMemoryStatsTransition } from "./lib/memoryStats";
 import {
   importanceValidator,
   lifeAreaValidator,
@@ -19,11 +20,9 @@ import {
   memoryScheduleValidator,
   extractedActionsValidator,
   contextTagsValidator,
-  encryptedEnvelopeValidator,
 } from "./lib/validators";
 import {
   getMemorySchedule,
-  getReminderDate,
   inferEntryKind,
   isReminder,
   toStoredMemoryFields,
@@ -156,6 +155,16 @@ function hasSchedulingInput(value: {
   );
 }
 
+function isSameValue(left: unknown, right: unknown) {
+  if (left === right) {
+    return true;
+  }
+  if (left === undefined || right === undefined) {
+    return left === right;
+  }
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 export const list = query({
   args: {
     token: v.string(),
@@ -236,26 +245,13 @@ export const reminders = query({
   handler: async (ctx, args) => {
     const { userId } = await resolveUser(ctx, args.token);
     const now = args.asOf ?? new Date().toISOString();
-    const memories = await ctx.db
+    return await ctx.db
       .query("memories")
-      .withIndex("by_user_status_entryKind", (q) =>
-        q.eq("userId", userId).eq("status", "active").eq("entryKind", "reminder")
+      .withIndex("by_user_status_nextDueAt", (q) =>
+        q.eq("userId", userId).eq("status", "active").lte("nextDueAt", now)
       )
       .order("desc")
-      .take(200);
-
-    return memories
-      .filter(isActiveMemory)
-      .filter((memory) => {
-        const dueAt = getReminderDate(memory);
-        return isReminder(memory) && !!dueAt && dueAt <= now;
-      })
-      .sort((a, b) => {
-        const aDue = getReminderDate(a) ?? "";
-        const bDue = getReminderDate(b) ?? "";
-        return bDue.localeCompare(aDue);
-      })
-      .slice(0, 20);
+      .take(20);
   },
 });
 
@@ -277,34 +273,25 @@ export const upcomingReminders = query({
       year: 365 * 24 * 60 * 60 * 1000,
     };
 
-    const memories = await ctx.db
-      .query("memories")
-      .withIndex("by_user_status_entryKind", (q) =>
-        q.eq("userId", userId).eq("status", "active").eq("entryKind", "reminder")
-      )
-      .order("desc")
-      .take(300);
-
     if (range === "all") {
-      return memories
-        .filter((memory) => {
-          const dueAt = getReminderDate(memory);
-          return isReminder(memory) && !!dueAt && dueAt >= nowIso;
-        })
-        .sort((a, b) => (getReminderDate(a) ?? "").localeCompare(getReminderDate(b) ?? ""))
-        .slice(0, 50);
+      return await ctx.db
+        .query("memories")
+        .withIndex("by_user_status_nextDueAt", (q) =>
+          q.eq("userId", userId).eq("status", "active").gte("nextDueAt", nowIso)
+        )
+        .order("asc")
+        .take(50);
     }
 
     const endIso = new Date(now.getTime() + rangeMs[range]).toISOString();
 
-    return memories
-      .filter(isActiveMemory)
-      .filter((memory) => {
-        const dueAt = getReminderDate(memory);
-        return isReminder(memory) && !!dueAt && dueAt >= nowIso && dueAt <= endIso;
-      })
-      .sort((a, b) => (getReminderDate(a) ?? "").localeCompare(getReminderDate(b) ?? ""))
-      .slice(0, 50);
+    return await ctx.db
+      .query("memories")
+      .withIndex("by_user_status_nextDueAt", (q) =>
+        q.eq("userId", userId).eq("status", "active").gte("nextDueAt", nowIso).lte("nextDueAt", endIso)
+      )
+      .order("asc")
+      .take(50);
   },
 });
 
@@ -618,18 +605,10 @@ export const listByIdsInternal = internalQuery({
 export const create = mutation({
   args: {
     token: v.string(),
-    // Plaintext fields (legacy, optional)
     title: v.optional(v.string()),
     content: v.optional(v.string()),
     people: v.optional(v.array(v.string())),
     locations: v.optional(v.array(v.string())),
-    // Encrypted fields
-    encryptedTitle: v.optional(encryptedEnvelopeValidator),
-    encryptedContent: v.optional(encryptedEnvelopeValidator),
-    encryptedPeople: v.optional(encryptedEnvelopeValidator),
-    encryptedLocations: v.optional(encryptedEnvelopeValidator),
-    titleBlindIndex: v.optional(v.string()),
-    // Other fields
     importance: importanceValidator,
     lifeArea: v.optional(lifeAreaValidator),
     contextTags: v.optional(contextTagsValidator),
@@ -653,29 +632,25 @@ export const create = mutation({
     }
     const memoryId = await ctx.db.insert("memories", {
       userId,
-      // Plaintext fields (optional)
       title: args.title,
       content: args.content,
       people: args.people,
       locations: args.locations,
-      // Encrypted fields
-      encryptedTitle: args.encryptedTitle,
-      encryptedContent: args.encryptedContent,
-      encryptedPeople: args.encryptedPeople,
-      encryptedLocations: args.encryptedLocations,
-      titleBlindIndex: args.titleBlindIndex,
-      // Other fields
       importance: args.importance,
       lifeArea: args.lifeArea,
       contextTags: args.contextTags,
       sentimentScore: args.sentimentScore,
       linkedUrls: args.linkedUrls ?? [],
       extractedActions: args.extractedActions,
-      entryKind: scheduling.entryKind,
-      schedule: scheduling.schedule,
+      ...scheduling,
       capsuleUnlockDate: args.capsuleUnlockDate,
+      embeddingState: "missing",
       status: "active",
     });
+    const createdMemory = await ctx.db.get(memoryId);
+    if (createdMemory) {
+      await applyUserMemoryStatsTransition(ctx, null, createdMemory);
+    }
 
     if (!args.skipAiProcessing) {
       await ctx.scheduler.runAfter(0, api.actions.processMemory.processMemory, {
@@ -695,18 +670,10 @@ export const update = mutation({
   args: {
     token: v.string(),
     id: v.id("memories"),
-    // Plaintext fields (legacy, optional)
     title: v.optional(v.string()),
     content: v.optional(v.string()),
     people: v.optional(v.array(v.string())),
     locations: v.optional(v.array(v.string())),
-    // Encrypted fields
-    encryptedTitle: v.optional(encryptedEnvelopeValidator),
-    encryptedContent: v.optional(encryptedEnvelopeValidator),
-    encryptedPeople: v.optional(encryptedEnvelopeValidator),
-    encryptedLocations: v.optional(encryptedEnvelopeValidator),
-    titleBlindIndex: v.optional(v.string()),
-    // Other fields
     importance: v.optional(importanceValidator),
     lifeArea: v.optional(v.union(lifeAreaValidator, v.null())),
     contextTags: v.optional(v.union(contextTagsValidator, v.null())),
@@ -722,16 +689,6 @@ export const update = mutation({
     const userId = user.userId;
     const memory = await ctx.db.get(args.id);
     if (!memory || memory.userId !== userId || !isActiveMemory(memory)) throw new Error("Not found");
-
-    // Save history snapshot before modifying
-    await ctx.db.insert("memoryHistory", {
-      memoryId: args.id,
-      userId,
-      previousTitle: memory.title ?? "",
-      previousContent: memory.content ?? "",
-      editedAt: Date.now(),
-      snapshotJson: serializeMemorySnapshot(memory),
-    });
 
     // Build patch object — only include defined, non-null fields
     const { id, token, ...updates } = args;
@@ -751,13 +708,44 @@ export const update = mutation({
       }
       Object.assign(patch, scheduling);
     }
-    await ctx.db.patch(args.id, patch);
 
-    if (args.title !== undefined || args.content !== undefined) {
+    const changedEntries = Object.entries(patch).filter(([key, value]) => {
+      const currentValue = (memory as Record<string, unknown>)[key];
+      return !isSameValue(currentValue, value);
+    });
+
+    if (changedEntries.length === 0) {
+      return;
+    }
+
+    // Save history snapshot before modifying only when the update is real.
+    await ctx.db.insert("memoryHistory", {
+      memoryId: args.id,
+      userId,
+      previousTitle: memory.title ?? "",
+      previousContent: memory.content ?? "",
+      editedAt: Date.now(),
+      snapshotJson: serializeMemorySnapshot(memory),
+    });
+
+    const finalPatch = Object.fromEntries(changedEntries);
+    await ctx.db.patch(args.id, finalPatch);
+    await applyUserMemoryStatsTransition(ctx, memory, {
+      ...memory,
+      ...finalPatch,
+    });
+
+    if ("title" in finalPatch || "content" in finalPatch) {
       await ctx.scheduler.runAfter(0, api.actions.processMemory.processMemory, {
         memoryId: args.id,
-        title: args.title ?? memory.title ?? "",
-        content: args.content ?? memory.content ?? "",
+        title:
+          (typeof finalPatch.title === "string" ? finalPatch.title : undefined) ??
+          memory.title ??
+          "",
+        content:
+          (typeof finalPatch.content === "string" ? finalPatch.content : undefined) ??
+          memory.content ??
+          "",
         userTimezone: user.timezone,
         currentTime: new Date().toISOString(),
       });
@@ -803,7 +791,12 @@ export const remove = mutation({
       });
     }
     // Soft-delete via status field
-    await ctx.db.patch(args.id, { status: "deleted", deletedAt: Date.now() });
+    const nextMemory = { ...memory, status: "deleted" as const, deletedAt: Date.now() };
+    await ctx.db.patch(args.id, {
+      status: nextMemory.status,
+      deletedAt: nextMemory.deletedAt,
+    });
+    await applyUserMemoryStatsTransition(ctx, memory, nextMemory);
   },
 });
 
@@ -863,7 +856,12 @@ export const removeMany = mutation({
       }
 
       // Soft-delete
-      await ctx.db.patch(id, { status: "deleted", deletedAt: Date.now() });
+      const nextMemory = { ...memory, status: "deleted" as const, deletedAt: Date.now() };
+      await ctx.db.patch(id, {
+        status: nextMemory.status,
+        deletedAt: nextMemory.deletedAt,
+      });
+      await applyUserMemoryStatsTransition(ctx, memory, nextMemory);
       deleted += 1;
     }
 
@@ -909,7 +907,9 @@ export const restore = mutation({
     if (memory.status !== "deleted") return; // not deleted
 
     // Restore flag
+    const nextMemory = { ...memory, status: "active" as const, deletedAt: undefined };
     await ctx.db.patch(args.id, { status: "active", deletedAt: undefined });
+    await applyUserMemoryStatsTransition(ctx, memory, nextMemory);
 
     // Re-increment topic counts
     const topicIds = Array.from(
@@ -1046,6 +1046,24 @@ export const clearAllUserMemoryData = mutation({
       deleted += 1;
     }
 
+    const statsBatch = await ctx.db
+      .query("userMemoryStats")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .take(BATCH);
+    for (const doc of statsBatch) {
+      await ctx.db.delete(doc._id);
+      deleted += 1;
+    }
+
+    const dailyCountsBatch = await ctx.db
+      .query("userMemoryDailyCounts")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .take(BATCH);
+    for (const doc of dailyCountsBatch) {
+      await ctx.db.delete(doc._id);
+      deleted += 1;
+    }
+
     const hasMore =
       memoryAttachmentBatch.length === BATCH ||
       memoryHistoryBatch.length === BATCH ||
@@ -1053,7 +1071,9 @@ export const clearAllUserMemoryData = mutation({
       sharedBatch.length === BATCH ||
       topicLinkBatch.length === BATCH ||
       memoryBatch.length === BATCH ||
-      topicBatch.length === BATCH;
+      topicBatch.length === BATCH ||
+      statsBatch.length === BATCH ||
+      dailyCountsBatch.length === BATCH;
 
     if (hasMore) {
       await ctx.scheduler.runAfter(0, api.memories.clearAllUserMemoryData, {
@@ -1164,57 +1184,40 @@ export const stats = query({
   handler: async (ctx, args) => {
     const { userId } = await resolveUser(ctx, args.token);
     const nowMs = args.asOf ?? Date.now();
-    const memories = await ctx.db
-      .query("memories")
-      .withIndex("by_user_status", (q) =>
-        q.eq("userId", userId).eq("status", "active")
-      )
-      .take(1000);
+    const statsDoc = await ctx.db
+      .query("userMemoryStats")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .unique();
+    const dailyCounts = await ctx.db
+      .query("userMemoryDailyCounts")
+      .withIndex("by_user_and_day", (q) => q.eq("userId", userId))
+      .order("desc")
+      .take(366);
 
-    const topicCounts: Record<string, number> = {};
-    let reminderCount = 0;
-    let recurringCount = 0;
-    let memoryOnlyCount = 0;
+    const today = new Date(nowMs);
+    today.setUTCHours(0, 0, 0, 0);
 
-    // Collect creation days in a Set for O(n) streak calculation
-    const dayMs = 24 * 60 * 60 * 1000;
-    const creationDays = new Set<number>();
-
-    for (const m of memories.filter(isActiveMemory)) {
-      if (m.primaryTopicId) {
-        topicCounts[m.primaryTopicId] = (topicCounts[m.primaryTopicId] ?? 0) + 1;
-      }
-      if (isReminder(m)) {
-        reminderCount++;
-      } else {
-        memoryOnlyCount++;
-      }
-      if (getMemorySchedule(m)?.isRecurring) recurringCount++;
-      creationDays.add(Math.floor(m._creationTime / dayMs));
-    }
-
-    const weekAgo = nowMs - 7 * dayMs;
-    const recentCount = memories.reduce(
-      (count, memory) => count + (memory._creationTime >= weekAgo ? 1 : 0),
-      0
-    );
-
-    // O(streak) streak calculation using Set lookups
-    const todayDayNum = Math.floor(nowMs / dayMs);
+    let recentCount = 0;
     let streakDays = 0;
-    for (let d = 0; d < 365; d++) {
-      if (creationDays.has(todayDayNum - d)) {
-        streakDays++;
-      } else if (d > 0) {
+    for (let offset = 0; offset < 365; offset += 1) {
+      const day = new Date(today);
+      day.setUTCDate(today.getUTCDate() - offset);
+      const dayKey = day.toISOString().slice(0, 10);
+      const row = dailyCounts.find((item) => item.dayKey === dayKey);
+      if (offset < 7) {
+        recentCount += row?.count ?? 0;
+      }
+      if ((row?.count ?? 0) > 0) {
+        streakDays += 1;
+      } else if (offset > 0) {
         break;
       }
     }
 
     return {
-      totalMemories: memoryOnlyCount,
-      totalReminders: reminderCount,
-      topicCounts,
-      recurringCount,
+      totalMemories: statsDoc?.totalMemories ?? 0,
+      totalReminders: statsDoc?.totalReminders ?? 0,
+      recurringCount: statsDoc?.recurringCount ?? 0,
       recentCount,
       streakDays,
     };
@@ -1231,6 +1234,9 @@ export const advanceRecurringReminders = internalMutation({
 
     const batch = await ctx.db
       .query("memories")
+      .withIndex("by_status_nextDueAt", (q) =>
+        q.eq("status", "active").lte("nextDueAt", nowIso)
+      )
       .take(500);
 
     let advanced = 0;
@@ -1345,6 +1351,13 @@ export const setTopics = internalMutation({
     const nextTopicIds = Array.from(
       new Set([args.primaryTopicId, ...args.topicIds])
     );
+    const samePrimary = memory.primaryTopicId === args.primaryTopicId;
+    const sameTopics =
+      previousTopicIds.length === nextTopicIds.length &&
+      previousTopicIds.every((topicId) => nextTopicIds.includes(topicId));
+    if (samePrimary && sameTopics) {
+      return;
+    }
     await ctx.db.patch(args.memoryId, {
       primaryTopicId: args.primaryTopicId,
       topicIds: nextTopicIds,
@@ -1389,12 +1402,12 @@ export const listWithoutEmbeddings = internalQuery({
     const limit = args.limit ? Math.min(args.limit, 50) : 50;
     const memories = await ctx.db
       .query("memories")
-      .order("desc")
-      .take(500);
+      .withIndex("by_status_embeddingState", (q) =>
+        q.eq("status", "active").eq("embeddingState", "missing")
+      )
+      .take(limit);
 
     return memories
-      .filter((m) => isActiveMemory(m) && (!m.embedding || m.embedding.length === 0))
-      .slice(0, limit)
       .map((m) => ({
         _id: m._id,
         title: m.title,
@@ -1494,7 +1507,12 @@ export const complete = mutation({
       });
     }
 
-    await ctx.db.patch(args.id, { status: "completed", completedAt: Date.now() });
+    const nextMemory = { ...memory, status: "completed" as const, completedAt: Date.now() };
+    await ctx.db.patch(args.id, {
+      status: nextMemory.status,
+      completedAt: nextMemory.completedAt,
+    });
+    await applyUserMemoryStatsTransition(ctx, memory, nextMemory);
   },
 });
 
@@ -1521,7 +1539,9 @@ export const uncomplete = mutation({
       });
     }
 
+    const nextMemory = { ...memory, status: "active" as const, completedAt: undefined };
     await ctx.db.patch(args.id, { status: "active", completedAt: undefined });
+    await applyUserMemoryStatsTransition(ctx, memory, nextMemory);
   },
 });
 

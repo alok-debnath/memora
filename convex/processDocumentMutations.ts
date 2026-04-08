@@ -1,7 +1,8 @@
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { internalMutation } from "./_generated/server";
-import { toStoredMemoryFields } from "./lib/memoryKind";
+import { applyUserMemoryStatsTransition } from "./lib/memoryStats";
+import { deriveEmbeddingState, toStoredMemoryFields } from "./lib/memoryKind";
 
 export const updateExtractionStatus = internalMutation({
   args: {
@@ -55,16 +56,22 @@ export const setMemoryReminder = internalMutation({
     dueAt: v.string(),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(
-      args.memoryId,
-      toStoredMemoryFields({
-        entryKind: "reminder",
-        schedule: {
-          dueAt: args.dueAt,
-          isRecurring: false,
-        },
-      })
-    );
+    const memory = await ctx.db.get(args.memoryId);
+    if (!memory) {
+      return;
+    }
+    const patch = toStoredMemoryFields({
+      entryKind: "reminder",
+      schedule: {
+        dueAt: args.dueAt,
+        isRecurring: false,
+      },
+    });
+    await ctx.db.patch(args.memoryId, patch);
+    await applyUserMemoryStatsTransition(ctx, memory, {
+      ...memory,
+      ...patch,
+    });
   },
 });
 
@@ -79,7 +86,7 @@ export const createExtractedMemory = internalMutation({
     embedding: v.optional(v.array(v.float64())),
   },
   handler: async (ctx, args): Promise<Id<"memories">> => {
-    return await ctx.db.insert("memories", {
+    const memoryId = await ctx.db.insert("memories", {
       userId: args.userId,
       title: args.title,
       content: args.content,
@@ -87,9 +94,15 @@ export const createExtractedMemory = internalMutation({
       locations: args.locations,
       importance: args.importance as "critical" | "high" | "normal" | "low",
       embedding: args.embedding,
+      embeddingState: deriveEmbeddingState(args.embedding),
       linkedUrls: [],
       entryKind: "memory" as const,
       status: "active",
     });
+    const created = await ctx.db.get(memoryId);
+    if (created) {
+      await applyUserMemoryStatsTransition(ctx, null, created);
+    }
+    return memoryId;
   },
 });

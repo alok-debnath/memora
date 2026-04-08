@@ -38,7 +38,7 @@ export const list = query({
       .withIndex("by_user_and_isArchived", (q) =>
         q.eq("userId", userId).eq("isArchived", false)
       )
-      .collect();
+      .take(100);
     return topics.filter((topic) => topic.memoryCount > 0);
   },
 });
@@ -62,7 +62,7 @@ export const activeSummaries = query({
       .withIndex("by_user_and_isArchived", (q) =>
         q.eq("userId", userId).eq("isArchived", false)
       )
-      .collect();
+      .take(100);
     return topics
       .filter((topic) => topic.memoryCount > 0)
       .map((topic) => ({
@@ -96,7 +96,7 @@ export const listWithCentroids = internalQuery({
       .withIndex("by_user_and_isArchived", (q) =>
         q.eq("userId", args.userId).eq("isArchived", false)
       )
-      .collect();
+      .take(100);
   },
 });
 
@@ -108,7 +108,7 @@ export const listActiveNames = internalQuery({
       .withIndex("by_user_and_isArchived", (q) =>
         q.eq("userId", args.userId).eq("isArchived", false)
       )
-      .collect();
+      .take(100);
     return topics
       .filter((topic) => topic.memoryCount > 0)
       .map((topic) => ({ _id: topic._id, name: topic.name }));
@@ -135,7 +135,7 @@ export const countActiveTopics = internalQuery({
       .withIndex("by_user_and_isArchived", (q) =>
         q.eq("userId", args.userId).eq("isArchived", false)
       )
-      .collect();
+      .take(100);
     return topics.length;
   },
 });
@@ -158,7 +158,7 @@ export const createTopic = internalMutation({
     const activeTopics = await ctx.db
       .query("userTopics")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .collect();
+      .take(100);
     const normalizedMatch = activeTopics.find(
       (topic) =>
         !topic.isArchived &&
@@ -296,7 +296,7 @@ export const decrementOrArchiveTopics = internalMutation({
       const siblingTopics = await ctx.db
         .query("userTopics")
         .withIndex("by_user", (q) => q.eq("userId", topic.userId))
-        .collect();
+        .take(100);
 
       for (const sibling of siblingTopics) {
         if (sibling._id === topicId) continue;
@@ -354,7 +354,7 @@ export const reconcileTopicUsage = internalMutation({
     const topics = await ctx.db
       .query("userTopics")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .collect();
+      .take(100);
 
     const archivedTopicIds = new Set<Id<"userTopics">>();
 
@@ -414,13 +414,13 @@ export const mergeTopic = internalMutation({
     const merge = await ctx.db.get(args.mergeId);
     if (!keep || !merge || keep.isArchived || merge.isArchived) return;
 
-    const allMemories = await ctx.db
+    const allMemories = ctx.db
       .query("memories")
-      .withIndex("by_user", (q) => q.eq("userId", merge.userId))
-      .collect();
+      .withIndex("by_user_status", (q) =>
+        q.eq("userId", merge.userId).eq("status", "active")
+      );
 
-    for (const m of allMemories) {
-      if (m.status !== "active") continue;
+    for await (const m of allMemories) {
       const hasTopicIds = m.topicIds?.includes(args.mergeId);
       const isPrimary = m.primaryTopicId === args.mergeId;
       if (!hasTopicIds && !isPrimary) continue;

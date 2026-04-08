@@ -19,6 +19,7 @@
   "dependencies": {
     "@better-auth/expo": "1.5.5",
     "@convex-dev/better-auth": "^0.11.3",
+    "@convex-dev/migrations": "^0.3.3",
     "@expo-google-fonts/dm-sans": "^0.4.2",
     "@expo-google-fonts/inter": "^0.4.0",
     "@expo-google-fonts/space-grotesk": "^0.4.1",

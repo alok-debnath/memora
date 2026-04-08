@@ -132,6 +132,14 @@ export const syncSessionUser = mutation({
         isActedOn: false,
       });
 
+      await ctx.db.insert("userMemoryStats", {
+        userId,
+        totalMemories: 0,
+        totalReminders: 0,
+        recurringCount: 0,
+        updatedAt: Date.now(),
+      });
+
       user = await ctx.db.get(userId);
     } else if (user.email !== email || user.name !== name || user.authUserId !== identity.subject) {
       await ctx.db.patch(user._id, {
@@ -172,6 +180,8 @@ export const deleteAccount = mutation({
       "reviewCards",
       "nudges",
       "chatMessages",
+      "userMemoryStats",
+      "userMemoryDailyCounts",
     ] as const;
 
     for (const table of tables) {

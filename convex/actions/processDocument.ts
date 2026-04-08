@@ -37,8 +37,6 @@ export const processDocument = action({
     text: v.string(),
     userId: v.id("users"),
     userTimezone: v.optional(v.string()),
-    // Legacy: keep token optional for backwards compat but don't require it
-    token: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = args.userId;

@@ -2,13 +2,52 @@
  * Data migration utilities
  * Handles deletion of existing plaintext data
  */
+import { Migrations } from "@convex-dev/migrations";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
-import { api, internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import { api, components, internal } from "./_generated/api";
+import type { DataModel, Id } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
 import { action, internalAction, internalQuery, mutation } from "./_generated/server";
+import { rebuildUserMemoryStats } from "./lib/memoryStats";
+import { deriveEmbeddingState, deriveNextDueAt } from "./lib/memoryKind";
 import { resolveUser } from "./lib/withAuth";
+
+export const migrations = new Migrations<DataModel>(components.migrations);
+export const run = migrations.runner();
+
+export const backfillMemoryDerivedFields = migrations.define({
+  table: "memories",
+  batchSize: 50,
+  migrateOne: async (ctx, memory) => {
+    const nextDueAt = deriveNextDueAt(memory);
+    const embeddingState = deriveEmbeddingState(memory.embedding);
+    if (
+      memory.nextDueAt === nextDueAt &&
+      memory.embeddingState === embeddingState
+    ) {
+      return;
+    }
+    return {
+      nextDueAt,
+      embeddingState,
+    };
+  },
+});
+
+export const backfillUserMemoryStats = migrations.define({
+  table: "users",
+  batchSize: 10,
+  migrateOne: async (ctx, user) => {
+    await rebuildUserMemoryStats(ctx, user._id);
+  },
+});
+
+export const runMemoryPerformanceMigrations = migrations.runner([
+  internal.migrations.backfillMemoryDerivedFields,
+  internal.migrations.backfillUserMemoryStats,
+]);
+
 
 async function repairTopicMetadataForUser(
   ctx: Pick<ActionCtx, "runQuery" | "runMutation">,
@@ -238,139 +277,6 @@ export const wipeAllUserData = mutation({
       success: true,
       message: "All data deleted",
       totalDeleted,
-    };
-  },
-});
-
-/**
- * Clear plaintext fields from encrypted records
- * Run this after user has verified their encrypted data works
- */
-export const clearPlaintextFields = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const user = await resolveUser(ctx);
-    const BATCH = 100;
-    let updated = 0;
-    
-    // Clear plaintext from memories that have encrypted versions
-    const memories = await ctx.db
-      .query("memories")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .take(BATCH);
-    
-    for (const memory of memories) {
-      if (memory.encryptedContent && memory.content) {
-        await ctx.db.patch(memory._id, {
-          title: undefined,
-          content: undefined,
-          people: undefined,
-          locations: undefined,
-        });
-        updated++;
-      }
-    }
-    
-    // Clear plaintext from diary entries
-    const diaryEntries = await ctx.db
-      .query("diaryEntries")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .take(BATCH);
-    
-    for (const entry of diaryEntries) {
-      if (entry.encryptedRawText && entry.rawText) {
-        await ctx.db.patch(entry._id, {
-          rawText: undefined,
-          correctedText: undefined,
-          topics: undefined,
-          summary: undefined,
-          structuredInsights: undefined,
-          habitsDetected: undefined,
-          personalityTraits: undefined,
-          likes: undefined,
-          dislikes: undefined,
-          actionItems: undefined,
-        });
-        updated++;
-      }
-    }
-    
-    // Clear plaintext from chat messages
-    const chatMessages = await ctx.db
-      .query("chatMessages")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .take(BATCH);
-    
-    for (const message of chatMessages) {
-      if (message.encryptedContent && message.content) {
-        await ctx.db.patch(message._id, {
-          content: undefined,
-          attachments: undefined,
-        });
-        updated++;
-      }
-    }
-    
-    const hasMore =
-      memories.length >= BATCH ||
-      diaryEntries.length >= BATCH ||
-      chatMessages.length >= BATCH;
-    
-    return {
-      updatedThisBatch: updated,
-      complete: !hasMore,
-      message: hasMore ? "Please call again to continue" : "Migration complete",
-    };
-  },
-});
-
-/**
- * Get migration status - how much data needs encryption
- */
-export const getMigrationStatus = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const user = await resolveUser(ctx);
-    
-    // Count records needing encryption
-    const memories = await ctx.db
-      .query("memories")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .take(10000);
-    
-    const unencryptedMemories = memories.filter(
-      (m) => m.content && !m.encryptedContent
-    ).length;
-    
-    const diaryEntries = await ctx.db
-      .query("diaryEntries")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .take(10000);
-    
-    const unencryptedDiary = diaryEntries.filter(
-      (d) => d.rawText && !d.encryptedRawText
-    ).length;
-    
-    const chatMessages = await ctx.db
-      .query("chatMessages")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .take(10000);
-    
-    const unencryptedChat = chatMessages.filter(
-      (c) => c.content && !c.encryptedContent
-    ).length;
-    
-    return {
-      totalMemories: memories.length,
-      unencryptedMemories,
-      totalDiaryEntries: diaryEntries.length,
-      unencryptedDiary,
-      totalChatMessages: chatMessages.length,
-      unencryptedChat,
-      needsMigration:
-        unencryptedMemories > 0 ||
-        unencryptedDiary > 0 ||
-        unencryptedChat > 0,
     };
   },
 });

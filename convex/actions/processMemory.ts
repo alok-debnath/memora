@@ -119,6 +119,16 @@ function hasExplicitSchedulingFields(value: Record<string, unknown>) {
   );
 }
 
+function isSameValue(left: unknown, right: unknown) {
+  if (left === right) {
+    return true;
+  }
+  if (left === undefined || right === undefined) {
+    return left === right;
+  }
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 /**
  * Build a structured, metadata-enriched text for embedding generation.
  * Including structured metadata (people, locations, life area, etc.)
@@ -345,13 +355,23 @@ export const processMemory = action({
         embedding,
       });
 
-      await ctx.scheduler.runAfter(0, internal.actions.manageTopics.assignTopicsToMemory, {
-        memoryId: args.memoryId,
-        userId: memory.userId,
-        title: normalized.title ?? args.title,
-        content: args.content,
-        embedding,
-      });
+      const shouldReassignTopics =
+        !isSameValue(memory.embedding, embedding) ||
+        !isSameValue(memory.title, normalized.title ?? memory.title) ||
+        !isSameValue(memory.people, normalized.people ?? memory.people) ||
+        !isSameValue(memory.locations, normalized.locations ?? memory.locations) ||
+        !isSameValue(memory.lifeArea, normalized.lifeArea ?? memory.lifeArea) ||
+        !isSameValue(memory.entryKind, normalized.entryKind ?? memory.entryKind);
+
+      if (shouldReassignTopics) {
+        await ctx.scheduler.runAfter(0, internal.actions.manageTopics.assignTopicsToMemory, {
+          memoryId: args.memoryId,
+          userId: memory.userId,
+          title: normalized.title ?? args.title,
+          content: args.content,
+          embedding,
+        });
+      }
     } catch {
       // Best effort only. Background enrichment should never break user writes.
     }

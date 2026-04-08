@@ -426,6 +426,33 @@ const UPDATE_INTENT_PATTERNS = [
   /\bmake\b/i,
 ];
 
+const CREATE_ONLY_INTENT_PATTERNS = [
+  /\bremember\b/i,
+  /\bsave\b/i,
+  /\bnote\b/i,
+  /\badd\b/i,
+  /\bcapture\b/i,
+  /\bstore\b/i,
+  /\bremind me\b/i,
+];
+
+const FACTUAL_GROUNDING_PATTERNS = [
+  /\?/,
+  /\bhow many\b/i,
+  /\bwhat\b/i,
+  /\bwhich\b/i,
+  /\bwho\b/i,
+  /\bwhen\b/i,
+  /\bdo i have\b/i,
+  /\blist\b/i,
+  /\bshow\b/i,
+  /\bfind\b/i,
+  /\bdelete\b/i,
+  /\bremove\b/i,
+  /\brestore\b/i,
+  /\bundo\b/i,
+];
+
 function isGenericOnlyQuery(message: string) {
   const trimmed = message.trim();
   return (
@@ -464,6 +491,23 @@ function shouldPreferUpdatingExisting(message: string) {
       /\bwith id\b/i.test(trimmed)
     )
   );
+}
+
+function shouldRunInitialGroundingSearch(message: string) {
+  const trimmed = message.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (shouldPreferUpdatingExisting(trimmed)) {
+    return true;
+  }
+  if (
+    CREATE_ONLY_INTENT_PATTERNS.some((pattern) => pattern.test(trimmed)) &&
+    !FACTUAL_GROUNDING_PATTERNS.some((pattern) => pattern.test(trimmed))
+  ) {
+    return false;
+  }
+  return FACTUAL_GROUNDING_PATTERNS.some((pattern) => pattern.test(trimmed));
 }
 
 function normalizeForMemoryDedupe(value: string | undefined): string {
@@ -763,10 +807,11 @@ async function buildGroundingContext(
   const isGenericOnly = isGenericOnlyQuery(args.message);
   const shouldGround = shouldGroundAgainstDb(args.message);
   const shouldPreferUpdate = shouldPreferUpdatingExisting(args.message);
+  const shouldRunSearch = shouldRunInitialGroundingSearch(args.message);
 
-  if (!shouldGround) {
+  if (!shouldGround || !shouldRunSearch) {
     return {
-      shouldGround,
+      shouldGround: false,
       shouldPreferUpdate,
       isGenericOnly,
       searchCount: 0,
@@ -1329,12 +1374,18 @@ export const chat = action({
               });
             } else if (fnName === "create_memory") {
               if (shouldPreferUpdatingExisting(args.message)) {
-                const existingMatches = await searchMemories(ctx, {
-                  token: args.token,
-                  query: args.message,
-                  userId: session._id,
-                  recentMemories: await getRecentMemoriesCache(),
-                });
+                const existingMatches =
+                  initialGrounding.shouldPreferUpdate && initialGrounding.shouldGround
+                    ? {
+                        results: initialGrounding.searchResults,
+                        count: initialGrounding.searchCount,
+                      }
+                    : await searchMemories(ctx, {
+                        token: args.token,
+                        query: args.message,
+                        userId: session._id,
+                        recentMemories: await getRecentMemoriesCache(),
+                      });
                 const existingMatch = existingMatches.results[0];
                 if (existingMatch?.id) {
                   await setStreamingStatus({
@@ -1475,23 +1526,6 @@ export const chat = action({
                 }
                 recentMemoriesCache = undefined;
 
-                if (created.embedding && contentToSave) {
-                  await ctx.scheduler.runAfter(
-                    0,
-                    internal.actions.manageTopics.assignTopicsToMemory,
-                    {
-                      memoryId: created.memoryId,
-                      userId: session._id,
-                      title:
-                        normalized.title ||
-                        created.structured.title ||
-                        "New Memory",
-                      content: contentToSave,
-                      embedding: created.embedding,
-                    }
-                  );
-                }
-
                 const resolvedTitle =
                   normalized.title || created.structured.title || "New Memory";
                 createdMemoriesByDedupeKey.set(dedupeKey, {
@@ -1572,12 +1606,20 @@ export const chat = action({
               }
             } else if (fnName === "propose_deletion") {
               const entryKind = typeof fnArgs.entry_kind === "string" ? fnArgs.entry_kind : "any";
-              const searchResult = await searchMemories(ctx, {
-                token: args.token,
-                query: String(fnArgs.query || ""),
-                userId: session._id,
-                recentMemories: await getRecentMemoriesCache(),
-              });
+              const deletionQuery = String(fnArgs.query || "");
+              const searchResult =
+                initialGrounding.shouldGround &&
+                deletionQuery.trim().toLowerCase() === args.message.trim().toLowerCase()
+                  ? {
+                      results: initialGrounding.searchResults,
+                      count: initialGrounding.searchCount,
+                    }
+                  : await searchMemories(ctx, {
+                      token: args.token,
+                      query: deletionQuery,
+                      userId: session._id,
+                      recentMemories: await getRecentMemoriesCache(),
+                    });
 
               let matchedItems = searchResult.results;
               if (entryKind === "reminder") {

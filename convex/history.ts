@@ -2,8 +2,23 @@ import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { resolveUser } from "./lib/withAuth";
+import { applyUserMemoryStatsTransition } from "./lib/memoryStats";
+import { deriveEmbeddingState, toStoredMemoryFields } from "./lib/memoryKind";
 import { parseMemorySnapshot, serializeMemorySnapshot } from "./lib/memorySnapshot";
 import type { Id } from "./_generated/dataModel";
+
+function withDerivedMemoryFields<T extends { entryKind?: "memory" | "reminder"; schedule?: { dueAt: string; isRecurring: boolean; recurrenceType?: "daily" | "weekly" | "monthly" | "yearly" } }>(
+  memory: T
+) {
+  return {
+    ...memory,
+    ...toStoredMemoryFields({
+      entryKind: memory.entryKind,
+      schedule: memory.schedule,
+    }),
+    embeddingState: deriveEmbeddingState(undefined),
+  };
+}
 
 export const getMemoryHistory = query({
   args: {
@@ -117,9 +132,25 @@ export const undo = mutation({
       // the soft-delete flag so nothing else changes.
       if (existing && existing.status === "deleted") {
         await ctx.db.patch(entry.memoryId, { status: "active", deletedAt: undefined });
+        await applyUserMemoryStatsTransition(ctx, existing, {
+          ...existing,
+          status: "active",
+          deletedAt: undefined,
+        });
+        await ctx.runMutation(internal.memories.syncTopicLinksForMemory, {
+          memoryId: entry.memoryId,
+        });
       } else if (!existing) {
         // Permanently deleted since undo window — full re-insert from snapshot
-        await ctx.db.insert("memories", snapshot);
+        const restoredSnapshot = withDerivedMemoryFields(snapshot);
+        const restoredId = await ctx.db.insert("memories", restoredSnapshot);
+        const restored = await ctx.db.get(restoredId);
+        if (restored) {
+          await applyUserMemoryStatsTransition(ctx, null, restored);
+          await ctx.runMutation(internal.memories.syncTopicLinksForMemory, {
+            memoryId: restored._id,
+          });
+        }
       }
       // Re-increment topic counts that were decremented on deletion
       const topicIds = Array.from(
@@ -137,12 +168,34 @@ export const undo = mutation({
     }
 
     if (existing) {
-      await ctx.db.replace(entry.memoryId, snapshot);
+      const restoredSnapshot = withDerivedMemoryFields(snapshot);
+      await ctx.db.replace(entry.memoryId, restoredSnapshot);
+      await applyUserMemoryStatsTransition(ctx, existing, {
+        ...existing,
+        ...restoredSnapshot,
+      });
+      await ctx.runMutation(internal.memories.syncTopicLinksForMemory, {
+        memoryId: entry.memoryId,
+      });
+      await ctx.scheduler.runAfter(0, internal.actions.manageTopics.reanalyzeUserTopics, {
+        userId,
+      });
       await ctx.db.delete(entry._id); // consume the undo entry
       return { success: true, action: "reverted", memoryId: entry.memoryId };
     }
 
-    const restoredId = await ctx.db.insert("memories", snapshot);
+    const restoredSnapshot = withDerivedMemoryFields(snapshot);
+    const restoredId = await ctx.db.insert("memories", restoredSnapshot);
+    const restored = await ctx.db.get(restoredId);
+    if (restored) {
+      await applyUserMemoryStatsTransition(ctx, null, restored);
+      await ctx.runMutation(internal.memories.syncTopicLinksForMemory, {
+        memoryId: restored._id,
+      });
+    }
+    await ctx.scheduler.runAfter(0, internal.actions.manageTopics.reanalyzeUserTopics, {
+      userId,
+    });
     await ctx.db.delete(entry._id);
     return { success: true, action: "restored", memoryId: restoredId };
   },
@@ -167,11 +220,33 @@ export const restore = mutation({
 
     const existing = await ctx.db.get(entry.memoryId);
     if (existing) {
-      await ctx.db.replace(entry.memoryId, snapshot);
+      const restoredSnapshot = withDerivedMemoryFields(snapshot);
+      await ctx.db.replace(entry.memoryId, restoredSnapshot);
+      await applyUserMemoryStatsTransition(ctx, existing, {
+        ...existing,
+        ...restoredSnapshot,
+      });
+      await ctx.runMutation(internal.memories.syncTopicLinksForMemory, {
+        memoryId: entry.memoryId,
+      });
+      await ctx.scheduler.runAfter(0, internal.actions.manageTopics.reanalyzeUserTopics, {
+        userId,
+      });
       return { success: true, action: "reverted", memoryId: entry.memoryId };
     }
 
-    const restoredId = await ctx.db.insert("memories", snapshot);
+    const restoredSnapshot = withDerivedMemoryFields(snapshot);
+    const restoredId = await ctx.db.insert("memories", restoredSnapshot);
+    const restored = await ctx.db.get(restoredId);
+    if (restored) {
+      await applyUserMemoryStatsTransition(ctx, null, restored);
+      await ctx.runMutation(internal.memories.syncTopicLinksForMemory, {
+        memoryId: restored._id,
+      });
+    }
+    await ctx.scheduler.runAfter(0, internal.actions.manageTopics.reanalyzeUserTopics, {
+      userId,
+    });
     return { success: true, action: "restored", memoryId: restoredId };
   },
 });

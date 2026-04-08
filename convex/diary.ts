@@ -5,8 +5,7 @@ import { resolveUser } from "./lib/withAuth";
 import { 
   moodValidator, 
   energyLevelValidator, 
-  priorityValidator,
-  encryptedEnvelopeValidator 
+  priorityValidator
 } from "./lib/validators";
 
 export const list = query({
@@ -43,15 +42,9 @@ export const stats = query({
 export const create = mutation({
   args: {
     token: v.string(),
-    // Plaintext fields (legacy, optional)
     rawText: v.optional(v.string()),
     correctedText: v.optional(v.string()),
     topics: v.optional(v.array(v.string())),
-    // Encrypted fields
-    encryptedRawText: v.optional(encryptedEnvelopeValidator),
-    encryptedCorrectedText: v.optional(encryptedEnvelopeValidator),
-    encryptedTopics: v.optional(encryptedEnvelopeValidator),
-    // Other fields
     mood: v.optional(moodValidator),
     energyLevel: v.optional(energyLevelValidator),
     structuredInsights: v.optional(
@@ -65,9 +58,6 @@ export const create = mutation({
       rawText: args.rawText,
       correctedText: args.correctedText,
       topics: args.topics ?? ["general"],
-      encryptedRawText: args.encryptedRawText,
-      encryptedCorrectedText: args.encryptedCorrectedText,
-      encryptedTopics: args.encryptedTopics,
       mood: args.mood,
       energyLevel: args.energyLevel,
       structuredInsights: args.structuredInsights,

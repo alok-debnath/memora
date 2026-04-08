@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
+import { applyUserMemoryStatsTransition } from "./lib/memoryStats";
 import {
   importanceValidator,
   lifeAreaValidator,
@@ -8,7 +9,7 @@ import {
   memoryEntryKindValidator,
   memoryScheduleValidator,
 } from "./lib/validators";
-import { toStoredMemoryFields } from "./lib/memoryKind";
+import { deriveEmbeddingState, toStoredMemoryFields } from "./lib/memoryKind";
 
 function hasSchedulingInput(value: {
   entryKind?: "memory" | "reminder";
@@ -43,7 +44,10 @@ export const updateEmbedding = internalMutation({
     if (isSameValue(memory.embedding, args.embedding)) {
       return;
     }
-    await ctx.db.patch(args.memoryId, { embedding: args.embedding });
+    await ctx.db.patch(args.memoryId, {
+      embedding: args.embedding,
+      embeddingState: deriveEmbeddingState(args.embedding),
+    });
   },
 });
 
@@ -101,6 +105,9 @@ export const updateAIFields = internalMutation({
         })
       );
     }
+    if (args.embedding !== undefined) {
+      updates.embeddingState = deriveEmbeddingState(args.embedding);
+    }
     const changedEntries = Object.entries(updates).filter(([key, value]) => {
       const currentValue = (memory as Record<string, unknown>)[key];
       return !isSameValue(currentValue, value);
@@ -108,6 +115,11 @@ export const updateAIFields = internalMutation({
     if (changedEntries.length === 0) {
       return;
     }
-    await ctx.db.patch(args.memoryId, Object.fromEntries(changedEntries));
+    const finalPatch = Object.fromEntries(changedEntries);
+    await ctx.db.patch(args.memoryId, finalPatch);
+    await applyUserMemoryStatsTransition(ctx, memory, {
+      ...memory,
+      ...finalPatch,
+    });
   },
 });

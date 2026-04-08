@@ -115,10 +115,6 @@ type MemoryItem = {
   importance: string;
   shareToken?: string;
   isPublic?: boolean;
-  encryptedTitle?: { v: number; n: string; c: string };
-  encryptedContent?: { v: number; n: string; c: string };
-  encryptedPeople?: { v: number; n: string; c: string };
-  encryptedLocations?: { v: number; n: string; c: string };
   [key: string]: unknown;
 };
 
@@ -226,15 +222,6 @@ export default function HomeScreen() {
   const upcomingReminders = upcomingRemindersRaw ?? [];
   const stats =
     useQuery(api.memories.stats, token ? { token, asOf: querySnapshot.nowMs } : "skip") ?? null;
-
-  // Instant DB Search for low-latency feedback
-  const instantSearchResult = useQuery(
-    api.memories.searchInstant,
-    token && trimmedSearchQuery && trimmedSearchQuery.length >= 3
-      ? { token, query: trimmedSearchQuery, limit: 12 }
-      : "skip"
-  );
-  const instantResults = (instantSearchResult ?? []) as MemoryItem[];
 
   const semanticSearch = useAction(api.actions.semanticSearch.search);
   const reconcileTopics = useAction(api.actions.manageTopics.reconcileTopics);
@@ -386,14 +373,7 @@ export default function HomeScreen() {
       merged.set(memory._id, memory);
     }
 
-    // Stage 2: Instant Results from Fast DB Index
-    for (const memory of instantResults) {
-      if (!merged.has(memory._id)) {
-        merged.set(memory._id, memory);
-      }
-    }
-
-    // Stage 3: Semantic results (GPT expanded/Vector searched)
+    // Stage 2: Semantic/vector results
     for (const memory of semanticResults ?? []) {
       if (!merged.has(memory._id)) {
         merged.set(memory._id, memory);
@@ -413,7 +393,6 @@ export default function HomeScreen() {
   }, [
     exactMatches,
     feedMemories,
-    instantResults,
     searchMode,
     selectedTopic,
     semanticResults,

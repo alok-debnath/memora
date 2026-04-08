@@ -9,9 +9,12 @@ export type MemorySchedule = {
   recurrenceType?: MemoryRecurrenceType;
 };
 
+export type MemoryEmbeddingState = "missing" | "ready";
+
 type MemoryLike = {
   entryKind?: MemoryEntryKind;
   schedule?: MemorySchedule;
+  embedding?: number[] | null;
 };
 
 export function inferEntryKind(memory: MemoryLike): MemoryEntryKind {
@@ -37,6 +40,18 @@ export function isReminder(memory: MemoryLike): boolean {
   return inferEntryKind(memory) === "reminder" && !!getReminderDate(memory);
 }
 
+export function deriveNextDueAt(input: {
+  entryKind?: MemoryEntryKind;
+  schedule?: MemorySchedule;
+}) {
+  const entryKind = input.entryKind ?? (input.schedule?.dueAt ? "reminder" : "memory");
+  return entryKind === "reminder" ? input.schedule?.dueAt : undefined;
+}
+
+export function deriveEmbeddingState(embedding?: number[] | null): MemoryEmbeddingState {
+  return Array.isArray(embedding) && embedding.length > 0 ? "ready" : "missing";
+}
+
 export function toStoredMemoryFields(input: {
   entryKind?: MemoryEntryKind;
   schedule?: MemorySchedule;
@@ -55,6 +70,7 @@ export function toStoredMemoryFields(input: {
   return {
     entryKind,
     schedule,
+    nextDueAt: deriveNextDueAt({ entryKind, schedule }),
   };
 }
 

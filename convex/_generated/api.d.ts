@@ -17,7 +17,6 @@ import type * as actions_processDocument from "../actions/processDocument.js";
 import type * as actions_processMemory from "../actions/processMemory.js";
 import type * as actions_semanticSearch from "../actions/semanticSearch.js";
 import type * as actions_transcribeAudio from "../actions/transcribeAudio.js";
-import type * as audit from "../audit.js";
 import type * as auth from "../auth.js";
 import type * as authSchema from "../authSchema.js";
 import type * as chat from "../chat.js";
@@ -25,13 +24,12 @@ import type * as crons from "../crons.js";
 import type * as dataExport from "../dataExport.js";
 import type * as diary from "../diary.js";
 import type * as documents from "../documents.js";
-import type * as encryption from "../encryption.js";
 import type * as history from "../history.js";
 import type * as http from "../http.js";
 import type * as lib_aiNormalization from "../lib/aiNormalization.js";
-import type * as lib_encryption from "../lib/encryption.js";
 import type * as lib_memoryKind from "../lib/memoryKind.js";
 import type * as lib_memorySnapshot from "../lib/memorySnapshot.js";
+import type * as lib_memoryStats from "../lib/memoryStats.js";
 import type * as lib_openai from "../lib/openai.js";
 import type * as lib_search from "../lib/search.js";
 import type * as lib_semanticSearch from "../lib/semanticSearch.js";
@@ -41,7 +39,6 @@ import type * as memories from "../memories.js";
 import type * as migrations from "../migrations.js";
 import type * as notifications from "../notifications.js";
 import type * as nudges from "../nudges.js";
-import type * as privacy from "../privacy.js";
 import type * as processDiaryMutations from "../processDiaryMutations.js";
 import type * as processDocumentMutations from "../processDocumentMutations.js";
 import type * as processMemoryMutations from "../processMemoryMutations.js";
@@ -65,7 +62,6 @@ declare const fullApi: ApiFromModules<{
   "actions/processMemory": typeof actions_processMemory;
   "actions/semanticSearch": typeof actions_semanticSearch;
   "actions/transcribeAudio": typeof actions_transcribeAudio;
-  audit: typeof audit;
   auth: typeof auth;
   authSchema: typeof authSchema;
   chat: typeof chat;
@@ -73,13 +69,12 @@ declare const fullApi: ApiFromModules<{
   dataExport: typeof dataExport;
   diary: typeof diary;
   documents: typeof documents;
-  encryption: typeof encryption;
   history: typeof history;
   http: typeof http;
   "lib/aiNormalization": typeof lib_aiNormalization;
-  "lib/encryption": typeof lib_encryption;
   "lib/memoryKind": typeof lib_memoryKind;
   "lib/memorySnapshot": typeof lib_memorySnapshot;
+  "lib/memoryStats": typeof lib_memoryStats;
   "lib/openai": typeof lib_openai;
   "lib/search": typeof lib_search;
   "lib/semanticSearch": typeof lib_semanticSearch;
@@ -89,7 +84,6 @@ declare const fullApi: ApiFromModules<{
   migrations: typeof migrations;
   notifications: typeof notifications;
   nudges: typeof nudges;
-  privacy: typeof privacy;
   processDiaryMutations: typeof processDiaryMutations;
   processDocumentMutations: typeof processDocumentMutations;
   processMemoryMutations: typeof processMemoryMutations;
@@ -21297,6 +21291,93 @@ export declare const components: {
           any
         >;
       };
+    };
+  };
+  migrations: {
+    lib: {
+      cancel: FunctionReference<
+        "mutation",
+        "internal",
+        { name: string },
+        {
+          batchSize?: number;
+          cursor?: string | null;
+          error?: string;
+          isDone: boolean;
+          latestEnd?: number;
+          latestStart: number;
+          name: string;
+          next?: Array<string>;
+          processed: number;
+          state: "inProgress" | "success" | "failed" | "canceled" | "unknown";
+        }
+      >;
+      cancelAll: FunctionReference<
+        "mutation",
+        "internal",
+        { sinceTs?: number },
+        Array<{
+          batchSize?: number;
+          cursor?: string | null;
+          error?: string;
+          isDone: boolean;
+          latestEnd?: number;
+          latestStart: number;
+          name: string;
+          next?: Array<string>;
+          processed: number;
+          state: "inProgress" | "success" | "failed" | "canceled" | "unknown";
+        }>
+      >;
+      clearAll: FunctionReference<
+        "mutation",
+        "internal",
+        { before?: number },
+        null
+      >;
+      getStatus: FunctionReference<
+        "query",
+        "internal",
+        { limit?: number; names?: Array<string> },
+        Array<{
+          batchSize?: number;
+          cursor?: string | null;
+          error?: string;
+          isDone: boolean;
+          latestEnd?: number;
+          latestStart: number;
+          name: string;
+          next?: Array<string>;
+          processed: number;
+          state: "inProgress" | "success" | "failed" | "canceled" | "unknown";
+        }>
+      >;
+      migrate: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          batchSize?: number;
+          cursor?: string | null;
+          dryRun: boolean;
+          fnHandle: string;
+          name: string;
+          next?: Array<{ fnHandle: string; name: string }>;
+          oneBatchOnly?: boolean;
+          reset?: boolean;
+        },
+        {
+          batchSize?: number;
+          cursor?: string | null;
+          error?: string;
+          isDone: boolean;
+          latestEnd?: number;
+          latestStart: number;
+          name: string;
+          next?: Array<string>;
+          processed: number;
+          state: "inProgress" | "success" | "failed" | "canceled" | "unknown";
+        }
+      >;
     };
   };
 };
