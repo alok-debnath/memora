@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { action, mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import { api, internal } from "./_generated/api";
+import type { Doc } from "./_generated/dataModel";
 import { resolveUser } from "./lib/withAuth";
 import { encryptedEnvelopeValidator } from "./lib/validators";
 
@@ -57,19 +58,64 @@ export const send = internalMutation({
 
 /** Written by the chat action when search_memories is invoked. */
 export const setSearchStatus = internalMutation({
-  args: { userId: v.id("users"), query: v.string() },
+  args: {
+    userId: v.id("users"),
+    query: v.optional(v.string()),
+    phase: v.optional(v.string()),
+    toolName: v.optional(v.string()),
+    detail: v.optional(v.string()),
+    source: v.optional(v.string()),
+    cacheState: v.optional(v.string()),
+    resultCount: v.optional(v.number()),
+    previewItems: v.optional(v.array(v.string())),
+    events: v.optional(
+      v.array(
+        v.object({
+          label: v.string(),
+          value: v.optional(v.string()),
+        })
+      )
+    ),
+    step: v.optional(v.number()),
+    totalSteps: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("chatSearchStatus")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .first();
+    const patch = {
+      ...(args.query !== undefined ? { query: args.query } : {}),
+      ...(args.phase !== undefined ? { phase: args.phase } : {}),
+      ...(args.toolName !== undefined ? { toolName: args.toolName } : {}),
+      ...(args.detail !== undefined ? { detail: args.detail } : {}),
+      ...(args.source !== undefined ? { source: args.source } : {}),
+      ...(args.cacheState !== undefined ? { cacheState: args.cacheState } : {}),
+      ...(args.resultCount !== undefined ? { resultCount: args.resultCount } : {}),
+      ...(args.previewItems !== undefined ? { previewItems: args.previewItems } : {}),
+      ...(args.events !== undefined ? { events: args.events } : {}),
+      ...(args.step !== undefined ? { step: args.step } : {}),
+      ...(args.totalSteps !== undefined ? { totalSteps: args.totalSteps } : {}),
+      updatedAt: Date.now(),
+    };
     if (existing) {
-      await ctx.db.patch(existing._id, { query: args.query, startedAt: Date.now() });
+      await ctx.db.patch(existing._id, patch);
     } else {
       await ctx.db.insert("chatSearchStatus", {
         userId: args.userId,
         query: args.query,
+        phase: args.phase,
+        toolName: args.toolName,
+        detail: args.detail,
+        source: args.source,
+        cacheState: args.cacheState,
+        resultCount: args.resultCount,
+        previewItems: args.previewItems,
+        events: args.events,
+        step: args.step,
+        totalSteps: args.totalSteps,
         startedAt: Date.now(),
+        updatedAt: Date.now(),
       });
     }
   },
@@ -107,53 +153,104 @@ export const deepSearch = action({
     query: v.string(),
     messageId: v.id("chatMessages"),
   },
-  handler: async (ctx, args) => {
+  handler: async (
+    ctx,
+    args
+  ): Promise<{ count: number }> => {
     // Actions don't have db access — resolve user via a query
     const session = await ctx.runQuery(api.auth.me, { token: args.token });
     if (!session) throw new Error("Unauthorized");
 
-    // Run a fresh semantic search bypassing the embedding cache
-    const fresh = await ctx.runAction(api.actions.semanticSearch.search, {
-      token: args.token,
+    await ctx.runMutation(internal.chat.setSearchStatus, {
+      userId: session._id,
       query: args.query,
-      limit: 10,
-      forceDeepSearch: true,
+      phase: "searching",
+      toolName: "deep_search",
+      detail: args.query.trim()
+        ? `Running deep scan for "${args.query.trim()}"`
+        : "Running deep scan",
+      source: "memories",
+      cacheState: "fresh",
+      events: [
+        { label: "Mode", value: "forced deep scan" },
+        { label: "Scope", value: "title, content, people, locations, topics" },
+      ],
+      step: 1,
+      totalSteps: 2,
     });
 
-    // Fetch the original message
-    const original = await ctx.runQuery(internal.chat.getMessage, { id: args.messageId });
-    if (!original?.content) return { count: fresh.results.length };
+    try {
+      // Run a fresh semantic search bypassing the embedding cache
+      const fresh: {
+        results: Array<Doc<"memories"> & { _score?: number }>;
+        isCached: boolean;
+      } = await ctx.runAction(api.actions.semanticSearch.search, {
+        token: args.token,
+        query: args.query,
+        limit: 10,
+        forceDeepSearch: true,
+      });
 
-    // Replace the hidden MEMORA_SEARCH_RESULTS block with fresh data
-    const marker = "<!--MEMORA_SEARCH_RESULTS:";
-    const endMarker = "-->";
-    const startIdx = original.content.indexOf(marker);
-    const endIdx = startIdx !== -1
-      ? original.content.indexOf(endMarker, startIdx + marker.length)
-      : -1;
+      await ctx.runMutation(internal.chat.setSearchStatus, {
+        userId: session._id,
+        query: args.query,
+        phase: "finalizing",
+        toolName: "deep_search",
+        detail: "Applying deep scan results",
+        source: "memories",
+        cacheState: "fresh",
+        resultCount: fresh.results.length,
+        previewItems: fresh.results
+          .slice(0, 3)
+          .map((memory) => memory.title?.trim() || memory.content?.trim() || "Untitled memory")
+          .filter(Boolean),
+        events: [
+          { label: "Mode", value: "deep scan complete" },
+          { label: "Matches", value: `${fresh.results.length}` },
+        ],
+        step: 2,
+        totalSteps: 2,
+      });
 
-    let newContent: string;
-    if (startIdx !== -1 && endIdx !== -1) {
-      const before = original.content.slice(0, startIdx);
-      const after = original.content.slice(endIdx + endMarker.length);
-      newContent = before
-        + marker
-        + JSON.stringify({ items: fresh.results, isCached: false })
-        + endMarker
-        + after;
-    } else {
-      // No existing block — append one
-      newContent =
-        original.content.trimEnd() +
-        `\n${marker}${JSON.stringify({ items: fresh.results, isCached: false })}${endMarker}`;
+      // Fetch the original message
+      const original = await ctx.runQuery(internal.chat.getMessage, { id: args.messageId });
+      if (!original?.content) return { count: fresh.results.length };
+
+      // Replace the hidden MEMORA_SEARCH_RESULTS block with fresh data
+      const marker = "<!--MEMORA_SEARCH_RESULTS:";
+      const endMarker = "-->";
+      const startIdx = original.content.indexOf(marker);
+      const endIdx = startIdx !== -1
+        ? original.content.indexOf(endMarker, startIdx + marker.length)
+        : -1;
+
+      let newContent: string;
+      if (startIdx !== -1 && endIdx !== -1) {
+        const before = original.content.slice(0, startIdx);
+        const after = original.content.slice(endIdx + endMarker.length);
+        newContent = before
+          + marker
+          + JSON.stringify({ items: fresh.results, isCached: false })
+          + endMarker
+          + after;
+      } else {
+        // No existing block — append one
+        newContent =
+          original.content.trimEnd() +
+          `\n${marker}${JSON.stringify({ items: fresh.results, isCached: false })}${endMarker}`;
+      }
+
+      await ctx.runMutation(internal.chat.patchMessageContent, {
+        id: args.messageId,
+        content: newContent,
+      });
+
+      return { count: fresh.results.length };
+    } finally {
+      await ctx.runMutation(internal.chat.clearSearchStatus, {
+        userId: session._id,
+      });
     }
-
-    await ctx.runMutation(internal.chat.patchMessageContent, {
-      id: args.messageId,
-      content: newContent,
-    });
-
-    return { count: fresh.results.length };
   },
 });
 

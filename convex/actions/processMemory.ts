@@ -157,6 +157,123 @@ function buildEmbeddingText(args: {
 
 export { buildEmbeddingText };
 
+async function extractStructuredMemory(args: {
+  client: NonNullable<ReturnType<typeof getOpenAIClient>>;
+  input: string;
+  userTz: string;
+  currentTime: string;
+}) {
+  const response = await args.client.chat.completions.create({
+    model: OPENAI_CHAT_MODEL,
+    temperature: 0.3,
+    messages: [
+      {
+        role: "system",
+        content: buildExtractionSystemPrompt(args.userTz, args.currentTime),
+      },
+      { role: "user", content: args.input },
+    ],
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: "create_memory",
+          description: "Extract structured metadata from the memory note",
+          parameters: {
+            type: "object",
+            properties: {
+              title: { type: "string", description: "Concise title, max 8 words" },
+              content: { type: "string", description: "Full memory content" },
+              entry_kind: {
+                type: "string",
+                enum: ["memory", "reminder"],
+              },
+              schedule: {
+                type: "object",
+                properties: {
+                  due_at: {
+                    type: "string",
+                    description:
+                      "Exact ISO 8601 UTC datetime. Only for explicit reminders with a real schedule.",
+                  },
+                  is_recurring: { type: "boolean" },
+                  recurrence_type: {
+                    type: "string",
+                    enum: ["yearly", "monthly", "weekly", "daily"],
+                  },
+                },
+                additionalProperties: false,
+              },
+              people: { type: "array", items: { type: "string" } },
+              locations: { type: "array", items: { type: "string" } },
+              importance: {
+                type: "string",
+                enum: ["critical", "high", "normal", "low"],
+              },
+              life_area: {
+                type: "string",
+                enum: ["career", "family", "health", "finance", "social", "hobbies", "education", "travel", "self-care", "relationships"],
+              },
+              context_tags: {
+                type: "object",
+                properties: {
+                  who: { type: "array", items: { type: "string" } },
+                  what: { type: "string" },
+                  where: { type: "string" },
+                  why: { type: "string" },
+                },
+              },
+              sentiment_score: { type: "number", description: "-1.0 to 1.0" },
+              linked_urls: { type: "array", items: { type: "string" } },
+              extracted_actions: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    text: { type: "string" },
+                    type: { type: "string", enum: ["task", "reminder", "fact", "decision"] },
+                  },
+                  required: ["text", "type"],
+                },
+              },
+            },
+            required: ["title", "content"],
+            additionalProperties: false,
+          },
+        },
+      },
+    ],
+    tool_choice: { type: "function", function: { name: "create_memory" } },
+  });
+
+  const toolCall = response.choices[0]?.message?.tool_calls?.[0];
+  return safeJsonParse<Record<string, unknown>>(
+    toolCall?.type === "function"
+      ? toolCall.function.arguments
+      : extractTextContent(response.choices[0]?.message?.content)
+  );
+}
+
+async function buildMemoryEmbedding(args: {
+  title?: string;
+  content: string;
+  people?: string[];
+  locations?: string[];
+  lifeArea?: string;
+  entryKind?: string;
+}) {
+  return await embedText(
+    buildEmbeddingText({
+      title: args.title,
+      content: args.content,
+      people: args.people,
+      locations: args.locations,
+      lifeArea: args.lifeArea,
+      entryKind: args.entryKind,
+    })
+  );
+}
+
 export const processMemory = action({
   args: {
     memoryId: v.id("memories"),
@@ -172,143 +289,46 @@ export const processMemory = action({
       return;
     }
 
-    const embedding = await embedText(
-      buildEmbeddingText({ title: args.title, content: args.content })
-    );
-
-    await ctx.runMutation(internal.processMemoryMutations.updateEmbedding, {
+    const memory = await ctx.runQuery(internal.memories.getInternal, {
       memoryId: args.memoryId,
-      embedding,
     });
+    if (!memory) {
+      return;
+    }
+
+    const userTz = args.currentTimezone?.trim() || args.userTimezone || "UTC";
+    const currentTime = args.currentTime ?? new Date().toISOString();
+    let extracted: Record<string, unknown> | null = null;
+    try {
+      extracted = await extractStructuredMemory({
+        client,
+        input: `Memory title: ${args.title}\nMemory content: ${args.content}`,
+        userTz,
+        currentTime,
+      });
+    } catch {
+      extracted = null;
+    }
 
     try {
-      const userTz =
-        args.currentTimezone?.trim() || args.userTimezone || "UTC";
-      const currentTime = args.currentTime ?? new Date().toISOString();
-
-      // Use tool calling with forced tool_choice to match Supabase pattern
-      const response = await client.chat.completions.create({
-        model: OPENAI_CHAT_MODEL,
-        temperature: 0.3,
-        messages: [
-          {
-            role: "system",
-            content: buildExtractionSystemPrompt(userTz, currentTime),
-          },
-          {
-            role: "user",
-            content: `Memory title: ${args.title}\nMemory content: ${args.content}`,
-          },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "create_memory",
-              description: "Extract structured metadata from the memory note",
-              parameters: {
-                type: "object",
-                properties: {
-                  title: { type: "string", description: "Concise title, max 8 words" },
-                  content: { type: "string", description: "Full memory content" },
-                  entry_kind: {
-                    type: "string",
-                    enum: ["memory", "reminder"],
-                  },
-                  schedule: {
-                    type: "object",
-                    properties: {
-                      due_at: {
-                        type: "string",
-                        description:
-                          "Exact ISO 8601 UTC datetime. Only for explicit reminders with a real schedule.",
-                      },
-                      is_recurring: { type: "boolean" },
-                      recurrence_type: {
-                        type: "string",
-                        enum: ["yearly", "monthly", "weekly", "daily"],
-                      },
-                    },
-                    additionalProperties: false,
-                  },
-                  people: { type: "array", items: { type: "string" } },
-                  locations: { type: "array", items: { type: "string" } },
-                  importance: {
-                    type: "string",
-                    enum: ["critical", "high", "normal", "low"],
-                  },
-                  life_area: {
-                    type: "string",
-                    enum: ["career", "family", "health", "finance", "social", "hobbies", "education", "travel", "self-care", "relationships"],
-                  },
-                  context_tags: {
-                    type: "object",
-                    properties: {
-                      who: { type: "array", items: { type: "string" } },
-                      what: { type: "string" },
-                      where: { type: "string" },
-                      why: { type: "string" },
-                    },
-                  },
-                  sentiment_score: { type: "number", description: "-1.0 to 1.0" },
-                  linked_urls: { type: "array", items: { type: "string" } },
-                  extracted_actions: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        text: { type: "string" },
-                        type: { type: "string", enum: ["task", "reminder", "fact", "decision"] },
-                      },
-                      required: ["text", "type"],
-                    },
-                  },
-                },
-                required: ["title", "content"],
-                additionalProperties: false,
-              },
-            },
-          },
-        ],
-        tool_choice: { type: "function", function: { name: "create_memory" } },
-      });
-
-      const toolCall = response.choices[0]?.message?.tool_calls?.[0];
-      const extracted = safeJsonParse<Record<string, unknown>>(
-        toolCall?.type === "function"
-          ? toolCall.function.arguments
-          : extractTextContent(response.choices[0]?.message?.content)
-      );
-
-      if (!extracted) {
-        return;
-      }
-
-      const normalized = normalizeMemoryFields(extracted);
-
-      // Fetch current memory before updating so we can protect existing scheduling.
-      const memory = await ctx.runQuery(internal.memories.getInternal, { memoryId: args.memoryId });
-
-      // Don't let background enrichment downgrade an already-set reminder to a
-      // memory: only touch scheduling if the AI found a new due_at OR the memory
-      // is not already a confirmed reminder.
-      const existingIsReminder = memory?.entryKind === "reminder" && !!memory?.schedule?.dueAt;
+      const normalized: ReturnType<typeof normalizeMemoryFields> = extracted
+        ? normalizeMemoryFields(extracted)
+        : normalizeMemoryFields({});
+      const existingIsReminder =
+        memory.entryKind === "reminder" && !!memory.schedule?.dueAt;
       const extractionHasSchedule = !!normalized.schedule?.dueAt;
       const shouldUpdateScheduling =
+        !!extracted &&
         hasExplicitSchedulingFields(extracted) &&
         (extractionHasSchedule || !existingIsReminder);
-
-      // Re-embed with enriched metadata from AI extraction
-      const enrichedEmbedding = await embedText(
-        buildEmbeddingText({
-          title: normalized.title ?? args.title,
-          content: args.content,
-          people: normalized.people,
-          locations: normalized.locations,
-          lifeArea: normalized.lifeArea,
-          entryKind: normalized.entryKind,
-        })
-      );
+      const embedding = await buildMemoryEmbedding({
+        title: normalized.title ?? args.title,
+        content: args.content,
+        people: normalized.people,
+        locations: normalized.locations,
+        lifeArea: normalized.lifeArea,
+        entryKind: normalized.entryKind,
+      });
 
       await ctx.runMutation(internal.processMemoryMutations.updateAIFields, {
         memoryId: args.memoryId,
@@ -322,19 +342,18 @@ export const processMemory = action({
         ...(shouldUpdateScheduling ? toStoredMemoryFields(normalized) : {}),
         sentimentScore: normalized.sentimentScore,
         extractedActions: normalized.extractedActions,
-        embedding: enrichedEmbedding,
+        embedding,
       });
-      if (memory) {
-        await ctx.scheduler.runAfter(0, internal.actions.manageTopics.assignTopicsToMemory, {
-          memoryId: args.memoryId,
-          userId: memory.userId,
-          title: normalized.title ?? args.title,
-          content: args.content,
-          embedding: enrichedEmbedding,
-        });
-      }
+
+      await ctx.scheduler.runAfter(0, internal.actions.manageTopics.assignTopicsToMemory, {
+        memoryId: args.memoryId,
+        userId: memory.userId,
+        title: normalized.title ?? args.title,
+        content: args.content,
+        embedding,
+      });
     } catch {
-      // Embedding is the critical update; enrichment is best-effort.
+      // Best effort only. Background enrichment should never break user writes.
     }
   },
 });
@@ -357,7 +376,8 @@ export const captureMemory = action({
       throw new Error("Unauthorized");
     }
 
-    let structured = fallbackStructuredData(args.content);
+    const fallback = fallbackStructuredData(args.content);
+    let structured = fallback;
     let embedding: number[] | undefined;
 
     const client = getOpenAIClient();
@@ -365,123 +385,40 @@ export const captureMemory = action({
       const userTz =
         args.currentTimezone?.trim() || session.timezone || "UTC";
       const currentTime = args.currentTime ?? new Date().toISOString();
-      const [analysisRaw, embeddingResult] = await Promise.allSettled([
-        (async () => {
-          const response = await client.chat.completions.create({
-            model: OPENAI_CHAT_MODEL,
-            temperature: 0.3,
-            messages: [
-              {
-                role: "system",
-                content: buildExtractionSystemPrompt(userTz, currentTime),
-              },
-              { role: "user", content: args.content },
-            ],
-            tools: [
-              {
-                type: "function",
-                function: {
-                  name: "create_memory",
-                  description: "Extract structured metadata from the memory note",
-                  parameters: {
-                    type: "object",
-                    properties: {
-                      title: { type: "string" },
-                      content: { type: "string" },
-                      entry_kind: {
-                        type: "string",
-                        enum: ["memory", "reminder"],
-                      },
-                      schedule: {
-                        type: "object",
-                        properties: {
-                          due_at: { type: "string" },
-                          is_recurring: { type: "boolean" },
-                          recurrence_type: {
-                            type: "string",
-                            enum: ["yearly", "monthly", "weekly", "daily"],
-                          },
-                        },
-                        additionalProperties: false,
-                      },
-                      people: { type: "array", items: { type: "string" } },
-                      locations: { type: "array", items: { type: "string" } },
-                      importance: { type: "string", enum: ["critical", "high", "normal", "low"] },
-                      life_area: { type: "string", enum: ["career", "family", "health", "finance", "social", "hobbies", "education", "travel", "self-care", "relationships"] },
-                      context_tags: {
-                        type: "object",
-                        properties: {
-                          who: { type: "array", items: { type: "string" } },
-                          what: { type: "string" },
-                          where: { type: "string" },
-                          why: { type: "string" },
-                        },
-                      },
-                      sentiment_score: { type: "number" },
-                      linked_urls: { type: "array", items: { type: "string" } },
-                      extracted_actions: {
-                        type: "array",
-                        items: {
-                          type: "object",
-                          properties: {
-                            text: { type: "string" },
-                            type: { type: "string", enum: ["task", "reminder", "fact", "decision"] },
-                          },
-                          required: ["text", "type"],
-                        },
-                      },
-                    },
-                    required: ["title", "content"],
-                    additionalProperties: false,
-                  },
-                },
-              },
-            ],
-            tool_choice: { type: "function", function: { name: "create_memory" } },
-          });
-          const toolCall = response.choices[0]?.message?.tool_calls?.[0];
-          return safeJsonParse<Record<string, unknown>>(
-            toolCall?.type === "function"
-              ? toolCall.function.arguments
-              : extractTextContent(response.choices[0]?.message?.content)
-          );
-        })(),
-        embedText(args.content.slice(0, 6000)),
-      ]);
-
-      if (analysisRaw.status === "fulfilled" && analysisRaw.value) {
-        structured = {
-          ...structured,
-          ...normalizeMemoryFields(analysisRaw.value),
-        };
-      }
-
-      if (embeddingResult.status === "fulfilled") {
-        embedding = embeddingResult.value;
-      }
-
-      // Re-embed with enriched metadata if we got good AI extraction
-      if (embedding && structured.people?.length || structured.locations?.length || structured.lifeArea) {
-        try {
-          embedding = await embedText(
-            buildEmbeddingText({
-              title: structured.title,
-              content: args.content,
-              people: structured.people,
-              locations: structured.locations,
-              lifeArea: structured.lifeArea,
-              entryKind: structured.entryKind,
-            })
-          );
-        } catch {
-          // Keep the original embedding if re-embedding fails
+      try {
+        const analysisRaw = await extractStructuredMemory({
+          client,
+          input: args.content,
+          userTz,
+          currentTime,
+        });
+        if (analysisRaw) {
+          structured = {
+            ...structured,
+            ...normalizeMemoryFields(analysisRaw),
+          };
         }
+      } catch {
+        // Fall back to the simple extracted structure below.
+      }
+
+      try {
+        embedding = await buildMemoryEmbedding({
+          title: structured.title,
+          content: args.content,
+          people: structured.people,
+          locations: structured.locations,
+          lifeArea: structured.lifeArea,
+          entryKind: structured.entryKind,
+        });
+      } catch {
+        embedding = undefined;
       }
     }
 
     const memoryId: Id<"memories"> = await ctx.runMutation(api.memories.create, {
       token: args.token,
-      title: structured.title || fallbackStructuredData(args.content).title || "New Memory",
+      title: structured.title || fallback.title || "New Memory",
       content: args.content,
       people: structured.people || [],
       locations: structured.locations || [],
@@ -520,7 +457,7 @@ export const captureMemory = action({
         await ctx.scheduler.runAfter(0, internal.actions.manageTopics.assignTopicsToMemory, {
           memoryId,
           userId: session._id,
-          title: structured.title || fallbackStructuredData(args.content).title || "New Memory",
+          title: structured.title || fallback.title || "New Memory",
           content: args.content,
           embedding,
         });
@@ -528,7 +465,7 @@ export const captureMemory = action({
     } else {
       await ctx.scheduler.runAfter(0, api.actions.processMemory.processMemory, {
         memoryId,
-        title: structured.title || fallbackStructuredData(args.content).title || "New Memory",
+        title: structured.title || fallback.title || "New Memory",
         content: args.content,
         userTimezone: session.timezone,
         currentTime: args.currentTime ?? new Date().toISOString(),
@@ -542,6 +479,7 @@ export const captureMemory = action({
         token: args.token,
         memoryId,
         content: args.content,
+        ...(embedding ? { embedding } : {}),
       }
     );
 

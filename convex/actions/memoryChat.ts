@@ -11,6 +11,7 @@ import {
   getOpenAIClient,
   OPENAI_CHAT_MODEL,
 } from "../lib/openai";
+import { runSemanticSearch } from "../lib/semanticSearch";
 import { normalizeMemoryFields } from "../lib/aiNormalization";
 import {
   getMemorySchedule,
@@ -27,6 +28,47 @@ type ParsedAttachment = {
   name: string;
   fileType: string;
   url: string;
+};
+
+type StreamingEvent = {
+  label: string;
+  value?: string;
+};
+
+type StreamingStatus = {
+  query?: string;
+  phase?: string;
+  toolName?: string;
+  detail?: string;
+  source?: string;
+  cacheState?: string;
+  resultCount?: number;
+  previewItems?: string[];
+  events?: StreamingEvent[];
+  step?: number;
+  totalSteps?: number;
+};
+
+type MemorySearchResult = {
+  results: ReturnType<typeof toMemorySummary>[];
+  count: number;
+  isCached?: boolean;
+  searchMode: "recent_only" | "semantic_fresh" | "semantic_cached";
+};
+
+type DocumentSearchResult = {
+  results: ReturnType<typeof toDocumentSummary>[];
+  count: number;
+  searchMode: "recent_only" | "vector_keyword" | "keyword_only";
+};
+
+type GroundingContext = {
+  shouldGround: boolean;
+  shouldPreferUpdate: boolean;
+  isGenericOnly: boolean;
+  searchCount: number;
+  searchResults: ReturnType<typeof toMemorySummary>[];
+  recentMemories: ReturnType<typeof toMemoryCompact>[];
 };
 
 const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
@@ -332,6 +374,98 @@ function parseAttachments(message: string): ParsedAttachment[] {
   })).filter((item) => item.url);
 }
 
+const GENERIC_QUERY_PATTERNS = [
+  /\bwhat is\b/i,
+  /\bwho is\b/i,
+  /\bexplain\b/i,
+  /\bdefine\b/i,
+  /\bwrite\b/i,
+  /\bpoem\b/i,
+  /\bstory\b/i,
+  /\bbrainstorm\b/i,
+  /\btranslate\b/i,
+  /\bsummarize\b/i,
+  /\bcode\b/i,
+  /\bdebug\b/i,
+];
+
+const PERSONAL_QUERY_PATTERNS = [
+  /\bmy\b/i,
+  /\bi have\b/i,
+  /\bdo i have\b/i,
+  /\bhow many\b/i,
+  /\bwhat are\b/i,
+  /\bwhich\b/i,
+  /\bwhen did\b/i,
+  /\breminder\b/i,
+  /\bremind\b/i,
+  /\bmemory\b/i,
+  /\bmemories\b/i,
+  /\bfriend\b/i,
+  /\bfriends\b/i,
+  /\bpeople\b/i,
+  /\bname\b/i,
+  /\bnames\b/i,
+  /\bappointment\b/i,
+  /\bmeeting\b/i,
+  /\bbirthday\b/i,
+  /\bpassport\b/i,
+  /\bdeadline\b/i,
+];
+
+const UPDATE_INTENT_PATTERNS = [
+  /\bedit\b/i,
+  /\bupdate\b/i,
+  /\bchange\b/i,
+  /\bmodify\b/i,
+  /\bfix\b/i,
+  /\brename\b/i,
+  /\bmove\b/i,
+  /\bconvert\b/i,
+  /\bturn\b/i,
+  /\bmake\b/i,
+];
+
+function isGenericOnlyQuery(message: string) {
+  const trimmed = message.trim();
+  return (
+    GENERIC_QUERY_PATTERNS.some((pattern) => pattern.test(trimmed)) &&
+    !PERSONAL_QUERY_PATTERNS.some((pattern) => pattern.test(trimmed))
+  );
+}
+
+function shouldGroundAgainstDb(message: string) {
+  const trimmed = message.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  if (isGenericOnlyQuery(trimmed)) {
+    return false;
+  }
+
+  return PERSONAL_QUERY_PATTERNS.some((pattern) => pattern.test(trimmed));
+}
+
+function shouldPreferUpdatingExisting(message: string) {
+  const trimmed = message.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  return (
+    UPDATE_INTENT_PATTERNS.some((pattern) => pattern.test(trimmed)) &&
+    (
+      /\bmemory\b/i.test(trimmed) ||
+      /\breminder\b/i.test(trimmed) ||
+      /\bthis\b/i.test(trimmed) ||
+      /\bthat\b/i.test(trimmed) ||
+      /\bexisting\b/i.test(trimmed) ||
+      /\bwith id\b/i.test(trimmed)
+    )
+  );
+}
+
 function normalizeForMemoryDedupe(value: string | undefined): string {
   return (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
 }
@@ -396,6 +530,34 @@ function toDocumentSummary(document: DocumentDoc) {
   };
 }
 
+function truncateStatusText(value: string | undefined, maxLength = 42) {
+  const normalized = (value ?? "").trim().replace(/\s+/g, " ");
+  if (!normalized) {
+    return "";
+  }
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}...`;
+}
+
+function toPreviewItems(
+  items: Array<{ title?: string | null; content?: string | null; filename?: string | null }>,
+  fallbackLabel: string
+) {
+  return items
+    .map((item) =>
+      truncateStatusText(
+        item.title?.trim() ||
+          item.filename?.trim() ||
+          item.content?.trim() ||
+          fallbackLabel
+      )
+    )
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
 async function listMemoriesForAI(
   ctx: ActionCtx,
   userId: Id<"users">,
@@ -415,7 +577,7 @@ async function searchDocuments(
     userId: Id<"users">;
     documents?: DocumentDoc[];
   }
-) {
+): Promise<DocumentSearchResult> {
   const documents: DocumentDoc[] =
     args.documents ??
     (await ctx.runQuery(api.documents.list, {
@@ -424,7 +586,12 @@ async function searchDocuments(
 
   const normalizedQuery = args.query.trim();
   if (!normalizedQuery) {
-    return documents.slice(0, 10).map(toDocumentSummary);
+    const results = documents.slice(0, 10).map(toDocumentSummary);
+    return {
+      results,
+      count: results.length,
+      searchMode: "recent_only",
+    };
   }
 
   const keywordQuery = normalizedQuery.toLowerCase();
@@ -477,9 +644,19 @@ async function searchDocuments(
       merged.push(document);
     }
 
-    return merged.slice(0, 10).map(toDocumentSummary);
+    const results = merged.slice(0, 10).map(toDocumentSummary);
+    return {
+      results,
+      count: merged.length,
+      searchMode: "vector_keyword",
+    };
   } catch {
-    return keywordMatches.slice(0, 10).map(toDocumentSummary);
+    const results = keywordMatches.slice(0, 10).map(toDocumentSummary);
+    return {
+      results,
+      count: keywordMatches.length,
+      searchMode: "keyword_only",
+    };
   }
 }
 
@@ -491,7 +668,7 @@ async function searchMemories(
     userId: Id<"users">;
     recentMemories?: MemoryDoc[];
   }
-) {
+): Promise<MemorySearchResult> {
   const recentMemories =
     args.recentMemories ?? (await listMemoriesForAI(ctx, args.userId, 100));
   const normalizedQuery = args.query.trim();
@@ -499,6 +676,7 @@ async function searchMemories(
     return {
       results: recentMemories.slice(0, 10).map(toMemorySummary),
       count: recentMemories.length,
+      searchMode: "recent_only",
     };
   }
 
@@ -508,8 +686,9 @@ async function searchMemories(
   // 3. Full-text search with cleaned query
   // 4. Proportional keyword matching (prevents single-term noise)
   // 5. RRF fusion ranking across all sources
-  const semanticResults = await ctx.runAction(api.actions.semanticSearch.search, {
+  const semanticResults = await runSemanticSearch(ctx, {
     token: args.token,
+    userId: args.userId,
     query: normalizedQuery,
     limit: 12,
   });
@@ -518,6 +697,7 @@ async function searchMemories(
     results: semanticResults.results.slice(0, 10).map(toMemorySummary),
     count: semanticResults.results.length,
     isCached: semanticResults.isCached,
+    searchMode: semanticResults.isCached ? "semantic_cached" : "semantic_fresh",
   };
 }
 
@@ -539,7 +719,7 @@ async function resolveMemoryReference(
 
   const reference = args.reference.trim().toLowerCase();
 
-  const exactIdMatch = recentMemories.find((memory) => memory._id === args.reference);
+  const exactIdMatch = recentMemories.find((memory: MemoryDoc) => memory._id === args.reference);
   if (exactIdMatch) {
     return exactIdMatch._id;
   }
@@ -550,7 +730,7 @@ async function resolveMemoryReference(
     .filter((part) => part.length > 1);
 
   const scored = recentMemories
-    .map((memory) => {
+    .map((memory: MemoryDoc) => {
       const title = (memory.title ?? "").toLowerCase();
       const content = (memory.content ?? "").toLowerCase();
       let score = 0;
@@ -562,13 +742,56 @@ async function resolveMemoryReference(
       }
       return { memory, score };
     })
-    .sort((a, b) => b.score - a.score);
+    .sort((a: { memory: MemoryDoc; score: number }, b: { memory: MemoryDoc; score: number }) => b.score - a.score);
 
   if ((scored[0]?.score ?? 0) > 0) {
     return scored[0].memory._id;
   }
 
   return recentMemories[0]?._id ?? null;
+}
+
+async function buildGroundingContext(
+  ctx: ActionCtx,
+  args: {
+    token: string;
+    message: string;
+    userId: Id<"users">;
+    recentMemories?: MemoryDoc[];
+  }
+): Promise<GroundingContext> {
+  const isGenericOnly = isGenericOnlyQuery(args.message);
+  const shouldGround = shouldGroundAgainstDb(args.message);
+  const shouldPreferUpdate = shouldPreferUpdatingExisting(args.message);
+
+  if (!shouldGround) {
+    return {
+      shouldGround,
+      shouldPreferUpdate,
+      isGenericOnly,
+      searchCount: 0,
+      searchResults: [],
+      recentMemories: [],
+    };
+  }
+
+  const recentMemories =
+    args.recentMemories ?? (await listMemoriesForAI(ctx, args.userId, 40));
+  const searchRes = await searchMemories(ctx, {
+    token: args.token,
+    query: args.message,
+    userId: args.userId,
+    recentMemories,
+  });
+
+  return {
+    shouldGround,
+    shouldPreferUpdate,
+    isGenericOnly,
+    searchCount: searchRes.count,
+    searchResults: searchRes.results.slice(0, 8),
+    recentMemories: recentMemories.slice(0, 12).map(toMemoryCompact),
+  };
 }
 
 function buildSystemPrompt(userTimezone: string, currentTime: string) {
@@ -618,6 +841,10 @@ function buildSystemPrompt(userTimezone: string, currentTime: string) {
 7. **ANALYSIS**: When asked to analyze, use the analyze_memories tool, then share insights conversationally.
 
 7a. **CRITICAL — ALWAYS FETCH BEFORE ANSWERING**: You have NO built-in knowledge of what is stored. For ANY question about stored data — counts ("how many friends"), existence ("do I have X"), details ("what are my friend names"), summaries, or statistics — you MUST call search_memories or list_memories FIRST. Never answer from inference or assumption. A wrong answer from hallucination is worse than saying you need to check.
+
+7b. **CRITICAL — EDITS MUST UPDATE EXISTING ITEMS**: If the user asks to edit, change, convert, rename, reschedule, or turn an existing memory into a reminder (or reminder into memory), prefer update_memory on the existing item. Do NOT create a new memory/reminder unless the user explicitly asks for an additional new item or you clearly found no existing match after checking the DB.
+
+7c. **CRITICAL — COUNTS MUST BE GROUNDED**: Never answer count questions from memory, chat history, or raw intuition. Use DB-backed tool/context results only. If the evidence is ambiguous, say that clearly and surface the matching memories instead of guessing.
 
 8. **MEMORY CARDS UI**: After every response you will be asked to call surface_cards — pass the IDs of any memories you actually referenced, or an empty array if none. When the user explicitly asks to browse or see memories, keep your text brief (e.g. "Here's what I found:") and let the cards do the work.
 
@@ -679,12 +906,15 @@ export const chat = action({
       content: args.message,
       role: "user",
     });
+    await ctx.runMutation(internal.chat.clearSearchStatus, {
+      userId: session._id,
+    });
 
     const chatHistory = await ctx.runQuery(api.chat.list, {
       token: args.token,
       limit: 50,
     });
-    const recentChat = chatHistory.slice(-12).map((message) => ({
+    const recentChat = chatHistory.slice(-12).map((message: { role: string; content?: string | null }) => ({
       role: message.role as "user" | "assistant",
       content: stripMarkersFromContent(message.content ?? "").slice(0, 2000),
     }));
@@ -695,6 +925,12 @@ export const chat = action({
 
     if (client) {
       try {
+        const setStreamingStatus = async (status: StreamingStatus) => {
+          await ctx.runMutation(internal.chat.setSearchStatus, {
+            userId: session._id,
+            ...status,
+          });
+        };
         let documentsCachePromise: Promise<DocumentDoc[]> | undefined;
         let recentMemoriesCache: MemoryDoc[] | undefined;
         const getDocumentsCache = async () => {
@@ -705,12 +941,24 @@ export const chat = action({
           }
           return documentsCachePromise;
         };
-        const getRecentMemoriesCache = async () => {
+        const getRecentMemoriesCache = async (): Promise<MemoryDoc[]> => {
           if (!recentMemoriesCache) {
             recentMemoriesCache = await listMemoriesForAI(ctx, session._id, 100);
           }
-          return recentMemoriesCache;
+          return recentMemoriesCache ?? [];
         };
+
+        await setStreamingStatus({
+          phase: "analyzing",
+          toolName: "planner",
+          detail: "Understanding request and loading relevant context",
+          source: "chat",
+          events: [
+            { label: "Context", value: "recent chat + memories" },
+          ],
+          step: 1,
+          totalSteps: 4,
+        });
 
         const conversation: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
           {
@@ -734,6 +982,52 @@ export const chat = action({
           { role: "user", content: args.message },
         ];
 
+        const initialGrounding = await buildGroundingContext(ctx, {
+          token: args.token,
+          message: args.message,
+          userId: session._id,
+          recentMemories: await getRecentMemoriesCache(),
+        });
+
+        if (initialGrounding.shouldGround) {
+          conversation.splice(conversation.length - 1, 0, {
+            role: "system",
+            content: [
+              "Authoritative DB grounding for the latest user request follows.",
+              "Treat this as current stored data from Convex, not guesswork.",
+              initialGrounding.shouldPreferUpdate
+                ? "This request appears to modify an existing item. Prefer update_memory. Do not create a new item unless you explicitly determine there is no existing match."
+                : "This request is related to stored personal data. Answer only from DB-backed context or by calling tools again if needed.",
+              `Matched memories: ${JSON.stringify(initialGrounding.searchResults)}`,
+              `Recent memories: ${JSON.stringify(initialGrounding.recentMemories)}`,
+            ].join("\n"),
+          });
+        }
+
+        await setStreamingStatus({
+          query: initialGrounding.shouldGround ? args.message : undefined,
+          phase: initialGrounding.shouldGround ? "grounding" : "thinking",
+          toolName: initialGrounding.shouldGround ? "memory_grounding" : "planner",
+          detail: initialGrounding.shouldGround
+            ? `Checked stored context${initialGrounding.searchCount ? ` (${initialGrounding.searchCount} match${initialGrounding.searchCount === 1 ? "" : "es"})` : ""}`
+            : "Preparing assistant response",
+          source: initialGrounding.shouldGround ? "memories" : "chat",
+          resultCount: initialGrounding.shouldGround
+            ? initialGrounding.searchCount
+            : undefined,
+          previewItems: initialGrounding.shouldGround
+            ? toPreviewItems(initialGrounding.searchResults, "Stored memory")
+            : undefined,
+          events: initialGrounding.shouldGround
+            ? [
+                { label: "Scope", value: "personal facts and reminders" },
+                { label: "Policy", value: "DB grounded" },
+              ]
+            : undefined,
+          step: 2,
+          totalSteps: 4,
+        });
+
         let finalText = "";
         let pendingDeletionItems: Array<{ id: string; title: string; content: string; entry_kind: string }> = [];
         const pendingCardIds = new Set<string>();
@@ -747,6 +1041,14 @@ export const chat = action({
         >();
 
         for (let iteration = 0; iteration < 8; iteration += 1) {
+          await setStreamingStatus({
+            phase: "thinking",
+            toolName: "planner",
+            detail: iteration === 0 ? "Choosing the next backend operation" : "Continuing multi-step reasoning",
+            source: "chat",
+            step: 2,
+            totalSteps: 4,
+          });
           const response = await client.chat.completions.create({
             model: OPENAI_CHAT_MODEL,
             messages: conversation,
@@ -783,43 +1085,287 @@ export const chat = action({
               string,
               unknown
             >;
+            const toolDetails: Record<string, StreamingStatus> = {
+              search_memories: {
+                phase: "searching",
+                detail: `Searching memories${typeof fnArgs.query === "string" && fnArgs.query.trim() ? ` for "${String(fnArgs.query).trim()}"` : ""}`,
+                source: "memories",
+                events: [
+                  { label: "Scope", value: "title, content, people, locations, topics" },
+                  { label: "Mode", value: "semantic + keyword" },
+                ],
+                query: typeof fnArgs.query === "string" ? String(fnArgs.query) : undefined,
+              },
+              search_documents: {
+                phase: "searching",
+                detail: `Searching documents${typeof fnArgs.query === "string" && fnArgs.query.trim() ? ` for "${String(fnArgs.query).trim()}"` : ""}`,
+                source: "documents",
+                events: [
+                  { label: "Scope", value: "filename, summary, extracted text, key details" },
+                  { label: "Mode", value: "vector + keyword" },
+                ],
+                query: typeof fnArgs.query === "string" ? String(fnArgs.query) : undefined,
+              },
+              create_memory: {
+                phase: "writing",
+                detail: "Saving a new memory",
+                source: "memories",
+                events: [{ label: "Operation", value: "insert" }],
+              },
+              update_memory: {
+                phase: "writing",
+                detail: "Updating an existing memory or reminder",
+                source: "memories",
+                events: [{ label: "Operation", value: "update" }],
+              },
+              propose_deletion: {
+                phase: "searching",
+                detail: "Finding items to delete for confirmation",
+                source: "memories",
+                events: [{ label: "Operation", value: "find matches only" }],
+              },
+              list_deleted_memories: {
+                phase: "loading",
+                detail: "Loading deleted memories",
+                source: "memories",
+                events: [{ label: "Status", value: "deleted" }],
+              },
+              restore_memory: {
+                phase: "writing",
+                detail: "Restoring a deleted memory",
+                source: "memories",
+                events: [{ label: "Operation", value: "restore" }],
+              },
+              list_memories: {
+                phase: "loading",
+                detail: "Listing stored memories",
+                source: "memories",
+                events: [{ label: "Status", value: "active" }],
+              },
+              get_stats: {
+                phase: "analyzing",
+                detail: "Computing memory statistics",
+                source: "memories",
+                events: [{ label: "Analysis", value: "counts and trends" }],
+              },
+              analyze_memories: {
+                phase: "analyzing",
+                detail: "Analyzing memory patterns",
+                source: "memories",
+                events: [{ label: "Analysis", value: "pattern scan" }],
+              },
+              history: {
+                phase: "loading",
+                detail: "Loading edit history",
+                source: "memory_history",
+                events: [{ label: "Scope", value: "snapshots and undo" }],
+              },
+              manage_topics: {
+                phase: "writing",
+                detail: "Updating topic organization",
+                source: "topics",
+                events: [{ label: "Operation", value: String(fnArgs.operation || "update") }],
+              },
+              attach_file_to_memory: {
+                phase: "writing",
+                detail: "Attaching a file to memory",
+                source: "attachments",
+                events: [{ label: "Operation", value: "attach file" }],
+              },
+              surface_cards: {
+                phase: "finalizing",
+                detail: "Preparing memory cards for the UI",
+                source: "ui",
+                events: [{ label: "Operation", value: "surface cards" }],
+              },
+            };
+            const streamingDetail = toolDetails[fnName] ?? {
+              phase: "working",
+              detail: `Running ${fnName}`,
+              source: "backend",
+            };
+            await setStreamingStatus({
+              query: streamingDetail.query,
+              phase: streamingDetail.phase,
+              toolName: fnName,
+              detail: streamingDetail.detail,
+              source: streamingDetail.source,
+              cacheState: undefined,
+              resultCount: undefined,
+              previewItems: undefined,
+              events: streamingDetail.events,
+              step: 3,
+              totalSteps: 4,
+            });
             let result = JSON.stringify({ error: "Unknown tool" });
 
             if (fnName === "search_memories") {
               const searchQuery = String(fnArgs.query || "");
-              // Write streaming status so the client can show a live indicator
-              await ctx.runMutation(internal.chat.setSearchStatus, {
-                userId: session._id,
+              await setStreamingStatus({
                 query: searchQuery,
+                phase: "searching",
+                toolName: "search_memories",
+                detail: searchQuery.trim()
+                  ? `Searching memories for "${searchQuery.trim()}"`
+                  : "Searching memories",
+                source: "memories",
+                events: [
+                  { label: "Scope", value: "title, content, people, locations, topics" },
+                  { label: "Mode", value: "semantic + keyword" },
+                ],
+                step: 3,
+                totalSteps: 4,
               });
               try {
-                const searchRes = await searchMemories(ctx, {
-                  token: args.token,
-                  query: searchQuery,
-                  userId: session._id,
-                  recentMemories: await getRecentMemoriesCache(),
-                });
+                const normalizedSearchQuery = searchQuery.trim();
+                const normalizedUserMessage = args.message.trim();
+                const searchRes =
+                  initialGrounding.shouldGround &&
+                  normalizedSearchQuery.length > 0 &&
+                  normalizedSearchQuery.toLowerCase() === normalizedUserMessage.toLowerCase()
+                    ? {
+                        results: initialGrounding.searchResults,
+                        count: initialGrounding.searchCount,
+                        isCached: false,
+                        searchMode: "semantic_fresh" as const,
+                      }
+                    : await searchMemories(ctx, {
+                        token: args.token,
+                        query: searchQuery,
+                        userId: session._id,
+                        recentMemories: await getRecentMemoriesCache(),
+                      });
                 pendingSearchIsCached = searchRes.isCached ?? false;
                 surfaceCandidates = searchRes.results.map((r: { id: string; title?: string }) => ({ id: String(r.id), title: r.title ?? "" }));
+                await setStreamingStatus({
+                  query: normalizedSearchQuery || undefined,
+                  phase: "searching",
+                  toolName: "search_memories",
+                  detail:
+                    searchRes.count > 0
+                      ? `Found ${searchRes.count} matching ${searchRes.count === 1 ? "memory" : "memories"}`
+                      : "No matching memories found",
+                  source: "memories",
+                  cacheState:
+                    searchRes.searchMode === "semantic_cached"
+                      ? "cached"
+                      : searchRes.searchMode === "semantic_fresh"
+                        ? "fresh"
+                        : undefined,
+                  resultCount: searchRes.count,
+                  previewItems: toPreviewItems(searchRes.results, "Stored memory"),
+                  events: [
+                    { label: "Scope", value: "title, content, people, locations, topics" },
+                    {
+                      label: "Ranking",
+                      value:
+                        searchRes.searchMode === "recent_only"
+                          ? "recent memory list"
+                          : "semantic + keyword fusion",
+                    },
+                    {
+                      label: "Cache",
+                      value:
+                        searchRes.searchMode === "semantic_cached"
+                          ? "embedding cache hit"
+                          : searchRes.searchMode === "semantic_fresh"
+                            ? "fresh semantic search"
+                            : "no query text",
+                    },
+                  ],
+                  step: 3,
+                  totalSteps: 4,
+                });
                 result = JSON.stringify(searchRes);
               } finally {
-                // Always clear the status, even if search throws
-                await ctx.runMutation(internal.chat.clearSearchStatus, {
-                  userId: session._id,
+                await setStreamingStatus({
+                  phase: "thinking",
+                  toolName: "planner",
+                  detail: "Processing search results",
+                  source: "chat",
+                  step: 3,
+                  totalSteps: 4,
                 });
               }
             } else if (fnName === "search_documents") {
-              result = JSON.stringify(
-                {
-                  results: await searchDocuments(ctx, {
-                    token: args.token,
-                    query: String(fnArgs.query || ""),
-                    userId: session._id,
-                    documents: await getDocumentsCache(),
-                  }),
-                }
-              );
+              const documentSearch = await searchDocuments(ctx, {
+                token: args.token,
+                query: String(fnArgs.query || ""),
+                userId: session._id,
+                documents: await getDocumentsCache(),
+              });
+              await setStreamingStatus({
+                query:
+                  typeof fnArgs.query === "string" && fnArgs.query.trim()
+                    ? fnArgs.query.trim()
+                    : undefined,
+                phase: "searching",
+                toolName: "search_documents",
+                detail:
+                  documentSearch.count > 0
+                    ? `Found ${documentSearch.count} matching ${documentSearch.count === 1 ? "document" : "documents"}`
+                    : "No matching documents found",
+                source: "documents",
+                resultCount: documentSearch.count,
+                previewItems: toPreviewItems(documentSearch.results, "Stored document"),
+                events: [
+                  { label: "Scope", value: "filename, summary, extracted text, key details" },
+                  {
+                    label: "Mode",
+                    value:
+                      documentSearch.searchMode === "vector_keyword"
+                        ? "vector + keyword"
+                        : documentSearch.searchMode === "keyword_only"
+                          ? "keyword fallback"
+                          : "recent documents",
+                  },
+                ],
+                step: 3,
+                totalSteps: 4,
+              });
+              result = JSON.stringify({
+                results: documentSearch.results,
+                count: documentSearch.count,
+              });
             } else if (fnName === "create_memory") {
+              if (shouldPreferUpdatingExisting(args.message)) {
+                const existingMatches = await searchMemories(ctx, {
+                  token: args.token,
+                  query: args.message,
+                  userId: session._id,
+                  recentMemories: await getRecentMemoriesCache(),
+                });
+                const existingMatch = existingMatches.results[0];
+                if (existingMatch?.id) {
+                  await setStreamingStatus({
+                    phase: "writing",
+                    toolName: "create_memory",
+                    detail: "Found an existing item and redirected to update flow",
+                    source: "memories",
+                    resultCount: existingMatches.count,
+                    previewItems: toPreviewItems(existingMatches.results, "Stored memory"),
+                    events: [
+                      { label: "Policy", value: "prefer update over duplicate" },
+                      { label: "Suggested ID", value: String(existingMatch.id) },
+                    ],
+                    step: 3,
+                    totalSteps: 4,
+                  });
+                  result = JSON.stringify({
+                    error:
+                      "Existing memory match found for an edit/conversion request. Use update_memory with this memory_id instead of create_memory.",
+                    suggested_memory_id: existingMatch.id,
+                    suggested_title: existingMatch.title ?? null,
+                  });
+                  conversation.push({
+                    role: "tool",
+                    tool_call_id: toolCall.id,
+                    content: result,
+                  });
+                  continue;
+                }
+              }
+
               const normalized = normalizeMemoryFields(fnArgs);
               const contentToSave =
                 normalized.content ||
@@ -888,6 +1434,19 @@ export const chat = action({
                   recentMemoriesCache = undefined;
                 }
                 pendingCardIds.add(String(existingCreated.id));
+                await setStreamingStatus({
+                  phase: "writing",
+                  toolName: "create_memory",
+                  detail: "Reused an equivalent memory instead of creating a duplicate",
+                  source: "memories",
+                  previewItems: [truncateStatusText(existingCreated.title)],
+                  events: [
+                    { label: "Operation", value: "deduplicated" },
+                    { label: "Target", value: String(existingCreated.id) },
+                  ],
+                  step: 3,
+                  totalSteps: 4,
+                });
                 result = JSON.stringify({
                   success: true,
                   deduped: true,
@@ -940,6 +1499,23 @@ export const chat = action({
                   title: resolvedTitle,
                 });
                 pendingCardIds.add(String(created.memoryId));
+                await setStreamingStatus({
+                  phase: "writing",
+                  toolName: "create_memory",
+                  detail: "Saved a new memory entry",
+                  source: "memories",
+                  previewItems: [truncateStatusText(resolvedTitle)],
+                  events: [
+                    {
+                      label: "Kind",
+                      value:
+                        normalized.entryKind === "reminder" ? "reminder" : "memory",
+                    },
+                    { label: "Target", value: String(created.memoryId) },
+                  ],
+                  step: 3,
+                  totalSteps: 4,
+                });
                 result = JSON.stringify({
                   success: true,
                   memory: {
@@ -968,6 +1544,25 @@ export const chat = action({
                 });
                 recentMemoriesCache = undefined;
                 pendingCardIds.add(String(fnArgs.memory_id));
+                await setStreamingStatus({
+                  phase: "writing",
+                  toolName: "update_memory",
+                  detail: "Updated the selected memory",
+                  source: "memories",
+                  previewItems: [
+                    truncateStatusText(
+                      normalized.title ||
+                        (typeof fnArgs.content === "string" ? fnArgs.content : undefined) ||
+                        "Updated memory"
+                    ),
+                  ],
+                  events: [
+                    { label: "Operation", value: "update committed" },
+                    { label: "Target", value: String(fnArgs.memory_id) },
+                  ],
+                  step: 3,
+                  totalSteps: 4,
+                });
                 result = JSON.stringify({ success: true, memory_id: fnArgs.memory_id });
               } catch (error) {
                 result = JSON.stringify({
@@ -997,6 +1592,26 @@ export const chat = action({
                 content: String(m.content || ""),
                 entry_kind: String(m.entry_kind || "memory"),
               }));
+              await setStreamingStatus({
+                query: typeof fnArgs.query === "string" ? fnArgs.query : undefined,
+                phase: "searching",
+                toolName: "propose_deletion",
+                detail:
+                  pendingDeletionItems.length > 0
+                    ? `Prepared ${pendingDeletionItems.length} item${pendingDeletionItems.length === 1 ? "" : "s"} for delete confirmation`
+                    : "No matching items found for deletion",
+                source: "memories",
+                resultCount: pendingDeletionItems.length,
+                previewItems: pendingDeletionItems
+                  .slice(0, 3)
+                  .map((item) => truncateStatusText(item.title || item.content || "Stored memory")),
+                events: [
+                  { label: "Mode", value: "proposal only" },
+                  { label: "Filter", value: entryKind },
+                ],
+                step: 3,
+                totalSteps: 4,
+              });
 
               result = JSON.stringify(
                 pendingDeletionItems.length > 0
@@ -1013,6 +1628,20 @@ export const chat = action({
                 const deleted = await ctx.runQuery(api.memories.listDeleted, {
                   token: args.token,
                   limit,
+                });
+                await setStreamingStatus({
+                  phase: "loading",
+                  toolName: "list_deleted_memories",
+                  detail: `Loaded ${deleted.length} deleted ${deleted.length === 1 ? "memory" : "memories"}`,
+                  source: "memories",
+                  resultCount: deleted.length,
+                  previewItems: toPreviewItems(deleted, "Deleted memory"),
+                  events: [
+                    { label: "Status", value: "deleted" },
+                    { label: "Limit", value: `${limit}` },
+                  ],
+                  step: 3,
+                  totalSteps: 4,
                 });
                 result = JSON.stringify({
                   deleted_memories: deleted.map((memory: MemoryDoc) => ({
@@ -1037,6 +1666,18 @@ export const chat = action({
                 });
                 recentMemoriesCache = undefined;
                 pendingCardIds.add(String(fnArgs.memory_id as string));
+                await setStreamingStatus({
+                  phase: "writing",
+                  toolName: "restore_memory",
+                  detail: "Restored the deleted memory",
+                  source: "memories",
+                  events: [
+                    { label: "Operation", value: "restore" },
+                    { label: "Target", value: String(fnArgs.memory_id) },
+                  ],
+                  step: 3,
+                  totalSteps: 4,
+                });
                 result = JSON.stringify({ success: true });
               } catch (error) {
                 result = JSON.stringify({
@@ -1052,6 +1693,20 @@ export const chat = action({
                 fnArgs.sort === "oldest" ? [...memories].reverse() : memories;
               const listed = ordered.slice(0, limit);
               surfaceCandidates = listed.map((m: MemoryDoc) => ({ id: String(m._id), title: m.title ?? "" }));
+              await setStreamingStatus({
+                phase: "loading",
+                toolName: "list_memories",
+                detail: `Loaded ${listed.length} of ${memories.length} stored memories`,
+                source: "memories",
+                resultCount: memories.length,
+                previewItems: toPreviewItems(listed, "Stored memory"),
+                events: [
+                  { label: "Sort", value: fnArgs.sort === "oldest" ? "oldest first" : "newest first" },
+                  { label: "Limit", value: `${limit}` },
+                ],
+                step: 3,
+                totalSteps: 4,
+              });
               result = JSON.stringify({
                 memories: listed.map((memory: MemoryDoc) => toMemoryCompact(memory)),
                 count: memories.length,
@@ -1067,18 +1722,47 @@ export const chat = action({
               }
 
               const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+              const recentCount = memories.filter(
+                (memory: MemoryDoc) => memory._creationTime >= weekAgo
+              ).length;
+              await setStreamingStatus({
+                phase: "analyzing",
+                toolName: "get_stats",
+                detail: `Computed stats across ${memories.length} stored memories`,
+                source: "memories",
+                resultCount: memories.length,
+                events: [
+                  { label: "Reminders", value: `${withReminders}` },
+                  { label: "Recurring", value: `${recurring}` },
+                  { label: "Recent 7d", value: `${recentCount}` },
+                ],
+                step: 3,
+                totalSteps: 4,
+              });
               result = JSON.stringify({
                 total: memories.length,
                 withReminders,
                 recurring,
-                recentCount: memories.filter(
-                  (memory: MemoryDoc) => memory._creationTime >= weekAgo
-                ).length,
+                recentCount,
               });
             } else if (fnName === "analyze_memories") {
               const memories = await getRecentMemoriesCache();
               const limit =
                 typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 50) : 50;
+              await setStreamingStatus({
+                phase: "analyzing",
+                toolName: "analyze_memories",
+                detail: `Preparing ${Math.min(limit, memories.length)} memories for analysis`,
+                source: "memories",
+                resultCount: memories.length,
+                previewItems: toPreviewItems(memories.slice(0, limit), "Stored memory"),
+                events: [
+                  { label: "Limit", value: `${limit}` },
+                  { label: "Scope", value: "active memories only" },
+                ],
+                step: 3,
+                totalSteps: 4,
+              });
               result = JSON.stringify({
                 memories: memories
                   .slice(0, limit)
@@ -1087,16 +1771,33 @@ export const chat = action({
               });
             } else if (fnName === "history") {
               if (fnArgs.action === "list") {
+                const history = await ctx.runQuery(api.history.listSnapshots, {
+                  token: args.token,
+                  ...(typeof fnArgs.memory_id === "string"
+                    ? { memoryId: fnArgs.memory_id as Id<"memories"> }
+                    : {}),
+                  ...(typeof fnArgs.limit === "number"
+                    ? { limit: Math.min(fnArgs.limit, 20) }
+                    : { limit: 10 }),
+                });
+                await setStreamingStatus({
+                  phase: "loading",
+                  toolName: "history",
+                  detail: `Loaded ${history.length} history snapshot${history.length === 1 ? "" : "s"}`,
+                  source: "memory_history",
+                  resultCount: history.length,
+                  events: [
+                    { label: "Action", value: "list" },
+                    {
+                      label: "Scope",
+                      value: typeof fnArgs.memory_id === "string" ? "single memory" : "recent changes",
+                    },
+                  ],
+                  step: 3,
+                  totalSteps: 4,
+                });
                 result = JSON.stringify({
-                  history: await ctx.runQuery(api.history.listSnapshots, {
-                    token: args.token,
-                    ...(typeof fnArgs.memory_id === "string"
-                      ? { memoryId: fnArgs.memory_id as Id<"memories"> }
-                      : {}),
-                    ...(typeof fnArgs.limit === "number"
-                      ? { limit: Math.min(fnArgs.limit, 20) }
-                      : { limit: 10 }),
-                  }),
+                  history,
                 });
               } else if (fnArgs.action === "undo") {
                 const undoResult = await ctx.runMutation(api.history.undo, {
@@ -1107,6 +1808,18 @@ export const chat = action({
                 });
                 result = JSON.stringify(undoResult);
                 recentMemoriesCache = undefined;
+                await setStreamingStatus({
+                  phase: "writing",
+                  toolName: "history",
+                  detail: "Reverted the latest edit",
+                  source: "memory_history",
+                  events: [
+                    { label: "Action", value: "undo" },
+                    { label: "Target", value: typeof fnArgs.memory_id === "string" ? fnArgs.memory_id : "latest edited memory" },
+                  ],
+                  step: 3,
+                  totalSteps: 4,
+                });
                 if (undoResult && typeof (undoResult as any).memoryId === "string") {
                   pendingCardIds.add(String((undoResult as any).memoryId));
                 } else if (typeof fnArgs.memory_id === "string") {
@@ -1119,6 +1832,18 @@ export const chat = action({
                 });
                 result = JSON.stringify(restoreResult);
                 recentMemoriesCache = undefined;
+                await setStreamingStatus({
+                  phase: "writing",
+                  toolName: "history",
+                  detail: "Restored a historical snapshot",
+                  source: "memory_history",
+                  events: [
+                    { label: "Action", value: "restore" },
+                    { label: "History ID", value: String(fnArgs.history_id) },
+                  ],
+                  step: 3,
+                  totalSteps: 4,
+                });
                 if (restoreResult && typeof (restoreResult as any).memoryId === "string") {
                   pendingCardIds.add(String((restoreResult as any).memoryId));
                 }
@@ -1156,6 +1881,18 @@ export const chat = action({
                   })
                 );
                 pendingCardIds.add(String(resolvedMemoryId));
+                await setStreamingStatus({
+                  phase: "writing",
+                  toolName: "manage_topics",
+                  detail: "Retagged the selected memory",
+                  source: "topics",
+                  events: [
+                    { label: "Operation", value: "retag_memory" },
+                    { label: "Topic", value: typeof fnArgs.topic_name === "string" ? fnArgs.topic_name : "selected topic" },
+                  ],
+                  step: 3,
+                  totalSteps: 4,
+                });
                 conversation.push({
                   role: "tool",
                   tool_call_id: toolCall.id,
@@ -1185,6 +1922,20 @@ export const chat = action({
                   topicName: typeof fnArgs.topic_name === "string" ? fnArgs.topic_name : undefined,
                 })
               );
+              await setStreamingStatus({
+                phase: fnArgs.operation === "list" ? "loading" : "writing",
+                toolName: "manage_topics",
+                detail:
+                  fnArgs.operation === "list"
+                    ? "Loaded topic organization"
+                    : `Completed topic operation: ${String(fnArgs.operation || "update")}`,
+                source: "topics",
+                events: [
+                  { label: "Operation", value: String(fnArgs.operation || "update") },
+                ],
+                step: 3,
+                totalSteps: 4,
+              });
             } else if (fnName === "attach_file_to_memory") {
               try {
                 const attachmentId = await ctx.runMutation(api.memories.attachFile, {
@@ -1197,6 +1948,18 @@ export const chat = action({
                   ),
                 });
                 pendingCardIds.add(String(fnArgs.memory_id as string));
+                await setStreamingStatus({
+                  phase: "writing",
+                  toolName: "attach_file_to_memory",
+                  detail: "Attached file metadata to the memory",
+                  source: "attachments",
+                  events: [
+                    { label: "File", value: typeof fnArgs.file_name === "string" ? truncateStatusText(fnArgs.file_name) : "Attachment" },
+                    { label: "Target", value: String(fnArgs.memory_id) },
+                  ],
+                  step: 3,
+                  totalSteps: 4,
+                });
                 result = JSON.stringify({ success: true, attachment_id: attachmentId });
               } catch (error) {
                 result = JSON.stringify({
@@ -1208,6 +1971,18 @@ export const chat = action({
               const ids = Array.isArray(fnArgs.ids) ? (fnArgs.ids as string[]) : [];
               for (const id of ids) pendingCardIds.add(id);
               surfaceCardsCalled = true;
+              await setStreamingStatus({
+                phase: "finalizing",
+                toolName: "surface_cards",
+                detail: ids.length > 0 ? `Preparing ${ids.length} memory card${ids.length === 1 ? "" : "s"}` : "No memory cards needed for this reply",
+                source: "ui",
+                resultCount: ids.length,
+                events: [
+                  { label: "Operation", value: "surface cards" },
+                ],
+                step: 3,
+                totalSteps: 4,
+              });
               result = JSON.stringify({ success: true });
             }
 
@@ -1225,45 +2000,25 @@ export const chat = action({
           }
         }
 
-        // Mandatory surface_cards call — always runs if AI didn't call it voluntarily.
-        // Uses minimal context (candidates + final answer only) to keep token cost low.
-        if (!surfaceCardsCalled && finalText && surfaceCandidates.length > 0) {
-          try {
-            const surfaceCardsToolDef = TOOLS.find(
-              (t) => t.type === "function" && t.function.name === "surface_cards"
-            );
-            if (surfaceCardsToolDef) {
-              const candidateList = surfaceCandidates
-                .map((c) => `- ${c.id}: ${c.title}`)
-                .join("\n");
-              const forcedRes = await client.chat.completions.create({
-                model: OPENAI_CHAT_MODEL,
-                messages: [
-                  {
-                    role: "system",
-                    content:
-                      "You are selecting which memory IDs to surface as cards. Call surface_cards with the IDs you referenced in your answer. Use an empty array if none apply.",
-                  },
-                  {
-                    role: "user",
-                    content: `Available memories:\n${candidateList}\n\nYour answer: ${finalText}`,
-                  },
-                ],
-                tools: [surfaceCardsToolDef],
-                tool_choice: { type: "function", function: { name: "surface_cards" } },
-                temperature: 0,
-                max_completion_tokens: 150,
-              });
-              const scCall = forcedRes.choices[0]?.message?.tool_calls?.[0];
-              if (scCall && scCall.type === "function" && scCall.function.name === "surface_cards") {
-                const ids = (JSON.parse(scCall.function.arguments).ids ?? []) as string[];
-                for (const id of ids) pendingCardIds.add(String(id));
-              }
-            }
-          } catch {
-            // Non-fatal — cards just won't show for this response
+        // Cheap fallback for cards without another model call.
+        if (!surfaceCardsCalled && pendingCardIds.size === 0 && surfaceCandidates.length > 0) {
+          for (const candidate of surfaceCandidates.slice(0, 3)) {
+            pendingCardIds.add(candidate.id);
           }
         }
+
+        await setStreamingStatus({
+          phase: "finalizing",
+          toolName: "reply",
+          detail: "Preparing final answer",
+          source: "assistant",
+          resultCount: pendingCardIds.size,
+          events: [
+            { label: "Cards", value: `${pendingCardIds.size}` },
+          ],
+          step: 4,
+          totalSteps: 4,
+        });
 
         const resolvedText = finalText || "I processed that, but I couldn't generate a clear reply.";
         
@@ -1276,7 +2031,13 @@ export const chat = action({
         }
 
         aiResponse = resolvedText + appendedComments;
+        await ctx.runMutation(internal.chat.clearSearchStatus, {
+          userId: session._id,
+        });
       } catch {
+        await ctx.runMutation(internal.chat.clearSearchStatus, {
+          userId: session._id,
+        });
         aiResponse =
           "I'm having trouble connecting right now. Please try again in a moment.";
       }

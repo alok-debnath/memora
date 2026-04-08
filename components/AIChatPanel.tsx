@@ -17,6 +17,8 @@ import Markdown from "react-native-markdown-display";
 import Animated, {
   FadeIn,
   FadeInDown,
+  FadeOut,
+  LinearTransition,
   useSharedValue,
   useAnimatedStyle,
   withRepeat,
@@ -94,6 +96,10 @@ const BUBBLE_SHADOW = Platform.select({
   },
   default: {},
 });
+
+const PROGRESS_LAYOUT = LinearTransition.springify()
+  .damping(18)
+  .stiffness(180);
 
 function getPreferredSpeechLocale() {
   try {
@@ -1062,44 +1068,284 @@ function ThinkingDot({ delay, color }: { delay: number; color: string }) {
   );
 }
 
+type ProgressStatus = {
+  query?: string | null;
+  phase?: string | null;
+  toolName?: string | null;
+  detail?: string | null;
+  source?: string | null;
+  cacheState?: string | null;
+  resultCount?: number | null;
+  previewItems?: string[] | null;
+  events?: Array<{ label: string; value?: string | null }> | null;
+  step?: number | null;
+  totalSteps?: number | null;
+  startedAt?: number | null;
+  updatedAt?: number | null;
+};
+
+const THINKING_MESSAGES = [
+  "Reading your message",
+  "Checking relevant context",
+  "Planning the next backend step",
+] as const;
+
+function formatElapsedTime(startedAt?: number | null) {
+  if (!startedAt) return null;
+  const elapsedMs = Math.max(0, Date.now() - startedAt);
+  const seconds = Math.floor(elapsedMs / 1000);
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}m ${remainingSeconds}s`;
+}
+
+function formatMetaLabel(status: ProgressStatus) {
+  const parts: string[] = [];
+  if (status.source) {
+    parts.push(status.source);
+  }
+  if (status.cacheState) {
+    parts.push(status.cacheState);
+  }
+  if (typeof status.resultCount === "number") {
+    parts.push(`${status.resultCount} ${status.resultCount === 1 ? "result" : "results"}`);
+  }
+  return parts.join(" • ");
+}
+
+function getUsefulEvents(status: ProgressStatus) {
+  const genericValues = new Set([
+    "general reasoning",
+    "initial plan",
+    "next action",
+    "prepare answer or next tool",
+    "composing final text",
+  ]);
+
+  return (status.events ?? [])
+    .filter((event) => {
+      const label = (event.label ?? "").trim().toLowerCase();
+      const value = (event.value ?? "").trim().toLowerCase();
+      if (!label && !value) {
+        return false;
+      }
+      if (label === "step" || label === "loop" || label === "next") {
+        return false;
+      }
+      if (label === "mode" && genericValues.has(value)) {
+        return false;
+      }
+      if (label === "matches" && typeof status.resultCount === "number") {
+        return false;
+      }
+      return true;
+    })
+    .slice(0, 3);
+}
+
+function getProgressTitle(status: ProgressStatus) {
+  const phase = (status.phase ?? "").toLowerCase();
+  const toolName = (status.toolName ?? "").toLowerCase();
+
+  if (toolName === "search_memories" || toolName === "deep_search") {
+    return "Searching memories";
+  }
+  if (toolName === "search_documents") {
+    return "Searching documents";
+  }
+  if (toolName === "memory_grounding") {
+    return "Checking stored data";
+  }
+  if (toolName === "create_memory") {
+    return "Saving memory";
+  }
+  if (toolName === "update_memory") {
+    return "Updating memory";
+  }
+  if (toolName === "manage_topics") {
+    return "Updating topics";
+  }
+  if (toolName === "surface_cards") {
+    return "Preparing cards";
+  }
+  if (phase === "searching") {
+    return "Searching";
+  }
+  if (phase === "analyzing") {
+    return "Analyzing";
+  }
+  if (phase === "writing") {
+    return "Saving changes";
+  }
+  if (phase === "grounding") {
+    return "Checking stored data";
+  }
+  if (phase === "finalizing") {
+    return "Finalizing response";
+  }
+  if (phase === "loading") {
+    return "Loading";
+  }
+  return "Working";
+}
+
+function getProgressIcon(status: ProgressStatus) {
+  const phase = (status.phase ?? "").toLowerCase();
+  const toolName = (status.toolName ?? "").toLowerCase();
+
+  if (toolName === "search_memories" || toolName === "deep_search" || toolName === "search_documents") {
+    return "search";
+  }
+  if (toolName === "memory_grounding" || phase === "grounding") {
+    return "database";
+  }
+  if (phase === "writing") {
+    return "save";
+  }
+  if (phase === "finalizing") {
+    return "check-circle";
+  }
+  if (phase === "loading") {
+    return "folder";
+  }
+  return "cpu";
+}
+
+function getAccentColor(status: ProgressStatus, fallback: string) {
+  const phase = (status.phase ?? "").toLowerCase();
+  if (phase === "writing") return "#F59E0B";
+  if (phase === "finalizing") return "#10B981";
+  if (phase === "analyzing") return "#8B5CF6";
+  return fallback;
+}
+
+function AnimatedSwapText({
+  text,
+  fontSize,
+  color,
+  maxWidth,
+  fontFamily,
+  opacity,
+  numberOfLines,
+}: {
+  text: string;
+  fontSize: number;
+  color: string;
+  maxWidth?: number;
+  fontFamily?: string;
+  opacity?: number;
+  numberOfLines?: number;
+}) {
+  return (
+    <Animated.View
+      layout={PROGRESS_LAYOUT}
+      style={{ minHeight: fontSize * 1.45, justifyContent: "center" }}
+    >
+      <Animated.View
+        key={text}
+        layout={PROGRESS_LAYOUT}
+        entering={FadeIn.duration(160)}
+        exiting={FadeOut.duration(120)}
+      >
+        <Text
+          fontSize={fontSize}
+          color={color}
+          maxWidth={maxWidth}
+          numberOfLines={numberOfLines}
+          fontFamily={fontFamily}
+          opacity={opacity}
+        >
+          {text}
+        </Text>
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
 function ThinkingIndicator() {
   const theme = useAppTheme();
   const color = theme.primary.val;
+  const [phraseIndex, setPhraseIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setPhraseIndex((current) => (current + 1) % THINKING_MESSAGES.length);
+    }, 1400);
+    return () => clearInterval(timer);
+  }, []);
 
   return (
-    <Animated.View entering={FadeInDown.duration(220)}>
+    <Animated.View entering={FadeInDown.duration(220)} layout={PROGRESS_LAYOUT}>
       <XStack
         gap={8}
         alignSelf="flex-start"
         marginBottom={CHAT.messageGap}
         alignItems="flex-end"
       >
-        {/* Bubble with three bouncing dots */}
-        <XStack
-          paddingHorizontal={16}
-          paddingVertical={14}
-          borderRadius={CHAT.bubbleRadius}
-          borderBottomLeftRadius={6}
-          backgroundColor="$backgroundStrong"
-          borderWidth={1}
-          borderColor="$borderColor"
-          gap={6}
-          alignItems="center"
-        >
-          <ThinkingDot delay={0}   color={color} />
-          <ThinkingDot delay={160} color={color} />
-          <ThinkingDot delay={320} color={color} />
-        </XStack>
+        <Animated.View layout={PROGRESS_LAYOUT}>
+          <YStack
+            paddingHorizontal={14}
+            paddingVertical={12}
+            borderRadius={CHAT.bubbleRadius}
+            borderBottomLeftRadius={6}
+            backgroundColor="$backgroundStrong"
+            borderWidth={1}
+            borderColor="$borderColor"
+            gap={8}
+            style={BUBBLE_SHADOW}
+          >
+            <Animated.View layout={PROGRESS_LAYOUT}>
+              <XStack gap={8} alignItems="center">
+                <View
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 14,
+                    backgroundColor: `${color}18`,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Feather name="cpu" size={13} color={color} />
+                </View>
+                <YStack gap={1}>
+                  <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
+                    Thinking
+                  </Text>
+                  <AnimatedSwapText
+                    text={THINKING_MESSAGES[phraseIndex]}
+                    fontSize={11}
+                    color="$colorMuted"
+                    maxWidth={230}
+                    numberOfLines={1}
+                  />
+                </YStack>
+              </XStack>
+            </Animated.View>
+
+            <Animated.View layout={PROGRESS_LAYOUT}>
+              <XStack gap={5} paddingLeft={36}>
+                <ThinkingDot delay={0} color={color} />
+                <ThinkingDot delay={160} color={color} />
+                <ThinkingDot delay={320} color={color} />
+              </XStack>
+            </Animated.View>
+          </YStack>
+        </Animated.View>
       </XStack>
     </Animated.View>
   );
 }
 
-// ─── Tool Searching Bubble ─────────────────────────────────────────────────────
+// ─── Tool Progress Bubble ─────────────────────────────────────────────────────
 
-function ToolSearchingBubble({ query }: { query: string }) {
+function ToolProgressBubble({ status }: { status: ProgressStatus }) {
   const theme = useAppTheme();
   const shimmer = useSharedValue(0);
+  const [elapsedLabel, setElapsedLabel] = useState(() => formatElapsedTime(status.startedAt));
 
   useEffect(() => {
     shimmer.value = withRepeat(
@@ -1110,54 +1356,176 @@ function ToolSearchingBubble({ query }: { query: string }) {
       -1,
       false,
     );
-  }, []);
+  }, [shimmer]);
+
+  useEffect(() => {
+    setElapsedLabel(formatElapsedTime(status.startedAt));
+    if (!status.startedAt) {
+      return;
+    }
+    const timer = setInterval(() => {
+      setElapsedLabel(formatElapsedTime(status.startedAt));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [status.startedAt]);
 
   const dotStyle = useAnimatedStyle(() => ({ opacity: 0.35 + shimmer.value * 0.65 }));
+  const title = getProgressTitle(status);
+  const iconName = getProgressIcon(status);
+  const accentColor = getAccentColor(status, theme.primary.val);
+  const queryLabel =
+    status.query?.trim() && status.query.trim() !== status.detail?.trim()
+      ? `Query: "${status.query.trim()}"`
+      : null;
+  const metaLabel = formatMetaLabel(status);
+  const events = getUsefulEvents(status);
+  const previewItems = (status.previewItems ?? []).filter(Boolean).slice(0, 2);
 
   return (
-    <Animated.View entering={FadeInDown.duration(220)} style={{ marginBottom: CHAT.messageGap }}>
+    <Animated.View
+      entering={FadeInDown.duration(220)}
+      layout={PROGRESS_LAYOUT}
+      style={{ marginBottom: CHAT.messageGap }}
+    >
       <XStack gap={8} alignSelf="flex-start" alignItems="flex-end">
-        <YStack
-          paddingHorizontal={14}
-          paddingVertical={12}
-          borderRadius={CHAT.bubbleRadius}
-          borderBottomLeftRadius={6}
-          backgroundColor="$backgroundStrong"
-          borderWidth={1}
-          borderColor="$borderColor"
-          gap={8}
-          style={BUBBLE_SHADOW}
-        >
-          <XStack gap={8} alignItems="center">
-            {/* Animated search icon */}
-            <Animated.View style={dotStyle}>
-              <View style={{
-                width: 26, height: 26, borderRadius: 13,
-                backgroundColor: theme.primary.val + "20",
-                alignItems: "center", justifyContent: "center",
-              }}>
-                <Feather name="search" size={13} color={theme.primary.val} />
-              </View>
-            </Animated.View>
-            <YStack gap={2}>
-              <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
-                Searching memories
+        <Animated.View layout={PROGRESS_LAYOUT}>
+          <YStack
+            paddingHorizontal={14}
+            paddingVertical={12}
+            borderRadius={CHAT.bubbleRadius}
+            borderBottomLeftRadius={6}
+            backgroundColor="$backgroundStrong"
+            borderWidth={1}
+            borderColor="$borderColor"
+            gap={10}
+            style={[BUBBLE_SHADOW, { maxWidth: 300, minWidth: 250, position: "relative" }]}
+          >
+            {elapsedLabel ? (
+              <Text
+                fontSize={9}
+                color="$colorMuted"
+                opacity={0.65}
+                style={{ position: "absolute", top: 12, right: 14 }}
+              >
+                {elapsedLabel}
               </Text>
-              {query ? (
-                <Text fontSize={11} color="$colorMuted" numberOfLines={1} maxWidth={220}>
-                  for "{query}"
-                </Text>
-              ) : null}
-            </YStack>
-          </XStack>
+            ) : null}
+            <Animated.View layout={PROGRESS_LAYOUT}>
+              <XStack gap={10} alignItems="flex-start">
+                <Animated.View style={dotStyle}>
+                  <View
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 14,
+                      backgroundColor: `${accentColor}18`,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Feather name={iconName as any} size={13} color={accentColor} />
+                  </View>
+                </Animated.View>
+                <YStack gap={2} flex={1} paddingRight={32}>
+                    <AnimatedSwapText
+                      text={title}
+                      fontSize={13}
+                      color="$color"
+                      fontFamily={FontFamily.semiBold}
+                      maxWidth={212}
+                      numberOfLines={1}
+                    />
+                    <AnimatedSwapText
+                      text={status.detail?.trim() || "Working on your request"}
+                      fontSize={11}
+                      color="$colorMuted"
+                      maxWidth={226}
+                      numberOfLines={2}
+                    />
+                    {queryLabel ? (
+                      <AnimatedSwapText
+                        text={queryLabel}
+                        fontSize={10}
+                        color="$colorMuted"
+                        maxWidth={226}
+                        numberOfLines={1}
+                        opacity={0.78}
+                      />
+                    ) : null}
+                </YStack>
+              </XStack>
+            </Animated.View>
 
-          {/* Three animated dots */}
-          <XStack gap={5} paddingLeft={34}>
-            <ThinkingDot delay={0}   color={theme.primary.val} />
-            <ThinkingDot delay={160} color={theme.primary.val} />
-            <ThinkingDot delay={320} color={theme.primary.val} />
-          </XStack>
-        </YStack>
+            {metaLabel ? (
+              <Animated.View layout={PROGRESS_LAYOUT}>
+                <Text fontSize={10} color="$colorMuted" opacity={0.76}>
+                  {metaLabel}
+                </Text>
+              </Animated.View>
+            ) : null}
+
+            {events.length > 0 ? (
+              <Animated.View layout={PROGRESS_LAYOUT}>
+                <YStack gap={4}>
+                  {events.map((event, index) => (
+                    <XStack key={`${event.label}_${event.value ?? "value"}_${index}`} gap={7} alignItems="flex-start">
+                      <View
+                        style={{
+                          width: 4,
+                          height: 4,
+                          borderRadius: 2,
+                          backgroundColor: accentColor,
+                          opacity: 0.75,
+                          marginTop: 6,
+                        }}
+                      />
+                      <Text fontSize={10} color="$colorMuted" opacity={0.84} flex={1}>
+                        <Text fontFamily={FontFamily.medium} color="$colorMuted">
+                          {event.label}
+                        </Text>
+                        {event.value ? `: ${event.value}` : ""}
+                      </Text>
+                    </XStack>
+                  ))}
+                </YStack>
+              </Animated.View>
+            ) : null}
+
+            {previewItems.length > 0 ? (
+              <Animated.View layout={PROGRESS_LAYOUT}>
+                <YStack gap={5}>
+                  <Text fontSize={10} color="$colorMuted" opacity={0.76}>
+                    Matches
+                  </Text>
+                  {previewItems.map((item, index) => (
+                    <XStack key={`${item}_${index}`} gap={8} alignItems="center">
+                      <View
+                        style={{
+                          width: 5,
+                          height: 5,
+                          borderRadius: 3,
+                          backgroundColor: accentColor,
+                          opacity: 0.85,
+                        }}
+                      />
+                      <Text fontSize={10} color="$color" numberOfLines={1} maxWidth={250}>
+                        {item}
+                      </Text>
+                    </XStack>
+                  ))}
+                </YStack>
+              </Animated.View>
+            ) : (
+              <Animated.View layout={PROGRESS_LAYOUT}>
+                <XStack gap={5} paddingLeft={2} opacity={0.78}>
+                  <ThinkingDot delay={0} color={accentColor} />
+                  <ThinkingDot delay={160} color={accentColor} />
+                  <ThinkingDot delay={320} color={accentColor} />
+                </XStack>
+              </Animated.View>
+            )}
+          </YStack>
+        </Animated.View>
       </XStack>
     </Animated.View>
   );
@@ -2075,14 +2443,15 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
 
     base = base.reverse();
 
-    if (isSending) {
-      // If a live search is in-flight, replace generic thinking with the specific searching bubble
-      if (searchStatus?.query) {
+    if (isSending || searchStatus) {
+      if (searchStatus) {
         return [
-          { _id: "__tool_searching__", role: "tool_searching", content: searchStatus.query, _creationTime: 0 } as any,
+          { _id: "__tool_progress__", role: "tool_progress", status: searchStatus, _creationTime: 0 } as any,
           ...base,
         ];
       }
+    }
+    if (isSending) {
       return [
         { _id: "__thinking__", role: "thinking", content: "", _creationTime: 0 } as any,
         ...base,
@@ -2107,7 +2476,7 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
   const renderMessage = useCallback(
     ({ item }: { item: any }) => {
       if (item.role === "thinking") return <ThinkingIndicator />;
-      if (item.role === "tool_searching") return <ToolSearchingBubble query={item.content ?? ""} />;
+      if (item.role === "tool_progress") return <ToolProgressBubble status={item.status ?? {}} />;
 
       let deletionItems: DeletionItem[] | undefined;
       let cardIds: string[] | undefined;

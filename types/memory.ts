@@ -16,6 +16,7 @@ export interface MemoryNote {
   content: string;
   primaryTopicId?: string;
   topicIds?: string[];
+  mood?: Mood;
   people: string[];
   locations: string[];
   importance: Importance;

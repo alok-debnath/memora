@@ -424,14 +424,33 @@ export default defineSchema({
   }).index("by_user", ["userId"]),
 
   /**
-   * Transient per-user state written by the chat action while a search tool
-   * is in-flight. The client subscribes reactively and shows a live indicator.
+   * Transient per-user state written by chat/deep-search actions while tools
+   * are in-flight. The client subscribes reactively and shows live backend
+   * progress such as searching, creating, updating, or analyzing.
    * Rows are created/updated on tool invocation and deleted when done.
    */
   chatSearchStatus: defineTable({
     userId: v.id("users"),
-    query: v.string(),
+    query: v.optional(v.string()),
+    phase: v.optional(v.string()),
+    toolName: v.optional(v.string()),
+    detail: v.optional(v.string()),
+    source: v.optional(v.string()),
+    cacheState: v.optional(v.string()),
+    resultCount: v.optional(v.number()),
+    previewItems: v.optional(v.array(v.string())),
+    events: v.optional(
+      v.array(
+        v.object({
+          label: v.string(),
+          value: v.optional(v.string()),
+        })
+      )
+    ),
+    step: v.optional(v.number()),
+    totalSteps: v.optional(v.number()),
     startedAt: v.number(),
+    updatedAt: v.optional(v.number()),
   }).index("by_user", ["userId"]),
 
   searchQueryCache: defineTable({

@@ -165,7 +165,7 @@ export function EditMemorySheet({
     try {
       await chatAction({
         token,
-        message: `Update the memory with ID "${memory.id}" titled "${memory.title}". Instruction: ${text}`,
+        message: `Update the existing memory with ID "${memory.id}" titled "${memory.title}". This is an edit to the current item, not a request to create a new one. Apply the instruction to this exact memory and convert between memory/reminder if requested. Instruction: ${text}`,
         currentTime: new Date().toISOString(),
         currentTimezone:
           Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",

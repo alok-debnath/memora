@@ -3,7 +3,7 @@
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { action } from "../_generated/server";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import {
   embedText,
   extractTextContent,
@@ -29,6 +29,7 @@ export const detectConflicts = action({
     token: v.string(),
     memoryId: v.id("memories"),
     content: v.string(),
+    embedding: v.optional(v.array(v.float64())),
   },
   handler: async (ctx, args): Promise<ConflictResult> => {
     const client = getOpenAIClient();
@@ -45,7 +46,8 @@ export const detectConflicts = action({
     // closely related memories, not just vaguely similar ones
     let semanticallySimilar: Array<{ _id: Id<"memories">; _score: number }> = [];
     try {
-      const embedding = await embedText(args.content.slice(0, 4000));
+      const embedding =
+        args.embedding ?? (await embedText(args.content.slice(0, 4000)));
       semanticallySimilar = await ctx.vectorSearch("memories", "by_embedding", {
         vector: embedding,
         limit: 8,
@@ -60,34 +62,33 @@ export const detectConflicts = action({
       .map((result) => result._id);
 
     if (similarIds.length === 0) {
-      const allMemories = await ctx.runQuery(api.memories.list, {
-        token: args.token,
-        limit: 30,
+      const candidates = await ctx.runQuery(internal.memories.searchByKeyword, {
+        userId: session._id,
+        query: args.content,
+        limit: 8,
       });
-      const candidates = (allMemories.memories ?? [])
-        .filter((memory) => memory._id !== args.memoryId)
-        .slice(0, 15);
-      if (candidates.length === 0) {
+      const filteredCandidates = candidates
+        .filter((memory: { _id: Id<"memories"> }) => memory._id !== args.memoryId)
+        .slice(0, 8);
+      if (filteredCandidates.length === 0) {
         return { conflicts: [] };
       }
 
-      const memoryText = candidates
-        .map((memory) => `[${memory._id}] ${memory.title ?? ""}: ${(memory.content ?? "").slice(0, 150)}`)
+      const memoryText = filteredCandidates
+        .map((memory: { _id: Id<"memories">; title?: string; content?: string }) => `[${memory._id}] ${memory.title ?? ""}: ${(memory.content ?? "").slice(0, 150)}`)
         .join("\n");
 
       return analyzeConflicts(client, args.content, memoryText);
     }
 
-    const candidateMemories: string[] = [];
-    for (const id of similarIds.slice(0, 10)) {
-      const memory = await ctx.runQuery(api.memories.get, {
-        token: args.token,
-        id: id as typeof args.memoryId,
-      });
-      if (memory) {
-        candidateMemories.push(`[${memory._id}] ${memory.title ?? ""}: ${(memory.content ?? "").slice(0, 150)}`);
-      }
-    }
+    const memories = await ctx.runQuery(internal.memories.listByIdsInternal, {
+      userId: session._id,
+      ids: similarIds.slice(0, 10),
+    });
+    const candidateMemories = memories.map(
+      (memory: { _id: Id<"memories">; title?: string; content?: string }) =>
+        `[${memory._id}] ${memory.title ?? ""}: ${(memory.content ?? "").slice(0, 150)}`
+    );
 
     if (candidateMemories.length === 0) {
       return { conflicts: [] };

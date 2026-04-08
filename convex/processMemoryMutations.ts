@@ -20,6 +20,16 @@ function hasSchedulingInput(value: {
   );
 }
 
+function isSameValue(left: unknown, right: unknown) {
+  if (left === right) {
+    return true;
+  }
+  if (left === undefined || right === undefined) {
+    return left === right;
+  }
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 export const updateEmbedding = internalMutation({
   args: {
     memoryId: v.id("memories"),
@@ -28,6 +38,9 @@ export const updateEmbedding = internalMutation({
   handler: async (ctx, args) => {
     const memory = await ctx.db.get(args.memoryId);
     if (!memory || memory.status !== "active") {
+      return;
+    }
+    if (isSameValue(memory.embedding, args.embedding)) {
       return;
     }
     await ctx.db.patch(args.memoryId, { embedding: args.embedding });
@@ -88,6 +101,13 @@ export const updateAIFields = internalMutation({
         })
       );
     }
-    await ctx.db.patch(args.memoryId, updates);
+    const changedEntries = Object.entries(updates).filter(([key, value]) => {
+      const currentValue = (memory as Record<string, unknown>)[key];
+      return !isSameValue(currentValue, value);
+    });
+    if (changedEntries.length === 0) {
+      return;
+    }
+    await ctx.db.patch(args.memoryId, Object.fromEntries(changedEntries));
   },
 });

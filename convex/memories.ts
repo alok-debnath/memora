@@ -28,6 +28,7 @@ import {
   isReminder,
   toStoredMemoryFields,
 } from "./lib/memoryKind";
+import { cleanSearchQuery, extractSearchTerms } from "./lib/search";
 
 /**
  * True when a memory should appear in active/live views.
@@ -364,44 +365,6 @@ export const listByIds = query({
   },
 });
 
-/**
- * Noise words to strip from search queries before passing to
- * Convex full-text search or keyword matching.
- * Kept here (query-side only) to avoid a "use node" dependency.
- */
-const SEARCH_NOISE_WORDS = new Set([
-  "a","an","the","and","or","but","in","on","at","to","for","of","with","by",
-  "from","as","is","was","are","were","be","been","being","have","has","had",
-  "do","does","did","will","would","could","should","may","might","shall",
-  "can","need","it","its","this","that","these","those",
-  "he","she","they","we","you","i","me","my","his","her","their","our","your",
-  "him","them","us","what","which","who","whom","whose","where","when","why","how",
-  "all","both","each","every","no","not","only","own","same","so","than","too",
-  "very","just","more","most","other","some","such","then","there",
-  // Intent/action words
-  "forget","remember","remind","delete","remove","find","search","show","get",
-  "tell","give","let","know","please","want","make","put","set","add","create",
-  "save","store","note","list","look","see","check","about","any","also",
-  "data","everything","anything","info","information","stuff","things","related",
-]);
-
-function cleanSearchQuery(raw: string): string {
-  const terms = raw
-    .toLowerCase()
-    .split(/\s+/)
-    .map((t) => t.replace(/[^a-z0-9']/g, "").trim())
-    .filter((t) => t.length > 1 && !SEARCH_NOISE_WORDS.has(t));
-  return terms.length > 0 ? terms.join(" ") : raw.trim();
-}
-
-function extractSearchTerms(raw: string): string[] {
-  return raw
-    .toLowerCase()
-    .split(/\s+/)
-    .map((t) => t.replace(/[^a-z0-9']/g, "").trim())
-    .filter((t) => t.length > 1 && !SEARCH_NOISE_WORDS.has(t));
-}
-
 export const searchByContent = internalQuery({
   args: {
     userId: v.id("users"),
@@ -448,14 +411,18 @@ async function executeKeywordSearch(
 ): Promise<{ memory: Doc<"memories">; proportion: number; matched: number }[]> {
   const memories = await ctx.db
     .query("memories")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .withIndex("by_user_status", (q) =>
+      q.eq("userId", userId).eq("status", "active")
+    )
     .order("desc")
     .take(200);
 
   const userTopics = await ctx.db
     .query("userTopics")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .collect();
+    .withIndex("by_user_and_isArchived", (q) =>
+      q.eq("userId", userId).eq("isArchived", false)
+    )
+    .take(100);
   const topicMap = new Map<Id<"userTopics">, string>();
   for (const t of userTopics) {
     if (!t.isArchived) topicMap.set(t._id, t.name.toLowerCase());
@@ -593,23 +560,58 @@ export const listForAI = internalQuery({
   },
   handler: async (ctx, args) => {
     const take = args.limit ? Math.min(args.limit, 100) : 20;
-    let rows: Doc<"memories">[];
+    if (args.includeDeleted) {
+      let rows: Doc<"memories">[];
+      if (args.primaryTopicId) {
+        rows = await ctx.db
+          .query("memories")
+          .withIndex("by_user_primaryTopic", (q) =>
+            q.eq("userId", args.userId).eq("primaryTopicId", args.primaryTopicId!)
+          )
+          .order("desc")
+          .take(take);
+      } else {
+        rows = await ctx.db
+          .query("memories")
+          .withIndex("by_user", (q) => q.eq("userId", args.userId))
+          .order("desc")
+          .take(take);
+      }
+      return rows;
+    }
+
     if (args.primaryTopicId) {
-      rows = await ctx.db
+      const rows = await ctx.db
         .query("memories")
         .withIndex("by_user_primaryTopic", (q) =>
           q.eq("userId", args.userId).eq("primaryTopicId", args.primaryTopicId!)
         )
         .order("desc")
-        .take(take);
-    } else {
-      rows = await ctx.db
-        .query("memories")
-        .withIndex("by_user", (q) => q.eq("userId", args.userId))
-        .order("desc")
-        .take(take);
+        .take(Math.min(take * 2, 200));
+      return rows.filter(isActiveMemory).slice(0, take);
     }
-    return args.includeDeleted ? rows : rows.filter(isActiveMemory);
+
+    return await ctx.db
+      .query("memories")
+      .withIndex("by_user_status", (q) =>
+        q.eq("userId", args.userId).eq("status", "active")
+      )
+      .order("desc")
+      .take(take);
+  },
+});
+
+export const listByIdsInternal = internalQuery({
+  args: {
+    userId: v.id("users"),
+    ids: v.array(v.id("memories")),
+  },
+  handler: async (ctx, args): Promise<Doc<"memories">[]> => {
+    const rows = await Promise.all(args.ids.map((id) => ctx.db.get(id)));
+    return rows.filter(
+      (memory): memory is Doc<"memories"> =>
+        memory !== null && memory.userId === args.userId && isActiveMemory(memory)
+    );
   },
 });
 

@@ -14,6 +14,10 @@ export const updateExtractionStatus = internalMutation({
     ),
   },
   handler: async (ctx, args) => {
+    const extraction = await ctx.db.get(args.extractionId);
+    if (!extraction || extraction.status === args.status) {
+      return;
+    }
     await ctx.db.patch(args.extractionId, { status: args.status });
   },
 });

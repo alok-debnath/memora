@@ -39,21 +39,7 @@ export const list = query({
         q.eq("userId", userId).eq("isArchived", false)
       )
       .collect();
-    const activeTopics = await Promise.all(
-      topics.map(async (topic) => {
-        if (topic.memoryCount <= 0) return null;
-        const hasLink = await ctx.db
-          .query("memoryTopicLinks")
-          .withIndex("by_user_and_topic", (q) =>
-            q.eq("userId", userId).eq("topicId", topic._id)
-          )
-          .take(1);
-        return hasLink.length > 0 ? topic : null;
-      })
-    );
-    return activeTopics.filter(
-      (topic): topic is NonNullable<(typeof activeTopics)[number]> => topic !== null
-    );
+    return topics.filter((topic) => topic.memoryCount > 0);
   },
 });
 
@@ -77,57 +63,16 @@ export const activeSummaries = query({
         q.eq("userId", userId).eq("isArchived", false)
       )
       .collect();
-    const summaries: Array<{
-      _id: Id<"userTopics">;
-      name: string;
-      icon: string;
-      color: string;
-      memoryCount: number;
-    }> = [];
-
-    for (const topic of topics) {
-      if (topic.memoryCount <= 0) continue;
-
-      if (topic.memoryCount <= 5) {
-        const links = await ctx.db
-          .query("memoryTopicLinks")
-          .withIndex("by_user_and_topic", (q) =>
-            q.eq("userId", userId).eq("topicId", topic._id)
-          )
-          .take(50);
-        if (links.length === 0) {
-          continue;
-        }
-        summaries.push({
-          _id: topic._id,
-          name: topic.name,
-          icon: topic.icon,
-          color: topic.color,
-          memoryCount: links.length,
-        });
-        continue;
-      } else {
-        const hasLink = await ctx.db
-          .query("memoryTopicLinks")
-          .withIndex("by_user_and_topic", (q) =>
-            q.eq("userId", userId).eq("topicId", topic._id)
-          )
-          .take(1);
-        if (hasLink.length === 0) {
-          continue;
-        }
-      }
-
-      summaries.push({
+    return topics
+      .filter((topic) => topic.memoryCount > 0)
+      .map((topic) => ({
         _id: topic._id,
         name: topic.name,
         icon: topic.icon,
         color: topic.color,
         memoryCount: topic.memoryCount,
-      });
-    }
-
-    return summaries.sort((a, b) => b.memoryCount - a.memoryCount);
+      }))
+      .sort((a, b) => b.memoryCount - a.memoryCount);
   },
 });
 
@@ -152,6 +97,21 @@ export const listWithCentroids = internalQuery({
         q.eq("userId", args.userId).eq("isArchived", false)
       )
       .collect();
+  },
+});
+
+export const listActiveNames = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const topics = await ctx.db
+      .query("userTopics")
+      .withIndex("by_user_and_isArchived", (q) =>
+        q.eq("userId", args.userId).eq("isArchived", false)
+      )
+      .collect();
+    return topics
+      .filter((topic) => topic.memoryCount > 0)
+      .map((topic) => ({ _id: topic._id, name: topic.name }));
   },
 });
 

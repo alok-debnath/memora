@@ -177,11 +177,6 @@ function CardFront({ card, cardCount, cardIndex }: { card: ReviewCard; cardCount
             <Text fontSize={11} fontFamily="$body" color="$primary">{card.memory.lifeArea}</Text>
           </XStack>
         )}
-        {card.memory.mood && (
-          <XStack paddingHorizontal={10} paddingVertical={4} borderRadius={999} backgroundColor={theme.secondary.val}>
-            <Text fontSize={11} fontFamily="$body" color="$colorMuted">{card.memory.mood}</Text>
-          </XStack>
-        )}
       </XStack>
     </YStack>
   );
@@ -239,11 +234,6 @@ function CardBack({ card }: { card: ReviewCard }) {
         {card.memory.lifeArea && (
           <XStack paddingHorizontal={10} paddingVertical={4} borderRadius={999} backgroundColor={theme.primary.val + "15"}>
             <Text fontSize={11} fontFamily="$body" color="$primary">{card.memory.lifeArea}</Text>
-          </XStack>
-        )}
-        {card.memory.mood && (
-          <XStack paddingHorizontal={10} paddingVertical={4} borderRadius={999} backgroundColor={theme.secondary.val}>
-            <Text fontSize={11} fontFamily="$body" color="$colorMuted">{card.memory.mood}</Text>
           </XStack>
         )}
         {card.memory.importance && (
