@@ -16,6 +16,8 @@ interface MemoryCardProps {
   onShare?: () => void;
   onAddToReview?: () => void;
   onComplete?: () => void;
+  onTriggerSync?: () => void;
+  onRemoveSync?: () => void;
   index?: number;
 }
 
@@ -29,6 +31,39 @@ interface CardBodyProps {
   showActions?: boolean;
 }
 
+function getReminderSyncTone(memory: MemoryNote) {
+  if (memory.googleSyncStatus === "synced") {
+    return {
+      border: "rgba(34, 197, 94, 0.30)",
+      bg: "rgba(34, 197, 94, 0.08)",
+      icon: "check-circle",
+      iconColor: "#16A34A",
+      label: "Google Calendar synced",
+      detail: memory.googleSyncMessage || "Calendar event is up to date.",
+    } as const;
+  }
+
+  if (memory.googleSyncStatus === "failed") {
+    return {
+      border: "rgba(239, 68, 68, 0.24)",
+      bg: "rgba(239, 68, 68, 0.08)",
+      icon: "alert-circle",
+      iconColor: "#DC2626",
+      label: "Google sync failed",
+      detail: memory.googleSyncMessage || "Reconnect Google Calendar and try again.",
+    } as const;
+  }
+
+  return {
+    border: "rgba(245, 158, 11, 0.24)",
+    bg: "rgba(245, 158, 11, 0.08)",
+    icon: "clock",
+    iconColor: "#D97706",
+    label: "Google sync pending",
+    detail: memory.googleSyncMessage || "Waiting to sync this reminder to Google Calendar.",
+  } as const;
+}
+
 export const CardBody = React.memo(function CardBody({
   memory,
   resolvedTopics,
@@ -39,6 +74,10 @@ export const CardBody = React.memo(function CardBody({
   showActions = false,
 }: CardBodyProps) {
   const theme = useAppTheme();
+  const hasGoogleSyncInfo = !!(memory.googleSyncStatus || memory.googleEventId || memory.googleSyncMessage);
+  const reminderSyncTone = isReminder(memory) && hasGoogleSyncInfo ? getReminderSyncTone(memory) : null;
+  // Determine whether to reserve the bottom row space — only when there's a reminder date or sync info
+  const hasBottomRow = !!((isReminder(memory) && getReminderDate(memory)) || reminderSyncTone);
 
   const isLocked =
     memory.capsuleUnlockDate &&
@@ -137,7 +176,7 @@ export const CardBody = React.memo(function CardBody({
             </XStack>
           )}
 
-          <XStack alignItems="center" justifyContent="space-between" minHeight={24}>
+          <XStack alignItems="center" justifyContent="space-between" minHeight={hasBottomRow ? 24 : undefined}>
             <XStack alignItems="center" gap={8}>
               {isReminder(memory) && getReminderDate(memory) && (
                 <XStack alignItems="center" gap={3}>
@@ -197,6 +236,29 @@ export const CardBody = React.memo(function CardBody({
               </XStack>
             )}
           </XStack>
+
+          {reminderSyncTone ? (
+            <YStack
+              marginTop={8}
+              paddingHorizontal={9}
+              paddingVertical={8}
+              gap={3}
+              borderRadius={10}
+              borderWidth={1}
+              borderColor={reminderSyncTone.border}
+              backgroundColor={reminderSyncTone.bg}
+            >
+              <XStack gap={6} alignItems="center">
+                <Feather name={reminderSyncTone.icon as any} size={12} color={reminderSyncTone.iconColor} />
+                <Text fontSize={10} fontFamily="$body" fontWeight="600" color="$color">
+                  {reminderSyncTone.label}
+                </Text>
+              </XStack>
+              <Text fontSize={10} fontFamily="$body" color="$colorMuted" lineHeight={14} numberOfLines={2}>
+                {reminderSyncTone.detail}
+              </Text>
+            </YStack>
+          ) : null}
         </>
       )}
     </YStack>
@@ -211,35 +273,72 @@ export const MemoryCard = React.memo(function MemoryCard({
   onShare,
   onAddToReview,
   onComplete,
+  onTriggerSync,
+  onRemoveSync,
   index = 0,
 }: MemoryCardProps) {
   const theme = useAppTheme();
+  const reminderHasSyncInfo =
+    isReminder(memory) &&
+    !!(memory.googleSyncStatus || memory.googleEventId || memory.googleSyncMessage);
+  const canTriggerSync =
+    isReminder(memory) &&
+    !!onTriggerSync &&
+    (!reminderHasSyncInfo || memory.googleSyncStatus === "failed");
+  const canRemoveSync =
+    isReminder(memory) &&
+    !!onRemoveSync &&
+    reminderHasSyncInfo;
 
-  const menuItems: (ContextMenuItemDef | false)[] = [
-    !!(onComplete && isReminder(memory)) && {
+  const menuItems: ContextMenuItemDef[] = [
+    ...(onComplete && isReminder(memory)
+      ? [{
       label: "Mark as Completed",
       icon: "check-circle",
       iconColor: "#16a34a",
       onPress: onComplete!,
-    },
-    !!onShare && {
+    }]
+      : []),
+    ...(canTriggerSync
+      ? [{
+          label: memory.googleSyncStatus === "failed" ? "Retry Google Sync" : "Trigger Google Sync",
+          icon: "refresh-cw",
+          iconColor: theme.primary.val,
+          onPress: onTriggerSync!,
+        }]
+      : []),
+    ...(canRemoveSync
+      ? [{
+          label: "Remove Google Sync",
+          icon: "link-2",
+          destructive: true,
+          onPress: onRemoveSync!,
+        }]
+      : []),
+    ...(onShare
+      ? [{
       label: "Share Memory",
       icon: "share-2",
       iconColor: theme.color.val,
       onPress: onShare,
-    },
-    !!onAddToReview && {
+    }]
+      : []),
+    ...(onAddToReview
+      ? [{
       label: "Add to Review",
       icon: "repeat",
       iconColor: theme.color.val,
       onPress: onAddToReview,
-    },
-    !!onDelete && {
+    }]
+      : []),
+    ...(onDelete
+      ? [{
       label: "Delete Memory",
       icon: "trash-2",
       destructive: true,
       onPress: onDelete,
-    },
+    }]
+      : []),
   ];
 
   return (

@@ -185,6 +185,52 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: "function",
     function: {
+      name: "sync_reminder",
+      description:
+        "Manually trigger or retry Google Calendar sync for an existing reminder.",
+      parameters: {
+        type: "object",
+        properties: {
+          memory_id: {
+            type: "string",
+            description: "Reminder memory ID if already known.",
+          },
+          query: {
+            type: "string",
+            description:
+              "Reminder reference text to resolve the target when memory ID is unknown.",
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "remove_reminder_sync",
+      description:
+        "Remove Google Calendar sync for an existing reminder. This deletes linked Google Calendar event data and clears local sync metadata.",
+      parameters: {
+        type: "object",
+        properties: {
+          memory_id: {
+            type: "string",
+            description: "Reminder memory ID if already known.",
+          },
+          query: {
+            type: "string",
+            description:
+              "Reminder reference text to resolve the target when memory ID is unknown.",
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "propose_deletion",
       description:
         "Search for memories or reminders to delete and surface them to the user for confirmation. You do NOT delete directly — the user will review and confirm in the app UI. Use this whenever the user asks to delete one or more items.",
@@ -421,11 +467,25 @@ const UPDATE_INTENT_PATTERNS = [
   /\bchange\b/i,
   /\bmodify\b/i,
   /\bfix\b/i,
+  /\breschedul(?:e|ing)\b/i,
   /\brename\b/i,
   /\bmove\b/i,
   /\bconvert\b/i,
   /\bturn\b/i,
   /\bmake\b/i,
+];
+
+const UPDATE_TARGET_HINT_PATTERNS = [
+  /\bmemory\b/i,
+  /\breminder\b/i,
+  /\bthis\b/i,
+  /\bthat\b/i,
+  /\bit\b/i,
+  /\bsame\b/i,
+  /\bexisting\b/i,
+  /\bwith id\b/i,
+  /\bprevious\b/i,
+  /\babove\b/i,
 ];
 
 const CREATE_ONLY_INTENT_PATTERNS = [
@@ -441,6 +501,7 @@ const CREATE_ONLY_INTENT_PATTERNS = [
 const FACTUAL_GROUNDING_PATTERNS = [
   /\?/,
   /\bhow many\b/i,
+  /\bhow\b/i,
   /\bwhat\b/i,
   /\bwhich\b/i,
   /\bwho\b/i,
@@ -469,6 +530,10 @@ function shouldGroundAgainstDb(message: string) {
     return false;
   }
 
+  if (shouldPreferUpdatingExisting(trimmed)) {
+    return true;
+  }
+
   if (isGenericOnlyQuery(trimmed)) {
     return false;
   }
@@ -484,14 +549,23 @@ function shouldPreferUpdatingExisting(message: string) {
 
   return (
     UPDATE_INTENT_PATTERNS.some((pattern) => pattern.test(trimmed)) &&
-    (
-      /\bmemory\b/i.test(trimmed) ||
-      /\breminder\b/i.test(trimmed) ||
-      /\bthis\b/i.test(trimmed) ||
+    UPDATE_TARGET_HINT_PATTERNS.some((pattern) => pattern.test(trimmed))
+  );
+}
+
+function isReferentialUpdate(message: string) {
+  const trimmed = message.trim();
+  if (!trimmed) {
+    return false;
+  }
+  return (
+    shouldPreferUpdatingExisting(trimmed) &&
+    (/\bthis\b/i.test(trimmed) ||
       /\bthat\b/i.test(trimmed) ||
-      /\bexisting\b/i.test(trimmed) ||
-      /\bwith id\b/i.test(trimmed)
-    )
+      /\bit\b/i.test(trimmed) ||
+      /\bsame\b/i.test(trimmed) ||
+      /\bprevious\b/i.test(trimmed) ||
+      /\babove\b/i.test(trimmed))
   );
 }
 
@@ -870,15 +944,19 @@ function buildSystemPrompt(userTimezone: string, currentTime: string) {
 
 2a. **NO VAGUE ASYNC PROMISES**: Do not say things like "stay tuned", "it should update soon", or "I've scheduled this" unless the completed tool result already confirms the exact state change. For a topic change on one specific memory, prefer an immediate concrete action over a broad re-analysis.
 
+2b. **NO SUCCESS WITHOUT A TOOL RESULT**: Never claim an operation succeeded unless a tool call in this turn returned success for that operation. If a tool returns an error or non-success state, explain that exact outcome.
+
 3. **REMEMBER EVERYTHING**: When the user shares info casually, save it. They don't need to say "remember this" explicitly.
 
-4. **FULL CONTROL**: You can do everything the user asks:
+4. **AVAILABLE OPERATIONS**: Only claim actions that are supported by tool calls in this turn. Available operations include:
    - Search, create, edit, delete memories (single or bulk)
    - Analyze patterns and trends across their data
    - Provide statistics and insights
    - Search uploaded documents (warranties, receipts, etc.)
    - Set reminders and recurring tasks
-  - Manage topics via manage_topics (rename, merge, recolor, retag a specific memory, trigger re-analysis, or list)
+   - Trigger or retry Google Calendar sync for an existing reminder via sync_reminder
+   - Remove Google Calendar sync for a reminder via remove_reminder_sync
+   - Manage topics via manage_topics (rename, merge, recolor, retag a specific memory, trigger re-analysis, or list)
 
 5. **BE PROACTIVE**:
    - If you notice conflicting information, flag it naturally
@@ -895,11 +973,16 @@ function buildSystemPrompt(userTimezone: string, currentTime: string) {
 
 7c. **CRITICAL — COUNTS MUST BE GROUNDED**: Never answer count questions from memory, chat history, or raw intuition. Use DB-backed tool/context results only. If the evidence is ambiguous, say that clearly and surface the matching memories instead of guessing.
 
+7d. **CRITICAL — MANUAL GOOGLE SYNC REQUESTS**: When the user asks to sync/resync/retry Google Calendar for a reminder, you MUST call sync_reminder. Only say sync was triggered if the tool result has queued=true. If queued=false, explain the returned reason/message instead of claiming success.
+
+7e. **CRITICAL — REMOVE GOOGLE SYNC REQUESTS**: When the user asks to remove/unsync/disconnect a reminder from Google Calendar, you MUST call remove_reminder_sync. Only say removal succeeded if the tool result has removed=true. If removed=false or error, explain that exact outcome.
+
 8. **MEMORY CARDS UI**: You MUST call surface_cards at the end of EVERY response, no exceptions.
    - Pass the IDs of every memory you drew on to produce your answer — whether they came from the grounding context, a search, or a list.
    - If your answer referenced stored data, those memory IDs belong in surface_cards.
    - If nothing stored was used, call surface_cards with ids=[].
    - When the user asks to browse or see memories, keep your text brief and let the cards do the work.
+   - **FALLBACK**: If for some reason you cannot call the tool but you used memories to answer, append \`<!--MEMORA_USED_IDS:["id1", "id2"]-->\` as the VERY LAST line of your response (hidden comment). Only include IDs of memories you actually used to answer.
    - NEVER mention surface_cards, memory IDs, or card surfacing in your text response. The card UI appears automatically — you do not need to narrate it.
 
 9. **UNDO & HISTORY**:
@@ -969,6 +1052,7 @@ export const chat = action({
       limit: 50,
     });
     const recentChat: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
+    let latestReferencedMemoryIds: string[] = [];
     for (const message of chatHistory.slice(-12) as Array<{ role: string; content?: string | null }>) {
       recentChat.push({
         role: message.role as "user" | "assistant",
@@ -981,10 +1065,17 @@ export const chat = action({
         if (cardMatch) {
           try {
             const { ids } = JSON.parse(cardMatch[1]) as { ids: string[] };
-            if (Array.isArray(ids) && ids.length > 0) {
+            const normalizedIds = Array.isArray(ids)
+              ? ids
+                  .filter((id): id is string => typeof id === "string")
+                  .map((id) => id.trim())
+                  .filter((id) => id.length > 0)
+              : [];
+            if (normalizedIds.length > 0) {
+              latestReferencedMemoryIds = normalizedIds;
               recentChat.push({
                 role: "system",
-                content: `[Memory reference: the above assistant response surfaced memory IDs: ${ids.join(", ")}. When the user says "that", "it", "this", or "the above" in a follow-up, these are the IDs they are referring to.]`,
+                content: `[Memory reference: the above assistant response surfaced memory IDs: ${normalizedIds.join(", ")}. When the user says "that", "it", "this", or "the above" in a follow-up, these are the IDs they are referring to.]`,
               });
             }
           } catch {}
@@ -1071,8 +1162,9 @@ export const chat = action({
               initialGrounding.shouldPreferUpdate
                 ? "This request appears to modify an existing item. Prefer update_memory. Do not create a new item unless you explicitly determine there is no existing match."
                 : "This request is related to stored personal data. Answer only from DB-backed context or by calling tools again if needed.",
-              `Matched memories (use the "id" field in surface_cards if you answer from any of these): ${JSON.stringify(initialGrounding.searchResults)}`,
-              `Recent memories (use the "id" field in surface_cards if you answer from any of these): ${JSON.stringify(initialGrounding.recentMemories)}`,
+              `Matched memories: ${JSON.stringify(initialGrounding.searchResults)}`,
+              `Recent memories: ${JSON.stringify(initialGrounding.recentMemories)}`,
+              "CRITICAL: If you use any of the above memories to answer, you MUST call surface_cards with their IDs. If for some reason you cannot call the tool, you MUST append `<!--MEMORA_USED_IDS:[\"id1\"]-->` as the last line of your response.",
             ].join("\n"),
           });
         }
@@ -1112,6 +1204,7 @@ export const chat = action({
         let pendingSearchIsCached = false;
         let surfaceCardsCalled = false;
         let writeToolCalled = false; // true once update_memory or create_memory actually executes
+        let writeFallbackMessage: string | null = null;
         // Candidate memory ID+title pairs collected from search/list — used as minimal context for forced surface_cards
         let surfaceCandidates: Array<{ id: string; title: string }> = [];
 
@@ -1131,7 +1224,9 @@ export const chat = action({
           { id: Id<"memories">; title: string }
         >();
 
-        for (let iteration = 0; iteration < 8; iteration += 1) {
+        let finalIteration = 0;
+        for (let iteration = 0; iteration < 4; iteration += 1) {
+          finalIteration = iteration;
           await setStreamingStatus({
             phase: "thinking",
             toolName: "planner",
@@ -1156,32 +1251,18 @@ export const chat = action({
 
           const content = extractTextContent(choice.content);
           if (!choice.tool_calls?.length) {
-            // If the request required a write (edit/create) but no write tool was actually
-            // called yet, the AI hallucinated the action. Force it to make the real call.
-            if (
-              content &&
-              initialGrounding.shouldPreferUpdate &&
-              !writeToolCalled &&
-              iteration < 6
-            ) {
-              finalText = content;
+            // Conditional Forced Turn Fallback:
+            // If grounding/search was active but the AI forgot the mandatory <!--MEMORA_USED_IDS--> comment,
+            // we force one final turn to collect them. This handles broad lists and edge cases.
+            if (content && 
+                (initialGrounding.shouldGround || surfaceCandidates.length > 0) && 
+                !surfaceCardsCalled && 
+                !content.includes("<!--MEMORA_USED_IDS:") && 
+                iteration < 3) {
               conversation.push({ role: "assistant", content });
               conversation.push({
                 role: "user",
-                content:
-                  "You described an edit but did not call update_memory. Call update_memory now with the correct memory_id and updated fields. Tool call only — no text.",
-              });
-              continue;
-            }
-            // AI gave a direct text answer. If grounding was active and surface_cards
-            // hasn't been called yet, do one more iteration to collect the exact IDs —
-            // the AI already has them in the grounding context.
-            if (content && !surfaceCardsCalled && initialGrounding.shouldGround && iteration < 7) {
-              finalText = content;
-              conversation.push({ role: "assistant", content });
-              conversation.push({
-                role: "user",
-                content: "Call surface_cards with the id(s) of the memory/memories you used to answer. Do not add any text — tool call only.",
+                content: "You answered the user but forgot to provide the memory IDs you used. You MUST append <!--MEMORA_USED_IDS:[\"id1\", \"id2\"]--> as the final line of your response with the IDs of the memories you drew on.",
               });
               continue;
             }
@@ -1237,6 +1318,18 @@ export const chat = action({
                 detail: "Updating an existing memory or reminder",
                 source: "memories",
                 events: [{ label: "Operation", value: "update" }],
+              },
+              sync_reminder: {
+                phase: "writing",
+                detail: "Triggering Google Calendar sync for a reminder",
+                source: "integrations",
+                events: [{ label: "Operation", value: "manual reminder sync" }],
+              },
+              remove_reminder_sync: {
+                phase: "writing",
+                detail: "Removing Google Calendar sync for a reminder",
+                source: "integrations",
+                events: [{ label: "Operation", value: "remove reminder sync" }],
               },
               propose_deletion: {
                 phase: "searching",
@@ -1360,7 +1453,7 @@ export const chat = action({
                 pendingSearchIsCached = searchRes.isCached ?? false;
                 surfaceCandidates = searchRes.results.map((r: { id: string; title?: string }) => ({ id: String(r.id), title: r.title ?? "" }));
                 await setStreamingStatus({
-                  query: normalizedSearchQuery || undefined,
+                  query: searchQuery.trim() || undefined,
                   phase: "searching",
                   toolName: "search_memories",
                   detail:
@@ -1450,7 +1543,14 @@ export const chat = action({
                 count: documentSearch.count,
               });
             } else if (fnName === "create_memory") {
-              if (shouldPreferUpdatingExisting(args.message)) {
+              const shouldForceUpdate = shouldPreferUpdatingExisting(args.message);
+              const referentialUpdate = isReferentialUpdate(args.message);
+              let forcedUpdateTargetId: string | undefined;
+              let forcedUpdateTargetLabel: string | undefined;
+              let existingMatchesCount = 0;
+              let existingMatchesPreview: ReturnType<typeof toMemorySummary>[] = [];
+
+              if (shouldForceUpdate) {
                 const existingMatches =
                   initialGrounding.shouldPreferUpdate && initialGrounding.shouldGround
                     ? {
@@ -1463,34 +1563,21 @@ export const chat = action({
                         userId: session._id,
                         recentMemories: await getRecentMemoriesCache(),
                       });
-                const existingMatch = existingMatches.results[0];
-                if (existingMatch?.id) {
-                  await setStreamingStatus({
-                    phase: "writing",
-                    toolName: "create_memory",
-                    detail: "Found an existing item and redirected to update flow",
-                    source: "memories",
-                    resultCount: existingMatches.count,
-                    previewItems: toPreviewItems(existingMatches.results, "Stored memory"),
-                    events: [
-                      { label: "Policy", value: "prefer update over duplicate" },
-                      { label: "Suggested ID", value: String(existingMatch.id) },
-                    ],
-                    step: 3,
-                    totalSteps: 4,
-                  });
-                  result = JSON.stringify({
-                    error:
-                      "Existing memory match found for an edit/conversion request. Use update_memory with this memory_id instead of create_memory.",
-                    suggested_memory_id: existingMatch.id,
-                    suggested_title: existingMatch.title ?? null,
-                  });
-                  conversation.push({
-                    role: "tool",
-                    tool_call_id: toolCall.id,
-                    content: result,
-                  });
-                  continue;
+                existingMatchesCount = existingMatches.count;
+                existingMatchesPreview = existingMatches.results;
+
+                const bestSearchMatch = existingMatches.results[0];
+                const latestReferencedId = latestReferencedMemoryIds[0];
+
+                if (referentialUpdate && latestReferencedId) {
+                  forcedUpdateTargetId = latestReferencedId;
+                  forcedUpdateTargetLabel = "recently referenced memory";
+                } else if (bestSearchMatch?.id) {
+                  forcedUpdateTargetId = String(bestSearchMatch.id);
+                  forcedUpdateTargetLabel = bestSearchMatch.title ?? "matched memory";
+                } else if (latestReferencedId) {
+                  forcedUpdateTargetId = latestReferencedId;
+                  forcedUpdateTargetLabel = "recently referenced memory";
                 }
               }
 
@@ -1551,8 +1638,46 @@ export const chat = action({
                   ? { extractedActions: normalized.extractedActions }
                   : {}),
               };
+              const updateExistingPatch = {
+                ...(normalized.content ? { content: normalized.content } : {}),
+                ...memoryUpdatePatch,
+              };
 
-              if (existingCreated) {
+              if (forcedUpdateTargetId) {
+                await ctx.runMutation(api.memories.update, {
+                  token: args.token,
+                  id: forcedUpdateTargetId as Id<"memories">,
+                  ...updateExistingPatch,
+                });
+                recentMemoriesCache = undefined;
+                pendingCardIds.add(forcedUpdateTargetId);
+                await setStreamingStatus({
+                  phase: "writing",
+                  toolName: "create_memory",
+                  detail: "Applied edit to existing memory (duplicate prevented)",
+                  source: "memories",
+                  resultCount: existingMatchesCount || undefined,
+                  previewItems:
+                    existingMatchesPreview.length > 0
+                      ? toPreviewItems(existingMatchesPreview, "Stored memory")
+                      : undefined,
+                  events: [
+                    { label: "Policy", value: "prefer update over duplicate" },
+                    { label: "Target", value: forcedUpdateTargetId },
+                    ...(forcedUpdateTargetLabel
+                      ? [{ label: "Resolution", value: forcedUpdateTargetLabel }]
+                      : []),
+                  ],
+                  step: 3,
+                  totalSteps: 4,
+                });
+                writeToolCalled = true;
+                result = JSON.stringify({
+                  success: true,
+                  updated_existing: true,
+                  memory_id: forcedUpdateTargetId,
+                });
+              } else if (existingCreated) {
                 if (Object.keys(memoryUpdatePatch).length > 0) {
                   await ctx.runMutation(api.memories.update, {
                     token: args.token,
@@ -1642,9 +1767,31 @@ export const chat = action({
                 const schedulingFields = hasExplicitSchedulingFields(fnArgs)
                   ? toStoredMemoryFields(normalized)
                   : {};
+                const explicitMemoryId =
+                  typeof fnArgs.memory_id === "string" ? fnArgs.memory_id.trim() : "";
+                let targetMemoryId = explicitMemoryId;
+                if (!targetMemoryId && latestReferencedMemoryIds.length > 0) {
+                  targetMemoryId = latestReferencedMemoryIds[0];
+                }
+                if (!targetMemoryId) {
+                  const resolvedFallback = await resolveMemoryReference(ctx, {
+                    token: args.token,
+                    userId: session._id,
+                    reference: args.message,
+                    recentMemories: await getRecentMemoriesCache(),
+                  });
+                  if (resolvedFallback) {
+                    targetMemoryId = String(resolvedFallback);
+                  }
+                }
+                if (!targetMemoryId) {
+                  throw new Error(
+                    "Couldn't determine which memory to update. Please specify the memory or reminder."
+                  );
+                }
                 await ctx.runMutation(api.memories.update, {
                   token: args.token,
-                  id: fnArgs.memory_id as Id<"memories">,
+                  id: targetMemoryId as Id<"memories">,
                   ...(normalized.title ? { title: normalized.title } : {}),
                   ...(normalized.content ? { content: normalized.content } : {}),
                   ...(normalized.people ? { people: normalized.people } : {}),
@@ -1655,7 +1802,7 @@ export const chat = action({
                   ...schedulingFields,
                 });
                 recentMemoriesCache = undefined;
-                pendingCardIds.add(String(fnArgs.memory_id));
+                pendingCardIds.add(targetMemoryId);
                 await setStreamingStatus({
                   phase: "writing",
                   toolName: "update_memory",
@@ -1670,17 +1817,166 @@ export const chat = action({
                   ],
                   events: [
                     { label: "Operation", value: "update committed" },
-                    { label: "Target", value: String(fnArgs.memory_id) },
+                    { label: "Target", value: targetMemoryId },
+                    ...(explicitMemoryId
+                      ? []
+                      : [{ label: "Resolution", value: "resolved from chat context" }]),
                   ],
                   step: 3,
                   totalSteps: 4,
                 });
                 writeToolCalled = true;
-                result = JSON.stringify({ success: true, memory_id: fnArgs.memory_id });
+                result = JSON.stringify({ success: true, memory_id: targetMemoryId });
               } catch (error) {
                 result = JSON.stringify({
                   error:
                     error instanceof Error ? error.message : "Failed to update memory",
+                });
+              }
+            } else if (fnName === "sync_reminder") {
+              try {
+                const explicitMemoryId =
+                  typeof fnArgs.memory_id === "string"
+                    ? fnArgs.memory_id.trim()
+                    : "";
+                const requestedQuery =
+                  typeof fnArgs.query === "string" ? fnArgs.query.trim() : "";
+                let targetMemoryId = explicitMemoryId;
+
+                if (!targetMemoryId && latestReferencedMemoryIds.length > 0) {
+                  targetMemoryId = latestReferencedMemoryIds[0];
+                }
+                if (!targetMemoryId) {
+                  const resolvedFallback = await resolveMemoryReference(ctx, {
+                    token: args.token,
+                    userId: session._id,
+                    reference: requestedQuery || args.message,
+                    recentMemories: await getRecentMemoriesCache(),
+                  });
+                  if (resolvedFallback) {
+                    targetMemoryId = String(resolvedFallback);
+                  }
+                }
+                if (!targetMemoryId) {
+                  throw new Error(
+                    "Couldn't determine which reminder to sync. Please specify the reminder."
+                  );
+                }
+
+                const syncResult = await ctx.runMutation(
+                  api.integrations.triggerReminderSync,
+                  {
+                    token: args.token,
+                    memoryId: targetMemoryId as Id<"memories">,
+                  }
+                );
+                pendingCardIds.add(targetMemoryId);
+
+                await setStreamingStatus({
+                  phase: "writing",
+                  toolName: "sync_reminder",
+                  detail: syncResult.queued
+                    ? syncResult.reason === "in_flight"
+                      ? "Reminder sync is already in progress"
+                      : "Triggered Google Calendar sync for reminder"
+                    : "Google Calendar sync was not triggered",
+                  source: "integrations",
+                  events: [
+                    { label: "Operation", value: "manual reminder sync" },
+                    { label: "Target", value: targetMemoryId },
+                    ...(typeof syncResult.reason === "string"
+                      ? [{ label: "Result", value: syncResult.reason }]
+                      : []),
+                  ],
+                  step: 3,
+                  totalSteps: 4,
+                });
+                if (syncResult.queued) {
+                  writeToolCalled = true;
+                  writeFallbackMessage = syncResult.message;
+                }
+                result = JSON.stringify({
+                  success: !!syncResult.queued,
+                  memory_id: targetMemoryId,
+                  ...syncResult,
+                });
+              } catch (error) {
+                result = JSON.stringify({
+                  error:
+                    error instanceof Error
+                      ? error.message
+                      : "Failed to trigger reminder sync",
+                });
+              }
+            } else if (fnName === "remove_reminder_sync") {
+              try {
+                const explicitMemoryId =
+                  typeof fnArgs.memory_id === "string"
+                    ? fnArgs.memory_id.trim()
+                    : "";
+                const requestedQuery =
+                  typeof fnArgs.query === "string" ? fnArgs.query.trim() : "";
+                let targetMemoryId = explicitMemoryId;
+
+                if (!targetMemoryId && latestReferencedMemoryIds.length > 0) {
+                  targetMemoryId = latestReferencedMemoryIds[0];
+                }
+                if (!targetMemoryId) {
+                  const resolvedFallback = await resolveMemoryReference(ctx, {
+                    token: args.token,
+                    userId: session._id,
+                    reference: requestedQuery || args.message,
+                    recentMemories: await getRecentMemoriesCache(),
+                  });
+                  if (resolvedFallback) {
+                    targetMemoryId = String(resolvedFallback);
+                  }
+                }
+                if (!targetMemoryId) {
+                  throw new Error(
+                    "Couldn't determine which reminder to unsync. Please specify the reminder."
+                  );
+                }
+
+                const unsyncResult = await ctx.runMutation(
+                  api.integrations.removeReminderSync,
+                  {
+                    token: args.token,
+                    memoryId: targetMemoryId as Id<"memories">,
+                  }
+                );
+                pendingCardIds.add(targetMemoryId);
+
+                await setStreamingStatus({
+                  phase: "writing",
+                  toolName: "remove_reminder_sync",
+                  detail: unsyncResult.removed
+                    ? "Removed Google Calendar sync for reminder"
+                    : "Google Calendar sync removal did not apply",
+                  source: "integrations",
+                  events: [
+                    { label: "Operation", value: "remove reminder sync" },
+                    { label: "Target", value: targetMemoryId },
+                    { label: "Result", value: unsyncResult.reason },
+                  ],
+                  step: 3,
+                  totalSteps: 4,
+                });
+                if (unsyncResult.removed) {
+                  writeToolCalled = true;
+                  writeFallbackMessage = unsyncResult.message;
+                }
+                result = JSON.stringify({
+                  success: !!unsyncResult.removed,
+                  memory_id: targetMemoryId,
+                  ...unsyncResult,
+                });
+              } catch (error) {
+                result = JSON.stringify({
+                  error:
+                    error instanceof Error
+                      ? error.message
+                      : "Failed to remove reminder sync",
                 });
               }
             } else if (fnName === "propose_deletion") {
@@ -2127,13 +2423,36 @@ export const chat = action({
           }
         }
 
-        // Cheap fallback for cards without another model call.
-        if (!surfaceCardsCalled && pendingCardIds.size === 0 && surfaceCandidates.length > 0) {
-          for (const candidate of surfaceCandidates.slice(0, 3)) {
-            pendingCardIds.add(candidate.id);
+        let resolvedText = finalText?.trim();
+        if (!resolvedText) {
+          if (writeToolCalled) {
+            resolvedText = writeFallbackMessage || "Done — I updated that.";
+          } else if (pendingDeletionItems.length > 0) {
+            resolvedText = "I found matching items. Please confirm below.";
+          } else if (pendingCardIds.size > 0) {
+            resolvedText = "Here are the matching memories.";
+          } else {
+            resolvedText = "I processed that, but I couldn't generate a clear reply.";
           }
         }
 
+        // Precision-Grounded Auto-Surfacing (Final ID Extraction)
+        if (!surfaceCardsCalled && (initialGrounding.shouldGround || surfaceCandidates.length > 0)) {
+          const usedIdsMatch = resolvedText.match(/<!--MEMORA_USED_IDS:\[(.*?)\]-->/);
+          if (usedIdsMatch?.[1]) {
+            try {
+              const idsText = usedIdsMatch[1];
+              const cleanedIds = idsText.replace(/["'\[\]\s]/g, "").split(",").filter(Boolean);
+              for (const id of cleanedIds) {
+                pendingCardIds.add(id);
+              }
+              // Strip the comment from the displayed text
+              resolvedText = resolvedText.replace(/<!--MEMORA_USED_IDS:\[.*?\]-->/, "").trim();
+            } catch {
+              // Fail-safe: don't crash
+            }
+          }
+        }
 
         await setStreamingStatus({
           phase: "finalizing",
@@ -2148,14 +2467,16 @@ export const chat = action({
           totalSteps: 4,
         });
 
-        const resolvedText = finalText || "I processed that, but I couldn't generate a clear reply.";
-        
         let appendedComments = "";
         if (pendingDeletionItems.length > 0) {
           appendedComments += `\n<!--MEMORA_DELETION_PROPOSAL:${JSON.stringify(pendingDeletionItems)}-->`;
         }
         if (pendingCardIds.size > 0) {
-          appendedComments += `\n<!--MEMORA_CARD_IDS:${JSON.stringify({ ids: Array.from(pendingCardIds), isCached: pendingSearchIsCached })}-->`;
+          appendedComments += `\n<!--MEMORA_CARD_IDS:${JSON.stringify({ 
+            ids: Array.from(pendingCardIds), 
+            isCached: pendingSearchIsCached,
+            turns: finalIteration + 1 
+          })}-->`;
         }
 
         aiResponse = resolvedText + appendedComments;

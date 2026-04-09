@@ -14,7 +14,7 @@ import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInUp } from "react-native-reanimated";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useThemeStore } from "@/store/theme";
@@ -24,9 +24,12 @@ import { PressableScale } from "@/components/ui/PressableScale";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { Badge } from "@/components/ui/Badge";
 import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
+import { useAppToast } from "@/components/ui/toast";
 import { FontFamily } from "@/constants/fonts";
 import { Dropdown, type IDropdownRef } from "react-native-element-dropdown";
 import { getTimeZones } from "@vvo/tzdb";
+import * as Google from "expo-auth-session/providers/google";
+import { makeRedirectUri } from "expo-auth-session";
 
 type TimezoneOption = {
   value: string;
@@ -59,6 +62,7 @@ const ALL_TIMEZONE_OPTIONS: TimezoneOption[] = getTimeZones({ includeUtc: true }
 
 export default function ProfileScreen() {
   const theme = useAppTheme();
+  const { showToast } = useAppToast();
   const { user, token, logout } = useAuth();
   const { mode, setMode, resolvedMode } = useThemeStore();
   const [displayName, setDisplayName] = React.useState(user?.name ?? "");
@@ -94,6 +98,100 @@ export default function ProfileScreen() {
   const updateNotifications = useMutation(api.notifications.upsert);
   const deleteAccount = useMutation(api.auth.deleteAccount);
   const updateProfile = useMutation(api.auth.updateProfile);
+
+  // --- Google Calendar Integration ---
+  const googleIntegration = useQuery(api.integrations.getGoogleIntegration, { token: token || undefined });
+  const connectGoogle = useAction(api.integrations.connectGoogle);
+  const disconnectGoogle = useMutation(api.integrations.disconnectGoogle);
+  const [isConnectingGoogle, setIsConnectingGoogle] = React.useState(false);
+  const googlePlatform =
+    Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : "web";
+  const googleRedirectUri = React.useMemo(
+    () => {
+      if (Platform.OS === "android") {
+        return "com.alokdebnath.memora:/profile";
+      }
+
+      return makeRedirectUri({
+        scheme: "memora",
+        path: "profile",
+      });
+    },
+    [googlePlatform]
+  );
+
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID,
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS,
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB,
+    scopes: ["https://www.googleapis.com/auth/calendar.events"],
+    responseType: "code",
+    shouldAutoExchangeCode: false,
+    redirectUri: googleRedirectUri,
+    extraParams: {
+      access_type: "offline",
+      prompt: "consent",
+    },
+  });
+
+
+  React.useEffect(() => {
+    if (response?.type === "success" && response.params.code) {
+      handleGoogleAuthCode(response.params.code, request?.codeVerifier);
+    }
+  }, [request?.codeVerifier, response]);
+
+  const handleGoogleAuthCode = async (code: string, codeVerifier?: string) => {
+    setIsConnectingGoogle(true);
+    try {
+      await connectGoogle({
+        token: token || undefined,
+        code,
+        codeVerifier,
+        platform: googlePlatform,
+        redirectUri: request?.redirectUri ?? googleRedirectUri,
+      });
+      showToast({
+        title: "Google Calendar connected",
+        message: "New reminders can now sync to your calendar.",
+        tone: "success",
+      });
+    } catch (error: any) {
+      showToast({
+        title: "Connection failed",
+        message: error instanceof Error ? error.message : "Could not connect Google Calendar.",
+        tone: "error",
+        closeMode: "manual",
+      });
+    } finally {
+      setIsConnectingGoogle(false);
+    }
+  };
+
+  const handleToggleGoogleSync = async () => {
+    if (googleIntegration?.connected) {
+      Alert.alert(
+        "Disconnect Google Calendar",
+        "Are you sure you want to stop syncing reminders?",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Disconnect",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                await disconnectGoogle({ token: token || undefined });
+              } catch (e) {
+                Alert.alert("Error", "Failed to disconnect");
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      promptAsync();
+    }
+  };
 
   React.useEffect(() => {
     setDisplayName(user?.name ?? "");
@@ -599,6 +697,36 @@ export default function ProfileScreen() {
               <Switch
                 value={notificationPrefs?.capsuleAlerts ?? true}
                 onValueChange={(value: boolean) => updatePreference({ capsuleAlerts: value })}
+                trackColor={{ true: theme.primary.val, false: theme.borderColor.val }}
+                thumbColor="#FFFFFF"
+              />
+            </XStack>
+          </Card>
+        </Animated.View>
+
+        <Animated.View entering={FadeInUp.delay(180).duration(400)}>
+          <SectionLabel>INTEGRATIONS</SectionLabel>
+          <Card style={styles.groupCard}>
+            <XStack alignItems="center" gap={12} paddingVertical={4}>
+              <YStack flex={1}>
+                <XStack alignItems="center" gap={8}>
+                  <Text fontSize={15} fontFamily="$body" color="$color">Google Calendar</Text>
+                  {googleIntegration?.connected && (
+                    <Badge 
+                      label="Connected" 
+                      color={theme.primary.val}
+                      small
+                    />
+                  )}
+                </XStack>
+                <Text fontSize={12} fontFamily="$body" marginTop={3} lineHeight={18} color="$colorMuted">
+                  Automatically sync your new reminders to Google Calendar.
+                </Text>
+              </YStack>
+              <Switch
+                value={googleIntegration?.connected ?? false}
+                onValueChange={handleToggleGoogleSync}
+                disabled={!request || isConnectingGoogle}
                 trackColor={{ true: theme.primary.val, false: theme.borderColor.val }}
                 thumbColor="#FFFFFF"
               />

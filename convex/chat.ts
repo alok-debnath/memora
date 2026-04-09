@@ -211,13 +211,19 @@ export const deepSearch = action({
       const original = await ctx.runQuery(internal.chat.getMessage, { id: args.messageId });
       if (!original?.content) return { count: fresh.results.length };
 
-      // Replace the hidden MEMORA_SEARCH_RESULTS block with fresh data
-      const marker = "<!--MEMORA_SEARCH_RESULTS:";
+      // Replace or append the hidden MEMORA_CARD_IDS block with fresh data
+      const marker = "<!--MEMORA_CARD_IDS:";
       const endMarker = "-->";
       const startIdx = original.content.indexOf(marker);
       const endIdx = startIdx !== -1
         ? original.content.indexOf(endMarker, startIdx + marker.length)
         : -1;
+
+      const cardMetadata = { 
+        ids: fresh.results.map(r => r._id), 
+        isCached: false,
+        turns: 1 // Deep scan is an explicit single-purpose turn
+      };
 
       let newContent: string;
       if (startIdx !== -1 && endIdx !== -1) {
@@ -225,14 +231,14 @@ export const deepSearch = action({
         const after = original.content.slice(endIdx + endMarker.length);
         newContent = before
           + marker
-          + JSON.stringify({ items: fresh.results, isCached: false })
+          + JSON.stringify(cardMetadata)
           + endMarker
           + after;
       } else {
         // No existing block — append one
         newContent =
           original.content.trimEnd() +
-          `\n${marker}${JSON.stringify({ items: fresh.results, isCached: false })}${endMarker}`;
+          `\n${marker}${JSON.stringify(cardMetadata)}${endMarker}`;
       }
 
       await ctx.runMutation(internal.chat.patchMessageContent, {

@@ -95,6 +95,10 @@ const toMemoryNote = (m: Record<string, unknown>): MemoryNote => ({
   capsuleUnlockDate: m.capsuleUnlockDate as string | undefined,
   attachments: [],
   isPublic: m.isPublic as boolean | undefined,
+  googleEventId: m.googleEventId as string | undefined,
+  googleSyncStatus: m.googleSyncStatus as MemoryNote["googleSyncStatus"] | undefined,
+  googleSyncMessage: m.googleSyncMessage as string | undefined,
+  googleSyncUpdatedAt: m.googleSyncUpdatedAt as number | undefined,
   createdAt: new Date(m._creationTime as number).toISOString(),
   updatedAt: new Date(m._creationTime as number).toISOString(),
 });
@@ -115,6 +119,10 @@ type MemoryItem = {
   importance: string;
   shareToken?: string;
   isPublic?: boolean;
+  googleEventId?: string;
+  googleSyncStatus?: "pending" | "synced" | "failed";
+  googleSyncMessage?: string;
+  googleSyncUpdatedAt?: number;
   [key: string]: unknown;
 };
 
@@ -133,6 +141,19 @@ function getExactSearchMatches(memories: MemoryItem[], query: string) {
       (memory.locations ?? []).some((location) => location.toLowerCase().includes(query))
     );
   });
+}
+
+function getReminderSyncBadge(memory: MemoryItem, theme: ReturnType<typeof useAppTheme>) {
+  if (!memory.googleSyncStatus && !memory.googleEventId && !memory.googleSyncMessage) {
+    return null;
+  }
+  if (memory.googleSyncStatus === "synced") {
+    return { label: "synced", color: theme.success?.val ?? "#22C55E" };
+  }
+  if (memory.googleSyncStatus === "failed") {
+    return { label: "sync failed", color: theme.destructive?.val ?? "#EF4444" };
+  }
+  return { label: "syncing", color: theme.warning?.val ?? "#F59E0B" };
 }
 
 function MetricTile({ value, label }: { value: number; label: string }) {
@@ -231,6 +252,8 @@ export default function HomeScreen() {
   const updateMemory = useMutation(api.memories.update);
   const addToReview = useMutation(api.review.addToReview);
   const createShareLink = useMutation(api.sharing.createShareLink);
+  const triggerReminderSync = useMutation(api.integrations.triggerReminderSync);
+  const removeReminderSync = useMutation(api.integrations.removeReminderSync);
 
   const isEditMemoryOpen = useUIStore((state) => state.isEditMemoryOpen);
   const openEditMemory = useUIStore((state) => state.openEditMemory);
@@ -308,6 +331,56 @@ export default function HomeScreen() {
       { text: "Cancel", style: "cancel" },
       { text: "Delete", style: "destructive", onPress: () => deleteMemory({ token, id }) },
     ]);
+  };
+
+  const showSyncAlert = (title: string, message: string) => {
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      window.alert(`${title}\n\n${message}`);
+      return;
+    }
+    Alert.alert(title, message);
+  };
+
+  const handleTriggerReminderSync = async (id: Id<"memories">) => {
+    if (!token) return;
+    try {
+      const result = await triggerReminderSync({ token, memoryId: id });
+      if (!result.queued) {
+        showSyncAlert("Google sync", result.message);
+      }
+    } catch (error) {
+      showSyncAlert(
+        "Google sync failed",
+        error instanceof Error ? error.message : "Unable to trigger Google sync."
+      );
+    }
+  };
+
+  const handleRemoveReminderSync = (id: Id<"memories">) => {
+    if (!token) return;
+    Alert.alert(
+      "Remove Google sync",
+      "This will delete linked Google Calendar event data for this reminder and clear local sync state.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove sync",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await removeReminderSync({ token, memoryId: id });
+            } catch (error) {
+              showSyncAlert(
+                "Couldn't remove sync",
+                error instanceof Error
+                  ? error.message
+                  : "Unable to remove Google sync for this reminder."
+              );
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleSaveEdit = async (data: Record<string, unknown>) => {
@@ -600,6 +673,15 @@ export default function HomeScreen() {
                   const resolvedTopics = note.topicIds
                     ?.map((id) => topicById[id])
                     .filter(Boolean) as Array<{ name: string; color?: string | null }> | undefined;
+                  const syncBadge = getReminderSyncBadge(memory, theme);
+                  const hasGoogleSyncInfo = !!(
+                    memory.googleSyncStatus ||
+                    memory.googleEventId ||
+                    memory.googleSyncMessage
+                  );
+                  const showTriggerSyncAction =
+                    !hasGoogleSyncInfo || memory.googleSyncStatus === "failed";
+                  const showRemoveSyncAction = hasGoogleSyncInfo;
                   return (
                     <ContextMenu
                       key={memory._id}
@@ -618,6 +700,25 @@ export default function HomeScreen() {
                           iconColor: "#16a34a",
                           onPress: () => token && completeMemory({ token, id: memory._id }),
                         },
+                        ...(showTriggerSyncAction
+                          ? [{
+                              label:
+                                memory.googleSyncStatus === "failed"
+                                  ? "Retry Google Sync"
+                                  : "Trigger Google Sync",
+                              icon: "refresh-cw",
+                              iconColor: theme.primary.val,
+                              onPress: () => handleTriggerReminderSync(memory._id),
+                            }]
+                          : []),
+                        ...(showRemoveSyncAction
+                          ? [{
+                              label: "Remove Google Sync",
+                              icon: "link-2",
+                              destructive: true,
+                              onPress: () => handleRemoveReminderSync(memory._id),
+                            }]
+                          : []),
                         {
                           label: "Edit Memory",
                           icon: "edit-2",
@@ -662,14 +763,23 @@ export default function HomeScreen() {
                           <Text fontSize={15} fontWeight="700" color="$color" numberOfLines={1}>
                             {memory.title || "Untitled memory"}
                           </Text>
-                          <Text fontSize={13} color="$colorMuted" numberOfLines={1}>
-                            {new Date(getReminderDate(memory)!).toLocaleString(undefined, {
-                              month: "short",
-                              day: "numeric",
-                              hour: "numeric",
-                              minute: "2-digit",
-                            })}
-                          </Text>
+                          <XStack alignItems="center" gap={8}>
+                            <Text fontSize={13} color="$colorMuted" numberOfLines={1}>
+                              {new Date(getReminderDate(memory)!).toLocaleString(undefined, {
+                                month: "short",
+                                day: "numeric",
+                                hour: "numeric",
+                                minute: "2-digit",
+                              })}
+                            </Text>
+                            {syncBadge ? (
+                              <Badge
+                                label={syncBadge.label}
+                                color={syncBadge.color}
+                                small
+                              />
+                            ) : null}
+                          </XStack>
                         </YStack>
                         <Feather name="chevron-right" size={18} color={theme.colorMuted.val} />
                       </XStack>
@@ -750,6 +860,8 @@ export default function HomeScreen() {
                       onShare={() => handleShare(raw._id)}
                       onAddToReview={() => token && addToReview({ token, memoryId: raw._id })}
                       onComplete={() => token && completeMemory({ token, id: raw._id })}
+                      onTriggerSync={() => handleTriggerReminderSync(raw._id)}
+                      onRemoveSync={() => handleRemoveReminderSync(raw._id)}
                     />
                   );
                 })}

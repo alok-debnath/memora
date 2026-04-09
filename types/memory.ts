@@ -41,6 +41,10 @@ export interface MemoryNote {
   recurrenceType?: MemoryRecurrenceType;
   capsuleUnlockDate?: string;
   isPublic?: boolean;
+  googleEventId?: string;
+  googleSyncStatus?: "pending" | "synced" | "failed";
+  googleSyncMessage?: string;
+  googleSyncUpdatedAt?: number;
   attachments: MemoryAttachment[];
   createdAt: string;
   updatedAt: string;

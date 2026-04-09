@@ -74,6 +74,17 @@ export default defineSchema({
     completedAt: v.optional(v.float64()),
     /** Timestamp of soft-delete (ms) */
     deletedAt: v.optional(v.float64()),
+    /** The corresponding event ID in an external provider (e.g. Google Calendar) */
+    googleEventId: v.optional(v.string()),
+    googleSyncStatus: v.optional(
+      v.union(v.literal("pending"), v.literal("synced"), v.literal("failed"))
+    ),
+    googleSyncMessage: v.optional(v.string()),
+    googleSyncUpdatedAt: v.optional(v.number()),
+    googleSyncLockToken: v.optional(v.string()),
+    googleSyncLockAt: v.optional(v.number()),
+    googleSyncFingerprint: v.optional(v.string()),
+    googleSyncDesiredFingerprint: v.optional(v.string()),
   })
     .index("by_user", ["userId"])
     .index("by_user_status", ["userId", "status"])
@@ -394,6 +405,17 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_user_hash", ["userId", "queryHash"])
     .index("by_last_used_at", ["lastUsedAt"]),
+
+  userIntegrations: defineTable({
+    userId: v.id("users"),
+    provider: v.literal("google"),
+    refreshToken: v.string(),
+    email: v.optional(v.string()),
+    clientId: v.optional(v.string()),
+    platform: v.optional(v.union(v.literal("android"), v.literal("ios"), v.literal("web"))),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user", ["userId"]),
 
   ...authTables,
 });

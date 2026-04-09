@@ -18,7 +18,7 @@ type MemoryLike = {
 };
 
 export function inferEntryKind(memory: MemoryLike): MemoryEntryKind {
-  return memory.entryKind ?? "memory";
+  return memory.entryKind ?? (memory.schedule?.dueAt ? "reminder" : "memory");
 }
 
 export function getMemorySchedule(memory: MemoryLike): MemorySchedule | undefined {

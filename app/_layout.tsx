@@ -1,3 +1,7 @@
+import * as WebBrowser from "expo-web-browser";
+
+WebBrowser.maybeCompleteAuthSession();
+
 import {
   DMSans_400Regular,
   DMSans_500Medium,

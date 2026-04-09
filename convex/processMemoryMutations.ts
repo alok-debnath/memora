@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { applyUserMemoryStatsTransition } from "./lib/memoryStats";
 import {
   importanceValidator,
@@ -81,6 +82,7 @@ export const updateAIFields = internalMutation({
     linkedUrls: v.optional(v.array(v.string())),
     entryKind: v.optional(memoryEntryKindValidator),
     schedule: v.optional(memoryScheduleValidator),
+    nextDueAt: v.optional(v.string()),
     sentimentScore: v.optional(v.float64()),
     extractedActions: v.optional(extractedActionsValidator),
     embedding: v.optional(v.array(v.float64())),
@@ -121,5 +123,35 @@ export const updateAIFields = internalMutation({
       ...memory,
       ...finalPatch,
     });
+
+    // Sync to Google Calendar if it's a reminder or was changed to one
+    const updatedMemory = await ctx.db.get(args.memoryId);
+    if (
+      updatedMemory &&
+      memory.entryKind === "reminder" &&
+      updatedMemory.entryKind !== "reminder"
+    ) {
+      if (memory.googleEventId) {
+        await ctx.scheduler.runAfter(0, internal.integrations.deleteGoogleEvent, {
+          userId: memory.userId,
+          googleEventId: memory.googleEventId,
+        });
+      }
+      await ctx.db.patch(args.memoryId, {
+        googleEventId: undefined,
+        googleSyncStatus: undefined,
+        googleSyncMessage: undefined,
+        googleSyncUpdatedAt: Date.now(),
+        googleSyncLockToken: undefined,
+        googleSyncLockAt: undefined,
+        googleSyncFingerprint: undefined,
+        googleSyncDesiredFingerprint: undefined,
+      });
+    } else if (updatedMemory && updatedMemory.entryKind === "reminder") {
+      await ctx.runMutation(internal.integrations.queueReminderSync, {
+        memoryId: updatedMemory._id,
+        pendingMessage: "Reminder updated. Syncing changes to Google Calendar...",
+      });
+    }
   },
 });

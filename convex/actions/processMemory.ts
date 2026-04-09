@@ -14,6 +14,14 @@ import {
 import { normalizeMemoryFields } from "../lib/aiNormalization";
 import { toStoredMemoryFields } from "../lib/memoryKind";
 
+type Conflict = {
+  existingMemoryId: string;
+  existingMemoryTitle?: string;
+  conflictType?: "factual" | "decision" | "schedule" | "preference";
+  description: string;
+  suggestion?: "keep_new" | "keep_old" | "merge" | "review";
+};
+
 type AIExtractedMemory = {
   title?: string;
   content?: string;
@@ -51,9 +59,10 @@ type AIExtractedMemory = {
     completed: boolean;
     actionType?: "task" | "reminder" | "fact" | "decision";
   }>;
+  conflicts?: Conflict[];
 };
 
-function buildExtractionSystemPrompt(userTz: string, currentTime: string): string {
+function buildExtractionSystemPrompt(userTz: string, currentTime: string, existingContext?: string): string {
   const now = new Date(currentTime);
   const localDateStr = now.toLocaleDateString("en-US", {
     timeZone: userTz,
@@ -69,33 +78,31 @@ function buildExtractionSystemPrompt(userTz: string, currentTime: string): strin
     hour12: true,
   });
 
-  return `You are an AI assistant that processes memory notes. Extract ALL structured data from the user's input.
+  return `You are an AI assistant that processes memory notes. Extract ALL structured data from the user's input and simultaneously check for conflicts with existing memories.
 
 CURRENT DATE & TIME: ${localDateStr} at ${localTimeStr} (${userTz}) — UTC: ${now.toISOString()}
 Use this to resolve relative expressions like "in 5 hours", "next Monday", "after lunch", "tomorrow morning" into exact absolute datetimes.
-This timestamp came from the user's device at capture-time. Treat it as the authoritative "now" for relative scheduling.
 
-CRITICAL WORDING RULE — NO RELATIVE TIME IN STORED MEMORIES: Write title and content in objective, note-style language. Never use relative time words ("today", "tomorrow", "yesterday", "next week", "this morning", "this afternoon", "in 5 hours", "soon", "later") in the title or content. Always write the actual resolved date: e.g. "Meeting with Sarah on 9 Apr 2026 at 14:00 IST" not "Meeting with Sarah tomorrow afternoon". Never use "I", "me", "my", "the user", or "you".
+CRITICAL WORDING RULE — NO RELATIVE TIME IN STORED MEMORIES: Write title and content in objective, note-style language. Never use relative time words ("today", "tomorrow", "yesterday", "next week", "this morning", "this afternoon", "in 5 hours", "soon", "later") in the title or content. Always write the actual resolved date. Never use "I", "me", "my", "the user", or "you".
 
 CRITICAL TYPE RULE:
 - Every saved item must be classified as either "memory" or "reminder".
 - Default to "memory".
-- Use "reminder" when EITHER of these is true:
-  1. The user explicitly asks to be reminded ("remind me", "don't forget", "set a reminder").
-  2. The content describes a future scheduled event (meeting, appointment, deadline, call, flight, exam, task due date, etc.) with a resolvable date/time — even if phrased as a statement ("I have a meeting Monday at 9am", "dentist appointment Friday 3pm", "project due next Thursday").
-- Use "memory" for past events, general facts, reflections, or future events with NO specific date/time.
-- If the entry is a reminder, always populate the schedule field with the resolved UTC datetime.
+- Use "reminder" when there's an explicit request or a resolvable future scheduled event.
 
-CRITICAL TIMEZONE RULE: When the user mentions times, that time is in THEIR timezone (${userTz}). Convert to UTC ISO-8601 for schedule.due_at. Example: if user is in Asia/Kolkata (UTC+5:30) and says "9:30 AM", UTC time is 04:00 AM — output "2026-03-09T04:00:00Z".
+CONFLICT DETECTION:
+If existing memories are provided below, compare the NEW memory against them.
+Look for:
+- Factual contradictions (e.g., different passwords, addresses, phone numbers for the same thing).
+- Updated decisions that override old ones.
+- Schedule conflicts (overlapping times/dates).
+- Changed preferences or opinions on the same topic.
+Only report REAL conflicts where information genuinely contradicts. Do NOT flag memories that are simply related or similar.
 
-For people: extract ALL people names mentioned.
-For locations: extract ALL locations, places, venues, cities, countries mentioned.
-For importance: "critical", "high", "normal", or "low" based on urgency/consequence/emotional weight.
-For life_area: career, family, health, finance, social, hobbies, education, travel, self-care, relationships.
-For context_tags: extract structured context (who, what, where, why).
-For sentiment_score: rate from -1.0 (very negative) to 1.0 (very positive).
-For linked_urls: extract any URLs mentioned.
-For extracted_actions: identify actionable items with "text" (description) and "type" (task/reminder/fact/decision).`;
+${existingContext ? `EXISTING MEMORIES FOR CONFLICT CHECKING:\n${existingContext}` : "No existing memories provided for conflict checking."}
+
+EXTRACT DATA:
+Extract people, locations, importance, life_area, context_tags, sentiment_score, and actions.`;
 }
 
 function fallbackStructuredData(content: string): AIExtractedMemory {
@@ -172,6 +179,7 @@ async function extractStructuredMemory(args: {
   input: string;
   userTz: string;
   currentTime: string;
+  existingMemories?: string;
 }) {
   const response = await args.client.chat.completions.create({
     model: OPENAI_CHAT_MODEL,
@@ -179,7 +187,7 @@ async function extractStructuredMemory(args: {
     messages: [
       {
         role: "system",
-        content: buildExtractionSystemPrompt(args.userTz, args.currentTime),
+        content: buildExtractionSystemPrompt(args.userTz, args.currentTime, args.existingMemories),
       },
       { role: "user", content: args.input },
     ],
@@ -188,7 +196,7 @@ async function extractStructuredMemory(args: {
         type: "function",
         function: {
           name: "create_memory",
-          description: "Extract structured metadata from the memory note",
+          description: "Extract structured metadata and detect conflicts",
           parameters: {
             type: "object",
             properties: {
@@ -244,6 +252,20 @@ async function extractStructuredMemory(args: {
                     type: { type: "string", enum: ["task", "reminder", "fact", "decision"] },
                   },
                   required: ["text", "type"],
+                },
+              },
+              conflicts: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    existingMemoryId: { type: "string" },
+                    existingMemoryTitle: { type: "string" },
+                    conflictType: { type: "string", enum: ["factual", "decision", "schedule", "preference"] },
+                    description: { type: "string" },
+                    suggestion: { type: "string", enum: ["keep_new", "keep_old", "merge", "review"] },
+                  },
+                  required: ["existingMemoryId", "conflictType", "description", "suggestion"],
                 },
               },
             },
@@ -308,6 +330,43 @@ export const processMemory = action({
 
     const userTz = args.currentTimezone?.trim() || args.userTimezone || "UTC";
     const currentTime = args.currentTime ?? new Date().toISOString();
+
+    // Find conflict candidates BEFORE the LLM call to provide context
+    let existingMemoriesContext = "";
+    try {
+      let candidates: Array<{ _id: Id<"memories">; title?: string; content?: string }> = [];
+      const queryEmbedding = await embedText(args.content.slice(0, 4000));
+      const semanticallySimilar = await ctx.vectorSearch("memories", "by_embedding", {
+        vector: queryEmbedding,
+        limit: 8,
+        filter: (q) => q.eq("userId", memory.userId),
+      });
+      
+      const similarIds = semanticallySimilar
+        .filter((result) => result._id !== args.memoryId && result._score > 0.65)
+        .map((result) => result._id);
+
+      if (similarIds.length > 0) {
+        candidates = await ctx.runQuery(internal.memories.listByIdsInternal, {
+          userId: memory.userId,
+          ids: similarIds.slice(0, 8),
+        });
+      } else {
+        candidates = await ctx.runQuery(internal.memories.searchByKeyword, {
+          userId: memory.userId,
+          query: args.content,
+          limit: 8,
+        });
+      }
+
+      existingMemoriesContext = candidates
+        .filter(m => m._id !== args.memoryId)
+        .map(m => `[${m._id}] ${m.title ?? "Untitled"}: ${(m.content ?? "").slice(0, 200)}`)
+        .join("\n");
+    } catch (e) {
+      console.error("Error finding conflict candidates in background:", e);
+    }
+
     let extracted: Record<string, unknown> | null = null;
     try {
       extracted = await extractStructuredMemory({
@@ -315,6 +374,7 @@ export const processMemory = action({
         input: `Memory title: ${args.title}\nMemory content: ${args.content}`,
         userTz,
         currentTime,
+        existingMemories: existingMemoriesContext || undefined,
       });
     } catch {
       extracted = null;
@@ -405,17 +465,55 @@ export const captureMemory = action({
       const userTz =
         args.currentTimezone?.trim() || session.timezone || "UTC";
       const currentTime = args.currentTime ?? new Date().toISOString();
+
+      // Find conflict candidates BEFORE the LLM call to provide context
+      let existingMemoriesContext = "";
+      try {
+        let candidates: Array<{ _id: Id<"memories">; title?: string; content?: string }> = [];
+        const queryEmbedding = await embedText(args.content.slice(0, 4000));
+        const semanticallySimilar = await ctx.vectorSearch("memories", "by_embedding", {
+          vector: queryEmbedding,
+          limit: 8,
+          filter: (q) => q.eq("userId", session._id),
+        });
+        
+        const similarIds = semanticallySimilar
+          .filter((result) => result._score > 0.65)
+          .map((result) => result._id);
+
+        if (similarIds.length > 0) {
+          candidates = await ctx.runQuery(internal.memories.listByIdsInternal, {
+            userId: session._id,
+            ids: similarIds.slice(0, 8),
+          });
+        } else {
+          candidates = await ctx.runQuery(internal.memories.searchByKeyword, {
+            userId: session._id,
+            query: args.content,
+            limit: 8,
+          });
+        }
+
+        existingMemoriesContext = candidates
+          .map(m => `[${m._id}] ${m.title ?? "Untitled"}: ${(m.content ?? "").slice(0, 200)}`)
+          .join("\n");
+      } catch (e) {
+        console.error("Error finding conflict candidates:", e);
+      }
+
       try {
         const analysisRaw = await extractStructuredMemory({
           client,
           input: args.content,
           userTz,
           currentTime,
+          existingMemories: existingMemoriesContext || undefined,
         });
         if (analysisRaw) {
           structured = {
             ...structured,
             ...normalizeMemoryFields(analysisRaw),
+            conflicts: (analysisRaw.conflicts as Conflict[]) || [],
           };
         }
       } catch {
@@ -493,21 +591,11 @@ export const captureMemory = action({
       });
     }
 
-    const conflictResult = await ctx.runAction(
-      api.actions.detectConflicts.detectConflicts,
-      {
-        token: args.token,
-        memoryId,
-        content: args.content,
-        ...(embedding ? { embedding } : {}),
-      }
-    );
-
     return {
       memoryId,
       structured,
       embedding,
-      conflicts: conflictResult.conflicts,
+      conflicts: structured.conflicts || [],
     };
   },
 });

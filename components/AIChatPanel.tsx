@@ -8,9 +8,9 @@ import {
   View,
 } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
-import { XStack, YStack, Text } from "tamagui";
+import { XStack, YStack, Text, TooltipSimple } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { Feather } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Speech from "expo-speech";
 import Markdown from "react-native-markdown-display";
@@ -126,6 +126,23 @@ function formatMessageTime(timestamp: number) {
     const hours = date.getHours();
     const minutes = `${date.getMinutes()}`.padStart(2, "0");
     return `${hours}:${minutes}`;
+  }
+}
+
+function formatReminderDueAt(dueAt?: string | null) {
+  if (!dueAt) return null;
+  const date = new Date(dueAt);
+  if (Number.isNaN(date.getTime())) return null;
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(date);
+  } catch {
+    return date.toLocaleString();
   }
 }
 
@@ -326,6 +343,11 @@ type SearchResultItem = {
   title?: string;
   content?: string;
   entry_kind: string;   // snake_case from toMemorySummaryFields
+  schedule_due_at?: string | null;
+  google_event_id?: string;
+  google_sync_status?: "pending" | "synced" | "failed";
+  google_sync_message?: string;
+  google_sync_updated_at?: number;
   _score?: number;
 };
 
@@ -356,6 +378,10 @@ function chatToMemoryNote(m: Record<string, unknown>): MemoryNote {
     capsuleUnlockDate: m.capsuleUnlockDate as string | undefined,
     attachments: [],
     isPublic: m.isPublic as boolean | undefined,
+    googleEventId: m.googleEventId as string | undefined,
+    googleSyncStatus: m.googleSyncStatus as MemoryNote["googleSyncStatus"] | undefined,
+    googleSyncMessage: m.googleSyncMessage as string | undefined,
+    googleSyncUpdatedAt: m.googleSyncUpdatedAt as number | undefined,
     createdAt: new Date(m._creationTime as number).toISOString(),
     updatedAt: new Date(m._creationTime as number).toISOString(),
   };
@@ -382,18 +408,26 @@ function parseDeletionProposal(content: string): { items: DeletionItem[]; cleanT
 }
 
 function extractSpeakableText(content: string): string {
+  let text = content;
   // Strip deletion proposal marker
-  const dParsed = parseDeletionProposal(content);
-  let text = dParsed ? dParsed.cleanText : content;
+  const dParsed = parseDeletionProposal(text);
+  if (dParsed) text = dParsed.cleanText;
   // Strip card IDs marker
   const cParsed = parseCardIds(text);
-  text = cParsed ? cParsed.cleanText : text;
+  if (cParsed) text = cParsed.cleanText;
+  // Strip legacy search results marker if present
+  text = text.replace(/<!--MEMORA_SEARCH_RESULTS:[\s\S]*?-->/g, "");
   // Strip any remaining HTML comments (safety net)
   text = text.replace(/<!--[\s\S]*?-->/g, "").trim();
   return text;
 }
 
-function parseCardIds(content: string): { ids: string[]; isCached: boolean; cleanText: string } | null {
+function parseCardIds(content: string): { 
+  ids: string[]; 
+  isCached: boolean; 
+  turns?: number;
+  cleanText: string 
+} | null {
   const marker = "<!--MEMORA_CARD_IDS:";
   const endMarker = "-->";
   const startIdx = content.indexOf(marker);
@@ -404,8 +438,13 @@ function parseCardIds(content: string): { ids: string[]; isCached: boolean; clea
     const parsed = JSON.parse(content.slice(startIdx + marker.length, endIdx));
     const ids: string[] = Array.isArray(parsed.ids) ? parsed.ids : [];
     const isCached: boolean = parsed.isCached ?? false;
-    const cleanText = content.slice(0, startIdx).trim();
-    return ids.length > 0 ? { ids, isCached, cleanText } : null;
+    const turns: number | undefined = typeof parsed.turns === "number" ? parsed.turns : undefined;
+    
+    // Remove only THIS marker from the text
+    const markerFull = content.slice(startIdx, endIdx + endMarker.length);
+    const cleanText = content.replace(markerFull, "").trim();
+    
+    return ids.length > 0 ? { ids, isCached, turns, cleanText } : null;
   } catch {
     return null;
   }
@@ -700,6 +739,8 @@ function SearchResultRow({
   onComplete,
   onDelete,
   onEdit,
+  onTriggerSync,
+  onRemoveSync,
 }: {
   item: SearchResultItem;
   index: number;
@@ -709,10 +750,58 @@ function SearchResultRow({
   onComplete: (item: SearchResultItem) => void;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
+  onTriggerSync: (item: SearchResultItem) => void;
+  onRemoveSync: (item: SearchResultItem) => void;
 }) {
   const menuRef = useRef<ContextMenuHandle>(null);
-  const isReminder = item.entry_kind === "reminder";
+  const isReminder = item.entry_kind === "reminder" || !!item.schedule_due_at;
+  const hasGoogleSyncInfo = !!(
+    item.google_event_id ||
+    item.google_sync_status ||
+    item.google_sync_message
+  );
+  const dueAtLabel = formatReminderDueAt(item.schedule_due_at);
   const SUCCESS = theme.success?.val ?? "#22C55E";
+  const syncTone =
+    item.google_sync_status === "synced"
+      ? {
+          border: "rgba(34, 197, 94, 0.30)",
+          bg: "rgba(34, 197, 94, 0.08)",
+          icon: "check-circle",
+          iconColor: "#16A34A",
+          label: "Saved in Memora and synced to Google Calendar",
+        }
+      : item.google_sync_status === "failed"
+        ? {
+            border: "rgba(239, 68, 68, 0.24)",
+            bg: "rgba(239, 68, 68, 0.08)",
+            icon: "alert-circle",
+            iconColor: "#DC2626",
+            label: "Saved in Memora, but Google Calendar sync failed",
+          }
+        : {
+            border: "rgba(245, 158, 11, 0.24)",
+            bg: "rgba(245, 158, 11, 0.08)",
+            icon: "clock",
+            iconColor: "#D97706",
+            label: "Saved in Memora, waiting for Google Calendar sync",
+          };
+  const rawSyncMessage = item.google_sync_message?.trim() ?? "";
+  const isGenericSyncMessage = [
+    "Reminder saved. Waiting to sync to Google Calendar...",
+    "Reminder updated. Syncing changes to Google Calendar...",
+    "Syncing reminder to Google Calendar...",
+    "Google Calendar event created.",
+    "Google Calendar event updated.",
+  ].includes(rawSyncMessage);
+  const syncDetailMessage =
+    (!isGenericSyncMessage ? rawSyncMessage : "") ||
+    (item.google_sync_status === "failed"
+      ? "Check your Google Calendar connection and try again."
+      : "");
+  const showTriggerSyncAction =
+    isReminder && (!hasGoogleSyncInfo || item.google_sync_status === "failed");
+  const showRemoveSyncAction = isReminder && hasGoogleSyncInfo;
 
   const menuItems: ContextMenuItemDef[] = [
     ...(isReminder && !isCompleted
@@ -721,6 +810,25 @@ function SearchResultRow({
           icon: "check-circle" as const,
           iconColor: SUCCESS,
           onPress: () => onComplete(item),
+        }]
+      : []),
+    ...(showTriggerSyncAction
+      ? [{
+          label:
+            item.google_sync_status === "failed"
+              ? "Retry Google Sync"
+              : "Trigger Google Sync",
+          icon: "refresh-cw" as const,
+          iconColor: theme.primary.val,
+          onPress: () => onTriggerSync(item),
+        }]
+      : []),
+    ...(showRemoveSyncAction
+      ? [{
+          label: "Remove Google Sync",
+          icon: "link-2" as const,
+          destructive: true as const,
+          onPress: () => onRemoveSync(item),
         }]
       : []),
     {
@@ -774,6 +882,34 @@ function SearchResultRow({
           {item.content}
         </Text>
       ) : null}
+      {isReminder && hasGoogleSyncInfo ? (
+        <YStack
+          marginTop={2}
+          padding={10}
+          gap={4}
+          borderRadius={12}
+          borderWidth={1}
+          borderColor={syncTone.border}
+          backgroundColor={syncTone.bg}
+        >
+          <XStack gap={7} alignItems="center">
+            <Feather name={syncTone.icon as any} size={13} color={syncTone.iconColor} />
+            <Text fontSize={11} fontFamily={FontFamily.semiBold} color="$color" flex={1}>
+              {syncTone.label}
+            </Text>
+          </XStack>
+          {dueAtLabel ? (
+            <Text fontSize={11} fontFamily={FontFamily.semiBold} color="$color">
+              Due {dueAtLabel}
+            </Text>
+          ) : null}
+          {syncDetailMessage ? (
+            <Text fontSize={11} fontFamily="$body" color="$colorMuted" lineHeight={16}>
+              {syncDetailMessage}
+            </Text>
+          ) : null}
+        </YStack>
+      ) : null}
     </YStack>
   );
 
@@ -804,7 +940,7 @@ function SearchResultRow({
           </View>
 
           {/* Content */}
-          <YStack flex={1} gap={2}>
+          <YStack flex={1} gap={6}>
             <Text
               fontSize={13}
               fontFamily={FontFamily.semiBold}
@@ -818,6 +954,34 @@ function SearchResultRow({
               <Text fontSize={11} fontFamily="$body" color="$colorMuted" numberOfLines={1}>
                 {item.content}
               </Text>
+            ) : null}
+            {isReminder && hasGoogleSyncInfo ? (
+              <YStack
+                paddingHorizontal={9}
+                paddingVertical={8}
+                gap={3}
+                borderRadius={10}
+                borderWidth={1}
+                borderColor={syncTone.border}
+                backgroundColor={syncTone.bg}
+              >
+                <XStack gap={6} alignItems="center">
+                  <Feather name={syncTone.icon as any} size={12} color={syncTone.iconColor} />
+                  <Text fontSize={10} fontFamily={FontFamily.semiBold} color="$color" flex={1}>
+                    {syncTone.label}
+                  </Text>
+                </XStack>
+                {dueAtLabel ? (
+                  <Text fontSize={10} fontFamily={FontFamily.semiBold} color="$color">
+                    Due {dueAtLabel}
+                  </Text>
+                ) : null}
+                {syncDetailMessage ? (
+                  <Text fontSize={10} fontFamily="$body" color="$colorMuted" lineHeight={15}>
+                    {syncDetailMessage}
+                  </Text>
+                ) : null}
+              </YStack>
             ) : null}
           </YStack>
 
@@ -848,11 +1012,70 @@ function SearchResultRow({
   );
 }
 
+// ─── Performance Pill ────────────────────────────────────────────────────────
+
+function PerformancePill({ 
+  isCached, 
+  turns = 1,
+  theme 
+}: { 
+  isCached: boolean; 
+  turns?: number;
+  theme: ReturnType<typeof useAppTheme>;
+}) {
+  const isReasoned = turns > 1;
+  
+  // Base colors for the pill states
+  const baseColor = isReasoned 
+    ? "#7C3AED" 
+    : (isCached ? "#F59E0B" : theme.primary.val);
+
+  return (
+    <View style={{
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 20,
+      backgroundColor: `${baseColor}15`,
+      borderWidth: 1,
+      borderColor: `${baseColor}40`,
+    }}>
+      <Feather name={isCached ? "zap" : "search"} size={11} color={baseColor} />
+      <Text 
+        fontSize={11} 
+        fontFamily={FontFamily.bold} 
+        color={baseColor}
+        style={{ opacity: 0.9 }}
+      >
+        {isCached ? "Fast" : "Full scan"}
+      </Text>
+
+      {isReasoned && (
+        <>
+          <View style={{ width: 1, height: 10, backgroundColor: baseColor, opacity: 0.2, marginLeft: 2 }} />
+          <Feather name="layers" size={11} color={baseColor} />
+          <Text 
+            fontSize={11} 
+            fontFamily={FontFamily.bold} 
+            color={baseColor}
+            style={{ opacity: 0.9 }}
+          >
+            {`× ${turns}`}
+          </Text>
+        </>
+      )}
+    </View>
+  );
+}
+
 // ─── Search Results Card ──────────────────────────────────────────────────────
 
 function SearchResultsCard({
   ids,
   isCached,
+  turns = 1,
   token,
   theme,
   onDeepSearch,
@@ -860,6 +1083,7 @@ function SearchResultsCard({
 }: {
   ids: string[];
   isCached: boolean;
+  turns?: number;
   token?: string | null;
   theme: ReturnType<typeof useAppTheme>;
   onDeepSearch?: (query: string) => void;
@@ -870,6 +1094,8 @@ function SearchResultsCard({
   const [isDeepSearching, setIsDeepSearching] = useState(false);
   const completeMemory = useMutation(api.memories.complete);
   const deleteMemory = useMutation(api.memories.remove);
+  const triggerReminderSync = useMutation(api.integrations.triggerReminderSync);
+  const removeReminderSync = useMutation(api.integrations.removeReminderSync);
   const { showToast } = useAppToast();
 
   // Fetch full memory docs by ID reactively
@@ -881,7 +1107,12 @@ function SearchResultsCard({
     id: doc._id,
     title: doc.title,
     content: doc.content,
-    entry_kind: doc.entryKind ?? "memory",
+    entry_kind: doc.entryKind ?? (doc.schedule?.dueAt ? "reminder" : "memory"),
+    schedule_due_at: doc.schedule?.dueAt ?? null,
+    google_event_id: doc.googleEventId,
+    google_sync_status: doc.googleSyncStatus,
+    google_sync_message: doc.googleSyncMessage,
+    google_sync_updated_at: doc.googleSyncUpdatedAt,
   }));
 
   const displayItems = expanded ? items : items.slice(0, 3);
@@ -922,6 +1153,51 @@ function SearchResultsCard({
   const handleEdit = useCallback((id: string) => {
     onEdit?.(id);
   }, [onEdit]);
+
+  const handleTriggerSync = useCallback(async (item: SearchResultItem) => {
+    if (!token) return;
+    try {
+      const result = await triggerReminderSync({
+        token,
+        memoryId: item.id as any,
+      });
+      showToast({
+        title: result.message,
+        tone: result.queued ? "success" : "info",
+      });
+    } catch {
+      showToast({ title: "Couldn't trigger Google sync", tone: "error" });
+    }
+  }, [token, triggerReminderSync, showToast]);
+
+  const handleRemoveSync = useCallback((item: SearchResultItem) => {
+    if (!token) return;
+    Alert.alert(
+      "Remove Google sync",
+      "This removes linked Google Calendar event data for this reminder and clears local sync state.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove sync",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const result = await removeReminderSync({
+                token,
+                memoryId: item.id as any,
+              });
+              showToast({
+                title: result.message,
+                tone: result.removed ? "success" : "info",
+              });
+            } catch {
+              showToast({ title: "Couldn't remove Google sync", tone: "error" });
+            }
+          },
+        },
+      ]
+    );
+  }, [token, removeReminderSync, showToast]);
 
   const handleDeepSearch = async () => {
     if (!onDeepSearch || isDeepSearching) return;
@@ -967,11 +1243,12 @@ function SearchResultsCard({
               <Feather name="search" size={12} color={theme.primary.val} />
             </View>
             <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
-              {items.length} {items.length === 1 ? "memory" : "memories"} found
+              {items.length} {items.length === 1 ? "memory" : "memories"}
             </Text>
           </XStack>
           <XStack gap={6} alignItems="center">
-            <Badge label={badgeLabel} color={badgeColor} small />
+            <PerformancePill isCached={isCached} turns={turns} theme={theme} />
+
             {isCached && onDeepSearch && (
               <Pressable
                 onPress={handleDeepSearch}
@@ -1012,6 +1289,8 @@ function SearchResultsCard({
               onComplete={handleComplete}
               onDelete={handleDelete}
               onEdit={handleEdit}
+              onTriggerSync={handleTriggerSync}
+              onRemoveSync={handleRemoveSync}
             />
           ))}
         </YStack>
@@ -1430,6 +1709,7 @@ const ChatBubble = React.memo(function ChatBubble({
   deletionItems,
   cardIds,
   cardIsCached,
+  cardTurns,
   onDeepSearch,
   onEditMemory,
 }: {
@@ -1443,6 +1723,7 @@ const ChatBubble = React.memo(function ChatBubble({
   deletionItems?: DeletionItem[];
   cardIds?: string[];
   cardIsCached?: boolean;
+  cardTurns?: number;
   onDeepSearch?: (messageId: string, query: string) => void;
   onEditMemory?: (id: string) => void;
 }) {
@@ -1592,6 +1873,7 @@ const ChatBubble = React.memo(function ChatBubble({
         <SearchResultsCard
           ids={cardIds}
           isCached={cardIsCached ?? false}
+          turns={cardTurns}
           token={token}
           theme={theme}
           onDeepSearch={onDeepSearch ? (q) => onDeepSearch(msg._id, q) : undefined}
@@ -2368,19 +2650,32 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
       let cardIds: string[] | undefined;
       let displayMsg = item;
       let cardIsCached: boolean | undefined;
+      let cardTurns: number | undefined;
 
       if (item.role !== "user") {
-          const dParsed = parseDeletionProposal(item.content ?? "");
+          let content = item.content ?? "";
+          
+          const dParsed = parseDeletionProposal(content);
           if (dParsed) {
               deletionItems = dParsed.items;
-              displayMsg = { ...displayMsg, content: dParsed.cleanText };
+              content = dParsed.cleanText;
           }
-          const cParsed = parseCardIds(displayMsg.content ?? "");
+          
+          const cParsed = parseCardIds(content);
           if (cParsed) {
               cardIds = cParsed.ids;
               cardIsCached = cParsed.isCached;
-              displayMsg = { ...displayMsg, content: cParsed.cleanText };
+              cardTurns = cParsed.turns;
+              content = cParsed.cleanText;
           }
+
+          // Final cleanup for any leftover legacy markers or accidental comments
+          const cleanContent = content
+            .replace(/<!--MEMORA_SEARCH_RESULTS:[\s\S]*?-->/g, "")
+            .replace(/<!--[\s\S]*?-->/g, "")
+            .trim();
+            
+          displayMsg = { ...displayMsg, content: cleanContent };
       }
 
       return (
@@ -2395,6 +2690,7 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
           deletionItems={deletionItems}
           cardIds={cardIds}
           cardIsCached={cardIsCached}
+          cardTurns={cardTurns}
           onDeepSearch={handleDeepSearch}
           onEditMemory={handleEditMemory}
         />

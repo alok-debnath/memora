@@ -145,6 +145,70 @@ async function permanentlyDeleteMemory(
   await ctx.db.delete(memory._id);
 }
 
+async function softDeleteMemory(
+  ctx: MutationCtx,
+  args: {
+    memoryId: Id<"memories">;
+    memory: Doc<"memories">;
+    userId: Id<"users">;
+  }
+) {
+  const { memoryId, memory, userId } = args;
+  await ctx.db.insert("memoryHistory", {
+    memoryId,
+    userId,
+    previousTitle: memory.title,
+    previousContent: memory.content,
+    editedAt: Date.now(),
+    changeReason: "deleted",
+    snapshotJson: serializeMemorySnapshot(memory),
+  });
+
+  const reviewCards = await ctx.db
+    .query("reviewCards")
+    .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
+    .take(10);
+  for (const card of reviewCards) {
+    await ctx.db.delete(card._id);
+  }
+
+  const topicIds = Array.from(
+    new Set(
+      [memory.primaryTopicId, ...(memory.topicIds ?? [])].filter(
+        (topicId): topicId is Id<"userTopics"> => topicId !== undefined
+      )
+    )
+  );
+  if (topicIds.length > 0) {
+    await ctx.runMutation(internal.userTopics.decrementOrArchiveTopics, {
+      topicIds,
+    });
+  }
+
+  const googleEventIdToDelete = memory.googleEventId;
+  const nextMemory = { ...memory, status: "deleted" as const, deletedAt: Date.now() };
+  await ctx.db.patch(memoryId, {
+    status: nextMemory.status,
+    deletedAt: nextMemory.deletedAt,
+    googleEventId: undefined,
+    googleSyncStatus: undefined,
+    googleSyncMessage: undefined,
+    googleSyncUpdatedAt: Date.now(),
+    googleSyncLockToken: undefined,
+    googleSyncLockAt: undefined,
+    googleSyncFingerprint: undefined,
+    googleSyncDesiredFingerprint: undefined,
+  });
+  await applyUserMemoryStatsTransition(ctx, memory, nextMemory);
+
+  if (googleEventIdToDelete) {
+    await ctx.scheduler.runAfter(0, internal.integrations.deleteGoogleEvent, {
+      userId,
+      googleEventId: googleEventIdToDelete,
+    });
+  }
+}
+
 function hasSchedulingInput(value: {
   entryKind?: "memory" | "reminder" | null;
   schedule?: unknown;
@@ -588,6 +652,13 @@ export const listForAI = internalQuery({
   },
 });
 
+export const getMemoryInternal = internalQuery({
+  args: { id: v.id("memories") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.id);
+  },
+});
+
 export const listByIdsInternal = internalQuery({
   args: {
     userId: v.id("users"),
@@ -646,12 +717,26 @@ export const create = mutation({
       capsuleUnlockDate: args.capsuleUnlockDate,
       embeddingState: "missing",
       status: "active",
+      ...(scheduling.entryKind === "reminder"
+        ? {
+            googleSyncStatus: "pending" as const,
+            googleSyncMessage: "Reminder saved. Waiting to sync to Google Calendar...",
+            googleSyncUpdatedAt: Date.now(),
+          }
+        : {}),
     });
     const createdMemory = await ctx.db.get(memoryId);
     if (createdMemory) {
       await applyUserMemoryStatsTransition(ctx, null, createdMemory);
-    }
 
+      // Sync to Google Calendar if it's a reminder
+      if (createdMemory.entryKind === "reminder") {
+        await ctx.runMutation(internal.integrations.queueReminderSync, {
+          memoryId: createdMemory._id,
+          pendingMessage: "Reminder saved. Waiting to sync to Google Calendar...",
+        });
+      }
+    }
     if (!args.skipAiProcessing) {
       await ctx.scheduler.runAfter(0, api.actions.processMemory.processMemory, {
         memoryId,
@@ -682,6 +767,7 @@ export const update = mutation({
     extractedActions: v.optional(extractedActionsValidator),
     entryKind: v.optional(v.union(memoryEntryKindValidator, v.null())),
     schedule: v.optional(v.union(memoryScheduleValidator, v.null())),
+    nextDueAt: v.optional(v.union(v.string(), v.null())),
     capsuleUnlockDate: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
@@ -735,6 +821,36 @@ export const update = mutation({
       ...finalPatch,
     });
 
+    // Sync to Google Calendar if it's a reminder
+    const updatedMemory = await ctx.db.get(args.id);
+    if (
+      updatedMemory &&
+      memory.entryKind === "reminder" &&
+      updatedMemory.entryKind !== "reminder"
+    ) {
+      if (memory.googleEventId) {
+        await ctx.scheduler.runAfter(0, internal.integrations.deleteGoogleEvent, {
+          userId,
+          googleEventId: memory.googleEventId,
+        });
+      }
+      await ctx.db.patch(args.id, {
+        googleEventId: undefined,
+        googleSyncStatus: undefined,
+        googleSyncMessage: undefined,
+        googleSyncUpdatedAt: Date.now(),
+        googleSyncLockToken: undefined,
+        googleSyncLockAt: undefined,
+        googleSyncFingerprint: undefined,
+        googleSyncDesiredFingerprint: undefined,
+      });
+    } else if (updatedMemory && updatedMemory.entryKind === "reminder") {
+      await ctx.runMutation(internal.integrations.queueReminderSync, {
+        memoryId: updatedMemory._id,
+        pendingMessage: "Reminder updated. Syncing changes to Google Calendar...",
+      });
+    }
+
     if ("title" in finalPatch || "content" in finalPatch) {
       await ctx.scheduler.runAfter(0, api.actions.processMemory.processMemory, {
         memoryId: args.id,
@@ -761,42 +877,7 @@ export const remove = mutation({
     const memory = await ctx.db.get(args.id);
     if (!memory || memory.userId !== userId) throw new Error("Not found");
     if (memory.status === "deleted" || memory.status === "completed") return; // already inactive
-    await ctx.db.insert("memoryHistory", {
-      memoryId: args.id,
-      userId,
-      previousTitle: memory.title,
-      previousContent: memory.content,
-      editedAt: Date.now(),
-      changeReason: "deleted",
-      snapshotJson: serializeMemorySnapshot(memory),
-    });
-    // Clean up review cards (bounded — a memory should have at most 1 card)
-    const reviewCards = await ctx.db
-      .query("reviewCards")
-      .withIndex("by_memory", (q) => q.eq("memoryId", args.id))
-      .take(10);
-    for (const card of reviewCards) {
-      await ctx.db.delete(card._id);
-    }
-    const topicIds = Array.from(
-      new Set(
-        [memory.primaryTopicId, ...(memory.topicIds ?? [])].filter(
-          (id): id is Id<"userTopics"> => id !== undefined
-        )
-      )
-    );
-    if (topicIds.length > 0) {
-      await ctx.runMutation(internal.userTopics.decrementOrArchiveTopics, {
-        topicIds,
-      });
-    }
-    // Soft-delete via status field
-    const nextMemory = { ...memory, status: "deleted" as const, deletedAt: Date.now() };
-    await ctx.db.patch(args.id, {
-      status: nextMemory.status,
-      deletedAt: nextMemory.deletedAt,
-    });
-    await applyUserMemoryStatsTransition(ctx, memory, nextMemory);
+    await softDeleteMemory(ctx, { memoryId: args.id, memory, userId });
   },
 });
 
@@ -823,45 +904,7 @@ export const removeMany = mutation({
       if (!memory || memory.userId !== userId || !isActiveMemory(memory)) {
         continue;
       }
-
-      await ctx.db.insert("memoryHistory", {
-        memoryId: id,
-        userId,
-        previousTitle: memory.title,
-        previousContent: memory.content,
-        editedAt: Date.now(),
-        changeReason: "deleted",
-        snapshotJson: serializeMemorySnapshot(memory),
-      });
-
-      const reviewCards = await ctx.db
-        .query("reviewCards")
-        .withIndex("by_memory", (q) => q.eq("memoryId", id))
-        .take(10);
-      for (const card of reviewCards) {
-        await ctx.db.delete(card._id);
-      }
-
-      const topicIds = Array.from(
-        new Set(
-          [memory.primaryTopicId, ...(memory.topicIds ?? [])].filter(
-            (topicId): topicId is Id<"userTopics"> => topicId !== undefined
-          )
-        )
-      );
-      if (topicIds.length > 0) {
-        await ctx.runMutation(internal.userTopics.decrementOrArchiveTopics, {
-          topicIds,
-        });
-      }
-
-      // Soft-delete
-      const nextMemory = { ...memory, status: "deleted" as const, deletedAt: Date.now() };
-      await ctx.db.patch(id, {
-        status: nextMemory.status,
-        deletedAt: nextMemory.deletedAt,
-      });
-      await applyUserMemoryStatsTransition(ctx, memory, nextMemory);
+      await softDeleteMemory(ctx, { memoryId: id, memory, userId });
       deleted += 1;
     }
 
@@ -922,6 +965,13 @@ export const restore = mutation({
     if (topicIds.length > 0) {
       await ctx.runMutation(internal.userTopics.incrementTopicCounts, {
         topicIds,
+      });
+    }
+
+    if (nextMemory.entryKind === "reminder") {
+      await ctx.runMutation(internal.integrations.queueReminderSync, {
+        memoryId: args.id,
+        pendingMessage: "Reminder restored. Syncing to Google Calendar...",
       });
     }
   },
@@ -1507,12 +1557,29 @@ export const complete = mutation({
       });
     }
 
+    const googleEventIdToDelete = memory.googleEventId;
     const nextMemory = { ...memory, status: "completed" as const, completedAt: Date.now() };
     await ctx.db.patch(args.id, {
       status: nextMemory.status,
       completedAt: nextMemory.completedAt,
+      googleEventId: undefined,
+      googleSyncStatus: undefined,
+      googleSyncMessage: undefined,
+      googleSyncUpdatedAt: Date.now(),
+      googleSyncLockToken: undefined,
+      googleSyncLockAt: undefined,
+      googleSyncFingerprint: undefined,
+      googleSyncDesiredFingerprint: undefined,
     });
     await applyUserMemoryStatsTransition(ctx, memory, nextMemory);
+
+    // Remove from Google Calendar if it was a reminder
+    if (googleEventIdToDelete) {
+      await ctx.scheduler.runAfter(0, internal.integrations.deleteGoogleEvent, { 
+        userId, 
+        googleEventId: googleEventIdToDelete 
+      });
+    }
   },
 });
 
@@ -1542,6 +1609,14 @@ export const uncomplete = mutation({
     const nextMemory = { ...memory, status: "active" as const, completedAt: undefined };
     await ctx.db.patch(args.id, { status: "active", completedAt: undefined });
     await applyUserMemoryStatsTransition(ctx, memory, nextMemory);
+
+    // Re-sync to Google Calendar if it's a reminder
+    if (nextMemory.entryKind === "reminder") {
+      await ctx.runMutation(internal.integrations.queueReminderSync, {
+        memoryId: nextMemory._id,
+        pendingMessage: "Reminder restored. Syncing to Google Calendar...",
+      });
+    }
   },
 });
 

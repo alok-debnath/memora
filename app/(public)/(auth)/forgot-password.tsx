@@ -28,7 +28,7 @@ export default function ForgotPasswordScreen() {
       const redirectTo =
         Platform.OS === "web"
           ? `${window.location.origin}/reset-password`
-          : Linking.createURL("/reset-password");
+          : Linking.createURL("/reset-password", { scheme: "memora" });
       const result = await authClient.requestPasswordReset({
         email: email.trim().toLowerCase(),
         redirectTo,
