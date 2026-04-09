@@ -31,5 +31,6 @@ export function cleanSearchQuery(query: string): string {
 }
 
 export function normalizeSearchQueryHash(query: string): string {
-  return query.trim().toLowerCase().slice(0, 100);
+  const cleaned = cleanSearchQuery(query);
+  return (cleaned || query.trim()).toLowerCase().slice(0, 100);
 }

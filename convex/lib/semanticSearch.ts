@@ -110,6 +110,11 @@ export async function runSemanticSearch(
         if (cached?.embedding && !args.forceDeepSearch) {
           queryEmbedding = cached.embedding;
           isCached = true;
+          // Refresh TTL background
+          await ctx.runMutation(internal.memories.setQueryCache, {
+            userId: args.userId,
+            queryHash,
+          });
         } else {
           const expandedQuery = cleanSearchQuery(rawQuery);
           queryEmbedding = await embedText(expandedQuery);

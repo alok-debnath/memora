@@ -12,6 +12,7 @@ import {
   OPENAI_CHAT_MODEL,
 } from "../lib/openai";
 import { runSemanticSearch } from "../lib/semanticSearch";
+import { normalizeSearchQueryHash } from "../lib/search";
 import { normalizeMemoryFields } from "../lib/aiNormalization";
 import {
   getMemorySchedule,
@@ -1084,6 +1085,11 @@ export const chat = action({
             ? `Checked stored context${initialGrounding.searchCount ? ` (${initialGrounding.searchCount} match${initialGrounding.searchCount === 1 ? "" : "es"})` : ""}`
             : "Preparing assistant response",
           source: initialGrounding.shouldGround ? "memories" : "chat",
+          cacheState: initialGrounding.shouldGround
+            ? initialGrounding.isCached
+              ? "cached"
+              : "fresh"
+            : undefined,
           resultCount: initialGrounding.shouldGround
             ? initialGrounding.searchCount
             : undefined,
@@ -1111,12 +1117,14 @@ export const chat = action({
 
         // Keep grounding hits as fallback candidates only. Final surfaced cards
         // should come from explicit surface_cards tool calls whenever possible.
-        if (initialGrounding.shouldGround && initialGrounding.searchResults.length > 0) {
-          surfaceCandidates = initialGrounding.searchResults.map((mem) => ({
-            id: String(mem.id),
-            title: mem.title ?? "",
-          }));
+        if (initialGrounding.shouldGround) {
           pendingSearchIsCached = initialGrounding.isCached;
+          if (initialGrounding.searchResults.length > 0) {
+            surfaceCandidates = initialGrounding.searchResults.map((mem) => ({
+              id: String(mem.id),
+              title: mem.title ?? "",
+            }));
+          }
         }
         const createdMemoriesByDedupeKey = new Map<
           string,
@@ -1329,17 +1337,19 @@ export const chat = action({
                 totalSteps: 4,
               });
               try {
-                const normalizedSearchQuery = searchQuery.trim();
-                const normalizedUserMessage = args.message.trim();
+                const searchQueryHash = normalizeSearchQueryHash(searchQuery);
+                const userMessageHash = normalizeSearchQueryHash(args.message);
                 const searchRes =
                   initialGrounding.shouldGround &&
-                  normalizedSearchQuery.length > 0 &&
-                  normalizedSearchQuery.toLowerCase() === normalizedUserMessage.toLowerCase()
+                  searchQueryHash.length > 0 &&
+                  searchQueryHash === userMessageHash
                     ? {
                         results: initialGrounding.searchResults,
                         count: initialGrounding.searchCount,
-                        isCached: false,
-                        searchMode: "semantic_fresh" as const,
+                        isCached: initialGrounding.isCached,
+                        searchMode: initialGrounding.isCached
+                          ? ("semantic_cached" as const)
+                          : ("semantic_fresh" as const),
                       }
                     : await searchMemories(ctx, {
                         token: args.token,

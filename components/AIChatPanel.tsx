@@ -1078,14 +1078,13 @@ function formatElapsedTime(startedAt?: number | null) {
 
 function formatMetaLabel(status: ProgressStatus) {
   const parts: string[] = [];
-  if (status.source) {
-    parts.push(status.source);
-  }
-  if (status.cacheState) {
-    parts.push(status.cacheState);
+  if (status.cacheState === "cached") {
+    parts.push("⚡ cached");
+  } else if (status.cacheState === "fresh") {
+    parts.push("✓ full scan");
   }
   if (typeof status.resultCount === "number") {
-    parts.push(`${status.resultCount} ${status.resultCount === 1 ? "result" : "results"}`);
+    parts.push(`${status.resultCount} hit${status.resultCount === 1 ? "" : "s"}`);
   }
   return parts.join(" • ");
 }
@@ -1116,8 +1115,7 @@ function getUsefulEvents(status: ProgressStatus) {
         return false;
       }
       return true;
-    })
-    .slice(0, 3);
+    });
 }
 
 function getProgressTitle(status: ProgressStatus) {
@@ -1327,12 +1325,8 @@ function ToolProgressBubble({ status }: { status: ProgressStatus }) {
 
   useEffect(() => {
     setElapsedLabel(formatElapsedTime(status.startedAt));
-    if (!status.startedAt) {
-      return;
-    }
-    const timer = setInterval(() => {
-      setElapsedLabel(formatElapsedTime(status.startedAt));
-    }, 1000);
+    if (!status.startedAt) return;
+    const timer = setInterval(() => setElapsedLabel(formatElapsedTime(status.startedAt)), 1000);
     return () => clearInterval(timer);
   }, [status.startedAt]);
 
@@ -1340,150 +1334,81 @@ function ToolProgressBubble({ status }: { status: ProgressStatus }) {
   const title = getProgressTitle(status);
   const iconName = getProgressIcon(status);
   const accentColor = getAccentColor(status, theme.primary.val);
-  const queryLabel =
-    status.query?.trim() && status.query.trim() !== status.detail?.trim()
-      ? `Query: "${status.query.trim()}"`
-      : null;
-  const metaLabel = formatMetaLabel(status);
+  
   const events = getUsefulEvents(status);
-  const previewItems = (status.previewItems ?? []).filter(Boolean).slice(0, 2);
+  const latestEvent = events[events.length - 1];
+  const metaLabel = formatMetaLabel(status);
 
   return (
     <Animated.View
-      entering={FadeInDown.duration(220)}
+      entering={FadeInDown.duration(200)}
       layout={PROGRESS_LAYOUT}
       style={{ marginBottom: CHAT.messageGap }}
     >
-      <XStack gap={8} alignSelf="flex-start" alignItems="flex-end">
+      <XStack gap={8} alignSelf="flex-start" alignItems="center">
         <Animated.View layout={PROGRESS_LAYOUT}>
           <YStack
-            paddingHorizontal={14}
-            paddingVertical={12}
-            borderRadius={CHAT.bubbleRadius}
-            borderBottomLeftRadius={6}
+            paddingHorizontal={12}
+            paddingVertical={10}
+            borderRadius={22}
             backgroundColor="$backgroundStrong"
             borderWidth={1}
             borderColor="$borderColor"
-            gap={10}
-            style={[BUBBLE_SHADOW, { maxWidth: 300, minWidth: 250, position: "relative" }]}
+            style={[BUBBLE_SHADOW, { minWidth: 200, maxWidth: 320, position: "relative" }]}
           >
-            {elapsedLabel ? (
-              <Text
-                fontSize={9}
-                color="$colorMuted"
-                opacity={0.65}
-                style={{ position: "absolute", top: 12, right: 14 }}
-              >
-                {elapsedLabel}
-              </Text>
-            ) : null}
-            <Animated.View layout={PROGRESS_LAYOUT}>
-              <XStack gap={10} alignItems="flex-start">
-                <Animated.View style={dotStyle}>
-                  <View
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 14,
-                      backgroundColor: `${accentColor}18`,
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Feather name={iconName as any} size={13} color={accentColor} />
-                  </View>
-                </Animated.View>
-                <YStack gap={2} flex={1} paddingRight={32}>
-                    <AnimatedSwapText
-                      text={title}
-                      fontSize={13}
-                      color="$color"
-                      fontFamily={FontFamily.semiBold}
-                      maxWidth={212}
-                      numberOfLines={1}
-                    />
-                    <AnimatedSwapText
-                      text={status.detail?.trim() || "Working on your request"}
-                      fontSize={11}
-                      color="$colorMuted"
-                      maxWidth={226}
-                      numberOfLines={2}
-                    />
-                    {queryLabel ? (
-                      <AnimatedSwapText
-                        text={queryLabel}
-                        fontSize={10}
-                        color="$colorMuted"
-                        maxWidth={226}
-                        numberOfLines={1}
-                        opacity={0.78}
-                      />
-                    ) : null}
-                </YStack>
-              </XStack>
-            </Animated.View>
-
-            {metaLabel ? (
-              <Animated.View layout={PROGRESS_LAYOUT}>
-                <Text fontSize={10} color="$colorMuted" opacity={0.76}>
-                  {metaLabel}
-                </Text>
+            <XStack gap={10} alignItems="center">
+              <Animated.View style={dotStyle}>
+                <View
+                  style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: 13,
+                    backgroundColor: `${accentColor}18`,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Feather name={iconName as any} size={12} color={accentColor} />
+                </View>
               </Animated.View>
-            ) : null}
-
-            {events.length > 0 ? (
-              <Animated.View layout={PROGRESS_LAYOUT}>
-                <YStack gap={4}>
-                  {events.map((event, index) => (
-                    <XStack key={`${event.label}_${event.value ?? "value"}_${index}`} gap={7} alignItems="flex-start">
-                      <View
-                        style={{
-                          width: 4,
-                          height: 4,
-                          borderRadius: 2,
-                          backgroundColor: accentColor,
-                          opacity: 0.75,
-                          marginTop: 6,
-                        }}
-                      />
-                      <Text fontSize={10} color="$colorMuted" opacity={0.84} flex={1}>
-                        <Text fontFamily={FontFamily.medium} color="$colorMuted">
-                          {event.label}
-                        </Text>
-                        {event.value ? `: ${event.value}` : ""}
-                      </Text>
-                    </XStack>
-                  ))}
-                </YStack>
-              </Animated.View>
-            ) : null}
-
-            {previewItems.length > 0 ? (
-              <Animated.View layout={PROGRESS_LAYOUT}>
-                <YStack gap={5}>
-                  <Text fontSize={10} color="$colorMuted" opacity={0.76}>
-                    Matches
+              
+              <YStack gap={1} flex={1}>
+                <XStack justifyContent="space-between" alignItems="center" gap={8}>
+                  <Text fontSize={13} color="$color" fontFamily={FontFamily.semiBold} numberOfLines={1}>
+                    {title}
                   </Text>
-                  {previewItems.map((item, index) => (
-                    <XStack key={`${item}_${index}`} gap={8} alignItems="center">
-                      <View
-                        style={{
-                          width: 5,
-                          height: 5,
-                          borderRadius: 3,
-                          backgroundColor: accentColor,
-                          opacity: 0.85,
-                        }}
-                      />
-                      <Text fontSize={10} color="$color" numberOfLines={1} maxWidth={250}>
-                        {item}
+                  {elapsedLabel && (
+                    <Text fontSize={9} color="$colorMuted" opacity={0.6}>
+                      {elapsedLabel}
+                    </Text>
+                  )}
+                </XStack>
+
+                <XStack gap={5} alignItems="center" paddingRight={4}>
+                   <Text fontSize={11} color="$colorMuted" numberOfLines={1} opacity={0.84} flexShrink={1}>
+                    {status.detail?.trim() || "Working..."}
+                  </Text>
+                  {metaLabel && (
+                    <>
+                      <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: "$colorMuted", opacity: 0.2 }} />
+                      <Text fontSize={10} color="$colorMuted" opacity={0.6} numberOfLines={1}>
+                        {metaLabel}
                       </Text>
-                    </XStack>
-                  ))}
-                </YStack>
+                    </>
+                  )}
+                </XStack>
+              </YStack>
+            </XStack>
+
+            {latestEvent && (
+              <Animated.View layout={PROGRESS_LAYOUT} entering={FadeIn.duration(200)}>
+                <XStack gap={6} alignItems="center" marginTop={6} paddingLeft={36}>
+                  <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: accentColor, opacity: 0.6 }} />
+                  <Text fontSize={10} color="$colorMuted" opacity={0.7} numberOfLines={1} paddingRight={10}>
+                    <Text fontFamily={FontFamily.medium}>{latestEvent.label}:</Text> {latestEvent.value}
+                  </Text>
+                </XStack>
               </Animated.View>
-            ) : (
-              <Animated.View layout={PROGRESS_LAYOUT} />
             )}
           </YStack>
         </Animated.View>
