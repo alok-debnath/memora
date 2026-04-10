@@ -55,10 +55,11 @@ const CHAT = {
   panelRadius: 22,
 } as const;
 
-const SUGGESTIONS = [
-  "Remember my WiFi password is starlight42",
-  "What did I save about my passport?",
-  "Show all my work memories",
+const FEATURE_BULLETS = [
+  "Save memories and reminders",
+  "Find anything instantly",
+  "Edit or delete entries",
+  "Sync reminders to Google Calendar",
 ];
 
 const DEFAULT_SPEECH_RATE = Platform.OS === "android" ? 1.0 : 1.02;
@@ -882,6 +883,14 @@ function SearchResultRow({
           {item.content}
         </Text>
       ) : null}
+      {isReminder && dueAtLabel ? (
+        <XStack alignItems="center" gap={5}>
+          <Feather name="bell" size={11} color={theme.primary.val} />
+          <Text fontSize={11} fontFamily={FontFamily.semiBold} color="$primary">
+            {dueAtLabel}
+          </Text>
+        </XStack>
+      ) : null}
       {isReminder && hasGoogleSyncInfo ? (
         <YStack
           marginTop={2}
@@ -898,11 +907,6 @@ function SearchResultRow({
               {syncTone.label}
             </Text>
           </XStack>
-          {dueAtLabel ? (
-            <Text fontSize={11} fontFamily={FontFamily.semiBold} color="$color">
-              Due {dueAtLabel}
-            </Text>
-          ) : null}
           {syncDetailMessage ? (
             <Text fontSize={11} fontFamily="$body" color="$colorMuted" lineHeight={16}>
               {syncDetailMessage}
@@ -955,6 +959,14 @@ function SearchResultRow({
                 {item.content}
               </Text>
             ) : null}
+            {isReminder && dueAtLabel ? (
+              <XStack alignItems="center" gap={5}>
+                <Feather name="bell" size={10} color={theme.primary.val} />
+                <Text fontSize={10} fontFamily={FontFamily.semiBold} color="$primary">
+                  {dueAtLabel}
+                </Text>
+              </XStack>
+            ) : null}
             {isReminder && hasGoogleSyncInfo ? (
               <YStack
                 paddingHorizontal={9}
@@ -971,11 +983,6 @@ function SearchResultRow({
                     {syncTone.label}
                   </Text>
                 </XStack>
-                {dueAtLabel ? (
-                  <Text fontSize={10} fontFamily={FontFamily.semiBold} color="$color">
-                    Due {dueAtLabel}
-                  </Text>
-                ) : null}
                 {syncDetailMessage ? (
                   <Text fontSize={10} fontFamily="$body" color="$colorMuted" lineHeight={15}>
                     {syncDetailMessage}
@@ -2162,7 +2169,7 @@ function ChatInputBar({
 
 // ─── Empty State ──────────────────────────────────────────────────────────────
 
-function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => void }) {
+function EmptyState() {
   const theme = useAppTheme();
   return (
     <YStack flex={1} justifyContent="center" padding={24} gap={28}>
@@ -2203,35 +2210,32 @@ function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => void }) 
         </Text>
       </YStack>
 
-      <YStack gap={8} width="100%">
-        {SUGGESTIONS.map((s, i) => (
+      <XStack flexWrap="wrap" gap={6} width="100%" justifyContent="center">
+        {FEATURE_BULLETS.map((feature, i) => (
           <Animated.View
-            key={s}
+            key={feature}
             entering={FadeInDown.delay(i * 50).duration(250)}
           >
-            <Pressable
-              onPress={() => onSuggestion(s)}
-              style={({ pressed }) => ({
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 10,
-                paddingHorizontal: 16,
-                paddingVertical: 14,
-                borderRadius: 16,
-                borderWidth: 1,
-                borderColor: theme.borderColor.val,
-                backgroundColor: theme.backgroundStrong.val,
-                opacity: pressed ? 0.7 : 1,
-              })}
+            <XStack
+              alignItems="center"
+              gap={5}
+              paddingHorizontal={8}
+              paddingVertical={4}
+              borderRadius={999}
+              borderWidth={1}
+              borderColor={theme.borderColor.val}
+              backgroundColor={theme.background.val}
             >
-              <Feather name="chevron-right" size={14} color={theme.colorMuted.val} />
-              <Text fontSize={14} fontFamily="$body" flex={1} color="$color">
-                {s}
+              <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val}>
+                •
               </Text>
-            </Pressable>
+              <Text fontSize={11} fontFamily="$body" color="$colorMuted">
+                {feature}
+              </Text>
+            </XStack>
           </Animated.View>
         ))}
-      </YStack>
+      </XStack>
     </YStack>
   );
 }
@@ -2742,7 +2746,7 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
             style={SURFACE_SHADOW}
             flex={1}
           >
-            <EmptyState onSuggestion={handleSend} />
+            <EmptyState />
           </YStack>
           <Animated.View style={keyboardSpacerStyle} />
         </YStack>

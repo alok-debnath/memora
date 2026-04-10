@@ -13,6 +13,7 @@ import {
 } from "../lib/openai";
 import { normalizeMemoryFields } from "../lib/aiNormalization";
 import { toStoredMemoryFields } from "../lib/memoryKind";
+import { getReminderTitleWithoutSchedule } from "../lib/reminderTitle";
 
 type Conflict = {
   existingMemoryId: string;
@@ -83,7 +84,8 @@ function buildExtractionSystemPrompt(userTz: string, currentTime: string, existi
 CURRENT DATE & TIME: ${localDateStr} at ${localTimeStr} (${userTz}) — UTC: ${now.toISOString()}
 Use this to resolve relative expressions like "in 5 hours", "next Monday", "after lunch", "tomorrow morning" into exact absolute datetimes.
 
-CRITICAL WORDING RULE — NO RELATIVE TIME IN STORED MEMORIES: Write title and content in objective, note-style language. Never use relative time words ("today", "tomorrow", "yesterday", "next week", "this morning", "this afternoon", "in 5 hours", "soon", "later") in the title or content. Always write the actual resolved date. Never use "I", "me", "my", "the user", or "you".
+CRITICAL WORDING RULE — NO RELATIVE TIME IN STORED MEMORIES: Write title and content in objective, note-style language. Never use relative time words ("today", "tomorrow", "yesterday", "next week", "this morning", "this afternoon", "in 5 hours", "soon", "later") in the title or content. Always write the actual resolved date in content when time matters. Never use "I", "me", "my", "the user", or "you".
+TITLE RULE FOR REMINDERS: Reminder titles must be short topic labels only (for example "Work meeting", "Passport renewal"). Do not include date/time in reminder titles.
 
 CRITICAL TYPE RULE:
 - Every saved item must be classified as either "memory" or "reminder".
@@ -200,7 +202,11 @@ async function extractStructuredMemory(args: {
           parameters: {
             type: "object",
             properties: {
-              title: { type: "string", description: "Concise title, max 8 words" },
+              title: {
+                type: "string",
+                description:
+                  "Concise title, max 8 words. For reminders, keep title topic-only and never include date/time.",
+              },
               content: { type: "string", description: "Full memory content" },
               entry_kind: {
                 type: "string",
@@ -269,7 +275,7 @@ async function extractStructuredMemory(args: {
                 },
               },
             },
-            required: ["title", "content"],
+            required: ["content"],
             additionalProperties: false,
           },
         },
@@ -384,50 +390,61 @@ export const processMemory = action({
       const normalized: ReturnType<typeof normalizeMemoryFields> = extracted
         ? normalizeMemoryFields(extracted)
         : normalizeMemoryFields({});
+      const normalizedTitle =
+        normalized.entryKind === "reminder" && normalized.schedule?.dueAt
+          ? getReminderTitleWithoutSchedule(
+              normalized.title ?? args.title,
+              args.content
+            )
+          : normalized.title;
+      const normalizedForWrite = {
+        ...normalized,
+        title: normalizedTitle,
+      };
       const existingIsReminder =
         memory.entryKind === "reminder" && !!memory.schedule?.dueAt;
-      const extractionHasSchedule = !!normalized.schedule?.dueAt;
+      const extractionHasSchedule = !!normalizedForWrite.schedule?.dueAt;
       const shouldUpdateScheduling =
         !!extracted &&
         hasExplicitSchedulingFields(extracted) &&
         (extractionHasSchedule || !existingIsReminder);
       const embedding = await buildMemoryEmbedding({
-        title: normalized.title ?? args.title,
+        title: normalizedForWrite.title ?? args.title,
         content: args.content,
-        people: normalized.people,
-        locations: normalized.locations,
-        lifeArea: normalized.lifeArea,
-        entryKind: normalized.entryKind,
+        people: normalizedForWrite.people,
+        locations: normalizedForWrite.locations,
+        lifeArea: normalizedForWrite.lifeArea,
+        entryKind: normalizedForWrite.entryKind,
       });
 
       await ctx.runMutation(internal.processMemoryMutations.updateAIFields, {
         memoryId: args.memoryId,
-        title: normalized.title,
-        people: normalized.people,
-        locations: normalized.locations,
-        importance: normalized.importance,
-        lifeArea: normalized.lifeArea,
-        contextTags: normalized.contextTags,
-        linkedUrls: normalized.linkedUrls,
-        ...(shouldUpdateScheduling ? toStoredMemoryFields(normalized) : {}),
-        sentimentScore: normalized.sentimentScore,
-        extractedActions: normalized.extractedActions,
+        title: normalizedForWrite.title,
+        people: normalizedForWrite.people,
+        locations: normalizedForWrite.locations,
+        importance: normalizedForWrite.importance,
+        lifeArea: normalizedForWrite.lifeArea,
+        contextTags: normalizedForWrite.contextTags,
+        linkedUrls: normalizedForWrite.linkedUrls,
+        ...(shouldUpdateScheduling ? toStoredMemoryFields(normalizedForWrite) : {}),
+        sentimentScore: normalizedForWrite.sentimentScore,
+        extractedActions: normalizedForWrite.extractedActions,
         embedding,
       });
 
       const shouldReassignTopics =
         !isSameValue(memory.embedding, embedding) ||
-        !isSameValue(memory.title, normalized.title ?? memory.title) ||
-        !isSameValue(memory.people, normalized.people ?? memory.people) ||
-        !isSameValue(memory.locations, normalized.locations ?? memory.locations) ||
-        !isSameValue(memory.lifeArea, normalized.lifeArea ?? memory.lifeArea) ||
-        !isSameValue(memory.entryKind, normalized.entryKind ?? memory.entryKind);
+        !isSameValue(memory.title, normalizedForWrite.title ?? memory.title) ||
+        !isSameValue(memory.people, normalizedForWrite.people ?? memory.people) ||
+        !isSameValue(memory.locations, normalizedForWrite.locations ?? memory.locations) ||
+        !isSameValue(memory.lifeArea, normalizedForWrite.lifeArea ?? memory.lifeArea) ||
+        !isSameValue(memory.entryKind, normalizedForWrite.entryKind ?? memory.entryKind);
 
       if (shouldReassignTopics) {
         await ctx.scheduler.runAfter(0, internal.actions.manageTopics.assignTopicsToMemory, {
           memoryId: args.memoryId,
           userId: memory.userId,
-          title: normalized.title ?? args.title,
+          title: normalizedForWrite.title ?? args.title,
           content: args.content,
           embedding,
         });
@@ -515,6 +532,12 @@ export const captureMemory = action({
             ...normalizeMemoryFields(analysisRaw),
             conflicts: (analysisRaw.conflicts as Conflict[]) || [],
           };
+          if (structured.entryKind === "reminder" && structured.schedule?.dueAt) {
+            structured.title = getReminderTitleWithoutSchedule(
+              structured.title ?? fallback.title,
+              args.content
+            );
+          }
         }
       } catch {
         // Fall back to the simple extracted structure below.

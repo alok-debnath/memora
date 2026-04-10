@@ -20,6 +20,7 @@ import {
   toMemorySummaryFields,
   toStoredMemoryFields,
 } from "../lib/memoryKind";
+import { getReminderTitleWithoutSchedule } from "../lib/reminderTitle";
 
 
 type MemoryDoc = Doc<"memories">;
@@ -115,7 +116,7 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       parameters: {
         type: "object",
         properties: {
-          title: { type: "string", description: "Concise title, max 8 words, objective note-style (no 'I', 'me', 'my')" },
+          title: { type: "string", description: "Concise title, max 8 words, objective note-style (no 'I', 'me', 'my'). For reminders, keep title topic-only and never include date/time." },
           content: { type: "string", description: "Full memory content in objective note-style language (no 'I', 'me', 'my')" },
           entry_kind: {
             type: "string",
@@ -141,7 +142,7 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           people: { type: "array", items: { type: "string" } },
           locations: { type: "array", items: { type: "string" } },
         },
-        required: ["title", "content"],
+        required: ["content"],
         additionalProperties: false,
       },
     },
@@ -156,7 +157,7 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
         type: "object",
         properties: {
           memory_id: { type: "string" },
-          title: { type: "string", description: "Concise title, max 8 words, objective note-style (no 'I', 'me', 'my')" },
+          title: { type: "string", description: "Concise title, max 8 words, objective note-style (no 'I', 'me', 'my'). For reminders, keep title topic-only and never include date/time." },
           content: { type: "string", description: "Full memory content in objective note-style language (no 'I', 'me', 'my')" },
           entry_kind: {
             type: "string",
@@ -1000,7 +1001,8 @@ This timestamp came from the user's device at send-time. Treat it as the authori
 
 **CRITICAL WORDING RULE — NO RELATIVE TIME IN STORED MEMORIES**:
 When writing memory title or content (stored via tools), NEVER use relative time words: "today", "tomorrow", "yesterday", "next week", "this morning", "this afternoon", "in 5 hours", "soon", "later", "recently", "just now", etc.
-Always write the actual resolved date/time: e.g. "Meeting with Sarah on 9 Apr 2026 at 14:00 IST" not "Meeting with Sarah tomorrow afternoon".
+Always write the actual resolved date/time in stored content: e.g. "Meeting with Sarah on 9 Apr 2026 at 14:00 IST" not "Meeting with Sarah tomorrow afternoon".
+Reminder titles must be topic-only labels (e.g. "Meeting with Sarah"), without date/time.
 Also: write in objective, note-style language — no "I", "me", "my", "the user", "you".
 Your spoken REPLY to the user is still warm and personal — this rule only applies to the stored title/content.
 
@@ -1010,6 +1012,7 @@ Your spoken REPLY to the user is still warm and personal — this rule only appl
 - Use entry_kind=\"reminder\" only when the user explicitly wants to be reminded and provides a resolvable date/time.
 - A future fact or event by itself is still a memory, not a reminder.
 - If the user wants a follow-up but gives no time, keep it as a memory and omit schedule.
+- For reminders, keep the title as the core topic only. Put schedule details in schedule, not in title.
 
 **CRITICAL TIMEZONE RULE**:
 - User-mentioned times ("9:30 AM", "3pm in 5 hours") are in THEIR timezone (${userTimezone}).
@@ -1582,40 +1585,53 @@ export const chat = action({
               }
 
               const normalized = normalizeMemoryFields(fnArgs);
+              const normalizedTitle =
+                normalized.entryKind === "reminder" && normalized.schedule?.dueAt
+                  ? getReminderTitleWithoutSchedule(
+                      normalized.title ||
+                        (typeof fnArgs.title === "string" ? fnArgs.title : undefined),
+                      normalized.content ||
+                        (typeof fnArgs.content === "string" ? fnArgs.content : "")
+                    )
+                  : normalized.title;
+              const normalizedForWrite = {
+                ...normalized,
+                title: normalizedTitle,
+              };
               const contentToSave =
-                normalized.content ||
+                normalizedForWrite.content ||
                 (typeof fnArgs.content === "string" ? fnArgs.content.trim() : "") ||
                 (typeof fnArgs.title === "string" ? fnArgs.title.trim() : "");
               const dedupeKey = buildCreateMemoryDedupeKey({
                 title:
-                  normalized.title ||
+                  normalizedForWrite.title ||
                   (typeof fnArgs.title === "string" ? fnArgs.title : undefined),
                 content: contentToSave,
               });
               const existingCreated = createdMemoriesByDedupeKey.get(dedupeKey);
               const schedulingFields = hasExplicitSchedulingFields(fnArgs)
-                ? toStoredMemoryFields(normalized)
+                ? toStoredMemoryFields(normalizedForWrite)
                 : {};
               const memoryUpdatePatch = {
-                ...(normalized.title ? { title: normalized.title } : {}),
-                ...(normalized.people ? { people: normalized.people } : {}),
-                ...(normalized.locations ? { locations: normalized.locations } : {}),
-                ...(normalized.contextTags
-                  ? { contextTags: normalized.contextTags }
+                ...(normalizedForWrite.title ? { title: normalizedForWrite.title } : {}),
+                ...(normalizedForWrite.people ? { people: normalizedForWrite.people } : {}),
+                ...(normalizedForWrite.locations ? { locations: normalizedForWrite.locations } : {}),
+                ...(normalizedForWrite.contextTags
+                  ? { contextTags: normalizedForWrite.contextTags }
                   : {}),
                 ...schedulingFields,
-                ...(typeof normalized.importance === "string"
+                ...(typeof normalizedForWrite.importance === "string"
                   ? {
-                      importance: normalized.importance as
+                      importance: normalizedForWrite.importance as
                         | "critical"
                         | "high"
                         | "normal"
                         | "low",
                     }
                   : {}),
-                ...(typeof normalized.lifeArea === "string"
+                ...(typeof normalizedForWrite.lifeArea === "string"
                   ? {
-                      lifeArea: normalized.lifeArea as
+                      lifeArea: normalizedForWrite.lifeArea as
                         | "career"
                         | "family"
                         | "health"
@@ -1628,18 +1644,18 @@ export const chat = action({
                         | "relationships",
                     }
                   : {}),
-                ...(typeof normalized.sentimentScore === "number"
-                  ? { sentimentScore: normalized.sentimentScore }
+                ...(typeof normalizedForWrite.sentimentScore === "number"
+                  ? { sentimentScore: normalizedForWrite.sentimentScore }
                   : {}),
-                ...(Array.isArray(normalized.linkedUrls)
-                  ? { linkedUrls: normalized.linkedUrls }
+                ...(Array.isArray(normalizedForWrite.linkedUrls)
+                  ? { linkedUrls: normalizedForWrite.linkedUrls }
                   : {}),
-                ...(Array.isArray(normalized.extractedActions)
-                  ? { extractedActions: normalized.extractedActions }
+                ...(Array.isArray(normalizedForWrite.extractedActions)
+                  ? { extractedActions: normalizedForWrite.extractedActions }
                   : {}),
               };
               const updateExistingPatch = {
-                ...(normalized.content ? { content: normalized.content } : {}),
+                ...(normalizedForWrite.content ? { content: normalizedForWrite.content } : {}),
                 ...memoryUpdatePatch,
               };
 
@@ -1729,7 +1745,7 @@ export const chat = action({
                 recentMemoriesCache = undefined;
 
                 const resolvedTitle =
-                  normalized.title || created.structured.title || "New Memory";
+                  normalizedForWrite.title || created.structured.title || "New Memory";
                 createdMemoriesByDedupeKey.set(dedupeKey, {
                   id: created.memoryId,
                   title: resolvedTitle,
@@ -1745,7 +1761,7 @@ export const chat = action({
                     {
                       label: "Kind",
                       value:
-                        normalized.entryKind === "reminder" ? "reminder" : "memory",
+                        normalizedForWrite.entryKind === "reminder" ? "reminder" : "memory",
                     },
                     { label: "Target", value: String(created.memoryId) },
                   ],
@@ -1764,8 +1780,21 @@ export const chat = action({
             } else if (fnName === "update_memory") {
               try {
                 const normalized = normalizeMemoryFields(fnArgs);
+                const normalizedTitle =
+                  normalized.entryKind === "reminder" && normalized.schedule?.dueAt
+                    ? getReminderTitleWithoutSchedule(
+                        normalized.title ||
+                          (typeof fnArgs.title === "string" ? fnArgs.title : undefined),
+                        normalized.content ||
+                          (typeof fnArgs.content === "string" ? fnArgs.content : "")
+                      )
+                    : normalized.title;
+                const normalizedForWrite = {
+                  ...normalized,
+                  title: normalizedTitle,
+                };
                 const schedulingFields = hasExplicitSchedulingFields(fnArgs)
-                  ? toStoredMemoryFields(normalized)
+                  ? toStoredMemoryFields(normalizedForWrite)
                   : {};
                 const explicitMemoryId =
                   typeof fnArgs.memory_id === "string" ? fnArgs.memory_id.trim() : "";
@@ -1792,12 +1821,12 @@ export const chat = action({
                 await ctx.runMutation(api.memories.update, {
                   token: args.token,
                   id: targetMemoryId as Id<"memories">,
-                  ...(normalized.title ? { title: normalized.title } : {}),
-                  ...(normalized.content ? { content: normalized.content } : {}),
-                  ...(normalized.people ? { people: normalized.people } : {}),
-                  ...(normalized.locations ? { locations: normalized.locations } : {}),
-                  ...(normalized.contextTags
-                    ? { contextTags: normalized.contextTags }
+                  ...(normalizedForWrite.title ? { title: normalizedForWrite.title } : {}),
+                  ...(normalizedForWrite.content ? { content: normalizedForWrite.content } : {}),
+                  ...(normalizedForWrite.people ? { people: normalizedForWrite.people } : {}),
+                  ...(normalizedForWrite.locations ? { locations: normalizedForWrite.locations } : {}),
+                  ...(normalizedForWrite.contextTags
+                    ? { contextTags: normalizedForWrite.contextTags }
                     : {}),
                   ...schedulingFields,
                 });
@@ -1810,7 +1839,7 @@ export const chat = action({
                   source: "memories",
                   previewItems: [
                     truncateStatusText(
-                      normalized.title ||
+                      normalizedForWrite.title ||
                         (typeof fnArgs.content === "string" ? fnArgs.content : undefined) ||
                         "Updated memory"
                     ),

@@ -33,6 +33,7 @@ import type * as lib_memorySnapshot from "../lib/memorySnapshot.js";
 import type * as lib_memoryStats from "../lib/memoryStats.js";
 import type * as lib_openai from "../lib/openai.js";
 import type * as lib_reminderSync from "../lib/reminderSync.js";
+import type * as lib_reminderTitle from "../lib/reminderTitle.js";
 import type * as lib_search from "../lib/search.js";
 import type * as lib_semanticSearch from "../lib/semanticSearch.js";
 import type * as lib_validators from "../lib/validators.js";
@@ -80,6 +81,7 @@ declare const fullApi: ApiFromModules<{
   "lib/memoryStats": typeof lib_memoryStats;
   "lib/openai": typeof lib_openai;
   "lib/reminderSync": typeof lib_reminderSync;
+  "lib/reminderTitle": typeof lib_reminderTitle;
   "lib/search": typeof lib_search;
   "lib/semanticSearch": typeof lib_semanticSearch;
   "lib/validators": typeof lib_validators;
