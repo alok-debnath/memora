@@ -24,7 +24,7 @@ export const exportAllData = query({
       reviewCards,
       nudges,
       memoryHistory,
-      documentExtractions,
+      memoryAttachments,
       notificationPreferences,
       auditLogs,
       privacyConsent,
@@ -54,7 +54,7 @@ export const exportAllData = query({
         .withIndex("by_user", (q) => q.eq("userId", user._id))
         .take(10000),
       ctx.db
-        .query("documentExtractions")
+        .query("memoryAttachments")
         .withIndex("by_user", (q) => q.eq("userId", user._id))
         .take(10000),
       ctx.db
@@ -149,14 +149,18 @@ export const exportAllData = query({
         editedAt: new Date(h.editedAt).toISOString(),
         changeReason: h.changeReason,
       })),
-      documentExtractions: documentExtractions.map((d) => ({
-        id: d._id,
-        createdAt: new Date(d._creationTime).toISOString(),
-        filename: d.filename,
-        extractedText: d.extractedText,
-        summary: d.summary,
-        documentType: d.documentType,
-        status: d.status,
+      attachments: memoryAttachments.map((a) => ({
+        id: a._id,
+        createdAt: new Date(a._creationTime).toISOString(),
+        filename: a.filename,
+        type: a.type,
+        mimeType: a.mimeType,
+        sizeBytes: a.sizeBytes,
+        driveFileId: a.driveFileId,
+        driveWebViewLink: a.driveWebViewLink,
+        extractedContent: a.extractedContent,
+        processingStatus: a.processingStatus,
+        memoryId: a.memoryId,
       })),
       preferences: notificationPreferences
         ? {

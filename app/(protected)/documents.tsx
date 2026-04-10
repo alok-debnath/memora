@@ -1,344 +1,451 @@
-import React, { useMemo, useState } from "react";
-import { ScrollView, Platform, Alert, Pressable } from "react-native";
-import { XStack, YStack, Text } from "tamagui";
-import { useAppTheme } from "@/hooks/useAppTheme";
+import React, { useState, useCallback } from "react";
+import {
+  FlatList,
+  Pressable,
+  StyleSheet,
+  RefreshControl,
+  Alert,
+  Linking,
+  View,
+  Dimensions,
+} from "react-native";
+import { Image } from "expo-image";
+import { XStack, YStack, Text, Sheet } from "tamagui";
 import { Feather } from "@expo/vector-icons";
-import Animated, { FadeInUp } from "react-native-reanimated";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/useAuth";
-import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { GradientButton } from "@/components/ui/GradientButton";
-import { PressableScale } from "@/components/ui/PressableScale";
-import { SearchBar } from "@/components/ui/SearchBar";
 import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
+import { useColors } from "@/hooks/useColors";
+import { useAppTheme } from "@/hooks/useAppTheme";
+import { useAppToast } from "@/components/ui/toast";
 
-const statusColors: Record<string, string> = {
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const GRID_PADDING = 16;
+const GRID_GAP = 10;
+const CARD_SIZE = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP) / 2;
+
+type AttachmentDoc = {
+  _id: Id<"memoryAttachments">;
+  _creationTime: number;
+  filename: string;
+  type: "image" | "document";
+  mimeType: string;
+  sizeBytes: number;
+  driveFileId: string;
+  driveWebViewLink?: string;
+  driveThumbnailLink?: string;
+  extractedContent?: string;
+  processingStatus: "pending" | "processing" | "completed" | "failed";
+  memoryId?: Id<"memories">;
+  createdAt: number;
+};
+
+type FilterType = "all" | "image" | "document";
+
+const processingColors = {
   pending: "#F59E0B",
   processing: "#3B82F6",
   completed: "#10B981",
   failed: "#EF4444",
 };
 
-type DocumentItem = {
-  _id: Id<"documentExtractions">;
-  _creationTime: number;
-  filename: string;
-  summary?: string;
-  status: string;
-  documentType?: string;
-  expiryDate?: string;
-  keyDetails?: Record<string, string>;
-  memoryCount?: number;
-  generatedMemoryIds: string[];
-};
-
-export default function DocumentsScreen() {
+export default function FilesScreen() {
   const theme = useAppTheme();
-  const { token } = useAuth();
-  const [isUploading, setIsUploading] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<"all" | "processing" | "completed" | "failed">("all");
-  const [typeFilter, setTypeFilter] = useState<string>("all");
-  const [query, setQuery] = useState("");
+  const colors = useColors();
+  const auth = useAuth();
+  const token = auth.token;
+  const { showToast } = useAppToast();
 
-  const documents = (useQuery(api.documents.list, token ? { token } : "skip") ?? []) as DocumentItem[];
-  const createDoc = useMutation(api.documents.create);
-  const removeDoc = useMutation(api.documents.remove);
+  const [filter, setFilter] = useState<FilterType>("all");
+  const [selectedAttachment, setSelectedAttachment] = useState<AttachmentDoc | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [contentTopPadding, setContentTopPadding] = useState(86);
 
-  const documentTypes = useMemo(() => Array.from(new Set(documents.map((doc) => doc.documentType || "other"))).sort(), [documents]);
-
-  const fullyFilteredDocuments = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return documents
-      .filter((doc) => statusFilter === "all" || doc.status === statusFilter)
-      .filter((doc) => typeFilter === "all" || (doc.documentType || "other") === typeFilter)
-      .filter((doc) => {
-        if (!normalized) return true;
-        const haystack = [
-          doc.filename,
-          doc.summary,
-          doc.documentType,
-          ...(doc.keyDetails ? Object.values(doc.keyDetails) : []),
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        return haystack.includes(normalized);
-      });
-  }, [documents, query, statusFilter, typeFilter]);
-
-  const summary = useMemo(
-    () => ({
-      total: documents.length,
-      processed: documents.filter((doc) => doc.status === "completed").length,
-      memories: documents.reduce((sum, doc) => sum + doc.generatedMemoryIds.length, 0),
-    }),
-    [documents]
+  const googleIntegration = useQuery(
+    api.integrations.getGoogleIntegration,
+    token ? { token } : "skip"
   );
 
-  const handleUpload = async () => {
-    if (!token) return;
-    setIsUploading(true);
-    try {
-      const DocumentPicker = await import("expo-document-picker");
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ["text/plain", "application/pdf", "text/csv", "text/markdown"],
-      });
-
-      if (!result.canceled && result.assets?.[0]) {
-        const asset = result.assets[0];
-        let text = "";
-
-        try {
-          if (Platform.OS === "web") {
-            const response = await fetch(asset.uri);
-            text = await response.text();
-          } else {
-            const FileSystem = await import("expo-file-system");
-            text = (await FileSystem.readAsStringAsync(asset.uri)) || "";
-          }
-        } catch {
-          text = `[Document: ${asset.name}]`;
+  const attachmentsResult = useQuery(
+    api.attachments.listAttachmentsForUser,
+    token
+      ? {
+          token,
+          paginationOpts: { numItems: 60, cursor: null },
+          type: filter === "all" ? undefined : filter,
         }
+      : "skip"
+  );
 
-        if (text.length > 0) {
-          await createDoc({
-            token,
-            filename: asset.name || "Untitled Document",
-            extractedText: text.slice(0, 10000),
-          });
-        }
-      }
-    } catch {
-      if (Platform.OS === "web") {
-        alert("Failed to upload document. Please try again.");
-      } else {
-        Alert.alert("Error", "Failed to upload document. Please try again.");
-      }
-    }
-    setIsUploading(false);
-  };
+  const deleteAttachment = useMutation(api.attachments.deleteAttachment);
 
-  const handleDelete = (docId: Id<"documentExtractions">) => {
-    if (!token) return;
-    const doDelete = () => removeDoc({ token, documentId: docId });
-    if (Platform.OS === "web") {
-      if (confirm("Delete this document?")) doDelete();
-    } else {
-      Alert.alert("Delete Document", "Are you sure?", [
-        { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: doDelete },
-      ]);
-    }
-  };
+  const attachments = (attachmentsResult?.page ?? []) as AttachmentDoc[];
+  const isLoading = attachmentsResult === undefined;
 
-  const formatDate = (ts: number) =>
-    new Date(ts).toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
+  const driveConnected = !!(googleIntegration?.connected && (googleIntegration as any).hasDriveScope);
 
-  const statusFilters = [
-    { key: "all", label: "All" },
-    { key: "processing", label: "Processing" },
-    { key: "completed", label: "Completed" },
-    { key: "failed", label: "Failed" },
-  ] as const;
+  const handleDelete = useCallback(
+    async (attachment: AttachmentDoc) => {
+      if (!token) return;
+      Alert.alert(
+        "Delete File",
+        `Remove "${attachment.filename}" from Memora and Google Drive?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                await deleteAttachment({ token, attachmentId: attachment._id });
+                setPreviewOpen(false);
+                showToast({ title: "File deleted", tone: "success" });
+              } catch {
+                showToast({ title: "Could not delete file", tone: "error" });
+              }
+            },
+          },
+        ]
+      );
+    },
+    [token, deleteAttachment, showToast]
+  );
 
-  return (
-    <MorePageScaffold title="Documents">
-        <Animated.View entering={FadeInUp.duration(400)}>
-          <Card style={{ padding: 18, borderRadius: 24, backgroundColor: theme.card.val, marginBottom: 14 }}>
-            <YStack flex={1} gap={6}>
-              <Badge label="Vault" color={theme.primary.val} />
-              <Text fontSize={28} lineHeight={32} fontFamily="$heading" fontWeight="700" color="$color">
-                Documents
-              </Text>
-              <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
-                Upload files, extract structured details, and keep track of what turned into memories.
-              </Text>
-            </YStack>
-            <XStack gap={10} marginTop={16}>
-              <Card style={{ flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 18 }}>
-                <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
-                  {summary.total}
-                </Text>
-                <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">
-                  vault items
-                </Text>
-              </Card>
-              <Card style={{ flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 18 }}>
-                <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
-                  {summary.processed}
-                </Text>
-                <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">
-                  processed
-                </Text>
-              </Card>
-              <Card style={{ flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 18 }}>
-                <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
-                  {summary.memories}
-                </Text>
-                <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">
-                  memories
-                </Text>
-              </Card>
-            </XStack>
-          </Card>
-        </Animated.View>
+  const handleOpenDrive = useCallback((link?: string) => {
+    if (link) Linking.openURL(link);
+  }, []);
 
-        <GradientButton
-          title="Upload document"
-          onPress={handleUpload}
-          icon="upload"
-          loading={isUploading}
-          style={{ marginBottom: 14 }}
-        />
-
-        <SearchBar value={query} onChangeText={setQuery} placeholder="Search documents..." />
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 12 }}>
-          {statusFilters.map((filter) => {
-            const active = statusFilter === filter.key;
-            return (
-              <PressableScale
-                key={filter.key}
-                onPress={() => setStatusFilter(filter.key)}
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 8,
-                  borderRadius: 999,
-                  borderWidth: 1,
-                  borderColor: active ? theme.primary.val : theme.borderColor.val,
-                  backgroundColor: active ? theme.primary.val + "18" : theme.card.val,
-                }}
-              >
-                <Text fontSize={13} fontFamily="$body" color={active ? "$primary" : "$colorMuted"}>
-                  {filter.label}
-                </Text>
-              </PressableScale>
-            );
-          })}
-        </ScrollView>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 12 }}>
-          {["all", ...documentTypes].map((type) => {
-            const active = typeFilter === type;
-            return (
-              <PressableScale
-                key={type}
-                onPress={() => setTypeFilter(type)}
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 8,
-                  borderRadius: 999,
-                  borderWidth: 1,
-                  borderColor: active ? theme.primary.val : theme.borderColor.val,
-                  backgroundColor: active ? theme.primary.val + "18" : theme.card.val,
-                }}
-              >
-                <Text fontSize={13} fontFamily="$body" color={active ? "$primary" : "$colorMuted"}>
-                  {type === "all" ? "All types" : type}
-                </Text>
-              </PressableScale>
-            );
-          })}
-        </ScrollView>
-
-        <YStack gap={12}>
-          {fullyFilteredDocuments.length === 0 ? (
-            <EmptyState
-              icon="filter"
-              title="No matching documents"
-              description="Try another filter or upload a new document."
+  const renderItem = useCallback(
+    ({ item, index }: { item: AttachmentDoc; index: number }) => (
+      <Animated.View entering={FadeInDown.delay(index * 30).duration(200)}>
+        <Pressable
+          onPress={() => {
+            setSelectedAttachment(item);
+            setPreviewOpen(true);
+          }}
+          style={({ pressed }) => [
+            styles.card,
+            {
+              backgroundColor: colors.surface,
+              borderColor: colors.border,
+              opacity: pressed ? 0.85 : 1,
+            },
+          ]}
+        >
+          {item.type === "image" && item.driveThumbnailLink ? (
+            <Image
+              source={{ uri: item.driveThumbnailLink }}
+              style={styles.thumbnail}
+              contentFit="cover"
+              transition={300}
+              placeholder={{ blurhash: "L6PZfSi_.AyE_3t7t7R**0o#DgR4" }}
             />
           ) : (
-            fullyFilteredDocuments.map((doc, index) => (
-              <Animated.View key={doc._id} entering={FadeInUp.delay(index * 50).duration(300)}>
-                <Card style={{ borderRadius: 22, borderColor: theme.borderColor.val }}>
-                  <XStack alignItems="center" justifyContent="space-between" gap={12}>
-                    <XStack alignItems="center" gap={8} flex={1}>
-                      <Feather name="file-text" size={18} color={theme.primary.val} />
-                      <Text fontSize={15} fontFamily="$heading" fontWeight="600" flex={1} color="$color" numberOfLines={1}>
-                        {doc.filename}
-                      </Text>
-                    </XStack>
-                    <XStack alignItems="center" gap={10}>
-                      <Badge label={doc.status} color={statusColors[doc.status] || theme.colorMuted.val} />
-                      <Pressable onPress={() => handleDelete(doc._id)}>
-                        <Feather name="trash-2" size={16} color={theme.colorMuted.val} />
-                      </Pressable>
-                    </XStack>
-                  </XStack>
-
-                  <XStack flexWrap="wrap" gap={8} marginTop={10}>
-                    <Badge label={doc.documentType || "other"} color={theme.primary.val} small />
-                    {doc.expiryDate ? (
-                      <Badge
-                        label={`Expires ${new Date(doc.expiryDate).toLocaleDateString()}`}
-                        color={new Date(doc.expiryDate).getTime() < Date.now() ? theme.destructive.val : "#F59E0B"}
-                        small
-                      />
-                    ) : null}
-                  </XStack>
-
-                  {doc.summary && (
-                    <Text fontSize={13} fontFamily="$body" marginTop={8} lineHeight={18} color="$colorMuted" numberOfLines={3}>
-                      {doc.summary}
-                    </Text>
-                  )}
-
-                  {doc.keyDetails && Object.keys(doc.keyDetails).length > 0 ? (
-                    <XStack flexWrap="wrap" gap={8} marginTop={10}>
-                      {Object.entries(doc.keyDetails)
-                        .slice(0, 3)
-                        .map(([key, value]) => (
-                          <YStack
-                            key={key}
-                            borderWidth={1}
-                            borderRadius={14}
-                            paddingHorizontal={10}
-                            paddingVertical={8}
-                            minWidth="40%"
-                            backgroundColor="$secondary"
-                            borderColor="$borderColor"
-                          >
-                            <Text
-                              fontSize={10}
-                              fontFamily="$body"
-                              fontWeight="700"
-                              textTransform="uppercase"
-                              letterSpacing={0.5}
-                              color="$colorMuted"
-                            >
-                              {key.replace(/_/g, " ")}
-                            </Text>
-                            <Text fontSize={12} fontFamily="$body" fontWeight="500" marginTop={4} color="$color" numberOfLines={1}>
-                              {value}
-                            </Text>
-                          </YStack>
-                        ))}
-                    </XStack>
-                  ) : null}
-
-                  <Text fontSize={12} fontFamily="$body" marginTop={6} color="$colorMuted">
-                    {formatDate(doc._creationTime)}
-                  </Text>
-
-                  {doc.generatedMemoryIds.length > 0 && (
-                    <Text fontSize={12} fontFamily="$body" fontWeight="600" marginTop={4} color="$primary">
-                      {doc.memoryCount ?? doc.generatedMemoryIds.length} memories generated
-                    </Text>
-                  )}
-                </Card>
-              </Animated.View>
-            ))
+            <View style={[styles.docIconContainer, { backgroundColor: colors.backgroundSecondary }]}>
+              <Feather name="file-text" size={36} color={colors.primary} />
+            </View>
           )}
-        </YStack>
+
+          <YStack
+            paddingHorizontal={8}
+            paddingVertical={6}
+            gap={2}
+            borderTopWidth={StyleSheet.hairlineWidth}
+            borderTopColor={colors.border}
+          >
+            <Text
+              fontSize={11}
+              fontWeight="600"
+              color={colors.text}
+              numberOfLines={1}
+            >
+              {item.filename}
+            </Text>
+            <XStack alignItems="center" gap={4}>
+              <View
+                style={[
+                  styles.statusDot,
+                  { backgroundColor: processingColors[item.processingStatus] },
+                ]}
+              />
+              <Text fontSize={10} color={colors.textSecondary}>
+                {formatDate(item.createdAt)}
+              </Text>
+            </XStack>
+          </YStack>
+        </Pressable>
+      </Animated.View>
+    ),
+    [colors]
+  );
+
+  const listHeader = (
+    <View>
+      {!driveConnected && (
+        <Pressable
+          onPress={() => showToast({ title: "Connect Google in Settings to sync files", tone: "info" })}
+          style={[styles.banner, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}
+        >
+          <Feather name="alert-circle" size={14} color={colors.primary} />
+          <Text fontSize={12} color={colors.text} flex={1}>
+            Connect Google Drive to store and sync files
+          </Text>
+          <Feather name="external-link" size={14} color={colors.textSecondary} />
+        </Pressable>
+      )}
+      <XStack paddingHorizontal={16} paddingBottom={12} gap={8}>
+        {(["all", "image", "document"] as FilterType[]).map((f) => (
+          <Pressable
+            key={f}
+            onPress={() => setFilter(f)}
+            style={[
+              styles.filterChip,
+              {
+                backgroundColor:
+                  filter === f ? colors.primary : colors.backgroundSecondary,
+                borderColor: filter === f ? colors.primary : colors.border,
+              },
+            ]}
+          >
+            <Text
+              fontSize={12}
+              fontWeight="600"
+              color={filter === f ? "#FFFFFF" : colors.textSecondary}
+              textTransform="capitalize"
+            >
+              {f === "all" ? "All" : f === "image" ? "Images" : "Documents"}
+            </Text>
+          </Pressable>
+        ))}
+      </XStack>
+    </View>
+  );
+
+  return (
+    <MorePageScaffold title="Files" noScroll onContentTopPadding={setContentTopPadding}>
+      <FlatList
+        data={attachments}
+        renderItem={renderItem}
+        keyExtractor={(item) => item._id}
+        numColumns={2}
+        columnWrapperStyle={styles.columnWrapper}
+        contentContainerStyle={[styles.gridContent, { paddingTop: contentTopPadding }]}
+        ListHeaderComponent={listHeader}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={isLoading} tintColor={colors.primary} />
+        }
+        ListEmptyComponent={
+          !isLoading ? (
+            <YStack flex={1} alignItems="center" justifyContent="center" gap={12} paddingTop={80}>
+              <Feather name="paperclip" size={40} color={colors.textTertiary} />
+              <Text fontSize={15} color={colors.textSecondary} textAlign="center">
+                No files yet
+              </Text>
+              <Text fontSize={13} color={colors.textTertiary} textAlign="center" maxWidth={240}>
+                Attach images or PDFs in chat or memories to see them here
+              </Text>
+            </YStack>
+          ) : null
+        }
+      />
+
+      {/* Preview sheet */}
+      <Sheet
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        snapPoints={[70]}
+        snapPointsMode="percent"
+        dismissOnSnapToBottom
+        modal
+        zIndex={100000}
+        animation="quick"
+      >
+        <Sheet.Overlay animation="quick" enterStyle={{ opacity: 0 }} exitStyle={{ opacity: 0 }} />
+        <Sheet.Handle />
+        <Sheet.Frame
+          padding="$4"
+          backgroundColor="$background"
+          borderTopLeftRadius="$6"
+          borderTopRightRadius="$6"
+        >
+          {selectedAttachment && (
+            <PreviewContent
+              attachment={selectedAttachment}
+              onOpenDrive={() => handleOpenDrive(selectedAttachment.driveWebViewLink)}
+              onDelete={() => handleDelete(selectedAttachment)}
+              colors={colors}
+            />
+          )}
+        </Sheet.Frame>
+      </Sheet>
     </MorePageScaffold>
   );
 }
+
+function PreviewContent({
+  attachment,
+  onOpenDrive,
+  onDelete,
+  colors,
+}: {
+  attachment: AttachmentDoc;
+  onOpenDrive: () => void;
+  onDelete: () => void;
+  colors: ReturnType<typeof useColors>;
+}) {
+  return (
+    <YStack gap="$4" flex={1}>
+      <XStack alignItems="center" gap="$2" flexWrap="wrap">
+        {attachment.type === "image" ? (
+          <Image
+            source={{ uri: attachment.driveThumbnailLink ?? "" }}
+            style={styles.previewImage}
+            contentFit="contain"
+          />
+        ) : (
+          <XStack
+            width={60}
+            height={60}
+            borderRadius={12}
+            backgroundColor={colors.backgroundSecondary}
+            alignItems="center"
+            justifyContent="center"
+          >
+            <Feather name="file-text" size={28} color={colors.primary} />
+          </XStack>
+        )}
+        <YStack flex={1} gap={2}>
+          <Text fontSize={14} fontWeight="700" color={colors.text} numberOfLines={2}>
+            {attachment.filename}
+          </Text>
+          <Text fontSize={11} color={colors.textSecondary}>
+            {formatFileSize(attachment.sizeBytes)} · {formatDate(attachment.createdAt)}
+          </Text>
+          <XStack alignItems="center" gap={4} mt={2}>
+            <View
+              style={[
+                styles.statusDot,
+                { backgroundColor: processingColors[attachment.processingStatus] },
+              ]}
+            />
+            <Text fontSize={11} color={colors.textSecondary} textTransform="capitalize">
+              {attachment.processingStatus}
+            </Text>
+          </XStack>
+        </YStack>
+      </XStack>
+
+      {attachment.extractedContent && (
+        <YStack gap={6}>
+          <Text fontSize={12} fontWeight="600" color={colors.textSecondary} textTransform="uppercase" letterSpacing={0.5}>
+            Extracted Content
+          </Text>
+          <Text fontSize={13} color={colors.text} numberOfLines={8} lineHeight={20}>
+            {attachment.extractedContent}
+          </Text>
+        </YStack>
+      )}
+
+      <YStack gap="$2" mt="$2">
+        <Pressable
+          onPress={onOpenDrive}
+          style={[styles.actionBtn, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}
+        >
+          <Feather name="external-link" size={16} color={colors.text} />
+          <Text fontSize={14} fontWeight="600" color={colors.text}>
+            Open in Google Drive
+          </Text>
+        </Pressable>
+
+        <Pressable
+          onPress={onDelete}
+          style={[styles.actionBtn, { backgroundColor: "#FEF2F2", borderColor: "#FECACA" }]}
+        >
+          <Feather name="trash-2" size={16} color="#EF4444" />
+          <Text fontSize={14} fontWeight="600" color="#EF4444">
+            Delete File
+          </Text>
+        </Pressable>
+      </YStack>
+    </YStack>
+  );
+}
+
+function formatDate(ms: number): string {
+  return new Date(ms).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+const styles = StyleSheet.create({
+  banner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  columnWrapper: {
+    paddingHorizontal: GRID_PADDING,
+    gap: GRID_GAP,
+  },
+  gridContent: {
+    gap: GRID_GAP,
+    paddingBottom: 40,
+  },
+  card: {
+    width: CARD_SIZE,
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  thumbnail: {
+    width: "100%",
+    height: CARD_SIZE,
+  },
+  docIconContainer: {
+    width: "100%",
+    height: CARD_SIZE * 0.75,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  previewImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 10,
+  },
+  actionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+});

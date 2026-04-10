@@ -207,7 +207,6 @@ export const wipeAllUserData = mutation({
     const tables = [
       "memoryAttachments",
       "memoryHistory",
-      "documentExtractions",
       "diaryEntries",
       "reviewCards",
       "nudges",

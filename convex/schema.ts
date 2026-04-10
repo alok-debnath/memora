@@ -160,21 +160,33 @@ export default defineSchema({
     .index("by_user_and_topic", ["userId", "topicId"]),
 
   memoryAttachments: defineTable({
-    memoryId: v.id("memories"),
     userId: v.id("users"),
-    type: v.union(
-      v.literal("image"),
-      v.literal("audio"),
-      v.literal("document"),
-      v.literal("link")
+    memoryId: v.optional(v.id("memories")),
+    chatMessageId: v.optional(v.id("chatMessages")),
+    type: v.union(v.literal("image"), v.literal("document")),
+    filename: v.string(),
+    mimeType: v.string(),
+    sizeBytes: v.number(),
+    // Google Drive
+    driveFileId: v.string(),
+    driveFolderId: v.string(),
+    driveWebViewLink: v.optional(v.string()),
+    driveThumbnailLink: v.optional(v.string()),
+    // AI extraction
+    extractedContent: v.optional(v.string()),
+    processingStatus: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed")
     ),
-    url: v.string(),
-    filename: v.optional(v.string()),
-    mimeType: v.optional(v.string()),
-    sizeBytes: v.optional(v.float64()),
+    processingError: v.optional(v.string()),
+    createdAt: v.number(),
   })
+    .index("by_user", ["userId"])
     .index("by_memory", ["memoryId"])
-    .index("by_user", ["userId"]),
+    .index("by_chat_message", ["chatMessageId"])
+    .index("by_user_and_createdAt", ["userId", "createdAt"]),
 
   memoryHistory: defineTable({
     memoryId: v.id("memories"),
@@ -190,31 +202,6 @@ export default defineSchema({
     .index("by_memory", ["memoryId"])
     .index("by_user", ["userId"]),
 
-  documentExtractions: defineTable({
-    userId: v.id("users"),
-    filename: v.string(),
-    extractedText: v.string(),
-    summary: v.optional(v.string()),
-    documentType: v.optional(v.string()),
-    expiryDate: v.optional(v.string()),
-    keyDetails: v.optional(v.record(v.string(), v.string())),
-    embedding: v.optional(v.array(v.float64())),
-    memoryCount: v.optional(v.float64()),
-    generatedMemoryIds: v.array(v.id("memories")),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("processing"),
-      v.literal("completed"),
-      v.literal("failed")
-    ),
-  })
-    .index("by_user", ["userId"])
-    .index("by_user_type", ["userId", "documentType"])
-    .vectorIndex("by_embedding", {
-      vectorField: "embedding",
-      dimensions: 1536,
-      filterFields: ["userId"],
-    }),
 
   sharedMemories: defineTable({
     memoryId: v.id("memories"),
@@ -308,9 +295,10 @@ export default defineSchema({
     attachments: v.optional(
       v.array(
         v.object({
+          attachmentId: v.id("memoryAttachments"),
           name: v.string(),
-          type: v.string(),
-          uri: v.string(),
+          type: v.union(v.literal("image"), v.literal("document")),
+          mimeType: v.string(),
         })
       )
     ),
@@ -415,6 +403,10 @@ export default defineSchema({
     // Kept optional for backward compatibility with existing stored integrations.
     grantedScopes: v.optional(v.array(v.string())),
     platform: v.optional(v.union(v.literal("android"), v.literal("ios"), v.literal("web"))),
+    // Cached Google Drive folder IDs
+    driveFolderId: v.optional(v.string()),
+    driveMonthFolderId: v.optional(v.string()),
+    driveMonthFolderKey: v.optional(v.string()), // "YYYY-MM" key for the cached month folder
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_user", ["userId"]),

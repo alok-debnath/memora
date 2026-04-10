@@ -44,6 +44,10 @@ import { ContextMenu, type ContextMenuHandle, type ContextMenuItemDef } from "@/
 import { EditMemorySheet } from "@/components/EditMemorySheet";
 import type { MemoryNote } from "@/types/memory";
 import { getReminderDate, inferMemoryEntryKind } from "@/types/memoryKind";
+import { AttachmentPreviewBar } from "@/components/AttachmentPreviewBar";
+import { AttachmentPickerButton } from "@/components/AttachmentPickerButton";
+import { useFileAttachments, type PendingAttachment } from "@/hooks/useFileAttachments";
+import { Linking } from "react-native";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -1703,6 +1707,53 @@ function ToolProgressBubble({ status }: { status: ProgressStatus }) {
   );
 }
 
+// ─── Attachment Chip ─────────────────────────────────────────────────────────
+
+function AttachmentChip({
+  name,
+  type,
+  attachmentId,
+  token,
+}: {
+  name: string;
+  type: "image" | "document";
+  attachmentId: string;
+  token?: string | null;
+}) {
+  const theme = useAppTheme();
+  const attachment = useQuery(
+    api.attachments.getAttachment,
+    token ? { token, attachmentId: attachmentId as any } : "skip"
+  );
+
+  const handlePress = () => {
+    const link = attachment?.driveWebViewLink;
+    if (link) Linking.openURL(link);
+  };
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 10,
+        backgroundColor: "rgba(255,255,255,0.15)",
+        opacity: pressed ? 0.7 : 1,
+        alignSelf: "flex-start",
+      })}
+    >
+      <Feather name="paperclip" size={11} color="rgba(255,255,255,0.8)" />
+      <Text fontSize={11} color="rgba(255,255,255,0.9)" numberOfLines={1} maxWidth={160}>
+        {name}
+      </Text>
+    </Pressable>
+  );
+}
+
 // ─── Chat Bubble ──────────────────────────────────────────────────────────────
 
 const ChatBubble = React.memo(function ChatBubble({
@@ -1778,8 +1829,22 @@ const ChatBubble = React.memo(function ChatBubble({
                     isUser ? { borderBottomRightRadius: 6 } : { borderBottomLeftRadius: 6 },
                     BUBBLE_SHADOW,
                   ]}
+                  gap={msg.attachments && msg.attachments.length > 0 ? 8 : 0}
                 >
-                  <Markdown style={mdStyles}>{msg.content}</Markdown>
+                  {msg.content ? <Markdown style={mdStyles}>{msg.content}</Markdown> : null}
+                  {isUser && msg.attachments && msg.attachments.length > 0 && (
+                    <YStack gap={4}>
+                      {msg.attachments.map((att: { attachmentId: string; name: string; type: string; mimeType: string }) => (
+                        <AttachmentChip
+                          key={att.attachmentId}
+                          name={att.name}
+                          type={att.type as "image" | "document"}
+                          attachmentId={att.attachmentId}
+                          token={token}
+                        />
+                      ))}
+                    </YStack>
+                  )}
                 </YStack>
               </Animated.View>
             </Pressable>
@@ -1942,17 +2007,27 @@ import { PopoverMenu } from "@/components/ui/PopoverMenu";
 function ChatInputBar({
   isSending,
   onSend,
-  onPickImage,
-  onPickDoc,
   chatInputMode,
   setChatInputMode,
+  attachments,
+  onRemoveAttachment,
+  onPickImages,
+  onPickCamera,
+  onPickDocument,
+  driveConnected,
+  onRequestDriveAccess,
 }: {
   isSending: boolean;
   onSend: (text: string) => void;
-  onPickImage: () => void;
-  onPickDoc: () => void;
   chatInputMode?: "voice" | "keyboard";
   setChatInputMode?: (mode: "voice" | "keyboard") => void;
+  attachments?: PendingAttachment[];
+  onRemoveAttachment?: (id: string) => void;
+  onPickImages?: () => void;
+  onPickCamera?: () => void;
+  onPickDocument?: () => void;
+  driveConnected?: boolean;
+  onRequestDriveAccess?: () => void;
 }) {
   const theme = useAppTheme();
   const [text, setText] = useState("");
@@ -1974,14 +2049,16 @@ function ChatInputBar({
     }
   }, [onSend]);
 
-  const canSend = text.trim().length > 0 && !isSending;
+  const hasAttachments = (attachments?.length ?? 0) > 0;
+  const canSend = (text.trim().length > 0 || hasAttachments) && !isSending;
 
   const handleSend = useCallback(() => {
     const trimmed = text.trim();
-    if (!trimmed || isSending) return;
+    if (isSending) return;
+    if (!trimmed && !hasAttachments) return;
     (onSend as any)(trimmed, false);
     setText("");
-  }, [text, isSending, onSend]);
+  }, [text, isSending, hasAttachments, onSend]);
 
   // Web: Ctrl/Cmd+Enter to send
   useEffect(() => {
@@ -2075,32 +2152,32 @@ function ChatInputBar({
 
   // ── Normal text input UI ───────────────────────────────────────────────────
   return (
-    <XStack
-      alignItems="flex-end"
-      padding={8}
-      gap={6}
-      borderWidth={1}
-      borderRadius={24}
-      borderColor="$borderColor"
-      backgroundColor="$backgroundStrong"
-      style={SURFACE_SHADOW}
-    >
-      <PopoverMenu
-        items={[
-          { label: "Attach document", icon: "paperclip", onPress: onPickDoc },
-          { label: "Pick image", icon: "image", onPress: onPickImage },
-        ]}
+    <YStack>
+      {/* Attachment preview bar — slides up when files are selected */}
+      {attachments && attachments.length > 0 && (
+        <AttachmentPreviewBar
+          attachments={attachments}
+          onRemove={onRemoveAttachment ?? (() => {})}
+        />
+      )}
+      <XStack
+        alignItems="flex-end"
+        padding={8}
+        gap={6}
+        borderWidth={1}
+        borderRadius={24}
+        borderColor="$borderColor"
+        backgroundColor="$backgroundStrong"
+        style={SURFACE_SHADOW}
       >
-        <YStack
-          width={36}
-          height={36}
-          alignItems="center"
-          justifyContent="center"
-          borderRadius={18}
-        >
-          <Feather name="paperclip" size={18} color={theme.colorMuted.val} />
-        </YStack>
-      </PopoverMenu>
+        <AttachmentPickerButton
+          onPickImages={onPickImages ?? (() => {})}
+          onPickCamera={onPickCamera ?? (() => {})}
+          onPickDocument={onPickDocument ?? (() => {})}
+          driveConnected={driveConnected}
+          onRequestDriveAccess={onRequestDriveAccess}
+          size={18}
+        />
 
       <TextInput
         ref={inputRef}
@@ -2163,7 +2240,8 @@ function ChatInputBar({
           color={canSend ? "#FFFFFF" : theme.colorMuted.val}
         />
       </Pressable>
-    </XStack>
+      </XStack>
+    </YStack>
   );
 }
 
@@ -2262,11 +2340,19 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
 
   const messages = useQuery(api.chat.list, token ? { token, limit: 100 } : "skip") ?? [];
   const searchStatus = useQuery(api.chat.getSearchStatus, token ? { token } : "skip");
+  const googleIntegration = useQuery(
+    api.integrations.getGoogleIntegration,
+    token ? { token } : "skip"
+  );
   const sendMessage = useAction(api.actions.memoryChat.chat);
   const runDeepSearch = useAction(api.chat.deepSearch);
   const clearChat = useMutation(api.chat.clear);
   const updateMemory = useMutation(api.memories.update);
   const deleteMemoryMutation = useMutation(api.memories.remove);
+
+  const driveConnected = !!(googleIntegration?.connected && (googleIntegration as any).hasDriveScope);
+
+  const fileAttachments = useFileAttachments({ token: token ?? undefined });
 
   const [isSending, setIsSending] = useState(false);
   const [editTargetId, setEditTargetId] = useState<string | null>(null);
@@ -2443,7 +2529,10 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
 
   const handleSend = useCallback(
     async (text: string, isVoice: boolean = false) => {
-      if (!text.trim() || !token) return;
+      const hasPendingAttachments = fileAttachments.attachments.some(
+        (a) => a.uploadStatus === "idle" || a.uploadStatus === "compressing"
+      );
+      if ((!text.trim() && !hasPendingAttachments) || !token) return;
       if (Platform.OS !== "web") {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
@@ -2453,21 +2542,38 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
       const optimisticMsg: ChatMsg = {
         _id: `optimistic_${Date.now()}`,
         role: "user",
-        content: text.trim(),
+        content: text.trim() || "📎",
         _creationTime: Date.now(),
       };
 
       setOptimisticMessage(optimisticMsg);
       setIsSending(true);
+
       try {
+        // Upload pending attachments (uploadAll waits for any still-compressing items)
+        let uploadedAttachments: Awaited<ReturnType<typeof fileAttachments.uploadAll>> = [];
+        if (hasPendingAttachments) {
+          try {
+            uploadedAttachments = await fileAttachments.uploadAll();
+          } catch (uploadErr) {
+            const msg = uploadErr instanceof Error ? uploadErr.message : "Upload failed";
+            showToast({ title: "Upload failed", message: msg, tone: "error" });
+            setOptimisticMessage(null);
+            setIsSending(false);
+            return;
+          }
+        }
+
         await sendMessage({
           token,
-          message: text.trim(),
+          message: text.trim() || " ",
           currentTime: new Date().toISOString(),
           currentTimezone:
             Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+          attachments: uploadedAttachments.length > 0 ? uploadedAttachments : undefined,
         });
-        // Optimistic message will be cleared by the useEffect when real messages arrive
+
+        fileAttachments.clear();
       } catch (error) {
         setOptimisticMessage(null);
         showToast({
@@ -2479,39 +2585,16 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
         setIsSending(false);
       }
     },
-    [token, sendMessage, showToast],
+    [token, sendMessage, showToast, fileAttachments],
   );
 
-  const pickImage = useCallback(async () => {
-    try {
-      const ImagePicker = await import("expo-image-picker");
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        quality: 0.8,
-      });
-      if (!result.canceled && result.assets[0]) {
-        handleSend(
-          `[Attached image: ${result.assets[0].fileName || "photo"} — ${result.assets[0].uri}]`,
-        );
-      }
-    } catch {
-      showToast({ title: "Could not open image picker", tone: "error" });
-    }
-  }, [handleSend, showToast]);
-
-  const pickDocument = useCallback(async () => {
-    try {
-      const DocumentPicker = await import("expo-document-picker");
-      const result = await DocumentPicker.getDocumentAsync();
-      if (!result.canceled && result.assets[0]) {
-        handleSend(
-          `[Attached document: ${result.assets[0].name} — ${result.assets[0].uri}]`,
-        );
-      }
-    } catch {
-      showToast({ title: "Could not open document picker", tone: "error" });
-    }
-  }, [handleSend, showToast]);
+  const handleRequestDriveAccess = useCallback(() => {
+    showToast({
+      title: "Google Drive not connected",
+      message: "Connect Google in Settings to attach files.",
+      tone: "info",
+    });
+  }, [showToast]);
 
   const handleClearChat = useCallback(() => {
     if (!token) return;
@@ -2720,10 +2803,15 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
         <ChatInputBar
           isSending={isSending}
           onSend={handleSend}
-          onPickImage={pickImage}
-          onPickDoc={pickDocument}
           chatInputMode={chatInputMode}
           setChatInputMode={setChatInputMode}
+          attachments={fileAttachments.attachments}
+          onRemoveAttachment={fileAttachments.removeAttachment}
+          onPickImages={fileAttachments.pickImages}
+          onPickCamera={fileAttachments.pickCamera}
+          onPickDocument={fileAttachments.pickDocument}
+          driveConnected={driveConnected}
+          onRequestDriveAccess={handleRequestDriveAccess}
         />
       </YStack>
     </KeyboardStickyView>

@@ -99,7 +99,7 @@ export default function ProfileScreen() {
   const deleteAccount = useMutation(api.auth.deleteAccount);
   const updateProfile = useMutation(api.auth.updateProfile);
 
-  // --- Google Calendar Integration ---
+  // --- Google Integration (Calendar + Drive) ---
   const googleIntegration = useQuery(api.integrations.getGoogleIntegration, { token: token || undefined });
   const connectGoogle = useAction(api.integrations.connectGoogle);
   const disconnectGoogle = useMutation(api.integrations.disconnectGoogle);
@@ -124,7 +124,10 @@ export default function ProfileScreen() {
     androidClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID,
     iosClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS,
     webClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB,
-    scopes: ["https://www.googleapis.com/auth/calendar.events"],
+    scopes: [
+      "https://www.googleapis.com/auth/calendar.events",
+      "https://www.googleapis.com/auth/drive.file",
+    ],
     responseType: "code",
     shouldAutoExchangeCode: false,
     redirectUri: googleRedirectUri,
@@ -152,14 +155,14 @@ export default function ProfileScreen() {
         redirectUri: request?.redirectUri ?? googleRedirectUri,
       });
       showToast({
-        title: "Google Calendar connected",
-        message: "New reminders can now sync to your calendar.",
+        title: "Google connected",
+        message: "Calendar sync and file attachments are now enabled.",
         tone: "success",
       });
     } catch (error: any) {
       showToast({
         title: "Connection failed",
-        message: error instanceof Error ? error.message : "Could not connect Google Calendar.",
+        message: error instanceof Error ? error.message : "Could not connect Google.",
         tone: "error",
         closeMode: "manual",
       });
@@ -171,8 +174,8 @@ export default function ProfileScreen() {
   const handleToggleGoogleSync = async () => {
     if (googleIntegration?.connected) {
       Alert.alert(
-        "Disconnect Google Calendar",
-        "Are you sure you want to stop syncing reminders?",
+        "Disconnect Google",
+        "This will stop calendar sync and disable file attachments.",
         [
           { text: "Cancel", style: "cancel" },
           {
@@ -710,17 +713,17 @@ export default function ProfileScreen() {
             <XStack alignItems="center" gap={12} paddingVertical={4}>
               <YStack flex={1}>
                 <XStack alignItems="center" gap={8}>
-                  <Text fontSize={15} fontFamily="$body" color="$color">Google Calendar</Text>
+                  <Text fontSize={15} fontFamily="$body" color="$color">Google</Text>
                   {googleIntegration?.connected && (
-                    <Badge 
-                      label="Connected" 
+                    <Badge
+                      label="Connected"
                       color={theme.primary.val}
                       small
                     />
                   )}
                 </XStack>
                 <Text fontSize={12} fontFamily="$body" marginTop={3} lineHeight={18} color="$colorMuted">
-                  Automatically sync your new reminders to Google Calendar.
+                  Sync reminders to Google Calendar and enable file attachments via Google Drive.
                 </Text>
               </YStack>
               <Switch

@@ -9,7 +9,10 @@ import {
   useWindowDimensions,
   Modal,
   View,
+  Linking,
+  StyleSheet,
 } from "react-native";
+import { Image } from "expo-image";
 import DateTimePicker from "react-native-ui-datepicker";
 import dayjs from "dayjs";
 import { XStack, YStack, Text } from "tamagui";
@@ -17,9 +20,13 @@ import { useAppTheme } from "@/hooks/useAppTheme";
 import * as Haptics from "expo-haptics";
 import { Feather } from "@expo/vector-icons";
 import * as Speech from "expo-speech";
-import { useAction, useQuery } from "convex/react";
+import { useAction, useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
+import { useColors } from "@/hooks/useColors";
+import { useFileAttachments } from "@/hooks/useFileAttachments";
+import { AttachmentPreviewBar } from "./AttachmentPreviewBar";
+import { AttachmentPickerButton } from "./AttachmentPickerButton";
 import { GradientButton } from "./ui/GradientButton";
 import { PressableScale } from "./ui/PressableScale";
 import { BaseSheet } from "./ui/BaseSheet";
@@ -72,6 +79,7 @@ export function EditMemorySheet({
   onSave,
 }: EditMemorySheetProps) {
   const theme = useAppTheme();
+  const colors = useColors();
   const { width } = useWindowDimensions();
   const { token } = useAuth();
   const chatAction = useAction(api.actions.memoryChat.chat);
@@ -88,6 +96,22 @@ export function EditMemorySheet({
   })();
   const stackPickers = width < 390;
 
+  const googleIntegration = useQuery(
+    api.integrations.getGoogleIntegration,
+    token ? { token } : "skip"
+  );
+  const driveConnected = !!(googleIntegration?.connected && (googleIntegration as any).hasDriveScope);
+
+  const existingAttachments = useQuery(
+    api.attachments.getAttachmentsForMemory,
+    token && memory?.id ? { token, memoryId: memory.id as any } : "skip"
+  ) ?? [];
+
+  const recordAttachmentsForMemory = useMutation(api.attachments.recordAttachmentsForMemory);
+  const deleteAttachment = useMutation(api.attachments.deleteAttachment);
+
+  const fileAttachments = useFileAttachments({ token: token ?? undefined });
+
   const [form, setForm] = useState(() => createInitialState(memory));
   const [mode, setMode] = useState<"manual" | "voice">("manual");
   const [voiceLoading, setVoiceLoading] = useState(false);
@@ -100,15 +124,42 @@ export function EditMemorySheet({
       setForm(createInitialState(memory));
       setMode("manual");
       setVoiceTranscript("");
+      fileAttachments.clear();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
+
+  const handleRequestDriveAccess = () => {
+    Alert.alert(
+      "Google Drive Required",
+      "Connect Google Drive in Profile → Integrations to attach files.",
+      [{ text: "OK" }]
+    );
+  };
+
+  const handleDeleteExisting = (attachmentId: string, filename: string) => {
+    if (!token) return;
+    Alert.alert("Delete File", `Remove "${filename}" from Memora and Google Drive?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteAttachment({ token, attachmentId: attachmentId as any });
+          } catch {
+            Alert.alert("Error", "Could not delete file. Please try again.");
+          }
+        },
+      },
+    ]);
+  };
 
   const setField = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (form.entryKind === "reminder" && !form.reminderDate.trim()) {
       if (Platform.OS === "web") {
         window.alert("Reminder needs a date and time.");
@@ -120,6 +171,12 @@ export function EditMemorySheet({
     if (Platform.OS !== "web") {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
+
+    // Upload pending attachments, then link to memory after save
+    const pendingUploads = fileAttachments.attachments.filter(
+      (a) => a.uploadStatus === "idle" || a.uploadStatus === "compressing"
+    );
+
     onSave({
       title: form.title.trim() || "Untitled Memory",
       content: form.content.trim(),
@@ -137,6 +194,32 @@ export function EditMemorySheet({
       capsuleUnlockDate:
         form.capsuleEnabled && form.capsuleDate.trim() ? form.capsuleDate.trim() : null,
     });
+
+    // Upload + record in background after onSave returns
+    if (pendingUploads.length > 0 && token && memory?.id) {
+      try {
+        const uploaded = await fileAttachments.uploadAll();
+        if (uploaded.length > 0) {
+          await recordAttachmentsForMemory({
+            token,
+            memoryId: memory.id as any,
+            files: uploaded.map((u) => ({
+              filename: u.filename,
+              mimeType: u.mimeType,
+              sizeBytes: u.sizeBytes,
+              type: u.type,
+              driveFileId: u.driveFileId,
+              driveFolderId: u.driveFolderId,
+              driveWebViewLink: u.driveWebViewLink,
+              driveThumbnailLink: u.driveThumbnailLink,
+            })),
+          });
+          fileAttachments.clear();
+        }
+      } catch {
+        // silent — attachments can be retried later
+      }
+    }
   };
 
   const handleReadAloud = () => {
@@ -622,23 +705,109 @@ export function EditMemorySheet({
             )}
 
             {/* Attachments */}
-            <PressableScale>
-              <XStack
-                alignItems="center"
-                gap={10}
-                borderWidth={0.5}
-                borderRadius={14}
-                padding={14}
-                borderColor="$borderColor"
-                backgroundColor="$card"
-                borderStyle="dashed"
-              >
-                <Feather name="upload" size={18} color={theme.colorMuted.val} />
-                <Text fontSize={14} fontFamily="$body" color="$color">
-                  Attach files (warranties, receipts, docs)
-                </Text>
+            <YStack gap={8}>
+              <XStack alignItems="center" justifyContent="space-between">
+                <XStack alignItems="center" gap={6}>
+                  <Feather name="paperclip" size={13} color={colors.textSecondary} />
+                  <Text
+                    fontSize={11}
+                    fontFamily="$body"
+                    fontWeight="600"
+                    letterSpacing={0.8}
+                    textTransform="uppercase"
+                    color="$colorMuted"
+                  >
+                    FILES
+                  </Text>
+                </XStack>
+                <AttachmentPickerButton
+                  onPickImages={fileAttachments.pickImages}
+                  onPickCamera={fileAttachments.pickCamera}
+                  onPickDocument={fileAttachments.pickDocument}
+                  driveConnected={driveConnected}
+                  onRequestDriveAccess={handleRequestDriveAccess}
+                  size={18}
+                />
               </XStack>
-            </PressableScale>
+
+              {/* Existing saved attachments */}
+              {existingAttachments.length > 0 && (
+                <YStack gap={6}>
+                  {existingAttachments.map((att: any) => (
+                    <XStack
+                      key={att._id}
+                      alignItems="center"
+                      gap={10}
+                      padding={10}
+                      borderRadius={12}
+                      borderWidth={1}
+                      borderColor={colors.border}
+                      backgroundColor={colors.surface}
+                    >
+                      {att.type === "image" && att.driveThumbnailLink ? (
+                        <Image
+                          source={{ uri: att.driveThumbnailLink }}
+                          style={attStyles.thumb}
+                          contentFit="cover"
+                          transition={200}
+                        />
+                      ) : (
+                        <View style={[attStyles.docThumb, { backgroundColor: colors.backgroundSecondary }]}>
+                          <Feather name="file-text" size={18} color={colors.primary} />
+                        </View>
+                      )}
+                      <YStack flex={1} gap={2}>
+                        <Text fontSize={13} fontWeight="600" color={colors.text} numberOfLines={1}>
+                          {att.filename}
+                        </Text>
+                        <Text fontSize={11} color={colors.textSecondary} textTransform="capitalize">
+                          {att.processingStatus}
+                        </Text>
+                      </YStack>
+                      <XStack gap={8} alignItems="center">
+                        {att.driveWebViewLink && (
+                          <Pressable onPress={() => Linking.openURL(att.driveWebViewLink)} hitSlop={8}>
+                            <Feather name="external-link" size={15} color={colors.textSecondary} />
+                          </Pressable>
+                        )}
+                        <Pressable
+                          onPress={() => handleDeleteExisting(att._id, att.filename)}
+                          hitSlop={8}
+                        >
+                          <Feather name="trash-2" size={15} color="#EF4444" />
+                        </Pressable>
+                      </XStack>
+                    </XStack>
+                  ))}
+                </YStack>
+              )}
+
+              {/* Pending new attachments */}
+              {fileAttachments.attachments.length > 0 && (
+                <AttachmentPreviewBar
+                  attachments={fileAttachments.attachments}
+                  onRemove={fileAttachments.removeAttachment}
+                />
+              )}
+
+              {existingAttachments.length === 0 && fileAttachments.attachments.length === 0 && (
+                <XStack
+                  alignItems="center"
+                  gap={10}
+                  borderWidth={0.5}
+                  borderRadius={12}
+                  padding={12}
+                  borderColor={colors.border}
+                  backgroundColor={colors.backgroundSecondary}
+                  style={{ borderStyle: "dashed" }}
+                >
+                  <Feather name="upload" size={16} color={theme.colorMuted.val} />
+                  <Text fontSize={13} fontFamily="$body" color="$colorMuted">
+                    Attach images or PDFs (receipts, docs, photos)
+                  </Text>
+                </XStack>
+              )}
+            </YStack>
 
             {/* Save */}
             <GradientButton title="Save Changes" onPress={handleSave} icon="save" />
@@ -713,6 +882,21 @@ export function EditMemorySheet({
     </BaseSheet>
   );
 }
+
+const attStyles = StyleSheet.create({
+  thumb: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+  },
+  docThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});
 
 function TipsCard() {
   const theme = useAppTheme();

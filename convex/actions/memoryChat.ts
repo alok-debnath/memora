@@ -24,7 +24,6 @@ import { getReminderTitleWithoutSchedule } from "../lib/reminderTitle";
 
 
 type MemoryDoc = Doc<"memories">;
-type DocumentDoc = Doc<"documentExtractions">;
 
 type ParsedAttachment = {
   name: string;
@@ -58,11 +57,6 @@ type MemorySearchResult = {
   searchMode: "recent_only" | "semantic_fresh" | "semantic_cached";
 };
 
-type DocumentSearchResult = {
-  results: ReturnType<typeof toDocumentSummary>[];
-  count: number;
-  searchMode: "recent_only" | "vector_keyword" | "keyword_only";
-};
 
 type GroundingContext = {
   shouldGround: boolean;
@@ -94,22 +88,6 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: "function",
     function: {
-      name: "search_documents",
-      description:
-        "Search through the user's uploaded documents using semantic search.",
-      parameters: {
-        type: "object",
-        properties: {
-          query: { type: "string", description: "The document search query." },
-        },
-        required: ["query"],
-        additionalProperties: false,
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
       name: "create_memory",
       description:
         "Create a new memory note for the user. Use when they ask to remember something or casually share a durable fact.",
@@ -121,7 +99,7 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           entry_kind: {
             type: "string",
             enum: ["memory", "reminder"],
-            description: "Default to memory. Use reminder only for explicit reminder intent with a resolvable schedule.",
+            description: "REQUIRED when using schedule.due_at — must be 'reminder'. Default to 'memory' otherwise.",
           },
           schedule: {
             type: "object",
@@ -129,7 +107,7 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
               due_at: {
                 type: "string",
                 description:
-                  "Exact ISO 8601 UTC datetime for an explicit reminder. Omit for normal memories.",
+                  "Exact ISO 8601 UTC datetime. ALWAYS pair with entry_kind='reminder' when set.",
               },
               is_recurring: { type: "boolean" },
               recurrence_type: {
@@ -162,11 +140,12 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           entry_kind: {
             type: "string",
             enum: ["memory", "reminder"],
+            description: "REQUIRED when using schedule.due_at — must be 'reminder'.",
           },
           schedule: {
             type: "object",
             properties: {
-              due_at: { type: "string" },
+              due_at: { type: "string", description: "ISO 8601 UTC. ALWAYS pair with entry_kind='reminder'." },
               is_recurring: { type: "boolean" },
               recurrence_type: {
                 type: "string",
@@ -340,25 +319,6 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           limit: { type: "number" },
         },
         required: ["action"],
-        additionalProperties: false,
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "attach_file_to_memory",
-      description:
-        "Attach a file shared in chat to a memory after creating or identifying the right memory.",
-      parameters: {
-        type: "object",
-        properties: {
-          memory_id: { type: "string" },
-          file_url: { type: "string" },
-          file_name: { type: "string" },
-          file_type: { type: "string" },
-        },
-        required: ["memory_id", "file_url", "file_name", "file_type"],
         additionalProperties: false,
       },
     },
@@ -639,18 +599,6 @@ function stripMarkersFromContent(content: string): string {
   return content.replace(MARKER_STRIP_RE, "").trim();
 }
 
-function toDocumentSummary(document: DocumentDoc) {
-  return {
-    id: document._id,
-    filename: document.filename,
-    summary: document.summary ?? "",
-    document_type: document.documentType ?? "other",
-    expiry_date: document.expiryDate ?? null,
-    key_details: document.keyDetails ?? {},
-    status: document.status,
-  };
-}
-
 function truncateStatusText(value: string | undefined, maxLength = 42) {
   const normalized = (value ?? "").trim().replace(/\s+/g, " ");
   if (!normalized) {
@@ -690,96 +638,6 @@ async function listMemoriesForAI(
   });
 }
 
-async function searchDocuments(
-  ctx: ActionCtx,
-  args: {
-    token: string;
-    query: string;
-    userId: Id<"users">;
-    documents?: DocumentDoc[];
-  }
-): Promise<DocumentSearchResult> {
-  const documents: DocumentDoc[] =
-    args.documents ??
-    (await ctx.runQuery(api.documents.list, {
-      token: args.token,
-    }));
-
-  const normalizedQuery = args.query.trim();
-  if (!normalizedQuery) {
-    const results = documents.slice(0, 10).map(toDocumentSummary);
-    return {
-      results,
-      count: results.length,
-      searchMode: "recent_only",
-    };
-  }
-
-  const keywordQuery = normalizedQuery.toLowerCase();
-  const keywordMatches = documents.filter((document) => {
-    const haystack = [
-      document.filename,
-      document.summary,
-      document.documentType,
-      document.extractedText,
-      ...(document.keyDetails ? Object.values(document.keyDetails) : []),
-    ]
-      .filter(Boolean)
-      .join("\n")
-      .toLowerCase();
-    return haystack.includes(keywordQuery);
-  });
-
-  try {
-    const queryEmbedding = await embedText(normalizedQuery);
-    const vectorResults = await ctx.vectorSearch(
-      "documentExtractions",
-      "by_embedding",
-      {
-        vector: queryEmbedding,
-        limit: 8,
-        filter: (q) => q.eq("userId", args.userId),
-      }
-    );
-
-    const byId = new Map(
-      documents.map((document) => [document._id, document] as const)
-    );
-    const merged: DocumentDoc[] = [];
-    const seen = new Set<Id<"documentExtractions">>();
-
-    for (const result of vectorResults) {
-      const document = byId.get(result._id);
-      if (!document || seen.has(document._id)) {
-        continue;
-      }
-      seen.add(document._id);
-      merged.push(document);
-    }
-
-    for (const document of keywordMatches) {
-      if (seen.has(document._id)) {
-        continue;
-      }
-      seen.add(document._id);
-      merged.push(document);
-    }
-
-    const results = merged.slice(0, 10).map(toDocumentSummary);
-    return {
-      results,
-      count: merged.length,
-      searchMode: "vector_keyword",
-    };
-  } catch {
-    const results = keywordMatches.slice(0, 10).map(toDocumentSummary);
-    return {
-      results,
-      count: keywordMatches.length,
-      searchMode: "keyword_only",
-    };
-  }
-}
 
 async function searchMemories(
   ctx: ActionCtx,
@@ -991,7 +849,7 @@ function buildSystemPrompt(userTimezone: string, currentTime: string) {
    - To undo an **edit** (user says "revert", "undo that change", "go back to the old version"): use the history tool with action='undo' (optionally with memory_id).
    - To view edit history or restore a specific snapshot: use the history tool with action='list' or action='restore'.
 
-10. **FILE ATTACHMENTS**: When user shares files, file URLs appear as [Attached file: name (type) — URL: ...]. Create or update a memory and call attach_file_to_memory when relevant.
+10. **FILE ATTACHMENTS**: Files attached by the user appear as context prefixed with "[Attached: filename]" before the message. Reference their content naturally in your reply; you do not need to call any tool for attachments.
 
 **TOPIC GUIDANCE**: Topics are AI-assigned by the system, but if the user explicitly wants a specific memory moved under a different topic, use manage_topics with operation="retag_memory". First identify the target memory: use a real memory_id if you already have it, otherwise search memories or infer the most recent relevant memory from context. Do not pass plain text like "class topic" into memory_id. Use rename/merge/recolor only for taxonomy-wide changes. When they ask "what topics do I have", use manage_topics with operation="list".
 
@@ -1024,12 +882,24 @@ Use markdown only when it genuinely helps readability.
 **CRITICAL — ALWAYS CALL create_memory BEFORE CONFIRMING**: When the user wants to save, remember, note, or be reminded of something — including continuations like "another one for X", "also add X", "and remind me of X" — you MUST call create_memory immediately and then confirm with the result. Never say "Got it" or acknowledge an intent to save without first calling the tool in the same response turn. Each distinct item needs its own separate create_memory call.`;
 }
 
+const driveAttachmentArg = v.object({
+  filename: v.string(),
+  mimeType: v.string(),
+  sizeBytes: v.number(),
+  type: v.union(v.literal("image"), v.literal("document")),
+  driveFileId: v.string(),
+  driveFolderId: v.string(),
+  driveWebViewLink: v.optional(v.string()),
+  driveThumbnailLink: v.optional(v.string()),
+});
+
 export const chat = action({
   args: {
     token: v.string(),
     message: v.string(),
     currentTime: v.optional(v.string()),
     currentTimezone: v.optional(v.string()),
+    attachments: v.optional(v.array(driveAttachmentArg)),
   },
   handler: async (ctx, args) => {
     const client = getOpenAIClient();
@@ -1041,7 +911,7 @@ export const chat = action({
     const effectiveTimezone =
       args.currentTimezone?.trim() || session.timezone || "UTC";
 
-    await ctx.runMutation(internal.chat.send, {
+    const chatMessageId = await ctx.runMutation(internal.chat.send, {
       userId: session._id,
       content: args.message,
       role: "user",
@@ -1049,6 +919,19 @@ export const chat = action({
     await ctx.runMutation(internal.chat.clearSearchStatus, {
       userId: session._id,
     });
+
+    // Record attachments and schedule background extraction
+    if (args.attachments && args.attachments.length > 0) {
+      try {
+        await ctx.runMutation(internal.attachments.recordAttachmentsInternal, {
+          userId: session._id,
+          chatMessageId,
+          files: args.attachments,
+        });
+      } catch (err) {
+        console.error("Failed to record attachments:", err);
+      }
+    }
 
     const chatHistory = await ctx.runQuery(api.chat.list, {
       token: args.token,
@@ -1086,7 +969,56 @@ export const chat = action({
       }
     }
 
-    const attachments = parseAttachments(args.message);
+    const legacyAttachments = parseAttachments(args.message);
+
+    // For image attachments: download from Drive inline so the model can see them via vision.
+    // For documents: content is extracted in background by processAttachment.
+    type InlineImage = { mimeType: string; base64: string; filename: string };
+    const inlineImages: InlineImage[] = [];
+    const docAttachments = (args.attachments ?? []).filter((a) => a.type !== "image");
+
+    const imageAttachments = (args.attachments ?? []).filter((a) => a.type === "image");
+    if (imageAttachments.length > 0) {
+      try {
+        const integration = await ctx.runQuery(
+          internal.integrations.getGoogleIntegrationInternal,
+          { userId: session._id }
+        );
+        if (integration) {
+          const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              refresh_token: integration.refreshToken,
+              client_id: integration.clientId ?? process.env.GOOGLE_CLIENT_ID_WEB ?? "",
+              client_secret: process.env.GOOGLE_CLIENT_SECRET_WEB ?? "",
+              grant_type: "refresh_token",
+            }),
+          });
+          const tokenData = await tokenRes.json() as { access_token?: string };
+          if (tokenData.access_token) {
+            for (const img of imageAttachments) {
+              try {
+                const res = await fetch(
+                  `https://www.googleapis.com/drive/v3/files/${img.driveFileId}?alt=media`,
+                  { headers: { Authorization: `Bearer ${tokenData.access_token}` } }
+                );
+                if (res.ok) {
+                  const buffer = await res.arrayBuffer();
+                  const base64 = arrayBufferToBase64Chat(buffer);
+                  const ct = res.headers.get("content-type") ?? img.mimeType;
+                  inlineImages.push({ mimeType: ct, base64, filename: img.filename });
+                }
+              } catch (imgErr) {
+                console.error("[chat] Failed to download image for vision:", imgErr);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[chat] Failed to fetch Drive credentials for vision:", err);
+      }
+    }
     let aiResponse =
       "I'm having trouble connecting right now. Please try again in a moment.";
 
@@ -1098,16 +1030,7 @@ export const chat = action({
             ...status,
           });
         };
-        let documentsCachePromise: Promise<DocumentDoc[]> | undefined;
         let recentMemoriesCache: MemoryDoc[] | undefined;
-        const getDocumentsCache = async () => {
-          if (!documentsCachePromise) {
-            documentsCachePromise = ctx.runQuery(api.documents.list, {
-              token: args.token,
-            });
-          }
-          return documentsCachePromise;
-        };
         const getRecentMemoriesCache = async (): Promise<MemoryDoc[]> => {
           if (!recentMemoriesCache) {
             recentMemoriesCache = await listMemoriesForAI(ctx, session._id, 100);
@@ -1136,17 +1059,40 @@ export const chat = action({
             ),
           },
           ...recentChat,
-          ...(attachments.length > 0
+          ...(legacyAttachments.length > 0
             ? [
                 {
                   role: "system" as const,
                   content: `Attachment metadata for the latest user message: ${JSON.stringify(
-                    attachments
+                    legacyAttachments
                   )}`,
                 },
               ]
             : []),
-          { role: "user", content: args.message },
+          ...(docAttachments.length > 0
+            ? [
+                {
+                  role: "system" as const,
+                  content: `The user has attached the following document(s) to this message. Content extraction is processing in background:\n${docAttachments.map((a) => `[Document: ${a.filename}]`).join("\n")}`,
+                },
+              ]
+            : []),
+          {
+            role: "user" as const,
+            content:
+              inlineImages.length > 0
+                ? ([
+                    { type: "text" as const, text: args.message || " " },
+                    ...inlineImages.map((img) => ({
+                      type: "image_url" as const,
+                      image_url: {
+                        url: `data:${img.mimeType};base64,${img.base64}`,
+                        detail: "low" as const,
+                      },
+                    })),
+                  ] as OpenAI.Chat.Completions.ChatCompletionContentPart[])
+                : args.message,
+          },
         ];
 
         const initialGrounding = await buildGroundingContext(ctx, {
@@ -1382,12 +1328,6 @@ export const chat = action({
                 source: "topics",
                 events: [{ label: "Operation", value: String(fnArgs.operation || "update") }],
               },
-              attach_file_to_memory: {
-                phase: "writing",
-                detail: "Attaching a file to memory",
-                source: "attachments",
-                events: [{ label: "Operation", value: "attach file" }],
-              },
               surface_cards: {
                 phase: "finalizing",
                 detail: "Preparing memory cards for the UI",
@@ -1505,46 +1445,6 @@ export const chat = action({
                   totalSteps: 4,
                 });
               }
-            } else if (fnName === "search_documents") {
-              const documentSearch = await searchDocuments(ctx, {
-                token: args.token,
-                query: String(fnArgs.query || ""),
-                userId: session._id,
-                documents: await getDocumentsCache(),
-              });
-              await setStreamingStatus({
-                query:
-                  typeof fnArgs.query === "string" && fnArgs.query.trim()
-                    ? fnArgs.query.trim()
-                    : undefined,
-                phase: "searching",
-                toolName: "search_documents",
-                detail:
-                  documentSearch.count > 0
-                    ? `Found ${documentSearch.count} matching ${documentSearch.count === 1 ? "document" : "documents"}`
-                    : "No matching documents found",
-                source: "documents",
-                resultCount: documentSearch.count,
-                previewItems: toPreviewItems(documentSearch.results, "Stored document"),
-                events: [
-                  { label: "Scope", value: "filename, summary, extracted text, key details" },
-                  {
-                    label: "Mode",
-                    value:
-                      documentSearch.searchMode === "vector_keyword"
-                        ? "vector + keyword"
-                        : documentSearch.searchMode === "keyword_only"
-                          ? "keyword fallback"
-                          : "recent documents",
-                  },
-                ],
-                step: 3,
-                totalSteps: 4,
-              });
-              result = JSON.stringify({
-                results: documentSearch.results,
-                count: documentSearch.count,
-              });
             } else if (fnName === "create_memory") {
               const shouldForceUpdate = shouldPreferUpdatingExisting(args.message);
               const referentialUpdate = isReferentialUpdate(args.message);
@@ -2388,37 +2288,6 @@ export const chat = action({
                 step: 3,
                 totalSteps: 4,
               });
-            } else if (fnName === "attach_file_to_memory") {
-              try {
-                const attachmentId = await ctx.runMutation(api.memories.attachFile, {
-                  token: args.token,
-                  memoryId: fnArgs.memory_id as Id<"memories">,
-                  url: String(fnArgs.file_url || ""),
-                  filename: String(fnArgs.file_name || "Attachment"),
-                  mimeType: String(
-                    fnArgs.file_type || "application/octet-stream"
-                  ),
-                });
-                pendingCardIds.add(String(fnArgs.memory_id as string));
-                await setStreamingStatus({
-                  phase: "writing",
-                  toolName: "attach_file_to_memory",
-                  detail: "Attached file metadata to the memory",
-                  source: "attachments",
-                  events: [
-                    { label: "File", value: typeof fnArgs.file_name === "string" ? truncateStatusText(fnArgs.file_name) : "Attachment" },
-                    { label: "Target", value: String(fnArgs.memory_id) },
-                  ],
-                  step: 3,
-                  totalSteps: 4,
-                });
-                result = JSON.stringify({ success: true, attachment_id: attachmentId });
-              } catch (error) {
-                result = JSON.stringify({
-                  error:
-                    error instanceof Error ? error.message : "Failed to attach file",
-                });
-              }
             } else if (fnName === "surface_cards") {
               const ids = Array.isArray(fnArgs.ids) ? (fnArgs.ids as string[]) : [];
               for (const id of ids) pendingCardIds.add(id);
@@ -2536,3 +2405,15 @@ export const chat = action({
     return { reply: (minIdxStr !== Infinity ? aiResponse.slice(0, minIdxStr) : aiResponse).trim() };
   },
 });
+
+/** Convert an ArrayBuffer to base64 without Node's Buffer (Convex compat). */
+function arrayBufferToBase64Chat(buffer: ArrayBuffer): string {
+  const uint8 = new Uint8Array(buffer);
+  const chunkSize = 8192;
+  const chunks: string[] = [];
+  for (let i = 0; i < uint8.length; i += chunkSize) {
+    const slice = uint8.subarray(i, Math.min(i + chunkSize, uint8.length));
+    chunks.push(String.fromCharCode(...(slice as unknown as number[])));
+  }
+  return btoa(chunks.join(""));
+}

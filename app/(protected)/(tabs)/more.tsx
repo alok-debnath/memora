@@ -23,7 +23,7 @@ interface MenuItem {
 const menuItems: MenuItem[] = [
   { icon: "clock", label: "Timeline", description: "Chronological memory view", route: "/timeline", color: "#6366F1" },
   { icon: "bell", label: "Reminders", description: "Upcoming and past reminders", route: "/reminders", color: "#F59E0B" },
-  { icon: "file-text", label: "Documents", description: "Document vault with AI extraction", route: "/documents", color: "#3B82F6" },
+  { icon: "paperclip", label: "Files", description: "Images and documents stored in Google Drive", route: "/documents", color: "#3B82F6" },
   { icon: "share-2", label: "Knowledge Graph", description: "Visual memory connections", route: "/knowledge-graph", color: "#10B981" },
   { icon: "bar-chart-2", label: "Statistics", description: "Memory analytics and trends", route: "/statistics", color: "#EC4899" },
   { icon: "archive", label: "Data", description: "Deleted memories and clean-slate controls", route: "/data", color: "#D97706" },

@@ -701,6 +701,10 @@ export const create = mutation({
     if (scheduling.entryKind === "reminder" && !scheduling.schedule?.dueAt) {
       throw new Error("Reminders require a due date.");
     }
+    // Auto-promote: if a due date is set without an explicit entryKind, treat as reminder
+    if (scheduling.schedule?.dueAt && !scheduling.entryKind) {
+      scheduling.entryKind = "reminder";
+    }
     const memoryId = await ctx.db.insert("memories", {
       userId,
       title: args.title,
@@ -791,6 +795,10 @@ export const update = mutation({
       });
       if (scheduling.entryKind === "reminder" && !scheduling.schedule?.dueAt) {
         throw new Error("Reminders require a due date.");
+      }
+      // Auto-promote: if a due date is set without an explicit entryKind, treat as reminder
+      if (scheduling.schedule?.dueAt && !scheduling.entryKind) {
+        scheduling.entryKind = "reminder";
       }
       Object.assign(patch, scheduling);
     }
@@ -1139,42 +1147,6 @@ export const clearAllUserMemoryData = mutation({
   },
 });
 
-export const attachFile = mutation({
-  args: {
-    token: v.string(),
-    memoryId: v.id("memories"),
-    url: v.string(),
-    filename: v.string(),
-    mimeType: v.string(),
-    sizeBytes: v.optional(v.float64()),
-  },
-  handler: async (ctx, args) => {
-    const { userId } = await resolveUser(ctx, args.token);
-    const memory = await ctx.db.get(args.memoryId);
-    if (!memory || memory.userId !== userId || !isActiveMemory(memory)) {
-      throw new Error("Memory not found");
-    }
-
-    const mimeType = args.mimeType.trim().toLowerCase();
-    const type = mimeType.startsWith("image/")
-      ? "image"
-      : mimeType.startsWith("audio/")
-        ? "audio"
-        : mimeType === "text/uri-list" || args.url.startsWith("http")
-          ? "link"
-          : "document";
-
-    return await ctx.db.insert("memoryAttachments", {
-      memoryId: args.memoryId,
-      userId,
-      type,
-      url: args.url,
-      filename: args.filename.trim() || "Attachment",
-      mimeType: args.mimeType,
-      sizeBytes: args.sizeBytes,
-    });
-  },
-});
 
 export const getByShareToken = query({
   args: { shareToken: v.string() },

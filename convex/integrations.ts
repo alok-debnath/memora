@@ -14,6 +14,20 @@ const googlePlatformValidator = v.union(
 type GooglePlatform = "android" | "ios" | "web";
 const GOOGLE_SYNC_LOCK_TTL_MS = 2 * 60 * 1000;
 
+const GOOGLE_SCOPES = {
+  calendar: "https://www.googleapis.com/auth/calendar",
+  driveFile: "https://www.googleapis.com/auth/drive.file",
+} as const;
+
+function hasDriveScope(grantedScopes?: string[]): boolean {
+  if (!grantedScopes) return false;
+  return grantedScopes.includes(GOOGLE_SCOPES.driveFile);
+}
+
+export function buildGoogleOAuthScope(): string {
+  return [GOOGLE_SCOPES.calendar, GOOGLE_SCOPES.driveFile].join(" ");
+}
+
 function toSearchParams(values: Record<string, string | undefined>) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(values)) {
@@ -61,11 +75,14 @@ export const getGoogleIntegration = query({
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .unique();
 
-    return integration ? { 
-      connected: true, 
-      email: integration.email,
-      updatedAt: integration.updatedAt 
-    } : { connected: false };
+    return integration
+      ? {
+          connected: true,
+          email: integration.email,
+          updatedAt: integration.updatedAt,
+          hasDriveScope: hasDriveScope(integration.grantedScopes),
+        }
+      : { connected: false, hasDriveScope: false };
   },
 });
 
@@ -291,6 +308,7 @@ export const saveGoogleCredentials = internalMutation({
     email: v.optional(v.string()),
     clientId: v.optional(v.string()),
     platform: v.optional(googlePlatformValidator),
+    grantedScopes: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -305,6 +323,7 @@ export const saveGoogleCredentials = internalMutation({
         email: args.email,
         clientId: args.clientId,
         platform: args.platform,
+        grantedScopes: args.grantedScopes ?? existing.grantedScopes,
         updatedAt: now,
       });
     } else {
@@ -315,6 +334,7 @@ export const saveGoogleCredentials = internalMutation({
         email: args.email,
         clientId: args.clientId,
         platform: args.platform,
+        grantedScopes: args.grantedScopes,
         createdAt: now,
         updatedAt: now,
       });
@@ -359,6 +379,11 @@ export const connectGoogle = action({
       throw new Error(`Failed to exchange code: ${data.error_description || data.error}`);
     }
 
+    // Parse granted scopes from token response
+    const grantedScopes: string[] | undefined = typeof data.scope === "string"
+      ? data.scope.split(" ").filter(Boolean)
+      : undefined;
+
     // refresh_token is only returned on the first time or if prompt=consent was used
     if (!data.refresh_token) {
       // Check if we already have one
@@ -366,17 +391,25 @@ export const connectGoogle = action({
       if (!existing.connected) {
         throw new Error("No refresh token returned. Try disconnecting and reconnecting.");
       }
+      // Update scopes even if no new refresh token
+      if (grantedScopes) {
+        await ctx.runMutation(internal.integrations.updateGrantedScopes, {
+          userId: user._id,
+          grantedScopes,
+        });
+      }
     } else {
       await ctx.runMutation(internal.integrations.saveGoogleCredentials, {
         userId: user._id,
         refreshToken: data.refresh_token,
-        email: "", // Optionally fetch email using data.access_token
+        email: "",
         clientId,
         platform: args.platform,
+        grantedScopes,
       });
     }
 
-    return { success: true };
+    return { success: true, grantedScopes };
   },
 });
 
@@ -909,5 +942,242 @@ export const getGoogleIntegrationInternal = internalQuery({
       .query("userIntegrations")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .unique();
+  },
+});
+
+/**
+ * Internal mutation to update only the grantedScopes without changing the refresh token.
+ */
+export const updateGrantedScopes = internalMutation({
+  args: {
+    userId: v.id("users"),
+    grantedScopes: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("userIntegrations")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .unique();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        grantedScopes: args.grantedScopes,
+        updatedAt: Date.now(),
+      });
+    }
+  },
+});
+
+/**
+ * Internal mutation to cache Drive folder IDs on the integration record.
+ */
+export const saveDriveFolderIds = internalMutation({
+  args: {
+    userId: v.id("users"),
+    driveFolderId: v.string(),
+    driveMonthFolderId: v.string(),
+    driveMonthFolderKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("userIntegrations")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .unique();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        driveFolderId: args.driveFolderId,
+        driveMonthFolderId: args.driveMonthFolderId,
+        driveMonthFolderKey: args.driveMonthFolderKey,
+        updatedAt: Date.now(),
+      });
+    }
+  },
+});
+
+/**
+ * Find or create the Memora root folder and a YYYY-MM subfolder in Google Drive.
+ * Returns the month folder ID to use for uploads.
+ */
+export const ensureMemoraFolder = internalAction({
+  args: {
+    userId: v.id("users"),
+    accessToken: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ rootFolderId: string; monthFolderId: string }> => {
+    const integration = await ctx.runQuery(
+      internal.integrations.getGoogleIntegrationInternal,
+      { userId: args.userId }
+    );
+
+    const now = new Date();
+    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+    // Return cached folder IDs if still valid for this month
+    if (
+      integration?.driveFolderId &&
+      integration.driveMonthFolderId &&
+      integration.driveMonthFolderKey === monthKey
+    ) {
+      return {
+        rootFolderId: integration.driveFolderId,
+        monthFolderId: integration.driveMonthFolderId,
+      };
+    }
+
+    // Find or create the "Memora" root folder
+    let rootFolderId = integration?.driveFolderId;
+
+    if (!rootFolderId) {
+      // Search for existing Memora folder
+      const searchRes = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(
+          "name='Memora' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        )}&fields=files(id,name)`,
+        { headers: { Authorization: `Bearer ${args.accessToken}` } }
+      );
+      if (!searchRes.ok) {
+        const body = await searchRes.text();
+        throw new Error(`Drive folder search failed (${searchRes.status}): ${body}`);
+      }
+      const searchData = await searchRes.json() as { files?: Array<{ id: string }> };
+      if (searchData.files && searchData.files.length > 0) {
+        rootFolderId = searchData.files[0].id;
+      } else {
+        // Create it
+        const createRes = await fetch(
+          "https://www.googleapis.com/drive/v3/files?fields=id",
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${args.accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              name: "Memora",
+              mimeType: "application/vnd.google-apps.folder",
+            }),
+          }
+        );
+        if (!createRes.ok) {
+          const body = await createRes.text();
+          throw new Error(`Drive folder creation failed (${createRes.status}): ${body}`);
+        }
+        const createData = await createRes.json() as { id?: string };
+        if (!createData.id) throw new Error("Drive folder creation returned no ID");
+        rootFolderId = createData.id;
+      }
+    }
+
+    if (!rootFolderId) throw new Error("Could not resolve Memora root folder ID");
+
+    // Find or create the month subfolder
+    const monthSearchRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(
+        `name='${monthKey}' and mimeType='application/vnd.google-apps.folder' and '${rootFolderId}' in parents and trashed=false`
+      )}&fields=files(id,name)`,
+      { headers: { Authorization: `Bearer ${args.accessToken}` } }
+    );
+    if (!monthSearchRes.ok) {
+      const body = await monthSearchRes.text();
+      throw new Error(`Drive month-folder search failed (${monthSearchRes.status}): ${body}`);
+    }
+    const monthSearchData = await monthSearchRes.json() as { files?: Array<{ id: string }> };
+
+    let monthFolderId: string;
+    if (monthSearchData.files && monthSearchData.files.length > 0) {
+      monthFolderId = monthSearchData.files[0].id;
+    } else {
+      const createMonthRes = await fetch(
+        "https://www.googleapis.com/drive/v3/files?fields=id",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${args.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name: monthKey,
+            mimeType: "application/vnd.google-apps.folder",
+            parents: [rootFolderId],
+          }),
+        }
+      );
+      if (!createMonthRes.ok) {
+        const body = await createMonthRes.text();
+        throw new Error(`Drive month-folder creation failed (${createMonthRes.status}): ${body}`);
+      }
+      const createMonthData = await createMonthRes.json() as { id?: string };
+      if (!createMonthData.id) throw new Error("Drive month-folder creation returned no ID");
+      monthFolderId = createMonthData.id;
+    }
+
+    // Cache the folder IDs
+    await ctx.runMutation(internal.integrations.saveDriveFolderIds, {
+      userId: args.userId,
+      driveFolderId: rootFolderId,
+      driveMonthFolderId: monthFolderId,
+      driveMonthFolderKey: monthKey,
+    });
+
+    return { rootFolderId, monthFolderId };
+  },
+});
+
+/**
+ * Public action: returns a short-lived Drive access token and folder ID for client-side upload.
+ * Throws DRIVE_SCOPE_MISSING if the user hasn't granted drive.file access.
+ */
+export const getDriveUploadCredentials = action({
+  args: { token: v.optional(v.string()) },
+  handler: async (ctx, args): Promise<{ accessToken: string; folderId: string }> => {
+    const user = await ctx.runQuery(api.auth.me, { token: args.token });
+    if (!user) throw new Error("Not authenticated");
+
+    const integration = await ctx.runQuery(
+      internal.integrations.getGoogleIntegrationInternal,
+      { userId: user._id }
+    );
+    if (!integration) throw new Error("GOOGLE_NOT_CONNECTED");
+    if (!hasDriveScope(integration.grantedScopes)) throw new Error("DRIVE_SCOPE_MISSING");
+
+    const accessToken = await getAccessToken({
+      refreshToken: integration.refreshToken,
+      clientId: integration.clientId,
+      platform: integration.platform,
+    });
+
+    const { monthFolderId } = await ctx.runAction(
+      internal.integrations.ensureMemoraFolder,
+      { userId: user._id, accessToken }
+    );
+
+    return { accessToken, folderId: monthFolderId };
+  },
+});
+
+/**
+ * Internal action: delete a file from Google Drive.
+ */
+export const deleteDriveFile = internalAction({
+  args: {
+    userId: v.id("users"),
+    driveFileId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const integration = await ctx.runQuery(
+      internal.integrations.getGoogleIntegrationInternal,
+      { userId: args.userId }
+    );
+    if (!integration) return;
+
+    const accessToken = await getAccessToken({
+      refreshToken: integration.refreshToken,
+      clientId: integration.clientId,
+      platform: integration.platform,
+    });
+
+    await fetch(`https://www.googleapis.com/drive/v3/files/${args.driveFileId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
   },
 });

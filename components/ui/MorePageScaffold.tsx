@@ -73,12 +73,25 @@ type MorePageScaffoldProps = {
   title: string;
   children: React.ReactNode;
   scrollProps?: Omit<ScrollViewProps, "children">;
+  /**
+   * When true, renders children directly in a View instead of a ScrollView.
+   * Use this when children contain their own VirtualizedList (FlatList/SectionList).
+   * Pass the scroll handler via `externalOnScroll` to keep header animation working.
+   */
+  noScroll?: boolean;
+  /** Pass the animated scroll handler from `useAnimatedScrollHandler` to drive the header collapse. */
+  externalOnScroll?: ReturnType<typeof useAnimatedScrollHandler>;
+  /** The top padding needed for content below the header. Passed to a callback so the caller can apply it. */
+  onContentTopPadding?: (padding: number) => void;
 };
 
 export function MorePageScaffold({
   title,
   children,
   scrollProps,
+  noScroll,
+  externalOnScroll,
+  onContentTopPadding,
 }: MorePageScaffoldProps) {
   const router = useRouter();
   const theme = useAppTheme();
@@ -105,6 +118,11 @@ export function MorePageScaffold({
     },
     [titlePillWidth]
   );
+
+  React.useEffect(() => {
+    onContentTopPadding?.(contentTopPadding);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contentTopPadding]);
 
   const onScroll = useAnimatedScrollHandler<{ lastY?: number }>({
     onBeginDrag: (event, context) => {
@@ -189,30 +207,36 @@ export function MorePageScaffold({
         ]}
       />
 
-      <Animated.ScrollView
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        scrollEventThrottle={16}
-        onScroll={onScroll}
-        {...scrollProps}
-        contentContainerStyle={[
-          {
-            paddingTop: contentTopPadding,
-            paddingBottom: 144,
-            paddingHorizontal: 16,
-          },
-          scrollProps?.contentContainerStyle,
-        ]}
-      >
-        <YStack
-          width="100%"
-          maxWidth={isLargeScreen ? 1040 : undefined}
-          alignSelf="center"
-          gap={14}
-        >
+      {noScroll ? (
+        <View style={{ flex: 1 }}>
           {children}
-        </YStack>
-      </Animated.ScrollView>
+        </View>
+      ) : (
+        <Animated.ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          scrollEventThrottle={16}
+          onScroll={externalOnScroll ?? onScroll}
+          {...scrollProps}
+          contentContainerStyle={[
+            {
+              paddingTop: contentTopPadding,
+              paddingBottom: 144,
+              paddingHorizontal: 16,
+            },
+            scrollProps?.contentContainerStyle,
+          ]}
+        >
+          <YStack
+            width="100%"
+            maxWidth={isLargeScreen ? 1040 : undefined}
+            alignSelf="center"
+            gap={14}
+          >
+            {children}
+          </YStack>
+        </Animated.ScrollView>
+      )}
 
       <Animated.View
         entering={FadeIn.duration(320)}

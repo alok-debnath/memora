@@ -174,7 +174,6 @@ export const deleteAccount = mutation({
     const tables = [
       "memoryAttachments",
       "memoryHistory",
-      "documentExtractions",
       "notificationPreferences",
       "diaryEntries",
       "reviewCards",
