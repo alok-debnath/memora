@@ -412,6 +412,8 @@ export default defineSchema({
     refreshToken: v.string(),
     email: v.optional(v.string()),
     clientId: v.optional(v.string()),
+    // Kept optional for backward compatibility with existing stored integrations.
+    grantedScopes: v.optional(v.array(v.string())),
     platform: v.optional(v.union(v.literal("android"), v.literal("ios"), v.literal("web"))),
     createdAt: v.number(),
     updatedAt: v.number(),
