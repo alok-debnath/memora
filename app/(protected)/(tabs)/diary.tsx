@@ -3,7 +3,6 @@ import {
   Platform,
   TextInput,
   ScrollView,
-  Alert,
   Pressable,
   ActivityIndicator,
 } from "react-native";
@@ -27,6 +26,7 @@ import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { FontFamily } from "@/constants/fonts";
 import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
+import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 
 type DiaryEntryItem = {
   _id: Id<"diaryEntries">;
@@ -51,6 +51,7 @@ type DiaryEntryItem = {
 
 export default function DiaryScreen() {
   const theme = useAppTheme();
+  const { confirm } = useAppConfirm();
   const { user, token } = useAuth();
   const tabBarPadding = useTabBarBottomPadding();
 
@@ -92,16 +93,16 @@ export default function DiaryScreen() {
     }
   };
 
-  const handleDelete = (id: Id<"diaryEntries">) => {
-    if (Platform.OS === "web") {
-      if (window.confirm("Delete this diary entry?")) {
-        deleteEntry({ token: token!, id });
-      }
-    } else {
-      Alert.alert("Delete Entry", "Are you sure?", [
-        { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: () => deleteEntry({ token: token!, id }) },
-      ]);
+  const handleDelete = async (id: Id<"diaryEntries">) => {
+    const confirmed = await confirm({
+      title: "Delete Entry",
+      message: "Are you sure?",
+      confirmLabel: "Delete",
+      tone: "destructive",
+      icon: "trash-2",
+    });
+    if (confirmed) {
+      deleteEntry({ token: token!, id });
     }
   };
 

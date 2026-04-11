@@ -21,7 +21,7 @@
  *   </ContextMenu>
  */
 
-import React, { useState, useRef, useCallback, useImperativeHandle } from "react";
+import React, { useState, useRef, useCallback, useImperativeHandle, useMemo } from "react";
 import {
   Modal,
   Pressable,
@@ -68,6 +68,46 @@ export interface ContextMenuProps {
   openOn?: "longPress" | "press";
   /** Minimum width of the floating preview card (defaults to trigger width). */
   previewMinWidth?: number;
+  /** When true, the floating preview gets a fixed outer card frame. */
+  previewFrame?: boolean;
+}
+
+const PREVIEW_RADIUS = 18;
+const PREVIEW_BORDER_WIDTH = 1;
+
+function PreviewSurface({
+  maxHeight,
+  framed,
+  backgroundColor,
+  borderColor,
+  children,
+}: {
+  maxHeight: number;
+  framed: boolean;
+  backgroundColor: string;
+  borderColor: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View
+      style={[
+        {
+          maxHeight,
+          borderRadius: PREVIEW_RADIUS,
+          overflow: "hidden",
+          backgroundColor,
+        },
+        framed
+          ? {
+              borderWidth: PREVIEW_BORDER_WIDTH,
+              borderColor,
+            }
+          : null,
+      ]}
+    >
+      {children}
+    </View>
+  );
 }
 
 // ─── Menu item ────────────────────────────────────────────────────────────────
@@ -127,13 +167,14 @@ export const ContextMenu = React.forwardRef<ContextMenuHandle, ContextMenuProps>
   onPress,
   openOn = "longPress",
   previewMinWidth,
+  previewFrame = false,
 }: ContextMenuProps, ref) {
+  const theme = useAppTheme();
   const { resolvedMode } = useThemeStore();
   const cardRef = useRef<View>(null);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
   const [menuVisible, setMenuVisible] = useState(false);
-  const [startPos, setStartPos] = useState({ x: 0, y: 0, width: 0, height: 0 });
 
   // Pre-measured position stored synchronously on pressIn.
   // This is the key fix: measure() is async, so we can't call it inside openMenu
@@ -171,7 +212,6 @@ export const ContextMenu = React.forwardRef<ContextMenuHandle, ContextMenuProps>
       cardH.value = height;
       winW.value = windowWidth;
       winH.value = windowHeight;
-      setStartPos({ x, y, width, height });
       setMenuVisible(true);
       progress.value = withSpring(1, { damping: 32, stiffness: 320 });
     },
@@ -242,21 +282,27 @@ export const ContextMenu = React.forwardRef<ContextMenuHandle, ContextMenuProps>
 
   // ── Resolved values ───────────────────────────────────────────────────────
 
-  const validItems = items.filter(Boolean) as ContextMenuItemDef[];
+  const validItems = useMemo(
+    () => items.filter(Boolean) as ContextMenuItemDef[],
+    [items],
+  );
   const overlayPreview = preview ?? children;
-  const previewMaxHeight = Math.max(
-    180,
-    Math.min(
-      windowHeight * (validItems.length > 0 ? 0.38 : 0.48),
-      windowHeight - 220,
+  const previewMaxHeight = useMemo(
+    () => Math.max(
+      180,
+      Math.min(
+        windowHeight * (validItems.length > 0 ? 0.38 : 0.48),
+        windowHeight - 220,
+      ),
     ),
+    [validItems.length, windowHeight],
   );
 
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <>
-      <View ref={cardRef} style={{ opacity: menuVisible ? 0 : 1 }}>
+      <View ref={cardRef} collapsable={false} style={{ opacity: menuVisible ? 0 : 1 }}>
         {/*
           Plain Pressable (NOT AnimatedPressable) — AnimatedPressable can cause
           longPress to fire on release in some RN versions. Scale lives in the
@@ -302,55 +348,51 @@ export const ContextMenu = React.forwardRef<ContextMenuHandle, ContextMenuProps>
               ]}
               pointerEvents="none"
             />
+            <Pressable style={StyleSheet.absoluteFill} onPress={closeMenu} />
 
-            <Pressable style={StyleSheet.absoluteFill} onPress={closeMenu}>
-              <Animated.View style={animatedCardStyle} pointerEvents="box-none">
-                <Pressable onPress={() => {}}>
-                  <View
-                    style={{
-                      maxHeight: previewMaxHeight,
-                      borderRadius: 18,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <ScrollView
-                      style={{ maxHeight: previewMaxHeight }}
-                      showsVerticalScrollIndicator={false}
-                      bounces={false}
-                      nestedScrollEnabled
-                      keyboardShouldPersistTaps="handled"
-                      directionalLockEnabled
-                      contentContainerStyle={{ flexGrow: 1 }}
-                    >
-                      {overlayPreview}
-                    </ScrollView>
-                  </View>
-                </Pressable>
+            <Animated.View style={animatedCardStyle}>
+              <PreviewSurface
+                maxHeight={previewMaxHeight}
+                framed={previewFrame}
+                backgroundColor={theme.card.val}
+                borderColor={theme.borderColor.val}
+              >
+                <ScrollView
+                  style={{ maxHeight: previewMaxHeight }}
+                  showsVerticalScrollIndicator={false}
+                  bounces={false}
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                  directionalLockEnabled
+                  contentContainerStyle={{ flexGrow: 1 }}
+                >
+                  {overlayPreview}
+                </ScrollView>
+              </PreviewSurface>
 
-                {validItems.length > 0 && (
-                  <Animated.View
-                    style={[animatedMenuStyle, { marginTop: 12 }]}
-                    pointerEvents="box-none"
+              {validItems.length > 0 && (
+                <Animated.View
+                  style={[animatedMenuStyle, { marginTop: 12 }]}
+                  pointerEvents="box-none"
+                >
+                  <YStack
+                    borderRadius={14}
+                    overflow="hidden"
+                    borderWidth={StyleSheet.hairlineWidth}
+                    borderColor="$borderColor"
                   >
-                    <YStack
-                      borderRadius={14}
-                      overflow="hidden"
-                      borderWidth={StyleSheet.hairlineWidth}
-                      borderColor="$borderColor"
-                    >
-                      {validItems.map((item, i) => (
-                        <React.Fragment key={i}>
-                          <MenuItem item={item} closeMenu={closeMenu} />
-                          {i < validItems.length - 1 && (
-                            <YStack height={1} backgroundColor="$borderColor" />
-                          )}
-                        </React.Fragment>
-                      ))}
-                    </YStack>
-                  </Animated.View>
-                )}
-              </Animated.View>
-            </Pressable>
+                    {validItems.map((item, i) => (
+                      <React.Fragment key={i}>
+                        <MenuItem item={item} closeMenu={closeMenu} />
+                        {i < validItems.length - 1 && (
+                          <YStack height={1} backgroundColor="$borderColor" />
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </YStack>
+                </Animated.View>
+              )}
+            </Animated.View>
           </Animated.View>
         </Modal>
       )}

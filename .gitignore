@@ -74,3 +74,5 @@ expo-env.d.ts
 .env.test
 .env.production
 !.env.example
+
+.codex

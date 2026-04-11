@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Alert, Platform, Pressable } from "react-native";
+import { Pressable } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useMutation, useQuery } from "convex/react";
 import { Text, XStack, YStack } from "tamagui";
@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
+import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppTheme } from "@/hooks/useAppTheme";
 
@@ -201,6 +202,7 @@ function TabPill({
 export default function DataScreen() {
   const theme = useAppTheme();
   const { token } = useAuth();
+  const { confirm } = useAppConfirm();
   const [activeTab, setActiveTab] = useState<"deleted" | "completed">("deleted");
   const [openMenuId, setOpenMenuId] = useState<Id<"memories"> | null>(null);
 
@@ -220,33 +222,33 @@ export default function DataScreen() {
 
   // ── helpers ──────────────────────────────────────────────────────────────
 
-  function confirm(title: string, message: string, onConfirm: () => void) {
-    if (Platform.OS === "web") {
-      if (window.confirm(`${title}\n\n${message}`)) onConfirm();
-    } else {
-      Alert.alert(title, message, [
-        { text: "Cancel", style: "cancel" },
-        { text: "Confirm", style: "destructive", onPress: onConfirm },
-      ]);
-    }
+  async function confirmAction(title: string, message: string, onConfirm: () => void) {
+    const confirmed = await confirm({
+      title,
+      message,
+      tone: title.toLowerCase().includes("restore") ? "default" : "destructive",
+      confirmLabel: title.toLowerCase().includes("restore") ? "Restore" : "Confirm",
+      icon: title.toLowerCase().includes("restore") ? "rotate-ccw" : "trash-2",
+    });
+    if (confirmed) onConfirm();
   }
 
   function handleRestore(id: Id<"memories">) {
     setOpenMenuId(null);
-    confirm("Restore Memory", "Restore this memory back into your active vault?", () => {
+    void confirmAction("Restore Memory", "Restore this memory back into your active vault?", () => {
       if (token) void restoreMemory({ token, id });
     });
   }
 
   function handlePermanentDelete(id: Id<"memories">) {
     setOpenMenuId(null);
-    confirm("Delete Forever", "Permanently delete this memory? This cannot be undone.", () => {
+    void confirmAction("Delete Forever", "Permanently delete this memory? This cannot be undone.", () => {
       if (token) void permanentlyRemoveMemory({ token, id });
     });
   }
 
   function handlePermanentDeleteAll() {
-    confirm(
+    void confirmAction(
       "Clear All Deleted",
       "Permanently delete all items in the Deleted tab? This cannot be undone.",
       () => { if (token) void permanentlyRemoveAllDeleted({ token }); }
@@ -255,20 +257,20 @@ export default function DataScreen() {
 
   function handleUncomplete(id: Id<"memories">) {
     setOpenMenuId(null);
-    confirm("Restore to Active", "Move this completed item back to your active memories?", () => {
+    void confirmAction("Restore to Active", "Move this completed item back to your active memories?", () => {
       if (token) void uncompleteMemory({ token, id });
     });
   }
 
   function handlePermanentRemoveCompleted(id: Id<"memories">) {
     setOpenMenuId(null);
-    confirm("Delete Forever", "Permanently delete this completed item? This cannot be undone.", () => {
+    void confirmAction("Delete Forever", "Permanently delete this completed item? This cannot be undone.", () => {
       if (token) void permanentlyRemoveCompleted({ token, id });
     });
   }
 
   function handleClearAllCompleted() {
-    confirm(
+    void confirmAction(
       "Clear All Completed",
       "Permanently delete all completed reminders? This cannot be undone.",
       () => { if (token) void permanentlyRemoveAllCompleted({ token }); }
@@ -276,7 +278,7 @@ export default function DataScreen() {
   }
 
   function handleClearSlate() {
-    confirm(
+    void confirmAction(
       "Delete All Memory Data",
       "This removes ALL memories, reminders, review cards, topic links, attachments, completed items, and deleted items from your account.",
       () => { if (token) void clearAllMemoryData({ token }); }

@@ -36,6 +36,7 @@ import { PickerField, type PickerOption } from "./ui/PickerField";
 import { TimeCapsuleToggle } from "./ui/TimeCapsuleToggle";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { KeyboardAwareScrollViewCompat } from "./KeyboardAwareScrollViewCompat";
+import { useAppConfirm } from "./ui/confirm/AppConfirmProvider";
 import { FontFamily } from "@/constants/fonts";
 import type { MemoryNote } from "@/types/memory";
 import { getReminderDate, inferMemoryEntryKind } from "@/types/memoryKind";
@@ -79,6 +80,7 @@ export function EditMemorySheet({
   onSave,
 }: EditMemorySheetProps) {
   const theme = useAppTheme();
+  const { confirm } = useAppConfirm();
   const colors = useColors();
   const { width } = useWindowDimensions();
   const { token } = useAuth();
@@ -137,22 +139,21 @@ export function EditMemorySheet({
     );
   };
 
-  const handleDeleteExisting = (attachmentId: string, filename: string) => {
+  const handleDeleteExisting = async (attachmentId: string, filename: string) => {
     if (!token) return;
-    Alert.alert("Delete File", `Remove "${filename}" from Memora and Google Drive?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await deleteAttachment({ token, attachmentId: attachmentId as any });
-          } catch {
-            Alert.alert("Error", "Could not delete file. Please try again.");
-          }
-        },
-      },
-    ]);
+    const confirmed = await confirm({
+      title: "Delete File",
+      message: `Remove "${filename}" from Memora and Google Drive?`,
+      confirmLabel: "Delete",
+      tone: "destructive",
+      icon: "trash-2",
+    });
+    if (!confirmed) return;
+    try {
+      await deleteAttachment({ token, attachmentId: attachmentId as any });
+    } catch {
+      Alert.alert("Error", "Could not delete file. Please try again.");
+    }
   };
 
   const setField = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
@@ -228,18 +229,16 @@ export function EditMemorySheet({
   };
 
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!memory) return;
-    if (Platform.OS === "web") {
-      if (window.confirm("Delete this memory? This cannot be undone.")) {
-        onSave({ _delete: true });
-      }
-    } else {
-      Alert.alert("Delete Memory", "This cannot be undone.", [
-        { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: () => onSave({ _delete: true }) },
-      ]);
-    }
+    const confirmed = await confirm({
+      title: "Delete Memory",
+      message: "This cannot be undone.",
+      confirmLabel: "Delete",
+      tone: "destructive",
+      icon: "trash-2",
+    });
+    if (confirmed) onSave({ _delete: true });
   };
 
   const handleVoiceTranscription = async (text: string) => {

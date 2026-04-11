@@ -38,6 +38,7 @@ import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
 import { FontFamily } from "@/constants/fonts";
 import { useAppToast } from "@/components/ui/toast";
+import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { logDevError } from "@/lib/devLog";
 import { Badge } from "@/components/ui/Badge";
 import { ContextMenu, type ContextMenuHandle, type ContextMenuItemDef } from "@/components/ui/ContextMenu";
@@ -863,10 +864,6 @@ function SearchResultRow({
   // Preview card shown in the blur overlay (mirroring the home screen style)
   const previewCard = (
     <YStack
-      backgroundColor="$card"
-      borderColor="$borderColor"
-      borderWidth={1}
-      borderRadius={16}
       padding={14}
       gap={8}
     >
@@ -949,7 +946,7 @@ function SearchResultRow({
 
   return (
     <Animated.View entering={FadeInDown.duration(260).delay(index * 55)}>
-      <ContextMenu ref={menuRef} items={menuItems} preview={previewCard}>
+      <ContextMenu ref={menuRef} items={menuItems} preview={previewCard} previewFrame>
         <XStack
           paddingHorizontal={14}
           paddingVertical={11}
@@ -1377,10 +1374,6 @@ function SearchStatsPreview({
 
   return (
     <YStack
-      backgroundColor="$card"
-      borderRadius={18}
-      borderWidth={1}
-      borderColor="$borderColor"
       padding={18}
       gap={16}
     >
@@ -1488,10 +1481,6 @@ function DeepSearchPreview({
 
   return (
     <YStack
-      backgroundColor="$card"
-      borderRadius={18}
-      borderWidth={1}
-      borderColor="$borderColor"
       padding={18}
       gap={16}
     >
@@ -1637,7 +1626,6 @@ function PerformancePill({
 
   return (
     <ContextMenu
-      openOn="press"
       preview={
         <SearchStatsPreview
           isCached={isCached}
@@ -1650,6 +1638,7 @@ function PerformancePill({
       }
       items={[]}
       previewMinWidth={300}
+      previewFrame
     >
       <View style={{
         flexDirection: "row",
@@ -1709,6 +1698,7 @@ function SearchResultsCard({
   const triggerReminderSync = useMutation(api.integrations.triggerReminderSync);
   const removeReminderSync = useMutation(api.integrations.removeReminderSync);
   const { showToast } = useAppToast();
+  const { confirm } = useAppConfirm();
 
   // Fetch full memory docs by ID reactively
   const fetchedDocs = useQuery(
@@ -1749,25 +1739,24 @@ function SearchResultsCard({
     }
   }, [token, completeMemory, showToast]);
 
-  const handleDelete = useCallback((id: string) => {
+  const handleDelete = useCallback(async (id: string) => {
     if (!token) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    Alert.alert("Delete Memory", "This will move the memory to trash.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await deleteMemory({ token, id: id as any });
-            showToast({ title: "Memory deleted", tone: "success" });
-          } catch {
-            showToast({ title: "Couldn't delete — try again", tone: "error" });
-          }
-        },
-      },
-    ]);
-  }, [token, deleteMemory, showToast]);
+    const confirmed = await confirm({
+      title: "Delete Memory",
+      message: "This will move the memory to trash.",
+      confirmLabel: "Delete",
+      tone: "destructive",
+      icon: "trash-2",
+    });
+    if (!confirmed) return;
+    try {
+      await deleteMemory({ token, id: id as any });
+      showToast({ title: "Memory deleted", tone: "success" });
+    } catch {
+      showToast({ title: "Couldn't delete — try again", tone: "error" });
+    }
+  }, [confirm, token, deleteMemory, showToast]);
 
   const handleEdit = useCallback((id: string) => {
     onEdit?.(id);
@@ -1789,34 +1778,30 @@ function SearchResultsCard({
     }
   }, [token, triggerReminderSync, showToast]);
 
-  const handleRemoveSync = useCallback((item: SearchResultItem) => {
+  const handleRemoveSync = useCallback(async (item: SearchResultItem) => {
     if (!token) return;
-    Alert.alert(
-      "Remove Google sync",
-      "This removes linked Google Calendar event data for this reminder and clears local sync state.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Remove sync",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const result = await removeReminderSync({
-                token,
-                memoryId: item.id as any,
-              });
-              showToast({
-                title: result.message,
-                tone: result.removed ? "success" : "info",
-              });
-            } catch {
-              showToast({ title: "Couldn't remove Google sync", tone: "error" });
-            }
-          },
-        },
-      ]
-    );
-  }, [token, removeReminderSync, showToast]);
+    const confirmed = await confirm({
+      title: "Remove Google sync",
+      message:
+        "This removes linked Google Calendar event data for this reminder and clears local sync state.",
+      confirmLabel: "Remove sync",
+      tone: "destructive",
+      icon: "link-2",
+    });
+    if (!confirmed) return;
+    try {
+      const result = await removeReminderSync({
+        token,
+        memoryId: item.id as any,
+      });
+      showToast({
+        title: result.message,
+        tone: result.removed ? "success" : "info",
+      });
+    } catch {
+      showToast({ title: "Couldn't remove Google sync", tone: "error" });
+    }
+  }, [confirm, token, removeReminderSync, showToast]);
 
   const handleDeepSearch = async () => {
     if (!onDeepSearch || isDeepSearching) return;
@@ -1873,7 +1858,6 @@ function SearchResultsCard({
 
             {isCached && onDeepSearch && (
               <ContextMenu
-                openOn="press"
                 preview={
                   <DeepSearchPreview
                     resultCount={ids.length}
@@ -1891,6 +1875,7 @@ function SearchResultsCard({
                   },
                 ]}
                 previewMinWidth={320}
+                previewFrame
               >
                 <View
                   style={{

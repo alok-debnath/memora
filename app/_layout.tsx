@@ -20,6 +20,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useColorScheme } from "react-native";
 import { TamaguiProvider } from "tamagui";
+import { PortalProvider } from "react-native-teleport";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useThemeStore } from "@/store/theme";
@@ -29,6 +30,7 @@ import { authClient } from "@/lib/auth-client";
 import { logDevError } from "@/lib/devLog";
 import tamaguiConfig from "@/tamagui.config";
 import { AppToastProvider, AppToastRenderer } from "@/components/ui/toast";
+import { AppConfirmProvider } from "@/components/ui/confirm/AppConfirmProvider";
 
 
 SplashScreen.preventAutoHideAsync();
@@ -57,24 +59,28 @@ function RootLayoutNav() {
   if (!auth.hasSeenOnboarding) {
     return (
       <TamaguiProvider config={tamaguiConfig} defaultTheme={resolvedMode}>
-        <AuthContext.Provider value={auth}>
-          <OnboardingScreen />
-          <AppToastRenderer />
-        </AuthContext.Provider>
+        <AppConfirmProvider>
+          <AuthContext.Provider value={auth}>
+            <OnboardingScreen />
+            <AppToastRenderer />
+          </AuthContext.Provider>
+        </AppConfirmProvider>
       </TamaguiProvider>
     );
   }
 
   return (
     <TamaguiProvider config={tamaguiConfig} defaultTheme={resolvedMode}>
-      <AuthContext.Provider value={auth}>
-        <StatusBar style={resolvedMode === "dark" ? "light" : "dark"} />
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: resolvedMode === "dark" ? "#18120D" : "#F7F1E8" } }}>
-          <Stack.Screen name="(public)" options={{ headerShown: false }} />
-          <Stack.Screen name="(protected)" options={{ headerShown: false }} />
-        </Stack>
-        <AppToastRenderer />
-      </AuthContext.Provider>
+      <AppConfirmProvider>
+        <AuthContext.Provider value={auth}>
+          <StatusBar style={resolvedMode === "dark" ? "light" : "dark"} />
+          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: resolvedMode === "dark" ? "#18120D" : "#F7F1E8" } }}>
+            <Stack.Screen name="(public)" options={{ headerShown: false }} />
+            <Stack.Screen name="(protected)" options={{ headerShown: false }} />
+          </Stack>
+          <AppToastRenderer />
+        </AuthContext.Provider>
+      </AppConfirmProvider>
     </TamaguiProvider>
   );
 }
@@ -105,11 +111,13 @@ export default function RootLayout() {
         <ConvexProvider client={convex}>
           <ConvexBetterAuthProvider client={convex} authClient={authClient}>
             <GestureHandlerRootView style={{ flex: 1 }}>
-              <KeyboardProvider>
-                <AppToastProvider>
-                  <RootLayoutNav />
-                </AppToastProvider>
-              </KeyboardProvider>
+              <PortalProvider>
+                <KeyboardProvider>
+                  <AppToastProvider>
+                    <RootLayoutNav />
+                  </AppToastProvider>
+                </KeyboardProvider>
+              </PortalProvider>
             </GestureHandlerRootView>
           </ConvexBetterAuthProvider>
         </ConvexProvider>

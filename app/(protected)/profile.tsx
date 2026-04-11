@@ -25,6 +25,7 @@ import { GradientButton } from "@/components/ui/GradientButton";
 import { Badge } from "@/components/ui/Badge";
 import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
 import { useAppToast } from "@/components/ui/toast";
+import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { FontFamily } from "@/constants/fonts";
 import { Dropdown, type IDropdownRef } from "react-native-element-dropdown";
 import { getTimeZones } from "@vvo/tzdb";
@@ -63,6 +64,7 @@ const ALL_TIMEZONE_OPTIONS: TimezoneOption[] = getTimeZones({ includeUtc: true }
 export default function ProfileScreen() {
   const theme = useAppTheme();
   const { showToast } = useAppToast();
+  const { confirm } = useAppConfirm();
   const { user, token, logout } = useAuth();
   const { mode, setMode, resolvedMode } = useThemeStore();
   const [displayName, setDisplayName] = React.useState(user?.name ?? "");
@@ -173,24 +175,19 @@ export default function ProfileScreen() {
 
   const handleToggleGoogleSync = async () => {
     if (googleIntegration?.connected) {
-      Alert.alert(
-        "Disconnect Google",
-        "This will stop calendar sync and disable file attachments.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Disconnect",
-            style: "destructive",
-            onPress: async () => {
-              try {
-                await disconnectGoogle({ token: token || undefined });
-              } catch (e) {
-                Alert.alert("Error", "Failed to disconnect");
-              }
-            },
-          },
-        ]
-      );
+      const confirmed = await confirm({
+        title: "Disconnect Google",
+        message: "This will stop calendar sync and disable file attachments.",
+        confirmLabel: "Disconnect",
+        tone: "destructive",
+        icon: "link-2",
+      });
+      if (!confirmed) return;
+      try {
+        await disconnectGoogle({ token: token || undefined });
+      } catch (e) {
+        Alert.alert("Error", "Failed to disconnect");
+      }
     } else {
       promptAsync();
     }
@@ -263,14 +260,16 @@ export default function ProfileScreen() {
       await logout();
       router.replace("/(public)/(auth)/login");
     };
-    if (Platform.OS === "web") {
-      if (window.confirm("Are you sure you want to log out?")) doLogout();
-    } else {
-      Alert.alert("Logout", "Are you sure?", [
-        { text: "Cancel", style: "cancel" },
-        { text: "Logout", style: "destructive", onPress: doLogout },
-      ]);
-    }
+    void (async () => {
+      const confirmed = await confirm({
+        title: "Logout",
+        message: "Are you sure?",
+        confirmLabel: "Logout",
+        tone: "default",
+        icon: "log-out",
+      });
+      if (confirmed) void doLogout();
+    })();
   };
 
   const handleDeleteAccount = () => {
@@ -283,14 +282,16 @@ export default function ProfileScreen() {
         router.replace("/(public)/(auth)/login");
       }
     };
-    if (Platform.OS === "web") {
-      if (window.confirm("Delete all data? This cannot be undone.")) doDelete();
-    } else {
-      Alert.alert("Delete Account", "This will delete your app data and profile. This cannot be undone.", [
-        { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: doDelete },
-      ]);
-    }
+    void (async () => {
+      const confirmed = await confirm({
+        title: "Delete Account",
+        message: "This will delete your app data and profile. This cannot be undone.",
+        confirmLabel: "Delete",
+        tone: "destructive",
+        icon: "trash-2",
+      });
+      if (confirmed) void doDelete();
+    })();
   };
 
   const handleSaveProfile = async () => {

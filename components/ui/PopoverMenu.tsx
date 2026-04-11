@@ -1,6 +1,7 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
-  Modal,
+  BackHandler,
+  Keyboard,
   Pressable,
   View,
   StyleSheet,
@@ -9,77 +10,199 @@ import {
 import { Feather } from "@expo/vector-icons";
 import { XStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { Portal } from "react-native-teleport";
 
 export interface PopoverMenuItem {
   label: string;
   icon: React.ComponentProps<typeof Feather>["name"];
+  iconColor?: string;
+  destructive?: boolean;
   onPress: () => void;
 }
 
 interface PopoverMenuProps {
   items: PopoverMenuItem[];
   children: React.ReactNode; // the trigger element
+  width?: number;
+  align?: "start" | "end";
+  triggerGap?: number;
+  horizontalOffset?: number;
+  verticalOffset?: number;
 }
 
-const MENU_WIDTH = 200;
+const DEFAULT_MENU_WIDTH = 220;
 const ITEM_HEIGHT = 48;
 const MENU_PADDING = 8;
+const MENU_EDGE_OFFSET = 8;
+const DEFAULT_TRIGGER_GAP = 8;
 
-export function PopoverMenu({ items, children }: PopoverMenuProps) {
+type TriggerRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+function getMenuPosition({
+  rect,
+  menuHeight,
+  menuWidth,
+  windowWidth,
+  windowHeight,
+  keyboardHeight,
+  align,
+  triggerGap,
+  horizontalOffset,
+  verticalOffset,
+}: {
+  rect: TriggerRect;
+  menuHeight: number;
+  menuWidth: number;
+  windowWidth: number;
+  windowHeight: number;
+  keyboardHeight: number;
+  align: "start" | "end";
+  triggerGap: number;
+  horizontalOffset: number;
+  verticalOffset: number;
+}) {
+  const bottomLimit = windowHeight - keyboardHeight - MENU_EDGE_OFFSET;
+  const effectiveGap = triggerGap + verticalOffset;
+  const spaceBelow = bottomLimit - (rect.y + rect.height) - effectiveGap;
+  const spaceAbove = rect.y - MENU_EDGE_OFFSET - effectiveGap;
+  const floatAbove = spaceBelow < menuHeight && spaceAbove > spaceBelow;
+
+  const unclampedTop = floatAbove
+    ? rect.y - menuHeight - effectiveGap
+    : rect.y + rect.height + effectiveGap;
+  const maxTop = Math.max(MENU_EDGE_OFFSET, bottomLimit - menuHeight);
+  const top = Math.min(Math.max(MENU_EDGE_OFFSET, unclampedTop), maxTop);
+
+  const preferredLeft =
+    (align === "start" ? rect.x : rect.x + rect.width - menuWidth) + horizontalOffset;
+  const left = Math.min(
+    Math.max(MENU_EDGE_OFFSET, preferredLeft),
+    windowWidth - menuWidth - MENU_EDGE_OFFSET,
+  );
+
+  return { top, left };
+}
+
+export function PopoverMenu({
+  items,
+  children,
+  width = DEFAULT_MENU_WIDTH,
+  align = "end",
+  triggerGap = DEFAULT_TRIGGER_GAP,
+  horizontalOffset = 0,
+  verticalOffset = 0,
+}: PopoverMenuProps) {
   const theme = useAppTheme();
   const { height: winH, width: winW } = useWindowDimensions();
+  const portalName = useId();
   // collapsable={false} is critical — without it React Native may elide the
   // native backing view, causing measureInWindow to return zeros.
   const triggerRef = useRef<View>(null);
+  const lastTriggerRect = useRef<TriggerRect | null>(null);
 
   // null = closed; object = open with precomputed position
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const isOpen = menuPos !== null;
 
   const menuHeight = items.length * ITEM_HEIGHT + MENU_PADDING;
 
-  const open = useCallback(() => {
-    triggerRef.current?.measureInWindow((x, y, width, height) => {
-      // Precompute entirely inside the callback so there is never a render
-      // cycle where visible=true but pos=(0,0).
-      const spaceBelow = winH - (y + height);
-      const floatAbove = spaceBelow < menuHeight + 12;
-      const top = floatAbove ? y - menuHeight - 8 : y + height + 8;
-      // Align right edge of menu with right edge of trigger; clamp to screen
-      const left = Math.min(
-        Math.max(8, x + width - MENU_WIDTH),
-        winW - MENU_WIDTH - 8,
-      );
-      setMenuPos({ top, left });
+  const positionMenu = useCallback((rect: TriggerRect) => {
+    lastTriggerRect.current = rect;
+    setMenuPos(
+      getMenuPosition({
+        rect,
+        menuHeight,
+        menuWidth: width,
+        windowWidth: winW,
+        windowHeight: winH,
+        keyboardHeight,
+        align,
+        triggerGap,
+        horizontalOffset,
+        verticalOffset,
+      }),
+    );
+  }, [
+    align,
+    horizontalOffset,
+    keyboardHeight,
+    menuHeight,
+    triggerGap,
+    verticalOffset,
+    winH,
+    winW,
+    width,
+  ]);
+
+  const measureAndOpen = useCallback(() => {
+    triggerRef.current?.measureInWindow((x, y, triggerWidth, height) => {
+      positionMenu({ x, y, width: triggerWidth, height });
     });
-  }, [menuHeight, winH, winW]);
+  }, [positionMenu]);
+
+  const open = useCallback(() => {
+    measureAndOpen();
+  }, [measureAndOpen]);
 
   const close = useCallback(() => setMenuPos(null), []);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener("keyboardDidShow", (event) => {
+      setKeyboardHeight(event.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener("keyboardDidHide", () => {
+      setKeyboardHeight(0);
+      close();
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const backSub = BackHandler.addEventListener("hardwareBackPress", () => {
+      close();
+      return true;
+    });
+    return () => backSub.remove();
+  }, [close, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (lastTriggerRect.current) {
+      positionMenu(lastTriggerRect.current);
+    }
+  }, [isOpen, keyboardHeight, positionMenu, winH, winW]);
 
   return (
     <>
       {/* collapsable={false} ensures a real native view exists for measureInWindow */}
       <View ref={triggerRef} collapsable={false}>
-        <Pressable onPress={open}>{children}</Pressable>
+        <Pressable onPress={open} style={({ pressed }) => [pressed && styles.triggerPressed]}>
+          {children}
+        </Pressable>
       </View>
 
-      <Modal
-        visible={menuPos !== null}
-        transparent
-        animationType="none"
-        onRequestClose={close}
-        statusBarTranslucent
-      >
-        {/* Full-screen dismiss backdrop */}
-        <Pressable style={StyleSheet.absoluteFill} onPress={close}>
-          {menuPos && (
-            // Stop propagation so tapping inside the card doesn't dismiss
+      {menuPos ? (
+        <Portal hostName="root" name={`popover-menu-${portalName}`}>
+          <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+            <Pressable style={StyleSheet.absoluteFill} onPress={close} />
             <Pressable
               style={[
                 styles.menu,
                 {
                   top: menuPos.top,
                   left: menuPos.left,
-                  width: MENU_WIDTH,
+                  width,
                   backgroundColor: theme.card.val,
                   borderColor: theme.borderColor.val,
                 },
@@ -96,21 +219,38 @@ export function PopoverMenu({ items, children }: PopoverMenuProps) {
                     style={({ pressed }) => [styles.item, { opacity: pressed ? 0.7 : 1 }]}
                   >
                     <XStack alignItems="center" gap={12} paddingHorizontal={14} paddingVertical={13}>
-                      <Feather name={item.icon} size={16} color={theme.colorMuted.val} />
-                      <Text fontSize={14} fontFamily="$body" color="$color">{item.label}</Text>
+                      <Feather
+                        name={item.icon}
+                        size={16}
+                        color={
+                          item.destructive
+                            ? theme.destructive.val
+                            : (item.iconColor ?? theme.colorMuted.val)
+                        }
+                      />
+                      <Text
+                        fontSize={14}
+                        fontFamily="$body"
+                        color={item.destructive ? theme.destructive.val : "$color"}
+                      >
+                        {item.label}
+                      </Text>
                     </XStack>
                   </Pressable>
                 </React.Fragment>
               ))}
             </Pressable>
-          )}
-        </Pressable>
-      </Modal>
+          </View>
+        </Portal>
+      ) : null}
     </>
   );
 }
 
 const styles = StyleSheet.create({
+  triggerPressed: {
+    opacity: 0.6,
+  },
   menu: {
     position: "absolute",
     borderRadius: 14,

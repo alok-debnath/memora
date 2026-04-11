@@ -47,6 +47,7 @@ import { BaseSheet } from "@/components/ui/BaseSheet";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { SkeletonCard } from "@/components/ui/Skeleton";
+import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 
 const INITIAL_FEED_SIZE = 6;
 
@@ -178,6 +179,7 @@ function MetricTile({ value, label }: { value: number; label: string }) {
 
 export default function HomeScreen() {
   const theme = useAppTheme();
+  const { confirm } = useAppConfirm();
   const { user, token } = useAuth();
   const { resolvedMode, setMode } = useThemeStore();
 
@@ -330,17 +332,16 @@ export default function HomeScreen() {
     if (Platform.OS !== "web") {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     }
-    if (Platform.OS === "web") {
-      if (window.confirm("Delete this memory?")) {
-        await deleteMemory({ token, id });
-      }
-      return;
+    const confirmed = await confirm({
+      title: "Delete",
+      message: "Delete this memory?",
+      confirmLabel: "Delete",
+      tone: "destructive",
+      icon: "trash-2",
+    });
+    if (confirmed) {
+      await deleteMemory({ token, id });
     }
-
-    Alert.alert("Delete", "Delete this memory?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => deleteMemory({ token, id }) },
-    ]);
   };
 
   const showSyncAlert = (title: string, message: string) => {
@@ -366,31 +367,27 @@ export default function HomeScreen() {
     }
   };
 
-  const handleRemoveReminderSync = (id: Id<"memories">) => {
+  const handleRemoveReminderSync = async (id: Id<"memories">) => {
     if (!token) return;
-    Alert.alert(
-      "Remove Google sync",
-      "This will delete linked Google Calendar event data for this reminder and clear local sync state.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Remove sync",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await removeReminderSync({ token, memoryId: id });
-            } catch (error) {
-              showSyncAlert(
-                "Couldn't remove sync",
-                error instanceof Error
-                  ? error.message
-                  : "Unable to remove Google sync for this reminder."
-              );
-            }
-          },
-        },
-      ]
-    );
+    const confirmed = await confirm({
+      title: "Remove Google sync",
+      message:
+        "This will delete linked Google Calendar event data for this reminder and clear local sync state.",
+      confirmLabel: "Remove sync",
+      tone: "destructive",
+      icon: "link-2",
+    });
+    if (!confirmed) return;
+    try {
+      await removeReminderSync({ token, memoryId: id });
+    } catch (error) {
+      showSyncAlert(
+        "Couldn't remove sync",
+        error instanceof Error
+          ? error.message
+          : "Unable to remove Google sync for this reminder."
+      );
+    }
   };
 
   const handleSaveEdit = async (data: Record<string, unknown>) => {
@@ -701,8 +698,10 @@ export default function HomeScreen() {
                           memory={note}
                           resolvedTopics={resolvedTopics}
                           showActions={false}
+                          framed={false}
                         />
                       }
+                      previewFrame
                       items={[
                         {
                           label: "Mark as Completed",
@@ -868,7 +867,9 @@ export default function HomeScreen() {
                         setEditMemory(raw);
                         openEditMemory();
                       }}
-                      onDelete={() => token && deleteMemory({ token, id: raw._id })}
+                      onDelete={() => {
+                        void handleDelete(raw._id);
+                      }}
                       onShare={() => handleShare(raw._id)}
                       onAddToReview={() => token && addToReview({ token, memoryId: raw._id })}
                       onComplete={() => token && completeMemory({ token, id: raw._id })}

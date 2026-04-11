@@ -33,6 +33,7 @@ interface CardBodyProps {
   showActions?: boolean;
   /** True when this memory has ≥1 Drive file attachment */
   hasFiles?: boolean;
+  framed?: boolean;
 }
 
 function getReminderSyncTone(memory: MemoryNote) {
@@ -71,6 +72,7 @@ export const CardBody = React.memo(function CardBody({
   onDelete,
   showActions = false,
   hasFiles = false,
+  framed = true,
 }: CardBodyProps) {
   const theme = useAppTheme();
   const hasGoogleSyncInfo = !!(memory.googleSyncStatus || memory.googleEventId || memory.googleSyncMessage);
@@ -84,13 +86,13 @@ export const CardBody = React.memo(function CardBody({
 
   return (
     <YStack
-      backgroundColor="$card"
-      borderColor="$borderColor"
-      borderWidth={1}
-      borderRadius={16}
+      backgroundColor={framed ? "$card" : "transparent"}
+      borderColor={framed ? "$borderColor" : "transparent"}
+      borderWidth={framed ? 1 : 0}
+      borderRadius={framed ? 16 : 0}
       padding={16}
       position="relative"
-      overflow="hidden"
+      overflow={framed ? "hidden" : "visible"}
     >
       {isLocked && (
         <YStack
@@ -103,7 +105,7 @@ export const CardBody = React.memo(function CardBody({
           backgroundColor={theme.secondary.val + "CC"}
           alignItems="center"
           justifyContent="center"
-          borderRadius={16}
+          borderRadius={framed ? 16 : 0}
           gap={6}
         >
           <Feather name="lock" size={24} color={theme.colorMuted.val} />
@@ -361,8 +363,15 @@ export const MemoryCard = React.memo(function MemoryCard({
     <Animated.View entering={FadeIn.delay(Math.min(index * 40, 300)).duration(300)}>
       <ContextMenu
         preview={
-          <CardBody memory={memory} resolvedTopics={resolvedTopics} showActions={false} hasFiles={hasFiles} />
+          <CardBody
+            memory={memory}
+            resolvedTopics={resolvedTopics}
+            showActions={false}
+            hasFiles={hasFiles}
+            framed={false}
+          />
         }
+        previewFrame
         items={menuItems}
         onPress={onPress}
       >

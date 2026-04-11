@@ -4,7 +4,6 @@ import {
   Pressable,
   StyleSheet,
   RefreshControl,
-  Alert,
   Linking,
   View,
   Dimensions,
@@ -20,6 +19,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
 import { useColors } from "@/hooks/useColors";
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { useAppToast } from "@/components/ui/toast";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -58,6 +58,7 @@ export default function FilesScreen() {
   const auth = useAuth();
   const token = auth.token;
   const { showToast } = useAppToast();
+  const { confirm } = useAppConfirm();
 
   const [filter, setFilter] = useState<FilterType>("all");
   const [selectedAttachment, setSelectedAttachment] = useState<AttachmentDoc | null>(null);
@@ -90,28 +91,23 @@ export default function FilesScreen() {
   const handleDelete = useCallback(
     async (attachment: AttachmentDoc) => {
       if (!token) return;
-      Alert.alert(
-        "Delete File",
-        `Remove "${attachment.filename}" from Memora and Google Drive?`,
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Delete",
-            style: "destructive",
-            onPress: async () => {
-              try {
-                await deleteAttachment({ token, attachmentId: attachment._id });
-                setPreviewOpen(false);
-                showToast({ title: "File deleted", tone: "success" });
-              } catch {
-                showToast({ title: "Could not delete file", tone: "error" });
-              }
-            },
-          },
-        ]
-      );
+      const confirmed = await confirm({
+        title: "Delete File",
+        message: `Remove "${attachment.filename}" from Memora and Google Drive?`,
+        confirmLabel: "Delete",
+        tone: "destructive",
+        icon: "trash-2",
+      });
+      if (!confirmed) return;
+      try {
+        await deleteAttachment({ token, attachmentId: attachment._id });
+        setPreviewOpen(false);
+        showToast({ title: "File deleted", tone: "success" });
+      } catch {
+        showToast({ title: "Could not delete file", tone: "error" });
+      }
     },
-    [token, deleteAttachment, showToast]
+    [confirm, token, deleteAttachment, showToast]
   );
 
   const handleOpenDrive = useCallback((link?: string) => {
