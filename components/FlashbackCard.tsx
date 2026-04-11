@@ -6,6 +6,7 @@ import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useThemeStore } from "@/store/theme";
 import type { MemoryNote } from "@/types/memory";
+import { withAlpha } from "./ui/themeHelpers";
 
 interface FlashbackCardProps {
   memory: MemoryNote;
@@ -24,8 +25,8 @@ export function FlashbackCard({ memory, onPress }: FlashbackCardProps) {
       <LinearGradient
         colors={
           resolvedMode === "dark"
-            ? (["rgba(245,166,35,0.22)", "rgba(30,30,50,0.92)"] as const)
-            : (["rgba(248,195,88,0.32)", "rgba(255,255,255,0.92)"] as const)
+            ? ([withAlpha(theme.primary.val, "38"), withAlpha(theme.backgroundStrong.val, "EB")] as const)
+            : ([withAlpha(theme.primary.val, "52"), withAlpha(theme.backgroundStrong.val, "F0")] as const)
         }
         style={{
           width: 236,
@@ -34,7 +35,7 @@ export function FlashbackCard({ memory, onPress }: FlashbackCardProps) {
           borderWidth: 1,
           borderColor: theme.primary.val + "24",
           marginRight: 12,
-          shadowColor: "#000",
+          shadowColor: theme.shadowColor.val,
           shadowOpacity: 0.08,
           shadowRadius: 16,
           shadowOffset: { width: 0, height: 10 },

@@ -131,6 +131,19 @@ const lightTheme = {
   card: "#FFFDFC",
   cardBorder: "#E7D7C2",
   overlay: "rgba(0, 0, 0, 0.4)",
+  overlayStrong: "rgba(0, 0, 0, 0.52)",
+  surface: "#FFFDFC",
+  surfaceElevated: "#FFFFFF",
+  surfaceAccent: "#FCF0DB",
+  surfaceDangerSoft: "#FEF2F2",
+  surfaceSuccessSoft: "#ECFDF5",
+  textInverse: "#FFFFFF",
+  textSuccess: "#15803D",
+  textWarning: "#B45309",
+  textError: "#B91C1C",
+  borderStrong: "#C7A06E",
+  borderSubtle: "#EADCC7",
+  focusRing: "#D99C36",
 };
 
 const darkTheme = {
@@ -176,6 +189,19 @@ const darkTheme = {
   card: "#221913",
   cardBorder: "#433325",
   overlay: "rgba(0, 0, 0, 0.6)",
+  overlayStrong: "rgba(0, 0, 0, 0.72)",
+  surface: "#221913",
+  surfaceElevated: "#2B2018",
+  surfaceAccent: "#35281E",
+  surfaceDangerSoft: "#3D201B",
+  surfaceSuccessSoft: "#172B24",
+  textInverse: "#FFF8F0",
+  textSuccess: "#6EE7B7",
+  textWarning: "#FCD34D",
+  textError: "#FCA5A5",
+  borderStrong: "#6B523A",
+  borderSubtle: "#35281E",
+  focusRing: "#F2C66E",
 };
 
 export const tamaguiConfig = createTamagui({

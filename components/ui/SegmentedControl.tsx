@@ -95,7 +95,7 @@ export function SegmentedControl<T extends string = string>({
             bottom: PADDING,
             borderRadius: 11,
             backgroundColor: theme.card.val,
-            shadowColor: "#000",
+            shadowColor: theme.shadowColor.val,
             shadowOffset: { width: 0, height: 1 },
             shadowOpacity: effectiveSegmentWidth > 0 ? 0.1 : 0,
             shadowRadius: 4,

@@ -61,7 +61,7 @@ export default function SharedMemoryScreen() {
           style={{ marginTop: 24, paddingHorizontal: 32, paddingVertical: 14, borderRadius: 14, backgroundColor: Colors.primary }}
           onPress={() => router.replace("/(protected)/(tabs)")}
         >
-          <Text style={{ color: "#fff", fontSize: 16, fontFamily: FontFamily.semiBold }}>Go Home</Text>
+          <Text style={{ color: theme.textInverse.val, fontSize: 16, fontFamily: FontFamily.semiBold }}>Go Home</Text>
         </Pressable>
       </YStack>
     );

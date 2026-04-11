@@ -44,6 +44,7 @@ import { Feather } from "@expo/vector-icons";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useThemeStore } from "@/store/theme";
+import { withAlpha } from "./themeHelpers";
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
@@ -342,8 +343,8 @@ export const ContextMenu = React.forwardRef<ContextMenuHandle, ContextMenuProps>
                 {
                   backgroundColor:
                     resolvedMode === "dark"
-                      ? "rgba(0,0,0,0.55)"
-                      : "rgba(0,0,0,0.30)",
+                      ? withAlpha(theme.shadowColor.val, "8C")
+                      : withAlpha(theme.shadowColor.val, "4D"),
                 },
               ]}
               pointerEvents="none"

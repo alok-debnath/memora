@@ -26,7 +26,7 @@ export function NudgeCard({ title, message, onDismiss, index = 0 }: NudgeCardPro
           backgroundColor: theme.accent.val,
           borderColor: theme.borderColor.val,
           marginRight: 12,
-          shadowColor: "#000",
+          shadowColor: theme.shadowColor.val,
           shadowOpacity: 0.05,
           shadowRadius: 14,
           shadowOffset: { width: 0, height: 8 },

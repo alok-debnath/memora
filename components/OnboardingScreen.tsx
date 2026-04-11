@@ -19,8 +19,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Text, XStack, YStack } from "tamagui";
 
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { useThemeStore } from "@/store/theme";
 import { useAuth } from "@/hooks/useAuth";
 import { FontFamily } from "@/constants/fonts";
+import { brandGradients, integrationAccentColors, statAccentColors, statusAccentColors } from "@/constants/colors";
+import { withAlpha } from "@/components/ui/themeHelpers";
 
 interface OnboardingStep {
   icon: keyof typeof Feather.glyphMap;
@@ -36,7 +39,7 @@ const steps: OnboardingStep[] = [
     title: "Capture in your own voice",
     description:
       "Record thoughts, ideas, and moments naturally. Memora turns them into structured notes without making you type everything out.",
-    color: "#E8911B",
+    color: brandGradients.ember[1],
     label: "Voice-first",
   },
   {
@@ -44,7 +47,7 @@ const steps: OnboardingStep[] = [
     title: "Let AI enrich the memory",
     description:
       "People, places, moods, and actions are extracted automatically so each note becomes easier to revisit later.",
-    color: "#3B82F6",
+    color: statAccentColors.memories,
     label: "Auto-enriched",
   },
   {
@@ -52,7 +55,7 @@ const steps: OnboardingStep[] = [
     title: "Find meaning, not keywords",
     description:
       "Search with natural language and get the memory you actually meant instead of hunting through folders and tags.",
-    color: "#10B981",
+    color: statusAccentColors.success,
     label: "Semantic search",
   },
   {
@@ -60,7 +63,7 @@ const steps: OnboardingStep[] = [
     title: "Shape it through conversation",
     description:
       "Ask Memora to draft, update, review, or analyze your memories. It behaves more like a companion than a form.",
-    color: "#F59E0B",
+    color: statusAccentColors.warning,
     label: "Conversational",
   },
   {
@@ -68,7 +71,7 @@ const steps: OnboardingStep[] = [
     title: "Your memories stay yours",
     description:
       "All data is encrypted and private by default. Memora never shares, sells, or trains on your personal memories. You own everything.",
-    color: "#8B5CF6",
+    color: integrationAccentColors.reasoning,
     label: "Private & secure",
   },
 ];
@@ -93,8 +96,9 @@ function CardContent({
   index: number;
   isDark: boolean;
 }) {
-  const cardBg = isDark ? "#221913" : "#FFFDFC";
-  const cardBorder = isDark ? "rgba(67,51,37,0.6)" : "rgba(231,215,194,0.7)";
+  const theme = useAppTheme();
+  const cardBg = theme.surface.val;
+  const cardBorder = withAlpha(theme.borderStrong.val, isDark ? "99" : "B3");
 
   return (
     <YStack
@@ -349,7 +353,8 @@ export function OnboardingScreen() {
   const { width } = useWindowDimensions();
   const [currentIndex, setCurrentIndex] = useState(0);
   const { setOnboardingSeen } = useAuth();
-  const isDark = theme.background.val === "#18120D";
+  const resolvedMode = useThemeStore((state) => state.resolvedMode);
+  const isDark = resolvedMode === "dark";
 
   // Single shared value drives all card positions — no React re-render needed
   const activeIndex = useSharedValue(0);
@@ -428,7 +433,7 @@ export function OnboardingScreen() {
     router.replace("/(public)/(auth)/login");
   };
 
-  const accentGlow = isDark ? "rgba(232,145,27,0.06)" : "rgba(232,145,27,0.10)";
+  const accentGlow = withAlpha(theme.primary.val, isDark ? "0F" : "1A");
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top", "bottom"]}>
@@ -437,7 +442,7 @@ export function OnboardingScreen() {
           colors={
             isDark
               ? ([accentGlow, theme.background.val] as const)
-              : (["rgba(243,226,193,0.5)", theme.background.val] as const)
+              : ([withAlpha(theme.surfaceAccent.val, "CC"), theme.background.val] as const)
           }
           start={{ x: 0.3, y: 0 }}
           end={{ x: 0.7, y: 0.5 }}
@@ -495,18 +500,18 @@ export function OnboardingScreen() {
 
           <Pressable onPress={handleNext}>
             <LinearGradient
-              colors={["#E8911B", "#D4710F", "#B96208"] as const}
+              colors={brandGradients.ember}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={s.cta}
             >
-              <Text color="#FFFFFF" fontSize={16} fontFamily={FontFamily.semiBold}>
+              <Text color="$textInverse" fontSize={16} fontFamily={FontFamily.semiBold}>
                 {currentIndex === steps.length - 1 ? "Get Started" : "Next"}
               </Text>
               <Feather
                 name={currentIndex === steps.length - 1 ? "check" : "arrow-right"}
                 size={18}
-                color="#FFFFFF"
+                color={theme.textInverse.val}
               />
             </LinearGradient>
           </Pressable>

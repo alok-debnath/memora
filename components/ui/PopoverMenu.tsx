@@ -205,6 +205,7 @@ export function PopoverMenu({
                   width,
                   backgroundColor: theme.card.val,
                   borderColor: theme.borderColor.val,
+                  shadowColor: theme.shadowColor.val,
                 },
               ]}
               onPress={(e) => e.stopPropagation()}
@@ -255,7 +256,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
-    shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.14,
     shadowRadius: 12,

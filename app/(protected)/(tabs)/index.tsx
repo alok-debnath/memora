@@ -48,6 +48,7 @@ import { PressableScale } from "@/components/ui/PressableScale";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
+import { statusAccentColors } from "@/constants/colors";
 
 const INITIAL_FEED_SIZE = 6;
 
@@ -148,12 +149,12 @@ function getReminderSyncBadge(memory: MemoryItem, theme: ReturnType<typeof useAp
     return null;
   }
   if (memory.googleSyncStatus === "synced") {
-    return { label: "synced", color: theme.success?.val ?? "#22C55E" };
+    return { label: "synced", color: theme.success.val };
   }
   if (memory.googleSyncStatus === "failed") {
-    return { label: "sync failed", color: theme.destructive?.val ?? "#EF4444" };
+    return { label: "sync failed", color: theme.destructive.val };
   }
-  return { label: "syncing", color: theme.warning?.val ?? "#F59E0B" };
+  return { label: "syncing", color: theme.warning.val };
 }
 
 function MetricTile({ value, label }: { value: number; label: string }) {
@@ -589,11 +590,11 @@ export default function HomeScreen() {
                 ) : (
                   <Animated.View entering={FadeIn.duration(300)}>
                     <XStack gap={8} alignItems="center">
-                      <Badge
-                        label={isSemanticCached ? "⚡ Fast" : "✓ Full scan"}
-                        color={isSemanticCached ? "#F59E0B" : theme.primary.val}
-                        small
-                      />
+                        <Badge
+                          label={isSemanticCached ? "⚡ Fast" : "✓ Full scan"}
+                          color={isSemanticCached ? statusAccentColors.warning : theme.primary.val}
+                          small
+                        />
                       {isSemanticCached && (
                         <PressableScale
                           onPress={() => {
@@ -706,7 +707,7 @@ export default function HomeScreen() {
                         {
                           label: "Mark as Completed",
                           icon: "check-circle",
-                          iconColor: "#16a34a",
+                          iconColor: statusAccentColors.successStrong,
                           onPress: () => token && completeMemory({ token, id: memory._id }),
                         },
                         ...(showTriggerSyncAction

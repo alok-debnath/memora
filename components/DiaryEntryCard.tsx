@@ -7,7 +7,7 @@ import { Badge } from "./ui/Badge";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { moodIcons, moodLabels } from "@/constants/categories";
-import { moodColors } from "@/constants/colors";
+import { moodColors, statusAccentColors } from "@/constants/colors";
 import type { DiaryEntry } from "@/types/memory";
 
 interface DiaryEntryCardProps {
@@ -57,10 +57,10 @@ export function DiaryEntryCard({ entry, onDelete, index = 0 }: DiaryEntryCardPro
                   label={`Energy ${entry.energyLevel}`}
                   color={
                     entry.energyLevel === "high"
-                      ? "#10B981"
+                      ? statusAccentColors.success
                       : entry.energyLevel === "medium"
-                      ? "#F59E0B"
-                      : "#EF4444"
+                        ? statusAccentColors.warning
+                        : statusAccentColors.error
                   }
                   small
                 />

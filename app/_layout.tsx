@@ -71,10 +71,20 @@ function RootLayoutNav() {
 
   return (
     <TamaguiProvider config={tamaguiConfig} defaultTheme={resolvedMode}>
-      <AppConfirmProvider>
+        <AppConfirmProvider>
         <AuthContext.Provider value={auth}>
           <StatusBar style={resolvedMode === "dark" ? "light" : "dark"} />
-          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: resolvedMode === "dark" ? "#18120D" : "#F7F1E8" } }}>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: {
+                backgroundColor:
+                  resolvedMode === "dark"
+                    ? tamaguiConfig.themes.dark.background.val
+                    : tamaguiConfig.themes.light.background.val,
+              },
+            }}
+          >
             <Stack.Screen name="(public)" options={{ headerShown: false }} />
             <Stack.Screen name="(protected)" options={{ headerShown: false }} />
           </Stack>

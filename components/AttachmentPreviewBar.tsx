@@ -11,6 +11,7 @@ import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
 import { Text } from "tamagui";
 import type { PendingAttachment } from "@/hooks/useFileAttachments";
+import { statusAccentColors } from "@/constants/colors";
 
 type AttachmentPreviewBarProps = {
   attachments: PendingAttachment[];
@@ -72,7 +73,7 @@ function AttachmentSquare({
   const isDone = attachment.uploadStatus === "uploaded";
 
   const borderColor = isError
-    ? "#EF4444"
+    ? colors.error
     : isDone
       ? colors.primary
       : colors.border;
@@ -112,27 +113,27 @@ function AttachmentSquare({
       )}
 
       {isUploading && (
-        <View style={[styles.overlay, { backgroundColor: "rgba(0,0,0,0.45)" }]}>
-          <UploadingIndicator color="#FFFFFF" />
+        <View style={[styles.overlay, { backgroundColor: colors.overlay }]}>
+          <UploadingIndicator color={colors.destructiveForeground} />
         </View>
       )}
 
       {isError && (
-        <View style={[styles.overlay, { backgroundColor: "rgba(239,68,68,0.25)" }]}>
-          <Feather name="alert-circle" size={20} color="#EF4444" />
+        <View style={[styles.overlay, { backgroundColor: colors.surfaceDangerSoft }]}>
+          <Feather name="alert-circle" size={20} color={statusAccentColors.error} />
         </View>
       )}
 
       {isDone && (
         <View style={[styles.badge, { backgroundColor: colors.primary }]}>
-          <Feather name="check-circle" size={10} color="#FFFFFF" />
+          <Feather name="check-circle" size={10} color={colors.destructiveForeground} />
         </View>
       )}
 
       <Pressable
         onPress={() => onRemove(attachment.id)}
         hitSlop={8}
-        style={[styles.removeButton, { backgroundColor: colors.surface }]}
+        style={[styles.removeButton, { backgroundColor: colors.surface, shadowColor: colors.shadow }]}
       >
         <Feather name="x" size={10} color={colors.text} />
       </Pressable>
@@ -240,7 +241,6 @@ const styles = StyleSheet.create({
     borderRadius: 9,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.15,
     shadowRadius: 1,

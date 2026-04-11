@@ -26,6 +26,7 @@ import { Text, XStack, YStack } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
 import { PressableScale } from "@/components/ui/PressableScale";
+import { withAlpha } from "@/components/ui/themeHelpers";
 
 
 const HEADER_HEIGHT = 48;
@@ -55,8 +56,8 @@ function GlassPill({
         styles.glassShellBase,
         Platform.OS === "web" ? styles.glassShellWeb : styles.glassShellNative,
         { 
-          backgroundColor: theme.background.val,
-          borderColor: theme.borderColor.val,
+          backgroundColor: withAlpha(theme.surfaceElevated.val, "E6"),
+          borderColor: theme.borderStrong.val,
           borderWidth: 1,
           borderRadius, 
           shadowColor: theme.shadowColor.val, 
@@ -188,7 +189,7 @@ export function MorePageScaffold({
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top", "bottom"]}>
       <YStack flex={1} backgroundColor="$background">
       <LinearGradient
-        colors={[theme.accent.val + "20", theme.background.val, theme.background.val]}
+        colors={[theme.surfaceAccent.val, theme.background.val, theme.background.val]}
         start={{ x: 0.04, y: 0 }}
         end={{ x: 0.88, y: 0.62 }}
         style={StyleSheet.absoluteFill}
@@ -384,15 +385,6 @@ const styles = StyleSheet.create({
   glassContent: {
     position: "relative",
     zIndex: 4,
-  },
-  glassRim: {
-    zIndex: 2,
-    borderWidth: 1,
-    borderTopWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.28)",
-  },
-  glassSheen: {
-    zIndex: 1,
   },
   glassShellBase: {
   },

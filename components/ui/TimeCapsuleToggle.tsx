@@ -29,7 +29,7 @@ export function TimeCapsuleToggle({ enabled, date, onToggle, onDateChange }: Tim
           value={enabled}
           onValueChange={onToggle}
           trackColor={{ true: theme.primary.val, false: theme.borderColor.val }}
-          thumbColor="#FFFFFF"
+          thumbColor={theme.textInverse.val}
         />
       </XStack>
       {enabled && (

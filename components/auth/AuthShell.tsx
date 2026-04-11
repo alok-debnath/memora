@@ -12,8 +12,10 @@ import Animated, { FadeInUp } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Text, XStack, YStack } from "tamagui";
 
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
+import { withAlpha } from "@/components/ui/themeHelpers";
 
 type AuthShellProps = {
   title: string;
@@ -34,11 +36,17 @@ export function AuthShell({
   return (
     <YStack flex={1} backgroundColor="$background">
       <LinearGradient
-        colors={[theme.accent.val + "14", theme.background.val, theme.background.val]}
+        colors={[theme.surfaceAccent.val, theme.background.val, theme.background.val]}
         style={StyleSheet.absoluteFill}
       />
-      <View pointerEvents="none" style={styles.glowTop} />
-      <View pointerEvents="none" style={styles.glowBottom} />
+      <View
+        pointerEvents="none"
+        style={[styles.glowTop, { backgroundColor: withAlpha(theme.primary.val, "12") }]}
+      />
+      <View
+        pointerEvents="none"
+        style={[styles.glowBottom, { backgroundColor: withAlpha(theme.warning.val, "10") }]}
+      />
 
       <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top", "bottom"]}>
         <KeyboardAvoidingView
@@ -59,43 +67,52 @@ export function AuthShell({
           >
             <YStack flex={1} justifyContent="center">
               <Animated.View entering={FadeInUp.duration(320)}>
-                <YStack
-                  width="100%"
-                  maxWidth={isLargeScreen ? 470 : undefined}
-                  alignSelf="center"
-                  borderRadius={28}
-                  borderWidth={1}
-                  borderColor={theme.borderColor.val}
-                  backgroundColor={theme.card.val}
-                  overflow="hidden"
+                <SurfaceCard
+                  tone="elevated"
+                  padding={0}
+                  style={{
+                    width: "100%",
+                    maxWidth: isLargeScreen ? 480 : undefined,
+                    alignSelf: "center",
+                    overflow: "hidden",
+                  }}
                 >
                   <LinearGradient
-                    colors={[theme.accent.val + "12", theme.card.val, theme.card.val]}
-                    style={{ padding: isLargeScreen ? 24 : 20 }}
+                    colors={[
+                      theme.surfaceAccent.val,
+                      theme.surfaceElevated.val,
+                      theme.surface.val,
+                    ]}
+                    style={{ padding: isLargeScreen ? 26 : 20 }}
                   >
-                    <YStack gap={16}>
+                    <YStack gap={18}>
                       <XStack alignItems="center" gap={10}>
                         <YStack
-                          width={42}
-                          height={42}
-                          borderRadius={14}
+                          width={46}
+                          height={46}
+                          borderRadius={16}
                           alignItems="center"
                           justifyContent="center"
-                          backgroundColor={theme.primary.val + "18"}
+                          backgroundColor={withAlpha(theme.primary.val, "16")}
                           borderWidth={1}
-                          borderColor={theme.primary.val + "26"}
+                          borderColor={withAlpha(theme.primary.val, "28")}
                         >
-                          <Feather name={accentIcon} size={20} color={theme.primary.val} />
+                          <Feather name={accentIcon} size={21} color={theme.primary.val} />
                         </YStack>
-                        <Text fontSize={12} letterSpacing={1.6} color="$colorMuted">
-                          MEMORA
-                        </Text>
+                        <YStack gap={2}>
+                          <Text fontSize={11} letterSpacing={1.8} color="$primary" fontWeight="700">
+                            MEMORA
+                          </Text>
+                          <Text fontSize={12} color="$colorMuted">
+                            Warm memory studio
+                          </Text>
+                        </YStack>
                       </XStack>
 
-                      <YStack gap={6}>
+                      <YStack gap={8}>
                         <Text
-                          fontSize={isLargeScreen ? 34 : 30}
-                          lineHeight={isLargeScreen ? 38 : 34}
+                          fontSize={isLargeScreen ? 36 : 31}
+                          lineHeight={isLargeScreen ? 40 : 35}
                           fontFamily="$heading"
                           fontWeight="800"
                           color="$color"
@@ -112,7 +129,7 @@ export function AuthShell({
                       {children}
                     </YStack>
                   </LinearGradient>
-                </YStack>
+                </SurfaceCard>
               </Animated.View>
             </YStack>
           </ScrollView>
@@ -130,7 +147,6 @@ const styles = StyleSheet.create({
     borderRadius: 360,
     top: -130,
     right: -140,
-    backgroundColor: "rgba(232,145,27,0.10)",
   },
   glowBottom: {
     position: "absolute",
@@ -139,6 +155,5 @@ const styles = StyleSheet.create({
     borderRadius: 280,
     bottom: -110,
     left: -100,
-    backgroundColor: "rgba(245,166,35,0.08)",
   },
 });

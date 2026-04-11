@@ -22,7 +22,7 @@ import Animated, {
 import { XStack, YStack, Text } from "tamagui";
 
 import { UnifiedCommandPanel } from "@/components/UnifiedCommandPanel";
-import Colors from "@/constants/colors";
+import { AppButton } from "@/components/ui/AppButton";
 import { FontFamily } from "@/constants/fonts";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
@@ -181,6 +181,7 @@ function PlusButton({
   onPress: () => void;
   primaryColor: string;
 }) {
+  const theme = useAppTheme();
   const scale = useSharedValue(1);
 
   const animStyle = useAnimatedStyle(() => ({
@@ -205,7 +206,7 @@ function PlusButton({
             animStyle,
           ]}
         >
-          <Feather name="plus" size={22} color="#FFFFFF" />
+          <Feather name="plus" size={22} color={theme.textInverse.val} />
         </Animated.View>
       </Pressable>
     </View>
@@ -363,7 +364,7 @@ function LiquidGlassTabBar({
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
-      <Animated.View style={[styles.outerContainer, barEntranceStyle]}>
+      <Animated.View style={[styles.outerContainer, { shadowColor: theme.shadowColor.val }, barEntranceStyle]}>
         <View style={styles.innerContainer}>
           {/* Glass background */}
           {isWeb ? (
@@ -460,17 +461,17 @@ function LiquidGlassTabBar({
 // ─── Custom floating pill layout (mobile + web) ───────────────────────────────
 
 function CustomTabLayout() {
-  const resolvedMode = useThemeStore((s) => s.resolvedMode);
+  const theme = useAppTheme();
   const isCommandOpen = useUIStore((s) => s.isCommandOpen);
   const openCommand = useUIStore((s) => s.openCommand);
   const closeCommand = useUIStore((s) => s.closeCommand);
 
   return (
     <>
-      <Tabs
+        <Tabs
         screenOptions={{
           headerShown: false,
-          sceneStyle: { backgroundColor: resolvedMode === "dark" ? "#18120D" : "#F7F1E8" },
+          sceneStyle: { backgroundColor: theme.background.val },
           // Prevent React Navigation from rendering its own opaque tab bar background
           tabBarStyle: {
             position: "absolute",
@@ -558,11 +559,11 @@ function DesktopSidebarLayout() {
               width={40}
               height={40}
               borderRadius={14}
-              backgroundColor={Colors.primary + "18"}
+              backgroundColor={theme.primary.val + "18"}
               alignItems="center"
               justifyContent="center"
             >
-              <Feather name="layers" size={20} color={Colors.primary} />
+              <Feather name="layers" size={20} color={theme.primary.val} />
             </YStack>
             <YStack flex={1}>
               <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
@@ -576,7 +577,7 @@ function DesktopSidebarLayout() {
           <YStack
             borderRadius={18}
             padding={14}
-            backgroundColor={Colors.primary + "10"}
+            backgroundColor={theme.primary.val + "10"}
             gap={8}
           >
             <Text fontSize={11} letterSpacing={1} textTransform="uppercase" color="$primary" fontWeight="700">
@@ -603,9 +604,9 @@ function DesktopSidebarLayout() {
                   paddingHorizontal: 14,
                   borderRadius: 18,
                   borderWidth: 1,
-                  borderColor: active ? Colors.primary + "22" : "transparent",
+                  borderColor: active ? theme.primary.val + "22" : "transparent",
                   backgroundColor: active
-                    ? Colors.primary + "12"
+                    ? theme.primary.val + "12"
                     : "transparent",
                 }}
               >
@@ -615,12 +616,12 @@ function DesktopSidebarLayout() {
                   borderRadius={12}
                   alignItems="center"
                   justifyContent="center"
-                  backgroundColor={active ? Colors.primary + "18" : theme.secondary.val}
+                  backgroundColor={active ? theme.primary.val + "18" : theme.secondary.val}
                 >
                   <Feather
                     name={item.icon}
                     size={18}
-                    color={active ? Colors.primary : theme.colorMuted.val}
+                    color={active ? theme.primary.val : theme.colorMuted.val}
                   />
                 </YStack>
                 <YStack flex={1} gap={2}>
@@ -649,24 +650,13 @@ function DesktopSidebarLayout() {
 
         <YStack flex={1} />
 
-        <Pressable
+        <AppButton
+          title="New Memory"
           onPress={openCommand}
-          style={({ pressed }) => ({
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 8,
-            paddingVertical: 14,
-            borderRadius: 18,
-            backgroundColor: Colors.primary,
-            opacity: pressed ? 0.85 : 1,
-          })}
-        >
-          <Feather name="plus" size={20} color="#FFFFFF" />
-          <Text fontSize={14} fontFamily="$body" fontWeight="600" color="#FFFFFF">
-            New Memory
-          </Text>
-        </Pressable>
+          icon="plus"
+          variant="gradient"
+          fullWidth
+        />
         </YStack>
 
         <YStack flex={1} padding={14}>
@@ -710,7 +700,6 @@ const styles = StyleSheet.create({
     borderRadius: BAR_R,
     backgroundColor: "transparent",
     // iOS / web shadow
-    shadowColor: "#000",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.12,
     shadowRadius: 20,

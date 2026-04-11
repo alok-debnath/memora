@@ -24,6 +24,7 @@ import { PressableScale } from "@/components/ui/PressableScale";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
+import { reviewQualityColors, statusAccentColors } from "@/constants/colors";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -57,10 +58,10 @@ function previewInterval(card: ReviewCard, quality: number): number {
 }
 
 const RATINGS = [
-  { label: "Again", emoji: "🔴", quality: 1, color: "#EF4444" },
-  { label: "Hard",  emoji: "🟡", quality: 2, color: "#F59E0B" },
-  { label: "Good",  emoji: "🔵", quality: 3, color: "#3B82F6" },
-  { label: "Easy",  emoji: "🟢", quality: 5, color: "#10B981" },
+  { label: "Again", emoji: "🔴", quality: 1, color: reviewQualityColors.again },
+  { label: "Hard",  emoji: "🟡", quality: 2, color: reviewQualityColors.hard },
+  { label: "Good",  emoji: "🔵", quality: 3, color: reviewQualityColors.good },
+  { label: "Easy",  emoji: "🟢", quality: 5, color: reviewQualityColors.easy },
 ] as const;
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -79,9 +80,9 @@ function StatsStrip({
 }) {
   const theme = useAppTheme();
   const stats = [
-    { label: "Due now",  value: String(dueCount),   icon: "clock" as const,      color: "#EF4444" },
+    { label: "Due now",  value: String(dueCount),   icon: "clock" as const,      color: statusAccentColors.error },
     { label: "In queue", value: String(totalCount),  icon: "layers" as const,     color: theme.primary.val },
-    { label: "Reviewed", value: `${sessionDone}/${sessionTotal}`, icon: "check-circle" as const, color: "#10B981" },
+    { label: "Reviewed", value: `${sessionDone}/${sessionTotal}`, icon: "check-circle" as const, color: statusAccentColors.success },
   ];
   return (
     <XStack gap={8} marginTop={14}>
@@ -145,7 +146,7 @@ function CardFront({ card, cardCount, cardIndex }: { card: ReviewCard; cardCount
   return (
     <YStack flex={1} justifyContent="space-between" padding={22}>
       <XStack justifyContent="space-between" alignItems="center">
-        <Badge label="Question" color={theme.primary.val} />
+        <Badge label="Question" tone="primary" />
         <Text fontSize={12} fontFamily="$body" color="$colorMuted">
           {cardIndex + 1} / {cardCount}
         </Text>
@@ -188,7 +189,7 @@ function CardBack({ card }: { card: ReviewCard }) {
   return (
     <YStack flex={1} justifyContent="space-between" padding={22}>
       <XStack justifyContent="space-between" alignItems="center">
-        <Badge label="Answer" color="#10B981" />
+        <Badge label="Answer" tone="success" />
         <XStack alignItems="center" gap={4}>
           <Feather name="refresh-cw" size={12} color={theme.colorMuted.val} />
           <Text fontSize={11} fontFamily="$body" color="$colorMuted">
@@ -325,8 +326,8 @@ function SessionComplete({
           onPress={onReset}
           style={[styles.resetButton, { backgroundColor: theme.primary.val }]}
         >
-          <Feather name="refresh-cw" size={16} color="#fff" />
-          <Text fontSize={15} fontFamily="$body" fontWeight="700" color="#FFFFFF" marginLeft={8}>
+          <Feather name="refresh-cw" size={16} color={theme.textInverse.val} />
+          <Text fontSize={15} fontFamily="$body" fontWeight="700" color="$textInverse" marginLeft={8}>
             Check for more
           </Text>
         </PressableScale>

@@ -1,10 +1,7 @@
 import React from "react";
-import { Text, StyleSheet, type ViewStyle, ActivityIndicator, View } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { PressableScale } from "./PressableScale";
-import { gradients } from "@/constants/colors";
-import { FontFamily } from "@/constants/fonts";
+import { type ViewStyle } from "react-native";
 import { Feather } from "@expo/vector-icons";
+import { AppButton } from "@/components/ui/AppButton";
 
 interface GradientButtonProps {
   title: string;
@@ -23,64 +20,19 @@ export function GradientButton({
   style,
   loading,
   disabled,
-  variant = "warm",
+  variant: _variant = "warm",
 }: GradientButtonProps) {
   return (
-    <PressableScale
+    <AppButton
+      title={title}
       onPress={onPress}
-      disabled={disabled || loading}
-      style={style || {}}
-    >
-      <View style={[styles.clipWrap, (disabled || loading) && styles.disabledWrap]}>
-        <LinearGradient
-          colors={[...gradients[variant]]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.gradient}
-        >
-          {loading ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <>
-              {icon && (
-                <Feather
-                  name={icon}
-                  size={18}
-                  color="#FFFFFF"
-                  style={{ marginRight: 8 }}
-                />
-              )}
-              <Text style={styles.text}>{title}</Text>
-            </>
-          )}
-        </LinearGradient>
-      </View>
-    </PressableScale>
+      icon={icon}
+      loading={loading}
+      disabled={disabled}
+      variant="gradient"
+      style={style}
+      size="md"
+      fullWidth={false}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  clipWrap: {
-    borderRadius: 14,
-    overflow: "hidden",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.18)",
-  },
-  disabledWrap: {
-    opacity: 0.6,
-  },
-  gradient: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 54,
-    paddingHorizontal: 24,
-  },
-  text: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontFamily: FontFamily.semiBold,
-    fontWeight: "600" as const,
-    letterSpacing: 0.2,
-  },
-});

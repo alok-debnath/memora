@@ -5,6 +5,9 @@ import { YStack, XStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { PressableScale } from "./ui/PressableScale";
 import { FontFamily } from "@/constants/fonts";
+import { AppButton } from "./ui/AppButton";
+import { SurfaceCard } from "./ui/SurfaceCard";
+import { brandGradients } from "@/constants/colors";
 
 interface NavItem {
   icon: keyof typeof Feather.glyphMap;
@@ -95,15 +98,17 @@ export function DesktopSidebar({
       backgroundColor="$card"
       borderRightColor="$borderColor"
     >
-      <XStack alignItems="center" gap={10} marginBottom={8} paddingHorizontal={8}>
-        <LinearGradient
-          colors={["#E8911B", "#D4710F"]}
-          style={{ width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" }}
-        >
-          <Feather name="zap" size={20} color="#FFFFFF" />
-        </LinearGradient>
-        <Text fontSize={20} fontFamily={FontFamily.bold} fontWeight="700" color="$color">Memora</Text>
-      </XStack>
+      <SurfaceCard tone="accent" padding={14} style={{ marginBottom: 12 }}>
+        <XStack alignItems="center" gap={10}>
+          <LinearGradient
+            colors={[brandGradients.warm[1], brandGradients.warm[0]]}
+            style={{ width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" }}
+          >
+            <Feather name="zap" size={20} color={theme.textInverse.val} />
+          </LinearGradient>
+          <Text fontSize={20} fontFamily={FontFamily.bold} fontWeight="700" color="$color">Memora</Text>
+        </XStack>
+      </SurfaceCard>
 
       {userName && (
         <Text
@@ -117,17 +122,14 @@ export function DesktopSidebar({
         </Text>
       )}
 
-      <PressableScale onPress={onNewNote} style={{ marginBottom: 20, borderRadius: 12, shadowColor: "#E8911B", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 6 }}>
-        <LinearGradient
-          colors={["#E8911B", "#D4710F"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 12, borderRadius: 12 }}
-        >
-          <Feather name="plus" size={18} color="#FFFFFF" />
-          <Text style={{ color: "#FFFFFF", fontSize: 14, fontFamily: FontFamily.semiBold, fontWeight: "600" }}>New Memory</Text>
-        </LinearGradient>
-      </PressableScale>
+      <AppButton
+        title="New Memory"
+        onPress={onNewNote}
+        icon="plus"
+        variant="gradient"
+        style={{ marginBottom: 20, alignSelf: "stretch" }}
+        fullWidth
+      />
 
       <YStack marginBottom={20}>
         <Text

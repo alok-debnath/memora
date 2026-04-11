@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { FontFamily } from "@/constants/fonts";
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { withAlpha } from "@/components/ui/themeHelpers";
 
 type ConfirmTone = "default" | "destructive";
 
@@ -88,7 +89,7 @@ export function AppConfirmProvider({ children }: { children: React.ReactNode }) 
     request?.tone === "destructive" ? theme.destructive.val : theme.primary.val;
   const iconName = request?.icon ?? DEFAULT_OPTIONS.icon;
   const useStackedActions = windowWidth < 480;
-  const confirmTextColor = request?.tone === "destructive" ? "#FFFFFF" : "#1F160F";
+  const confirmTextColor = theme.textInverse.val;
 
   const cancelAction = (
     <Pressable
@@ -147,6 +148,7 @@ export function AppConfirmProvider({ children }: { children: React.ReactNode }) 
             style={[
               styles.overlay,
               {
+                backgroundColor: withAlpha(theme.shadowColor.val, "85"),
                 paddingTop: Math.max(insets.top, 24),
                 paddingBottom: Math.max(insets.bottom, 24),
               },
@@ -230,7 +232,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(9, 7, 4, 0.52)",
     paddingHorizontal: 20,
   },
   dialogWrap: {

@@ -1,11 +1,12 @@
 const amber = "#C98522";
-const amberLight = "#E9AD4A";
-const amberDark = "#8F5A12";
 
-export const gradients = {
+export const brandGradients = {
   warm: ["#8F5A12", "#C98522", "#E9AD4A"] as const,
   golden: ["#D99C36", "#F2C66E"] as const,
+  ember: ["#A96016", "#D99C36", "#F7D48A"] as const,
 };
+
+export const gradients = brandGradients;
 
 export const moodColors: Record<string, string> = {
   happy: "#FBBF24",
@@ -20,72 +21,52 @@ export const moodColors: Record<string, string> = {
   motivated: "#10B981",
 };
 
+export const navigationAccentColors = {
+  timeline: "#6366F1",
+  reminders: "#F59E0B",
+  documents: "#3B82F6",
+  knowledgeGraph: "#10B981",
+  statistics: "#EC4899",
+  data: "#D97706",
+  profile: "#8B5CF6",
+} as const;
+
+export const statusAccentColors = {
+  success: "#10B981",
+  successStrong: "#16A34A",
+  warning: "#F59E0B",
+  warningStrong: "#D97706",
+  error: "#EF4444",
+  errorStrong: "#DC2626",
+  info: "#3B82F6",
+  neutral: "#6B7280",
+} as const;
+
+export const statAccentColors = {
+  memories: statusAccentColors.info,
+  reminders: statusAccentColors.warning,
+  categories: statusAccentColors.success,
+  topics: statusAccentColors.warning,
+  words: statusAccentColors.success,
+  diary: "#8B5CF6",
+} as const;
+
+export const reviewQualityColors = {
+  again: statusAccentColors.error,
+  hard: statusAccentColors.warning,
+  good: statusAccentColors.info,
+  easy: statusAccentColors.success,
+} as const;
+
+export const integrationAccentColors = {
+  googleDrive: "#1A73E8",
+  reasoning: "#7C3AED",
+  openai: "#0F766E",
+  mlkit: statusAccentColors.successStrong,
+  pdfExtract: statusAccentColors.neutral,
+} as const;
+
 export default {
   primary: amber,
-  primaryLight: amberLight,
-  primaryDark: amberDark,
-  light: {
-    text: "#1B1814",
-    foreground: "#1B1814",
-    textSecondary: "#6C6256",
-    textTertiary: "#9C907F",
-    mutedForeground: "#6C6256",
-    background: "#F7F1E8",
-    backgroundSecondary: "#F2E8DA",
-    backgroundTertiary: "#E8D7BF",
-    surface: "#FFFDFC",
-    surfaceElevated: "#FFFFFF",
-    secondary: "#EFE3D3",
-    muted: "#DDCDB8",
-    accent: "#F3E2C1",
-    border: "#DCC7AB",
-    borderLight: "#EADCC7",
-    tint: amber,
-    primary: amber,
-    tabIconDefault: "#938777",
-    tabIconSelected: amber,
-    card: "#FFFDFC",
-    cardBorder: "#E7D7C2",
-    success: "#10B981",
-    error: "#EF4444",
-    warning: "#F59E0B",
-    info: "#3B82F6",
-    overlay: "rgba(0, 0, 0, 0.4)",
-    shadow: "rgba(92, 63, 25, 0.12)",
-    destructive: "#EF4444",
-    destructiveForeground: "#FFFFFF",
-    accentForeground: "#7D4B12",
-  },
-  dark: {
-    text: "#FBF4EA",
-    foreground: "#FBF4EA",
-    textSecondary: "#CCBCA6",
-    textTertiary: "#8D7B67",
-    mutedForeground: "#CCBCA6",
-    background: "#18120D",
-    backgroundSecondary: "#241B14",
-    backgroundTertiary: "#33271D",
-    surface: "#221913",
-    surfaceElevated: "#2B2018",
-    secondary: "#2D2219",
-    muted: "#3A2E23",
-    accent: "#33271D",
-    border: "#433325",
-    borderLight: "#35281E",
-    tint: amberLight,
-    primary: amberLight,
-    tabIconDefault: "#8E7A67",
-    tabIconSelected: amberLight,
-    card: "#221913",
-    cardBorder: "#433325",
-    success: "#34D399",
-    error: "#F87171",
-    warning: "#FBBF24",
-    info: "#60A5FA",
-    overlay: "rgba(0, 0, 0, 0.65)",
-    shadow: "rgba(0, 0, 0, 0.36)",
-    destructive: "#F87171",
-    destructiveForeground: "#FFFFFF",
-    accentForeground: "#F2C66E",
-  },
+  gradients: brandGradients,
 };

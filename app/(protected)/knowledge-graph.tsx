@@ -17,6 +17,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
+import { withAlpha } from "@/components/ui/themeHelpers";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -114,7 +115,7 @@ function buildMemoryGraph(
 
 // ─── Topic Graph Builder ──────────────────────────────────────────────────────
 
-function buildTopicGraph(topics: TopicDoc[]): { nodes: TopicNode[]; edges: TopicEdge[] } {
+function buildTopicGraph(topics: TopicDoc[], fallbackColor: string): { nodes: TopicNode[]; edges: TopicEdge[] } {
   if (topics.length === 0) return { nodes: [], edges: [] };
   const maxCount = Math.max(...topics.map((t) => t.memoryCount), 1);
 
@@ -122,7 +123,7 @@ function buildTopicGraph(topics: TopicDoc[]): { nodes: TopicNode[]; edges: Topic
     id: t._id,
     label: t.name,
     icon: t.icon ?? undefined,
-    color: t.color ?? "#6B7280",
+    color: t.color ?? fallbackColor,
     memoryCount: t.memoryCount,
     description: t.description ?? undefined,
     radius: 16 + Math.sqrt(t.memoryCount / maxCount) * 22,
@@ -256,7 +257,7 @@ export default function KnowledgeGraphScreen() {
   const topicGraph = useMemo(() => {
     if (mode !== "topics") return null;
     const activeTopic = topics.filter((t) => t.memoryCount > 0);
-    const base = buildTopicGraph(activeTopic);
+    const base = buildTopicGraph(activeTopic, theme.colorMuted.val);
     return { ...base, nodes: simulate(base.nodes, base.edges, (n) => n.id, (n) => n.radius, cx, cy) };
   }, [topics, mode, cx, cy]);
 
@@ -394,9 +395,9 @@ export default function KnowledgeGraphScreen() {
                   borderColor: filterTopicId === null ? theme.primary.val : theme.borderColor.val,
                 }}
               >
-                <Feather name="grid" size={11} color={filterTopicId === null ? "#fff" : theme.colorMuted.val} />
+                <Feather name="grid" size={11} color={filterTopicId === null ? theme.textInverse.val : theme.colorMuted.val} />
                 <Text fontSize={12} fontFamily="$body" fontWeight="500"
-                  color={filterTopicId === null ? "#FFFFFF" : "$colorMuted"}>All</Text>
+                  color={filterTopicId === null ? theme.textInverse.val : "$colorMuted"}>All</Text>
               </Pressable>
               {topics.filter((t) => t.memoryCount > 0).map((t) => {
                 const active = filterTopicId === t._id;
@@ -413,11 +414,11 @@ export default function KnowledgeGraphScreen() {
                     }}
                   >
                     <YStack width={7} height={7} borderRadius={4}
-                      backgroundColor={active ? "#fff" : (t.color ?? theme.primary.val)} />
+                      backgroundColor={active ? theme.textInverse.val : (t.color ?? theme.primary.val)} />
                     <Text fontSize={12} fontFamily="$body" fontWeight="500"
-                      color={active ? "#FFFFFF" : "$colorMuted"}>{t.name}</Text>
+                      color={active ? theme.textInverse.val : "$colorMuted"}>{t.name}</Text>
                     <Text fontSize={10} fontFamily="$body"
-                      color={active ? "rgba(255,255,255,0.7)" : "$colorMuted"}>{t.memoryCount}</Text>
+                      color={active ? withAlpha(theme.textInverse.val, "B3") : "$colorMuted"}>{t.memoryCount}</Text>
                   </Pressable>
                 );
               })}
@@ -486,7 +487,7 @@ export default function KnowledgeGraphScreen() {
                       <Circle cx={n.x} cy={n.y} r={r}
                         fill={n.topicColor}
                         opacity={dimmed ? 0.18 : isSelected ? 1 : 0.82}
-                        stroke={isSelected ? "#fff" : "transparent"}
+                        stroke={isSelected ? theme.textInverse.val : "transparent"}
                         strokeWidth={isSelected ? 2 : 0}
                       />
                       {!dimmed && (
@@ -509,12 +510,12 @@ export default function KnowledgeGraphScreen() {
                       <Circle cx={n.x} cy={n.y} r={n.radius}
                         fill={n.color}
                         opacity={isSelected ? 0.95 : 0.75}
-                        stroke={isSelected ? "#fff" : n.color}
+                        stroke={isSelected ? theme.textInverse.val : n.color}
                         strokeWidth={isSelected ? 2.5 : 0.5}
                         strokeOpacity={0.4}
                       />
                       <SvgText x={n.x} y={n.y + 1} fontSize={Math.max(8, Math.min(n.radius * 0.45, 12))}
-                        fill="#fff" textAnchor="middle" fontWeight="700" opacity={0.9}>
+                        fill={theme.textInverse.val} textAnchor="middle" fontWeight="700" opacity={0.9}>
                         {n.memoryCount}
                       </SvgText>
                       <SvgText x={n.x} y={n.y + n.radius + 13} fontSize={9}

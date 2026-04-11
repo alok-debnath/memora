@@ -1,6 +1,6 @@
 import React from "react";
 import { type ViewStyle } from "react-native";
-import { YStack } from "tamagui";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 
 interface CardProps {
   children: React.ReactNode;
@@ -10,19 +10,8 @@ interface CardProps {
 
 export function Card({ children, style, noPadding }: CardProps) {
   return (
-    <YStack
-      backgroundColor="$card"
-      borderColor="$borderColor"
-      borderWidth={1}
-      borderRadius={26}
-      padding={noPadding ? 0 : 18}
-      shadowColor="$shadowColor"
-      shadowOffset={{ width: 0, height: 14 }}
-      shadowOpacity={0.08}
-      shadowRadius={30}
-      style={style}
-    >
+    <SurfaceCard padding={noPadding ? 0 : 18} style={style}>
       {children}
-    </YStack>
+    </SurfaceCard>
   );
 }

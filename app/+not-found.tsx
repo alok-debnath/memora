@@ -1,17 +1,21 @@
 import { Link, Stack } from "expo-router";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet } from "react-native";
+import { Text, YStack } from "tamagui";
+import { useAppTheme } from "@/hooks/useAppTheme";
 
 export default function NotFoundScreen() {
+  const theme = useAppTheme();
+
   return (
     <>
       <Stack.Screen options={{ title: "Oops!" }} />
-      <View style={styles.container}>
-        <Text style={styles.title}>This screen doesn&apos;t exist.</Text>
+      <YStack style={styles.container} backgroundColor="$background">
+        <Text style={styles.title} color="$color">This screen doesn&apos;t exist.</Text>
 
         <Link href="/" style={styles.link}>
-          <Text style={styles.linkText}>Go to home screen!</Text>
+          <Text style={styles.linkText} color={theme.primary.val}>Go to home screen!</Text>
         </Link>
-      </View>
+      </YStack>
     </>
   );
 }
@@ -33,6 +37,5 @@ const styles = StyleSheet.create({
   },
   linkText: {
     fontSize: 14,
-    color: "#2e78b7",
   },
 });

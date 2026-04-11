@@ -27,6 +27,7 @@ import { useAppTheme } from "@/hooks/useAppTheme";
 import { FontFamily } from "@/constants/fonts";
 import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
+import { AppTextField } from "@/components/ui/AppTextField";
 
 type DiaryEntryItem = {
   _id: Id<"diaryEntries">;
@@ -146,8 +147,8 @@ export default function DiaryScreen() {
 
         <Card style={{ padding: 16, borderRadius: 24, backgroundColor: theme.card.val }}>
           <XStack gap={8} marginBottom={14}>
-            <Pressable
-              onPress={() => setMode("voice")}
+              <Pressable
+                onPress={() => setMode("voice")}
               style={{
                 flexDirection: "row",
                 alignItems: "center",
@@ -157,13 +158,13 @@ export default function DiaryScreen() {
                 borderRadius: 999,
                 backgroundColor: mode === "voice" ? theme.primary.val : theme.secondary.val,
               }}
-            >
-              <Feather name="mic" size={14} color={mode === "voice" ? "#FFFFFF" : theme.colorMuted.val} />
+              >
+              <Feather name="mic" size={14} color={mode === "voice" ? theme.textInverse.val : theme.colorMuted.val} />
               <Text
                 fontSize={13}
                 fontFamily="$body"
                 fontWeight="600"
-                color={mode === "voice" ? "#FFFFFF" : "$colorMuted"}
+                color={mode === "voice" ? "$textInverse" : "$colorMuted"}
               >
                 Voice
               </Text>
@@ -179,13 +180,13 @@ export default function DiaryScreen() {
                 borderRadius: 999,
                 backgroundColor: mode === "type" ? theme.primary.val : theme.secondary.val,
               }}
-            >
-              <Feather name="edit-3" size={14} color={mode === "type" ? "#FFFFFF" : theme.colorMuted.val} />
+              >
+              <Feather name="edit-3" size={14} color={mode === "type" ? theme.textInverse.val : theme.colorMuted.val} />
               <Text
                 fontSize={13}
                 fontFamily="$body"
                 fontWeight="600"
-                color={mode === "type" ? "#FFFFFF" : "$colorMuted"}
+                color={mode === "type" ? "$textInverse" : "$colorMuted"}
               >
                 Type
               </Text>
@@ -231,26 +232,15 @@ export default function DiaryScreen() {
             )
           ) : (
             <>
-              <TextInput
+              <AppTextField
                 value={diaryText}
                 onChangeText={setDiaryText}
+                label="Journal entry"
                 placeholder="Write about your day, thoughts, feelings, or anything on your mind..."
-                placeholderTextColor={theme.colorMuted.val}
                 multiline
-                style={{
-                  minHeight: 156,
-                  fontSize: 15,
-                  fontFamily: FontFamily.regular,
-                  textAlignVertical: "top",
-                  lineHeight: 22,
-                  color: theme.color.val,
-                  backgroundColor: theme.secondary.val,
-                  borderRadius: 18,
-                  paddingHorizontal: 14,
-                  paddingVertical: 14,
-                  borderWidth: 1,
-                  borderColor: theme.borderColor.val,
-                }}
+                helperText="Memora will structure this into a searchable diary entry."
+                containerStyle={{ marginBottom: 12 }}
+                style={{ minHeight: 156, fontSize: 15, lineHeight: 22 }}
               />
               <GradientButton
                 title="Save & Analyze"

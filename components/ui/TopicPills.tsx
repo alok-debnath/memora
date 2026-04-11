@@ -5,6 +5,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming, Eas
 import { PressableScale } from "./PressableScale";
 import { Text, XStack } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { withAlpha } from "./themeHelpers";
 
 interface TopicPillsProps {
   selected: string | null;
@@ -76,7 +77,7 @@ export function TopicPills({ selected, onSelect, topics, onSync, isSyncing }: To
           fontSize={13}
           fontFamily="$body"
           fontWeight="500"
-          color={selected === null ? "#FFFFFF" : "$colorMuted"}
+          color={selected === null ? theme.textInverse.val : "$colorMuted"}
         >
           All
         </Text>
@@ -105,20 +106,20 @@ export function TopicPills({ selected, onSelect, topics, onSync, isSyncing }: To
             <Feather
               name={(topic.icon as React.ComponentProps<typeof Feather>["name"]) ?? "tag"}
               size={14}
-              color={isSelected ? "#FFFFFF" : theme.colorMuted.val}
+              color={isSelected ? theme.textInverse.val : theme.colorMuted.val}
             />
             <Text
               fontSize={13}
               fontFamily="$body"
               fontWeight="500"
-              color={isSelected ? "#FFFFFF" : "$colorMuted"}
+              color={isSelected ? theme.textInverse.val : "$colorMuted"}
             >
               {topic.name}
             </Text>
             <Text
               fontSize={11}
               fontFamily="$body"
-              color={isSelected ? "rgba(255,255,255,0.7)" : "$colorMuted"}
+              color={isSelected ? withAlpha(theme.textInverse.val, "B3") : "$colorMuted"}
             >
               {topic.memoryCount}
             </Text>

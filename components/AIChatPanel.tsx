@@ -49,6 +49,8 @@ import { AttachmentPreviewBar } from "@/components/AttachmentPreviewBar";
 import { AttachmentPickerButton } from "@/components/AttachmentPickerButton";
 import { useFileAttachments, type PendingAttachment } from "@/hooks/useFileAttachments";
 import { Linking, StyleSheet } from "react-native";
+import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
+import { withAlpha } from "@/components/ui/themeHelpers";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -77,9 +79,9 @@ const SENTENCE_BREAK_PAUSE_MS = 60;
 const CLAUSE_BREAK_PAUSE_MS = 35;
 const SHORT_BREAK_PAUSE_MS = 18;
 
-const SURFACE_SHADOW = Platform.select({
+const getSurfaceShadow = (shadowColor: string) => Platform.select({
   ios: {
-    shadowColor: "#000",
+    shadowColor,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.04,
     shadowRadius: 10,
@@ -90,9 +92,9 @@ const SURFACE_SHADOW = Platform.select({
   default: {},
 });
 
-const BUBBLE_SHADOW = Platform.select({
+const getBubbleShadow = (shadowColor: string) => Platform.select({
   ios: {
-    shadowColor: "#000",
+    shadowColor,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.03,
     shadowRadius: 3,
@@ -536,19 +538,19 @@ function DeletionProposalCard({
         <XStack
           backgroundColor={theme.backgroundStrong.val}
           borderWidth={1}
-          borderColor="rgba(52, 199, 89, 0.35)"
+          borderColor={withAlpha(statusAccentColors.success, "59")}
           borderRadius={16}
           padding={14}
           gap={12}
           alignItems="center"
-          style={BUBBLE_SHADOW}
+          style={getBubbleShadow(theme.shadowColor.val)}
         >
           <View style={{
             width: 34, height: 34, borderRadius: 17,
-            backgroundColor: "rgba(52, 199, 89, 0.15)",
+            backgroundColor: withAlpha(statusAccentColors.success, "26"),
             alignItems: "center", justifyContent: "center",
           }}>
-            <Feather name="check" size={16} color="#34C759" />
+            <Feather name="check" size={16} color={statusAccentColors.success} />
           </View>
           <YStack flex={1}>
             <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
@@ -575,7 +577,7 @@ function DeletionProposalCard({
           padding={14}
           gap={12}
           alignItems="center"
-          style={BUBBLE_SHADOW}
+          style={getBubbleShadow(theme.shadowColor.val)}
         >
           <View style={{
             width: 34, height: 34, borderRadius: 17,
@@ -601,7 +603,7 @@ function DeletionProposalCard({
         borderColor="$borderColor"
         borderRadius={16}
         overflow="hidden"
-        style={BUBBLE_SHADOW}
+        style={getBubbleShadow(theme.shadowColor.val)}
       >
         {/* Header */}
         <XStack
@@ -666,7 +668,7 @@ function DeletionProposalCard({
                     alignItems: "center", justifyContent: "center",
                     flexShrink: 0,
                   }}>
-                    {isSelected && <Feather name="check" size={12} color="#FFFFFF" />}
+                    {isSelected && <Feather name="check" size={12} color={theme.textInverse.val} />}
                   </View>
 
                   {/* Content */}
@@ -737,14 +739,15 @@ function DeletionProposalCard({
               paddingVertical: 11,
               borderRadius: 12,
               alignItems: "center",
-              backgroundColor: selectedCount === 0 ? theme.accent.val : "#FF3B30",
+              backgroundColor:
+                selectedCount === 0 ? theme.accent.val : statusAccentColors.error,
               opacity: pressed || cardState === "deleting" || selectedCount === 0 ? 0.6 : 1,
             })}
           >
             <Text
               fontSize={13}
               fontFamily={FontFamily.semiBold}
-              color={selectedCount === 0 ? "$colorMuted" : "#FFFFFF"}
+              color={selectedCount === 0 ? "$colorMuted" : theme.textInverse.val}
             >
               {cardState === "deleting"
                 ? "Deleting…"
@@ -794,27 +797,27 @@ function SearchResultRow({
     item.google_sync_message
   );
   const dueAtLabel = formatReminderDueAt(item.schedule_due_at);
-  const SUCCESS = theme.success?.val ?? "#22C55E";
+  const SUCCESS = theme.success.val;
   const syncTone =
     item.google_sync_status === "synced"
       ? {
-          border: "rgba(34, 197, 94, 0.28)",
-          bg: "rgba(34, 197, 94, 0.08)",
+          border: withAlpha(theme.success.val, "47"),
+          bg: theme.surfaceSuccessSoft.val,
           label: "synced",
-          labelColor: "#16A34A",
+          labelColor: theme.textSuccess.val,
         }
       : item.google_sync_status === "failed"
         ? {
-            border: "rgba(239, 68, 68, 0.24)",
-            bg: "rgba(239, 68, 68, 0.08)",
+            border: withAlpha(theme.destructive.val, "3D"),
+            bg: theme.surfaceDangerSoft.val,
             label: "sync failed",
-            labelColor: "#DC2626",
+            labelColor: theme.textError.val,
           }
         : {
-            border: "rgba(245, 158, 11, 0.24)",
-            bg: "rgba(245, 158, 11, 0.08)",
+            border: withAlpha(theme.warning.val, "3D"),
+            bg: withAlpha(theme.warning.val, "14"),
             label: "syncing\u2026",
-            labelColor: "#D97706",
+            labelColor: theme.textWarning.val,
           };
   const showTriggerSyncAction =
     isReminder && (!hasGoogleSyncInfo || item.google_sync_status === "failed");
@@ -930,11 +933,11 @@ function SearchResultRow({
               paddingVertical={5}
               borderRadius={20}
               borderWidth={1}
-              borderColor="rgba(26,115,232,0.25)"
-              backgroundColor="rgba(26,115,232,0.07)"
+              borderColor={withAlpha(integrationAccentColors.googleDrive, "40")}
+              backgroundColor={withAlpha(integrationAccentColors.googleDrive, "12")}
             >
-              <FontAwesome5 name="google-drive" size={12} color="#1A73E8" />
-              <Text fontSize={11} fontFamily={FontFamily.semiBold} color="#1A73E8">
+              <FontAwesome5 name="google-drive" size={12} color={integrationAccentColors.googleDrive} />
+              <Text fontSize={11} fontFamily={FontFamily.semiBold} color={integrationAccentColors.googleDrive}>
                 in Drive
               </Text>
             </XStack>
@@ -1021,11 +1024,11 @@ function SearchResultRow({
                     paddingVertical={4}
                     borderRadius={20}
                     borderWidth={1}
-                    borderColor="rgba(26,115,232,0.25)"
-                    backgroundColor="rgba(26,115,232,0.07)"
+                    borderColor={withAlpha(integrationAccentColors.googleDrive, "40")}
+                    backgroundColor={withAlpha(integrationAccentColors.googleDrive, "12")}
                   >
-                    <FontAwesome5 name="google-drive" size={10} color="#1A73E8" />
-                    <Text fontSize={10} fontFamily={FontFamily.semiBold} color="#1A73E8">
+                    <FontAwesome5 name="google-drive" size={10} color={integrationAccentColors.googleDrive} />
+                    <Text fontSize={10} fontFamily={FontFamily.semiBold} color={integrationAccentColors.googleDrive}>
                       in Drive
                     </Text>
                   </XStack>
@@ -1120,7 +1123,7 @@ function getFlowUsageBadges(
       icon: "image",
       label: "Gemini",
       value: `read ${geminiCount} file${geminiCount === 1 ? "" : "s"}`,
-      color: "#7C3AED",
+      color: integrationAccentColors.reasoning,
     });
   }
 
@@ -1129,7 +1132,7 @@ function getFlowUsageBadges(
       icon: "camera",
       label: "OpenAI vision",
       value: `fallback × ${openAiVisionCount}`,
-      color: "#EA580C",
+      color: integrationAccentColors.openai,
     });
   }
 
@@ -1138,7 +1141,7 @@ function getFlowUsageBadges(
       icon: "file-text",
       label: "No AI",
       value: `PDF text × ${directPdfCount}`,
-      color: "#0F766E",
+      color: theme.success.val,
     });
   }
 
@@ -1147,7 +1150,7 @@ function getFlowUsageBadges(
       icon: "alert-circle",
       label: "Read failed",
       value: `${failedCount} file${failedCount === 1 ? "" : "s"}`,
-      color: "#DC2626",
+      color: statusAccentColors.error,
     });
   }
 
@@ -1284,13 +1287,13 @@ function CurrentFlowSummary({
         borderRadius={14}
         backgroundColor={
           latestSearch?.cacheState === "cached"
-            ? "rgba(245,158,11,0.08)"
+            ? withAlpha(statusAccentColors.warning, "14")
             : `${theme.primary.val}10`
         }
         borderWidth={1}
         borderColor={
           latestSearch?.cacheState === "cached"
-            ? "rgba(245,158,11,0.16)"
+            ? withAlpha(statusAccentColors.warning, "29")
             : `${theme.primary.val}20`
         }
       >
@@ -1307,7 +1310,7 @@ function CurrentFlowSummary({
         {attachmentSummary ? (
           <InsightLine
             icon="paperclip"
-            color="#7C3AED"
+            color={integrationAccentColors.reasoning}
             text={`Attachments: ${attachmentSummary}.`}
           />
         ) : null}
@@ -1315,7 +1318,7 @@ function CurrentFlowSummary({
         {groundingSearch ? (
           <InsightLine
             icon={groundingSearch.cacheState === "cached" ? "zap" : "search"}
-            color={groundingSearch.cacheState === "cached" ? "#F59E0B" : theme.primary.val}
+            color={groundingSearch.cacheState === "cached" ? statusAccentColors.warning : theme.primary.val}
             text={describeSearchStep(groundingSearch)}
           />
         ) : null}
@@ -1323,7 +1326,7 @@ function CurrentFlowSummary({
         {latestToolSearch ? (
           <InsightLine
             icon={latestToolSearch.cacheState === "cached" ? "zap" : "radio"}
-            color={latestToolSearch.cacheState === "cached" ? "#F59E0B" : theme.primary.val}
+            color={latestToolSearch.cacheState === "cached" ? statusAccentColors.warning : theme.primary.val}
             text={describeSearchStep(latestToolSearch)}
           />
         ) : null}
@@ -1365,7 +1368,11 @@ function SearchStatsPreview({
   theme: ReturnType<typeof useAppTheme>;
 }) {
   const isReasoned = turns > 1;
-  const baseColor = isReasoned ? "#7C3AED" : isCached ? "#F59E0B" : theme.primary.val;
+  const baseColor = isReasoned
+    ? integrationAccentColors.reasoning
+    : isCached
+      ? statusAccentColors.warning
+      : theme.primary.val;
   const latestSearch = [...(flow?.searches ?? [])].reverse()[0];
   const modeLabel = latestSearch?.cacheState === "cached" || isCached ? "Fast path" : "Fresh path";
   const subtitle = latestSearch?.query?.trim()
@@ -1403,13 +1410,13 @@ function SearchStatsPreview({
           icon={isCached ? "zap" : "radio"}
           label="Search"
           value={isCached ? "cached" : "fresh"}
-          color={isCached ? "#F59E0B" : theme.primary.val}
+          color={isCached ? statusAccentColors.warning : theme.primary.val}
         />
         <InsightStatChip
           icon="layers"
           label="Passes"
           value={`${turns} pass${turns === 1 ? "" : "es"}`}
-          color={isReasoned ? "#7C3AED" : "#6B7280"}
+          color={isReasoned ? integrationAccentColors.reasoning : theme.colorMuted.val}
         />
         <InsightStatChip
           icon="archive"
@@ -1422,7 +1429,7 @@ function SearchStatsPreview({
             icon="paperclip"
             label="Files"
             value={`${flow?.attachments?.length ?? 0}`}
-            color="#7C3AED"
+            color={integrationAccentColors.reasoning}
           />
         ) : null}
       </XStack>
@@ -1444,12 +1451,12 @@ function SearchStatsPreview({
             gap={8}
             padding={10}
             borderRadius={14}
-            backgroundColor="rgba(124,58,237,0.08)"
+            backgroundColor={withAlpha(integrationAccentColors.reasoning, "14")}
             borderWidth={1}
-            borderColor="rgba(124,58,237,0.16)"
+            borderColor={withAlpha(integrationAccentColors.reasoning, "29")}
           >
-            <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: "rgba(124,58,237,0.14)", alignItems: "center", justifyContent: "center" }}>
-              <Feather name="refresh-cw" size={13} color="#7C3AED" />
+            <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: withAlpha(integrationAccentColors.reasoning, "24"), alignItems: "center", justifyContent: "center" }}>
+              <Feather name="refresh-cw" size={13} color={integrationAccentColors.reasoning} />
             </View>
             <YStack flex={1} gap={2}>
               <Text fontSize={12} fontFamily="$body" fontWeight="700" color="$color">
@@ -1491,9 +1498,9 @@ function DeepSearchPreview({
           borderRadius={12}
           alignItems="center"
           justifyContent="center"
-          backgroundColor="rgba(124,58,237,0.14)"
+          backgroundColor={withAlpha(integrationAccentColors.reasoning, "24")}
         >
-          <Feather name="refresh-cw" size={16} color="#7C3AED" />
+          <Feather name="refresh-cw" size={16} color={integrationAccentColors.reasoning} />
         </YStack>
         <YStack flex={1}>
           <Text fontSize={15} fontFamily="$body" fontWeight="700" color="$color">
@@ -1507,12 +1514,12 @@ function DeepSearchPreview({
 
       <XStack gap={8} flexWrap="wrap">
         <InsightStatChip icon="archive" label="Cards" value={`${resultCount}`} color={theme.primary.val} />
-        <InsightStatChip icon="layers" label="Passes" value={`${turns}`} color="#7C3AED" />
+        <InsightStatChip icon="layers" label="Passes" value={`${turns}`} color={integrationAccentColors.reasoning} />
         <InsightStatChip
           icon={latestSearch?.cacheState === "cached" ? "zap" : "radio"}
           label="Current search"
           value={latestSearch?.cacheState === "cached" ? "cached" : "fresh"}
-          color={latestSearch?.cacheState === "cached" ? "#F59E0B" : theme.primary.val}
+          color={latestSearch?.cacheState === "cached" ? statusAccentColors.warning : theme.primary.val}
         />
       </XStack>
 
@@ -1522,16 +1529,16 @@ function DeepSearchPreview({
         gap={8}
         padding={12}
         borderRadius={14}
-        backgroundColor="rgba(124,58,237,0.08)"
+        backgroundColor={withAlpha(integrationAccentColors.reasoning, "14")}
         borderWidth={1}
-        borderColor="rgba(124,58,237,0.16)"
+        borderColor={withAlpha(integrationAccentColors.reasoning, "29")}
       >
         <Text fontSize={10} fontFamily="$body" fontWeight="600" color="$colorMuted" style={{ textTransform: "uppercase", letterSpacing: 0.5 }}>
           What Changes
         </Text>
         <InsightLine
           icon="refresh-cw"
-          color="#7C3AED"
+          color={integrationAccentColors.reasoning}
           text="The memory retrieval step reruns fresh and ignores the cached path."
         />
         <InsightLine
@@ -1622,7 +1629,11 @@ function PerformancePill({
   theme: ReturnType<typeof useAppTheme>;
 }) {
   const isReasoned = (turns ?? 1) > 1;
-  const baseColor = isReasoned ? "#7C3AED" : isCached ? "#F59E0B" : theme.primary.val;
+  const baseColor = isReasoned
+    ? integrationAccentColors.reasoning
+    : isCached
+      ? statusAccentColors.warning
+      : theme.primary.val;
 
   return (
     <ContextMenu
@@ -1823,7 +1834,7 @@ function SearchResultsCard({
         borderColor="$borderColor"
         borderRadius={16}
         overflow="hidden"
-        style={BUBBLE_SHADOW}
+        style={getBubbleShadow(theme.shadowColor.val)}
       >
         {/* Header */}
         <XStack
@@ -2093,9 +2104,9 @@ function getProgressIcon(status: ProgressStatus) {
 
 function getAccentColor(status: ProgressStatus, fallback: string) {
   const phase = (status.phase ?? "").toLowerCase();
-  if (phase === "writing") return "#F59E0B";
-  if (phase === "finalizing") return "#10B981";
-  if (phase === "analyzing") return "#8B5CF6";
+  if (phase === "writing") return statusAccentColors.warning;
+  if (phase === "finalizing") return statusAccentColors.success;
+  if (phase === "analyzing") return integrationAccentColors.reasoning;
   return fallback;
 }
 
@@ -2172,7 +2183,7 @@ function ThinkingIndicator() {
             borderWidth={1}
             borderColor="$borderColor"
             gap={8}
-            style={BUBBLE_SHADOW}
+            style={getBubbleShadow(theme.shadowColor.val)}
           >
             <Animated.View layout={PROGRESS_LAYOUT}>
               <XStack gap={8} alignItems="center">
@@ -2259,7 +2270,7 @@ function ToolProgressBubble({ status }: { status: ProgressStatus }) {
             backgroundColor="$backgroundStrong"
             borderWidth={1}
             borderColor="$borderColor"
-            style={[BUBBLE_SHADOW, { minWidth: 200, maxWidth: 320, position: "relative" }]}
+            style={[getBubbleShadow(theme.shadowColor.val), { minWidth: 200, maxWidth: 320, position: "relative" }]}
           >
             <XStack gap={10} alignItems="center">
               <Animated.View style={dotStyle}>
@@ -2335,6 +2346,7 @@ function AttachmentChip({
   attachmentId: string;
   token?: string | null;
 }) {
+  const theme = useAppTheme();
   const attachment = useQuery(
     api.attachments.getAttachment,
     token ? { token, attachmentId: attachmentId as any } : "skip"
@@ -2355,13 +2367,13 @@ function AttachmentChip({
         paddingHorizontal: 10,
         paddingVertical: 5,
         borderRadius: 10,
-        backgroundColor: "rgba(255,255,255,0.15)",
+        backgroundColor: withAlpha(theme.textInverse.val, "26"),
         opacity: pressed ? 0.7 : 1,
         alignSelf: "flex-start",
       })}
     >
-      <Feather name="paperclip" size={11} color="rgba(255,255,255,0.8)" />
-      <Text fontSize={11} color="rgba(255,255,255,0.9)" numberOfLines={1} maxWidth={160}>
+      <Feather name="paperclip" size={11} color={withAlpha(theme.textInverse.val, "CC")} />
+      <Text fontSize={11} color={withAlpha(theme.textInverse.val, "E6")} numberOfLines={1} maxWidth={160}>
         {name}
       </Text>
     </Pressable>
@@ -2443,7 +2455,7 @@ const ChatBubble = React.memo(function ChatBubble({
                   borderColor={isUser ? "transparent" : "$borderColor"}
                   style={[
                     isUser ? { borderBottomRightRadius: 6 } : { borderBottomLeftRadius: 6 },
-                    BUBBLE_SHADOW,
+                    getBubbleShadow(theme.shadowColor.val),
                   ]}
                   gap={msg.attachments && msg.attachments.length > 0 ? 8 : 0}
                 >
@@ -2785,7 +2797,7 @@ function ChatInputBar({
         borderRadius={24}
         borderColor="$borderColor"
         backgroundColor="$backgroundStrong"
-        style={SURFACE_SHADOW}
+        style={getSurfaceShadow(theme.shadowColor.val)}
       >
         <AttachmentPickerButton
           onPickImages={onPickImages ?? (() => {})}
@@ -2854,7 +2866,7 @@ function ChatInputBar({
         <Feather
           name="arrow-up"
           size={18}
-          color={canSend ? "#FFFFFF" : theme.colorMuted.val}
+          color={canSend ? theme.textInverse.val : theme.colorMuted.val}
         />
       </Pressable>
       </XStack>
@@ -3287,29 +3299,29 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
   const userMdStyles = useMemo(
     () => ({
       body: {
-        color: "#FFFFFF",
+        color: theme.textInverse.val,
         fontSize: compact ? 13 : 14,
         fontFamily: FontFamily.regular,
         lineHeight: compact ? 18 : 20,
       },
-      strong: { fontFamily: FontFamily.bold, color: "#FFFFFF" },
+      strong: { fontFamily: FontFamily.bold, color: theme.textInverse.val },
       code_inline: {
         fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-        backgroundColor: "rgba(255,255,255,0.15)",
-        color: "#FFFFFF",
+        backgroundColor: withAlpha(theme.textInverse.val, "26"),
+        color: theme.textInverse.val,
         fontSize: 13,
       },
       code_block: {
         fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-        backgroundColor: "rgba(255,255,255,0.15)",
-        color: "#FFFFFF",
+        backgroundColor: withAlpha(theme.textInverse.val, "26"),
+        color: theme.textInverse.val,
         fontSize: 13,
         padding: 8,
         borderRadius: 6,
       },
-      link: { color: "#FFFFFF" },
+      link: { color: theme.textInverse.val },
     }),
-    [compact],
+    [compact, theme.textInverse.val],
   );
 
   // Inject a synthetic "thinking" item at the front (visual bottom in inverted list)
@@ -3460,7 +3472,7 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
             borderWidth={1}
             borderColor="$borderColor"
             overflow="hidden"
-            style={SURFACE_SHADOW}
+            style={getSurfaceShadow(theme.shadowColor.val)}
             flex={1}
           >
             <EmptyState />
@@ -3484,7 +3496,7 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
         borderColor="$borderColor"
         backgroundColor="$backgroundStrong"
         overflow="hidden"
-        style={SURFACE_SHADOW}
+        style={getSurfaceShadow(theme.shadowColor.val)}
         flex={1}
       >
         {/* Header */}

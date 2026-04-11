@@ -1,17 +1,16 @@
 import React, { useState } from "react";
-import { TextInput, View } from "react-native";
-import { Feather } from "@expo/vector-icons";
-import { YStack, XStack, Text } from "tamagui";
 import { router } from "expo-router";
-import { useAppTheme } from "@/hooks/useAppTheme";
-import { useAuth } from "@/hooks/useAuth";
-import { GradientButton } from "@/components/ui/GradientButton";
-import { PressableScale } from "@/components/ui/PressableScale";
+import { YStack, XStack, Text } from "tamagui";
+
 import { AuthShell } from "@/components/auth/AuthShell";
+import { AppButton } from "@/components/ui/AppButton";
+import { AppTextField } from "@/components/ui/AppTextField";
+import { InlineNotice } from "@/components/ui/InlineNotice";
+import { PressableScale } from "@/components/ui/PressableScale";
 import { FontFamily } from "@/constants/fonts";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function SignupScreen() {
-  const theme = useAppTheme();
   const { signup } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -49,115 +48,45 @@ export default function SignupScreen() {
   return (
     <AuthShell
       title="Create your account"
-      subtitle="Create your account."
+      subtitle="Build your private memory studio and keep every capture in one place."
       accentIcon="user-plus"
     >
       <YStack gap={18}>
-        {error ? (
-          <XStack
-            gap={10}
-            alignItems="flex-start"
-            padding={14}
-            borderRadius={16}
-            backgroundColor={theme.destructive.val + "12"}
-            borderWidth={1}
-            borderColor={theme.destructive.val + "22"}
-          >
-            <View style={{ marginTop: 1 }}>
-              <Feather name="alert-triangle" size={16} color={theme.destructive.val} />
-            </View>
-            <Text fontSize={13} lineHeight={19} fontFamily={FontFamily.medium} color="$destructive" flex={1}>
-              {error}
-            </Text>
-          </XStack>
-        ) : null}
+        {error ? <InlineNotice tone="error" icon="alert-triangle" description={error} /> : null}
 
-        <YStack gap={7}>
-          <Text fontSize={11} fontFamily={FontFamily.semiBold} letterSpacing={1.2} color="$colorMuted">
-            NAME
-          </Text>
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder="Your full name"
-            placeholderTextColor={theme.colorMuted.val}
-            autoCapitalize="words"
-            textContentType="name"
-            returnKeyType="next"
-            style={{
-              borderRadius: 16,
-              paddingHorizontal: 16,
-              paddingVertical: 15,
-              fontSize: 16,
-              fontFamily: FontFamily.regular,
-              borderWidth: 1,
-              backgroundColor: theme.card.val,
-              color: theme.color.val,
-              borderColor: theme.borderColor.val,
-            }}
-          />
-        </YStack>
+        <AppTextField
+          label="Name"
+          value={name}
+          onChangeText={setName}
+          placeholder="Your full name"
+          autoCapitalize="words"
+          textContentType="name"
+          returnKeyType="next"
+        />
 
-        <YStack gap={7}>
-          <Text fontSize={11} fontFamily={FontFamily.semiBold} letterSpacing={1.2} color="$colorMuted">
-            EMAIL
-          </Text>
-          <TextInput
-            value={email}
-            onChangeText={setEmail}
-            placeholder="you@example.com"
-            placeholderTextColor={theme.colorMuted.val}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="email"
-            textContentType="emailAddress"
-            returnKeyType="next"
-            style={{
-              borderRadius: 16,
-              paddingHorizontal: 16,
-              paddingVertical: 15,
-              fontSize: 16,
-              fontFamily: FontFamily.regular,
-              borderWidth: 1,
-              backgroundColor: theme.card.val,
-              color: theme.color.val,
-              borderColor: theme.borderColor.val,
-            }}
-          />
-        </YStack>
+        <AppTextField
+          label="Email"
+          value={email}
+          onChangeText={setEmail}
+          placeholder="you@example.com"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="email"
+          textContentType="emailAddress"
+          returnKeyType="next"
+        />
 
-        <YStack gap={7}>
-          <Text fontSize={11} fontFamily={FontFamily.semiBold} letterSpacing={1.2} color="$colorMuted">
-            PASSWORD
-          </Text>
-          <XStack
-            minHeight={54}
-            borderRadius={16}
-            borderWidth={1}
-            paddingLeft={16}
-            paddingRight={10}
-            alignItems="center"
-            backgroundColor="$card"
-            borderColor="$borderColor"
-          >
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              placeholder="At least 8 characters"
-              placeholderTextColor={theme.colorMuted.val}
-              secureTextEntry={!showPassword}
-              autoComplete="new-password"
-              textContentType="newPassword"
-              returnKeyType="next"
-              style={{
-                flex: 1,
-                fontSize: 16,
-                fontFamily: FontFamily.regular,
-                paddingVertical: 15,
-                color: theme.color.val,
-              }}
-            />
+        <AppTextField
+          label="Password"
+          value={password}
+          onChangeText={setPassword}
+          placeholder="At least 8 characters"
+          secureTextEntry={!showPassword}
+          autoComplete="new-password"
+          textContentType="newPassword"
+          returnKeyType="next"
+          accessory={(
             <PressableScale
               onPress={() => setShowPassword((value) => !value)}
               style={{ paddingHorizontal: 10, paddingVertical: 8 }}
@@ -166,40 +95,19 @@ export default function SignupScreen() {
                 {showPassword ? "Hide" : "Show"}
               </Text>
             </PressableScale>
-          </XStack>
-        </YStack>
+          )}
+        />
 
-        <YStack gap={7}>
-          <Text fontSize={11} fontFamily={FontFamily.semiBold} letterSpacing={1.2} color="$colorMuted">
-            CONFIRM PASSWORD
-          </Text>
-          <XStack
-            minHeight={54}
-            borderRadius={16}
-            borderWidth={1}
-            paddingLeft={16}
-            paddingRight={10}
-            alignItems="center"
-            backgroundColor="$card"
-            borderColor="$borderColor"
-          >
-            <TextInput
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              placeholder="Re-enter your password"
-              placeholderTextColor={theme.colorMuted.val}
-              secureTextEntry={!showConfirmPassword}
-              autoComplete="new-password"
-              textContentType="newPassword"
-              returnKeyType="done"
-              style={{
-                flex: 1,
-                fontSize: 16,
-                fontFamily: FontFamily.regular,
-                paddingVertical: 15,
-                color: theme.color.val,
-              }}
-            />
+        <AppTextField
+          label="Confirm password"
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          placeholder="Re-enter your password"
+          secureTextEntry={!showConfirmPassword}
+          autoComplete="new-password"
+          textContentType="newPassword"
+          returnKeyType="done"
+          accessory={(
             <PressableScale
               onPress={() => setShowConfirmPassword((value) => !value)}
               style={{ paddingHorizontal: 10, paddingVertical: 8 }}
@@ -208,14 +116,15 @@ export default function SignupScreen() {
                 {showConfirmPassword ? "Hide" : "Show"}
               </Text>
             </PressableScale>
-          </XStack>
-        </YStack>
+          )}
+        />
 
-        <GradientButton
+        <AppButton
           title="Create Account"
           onPress={handleSignup}
           loading={isLoading}
           icon="user-plus"
+          variant="gradient"
           style={{ marginTop: 2 }}
         />
 

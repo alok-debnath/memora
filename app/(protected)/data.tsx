@@ -16,6 +16,7 @@ import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { statusAccentColors } from "@/constants/colors";
 
 function formatTs(value?: number, fallback = "Recently") {
   if (!value) return fallback;
@@ -397,7 +398,7 @@ export default function DataScreen() {
                         content={memory.content}
                         timestamp={memory.deletedAt}
                         timestampLabel="Deleted"
-                        accentColor="#D97706"
+                        accentColor={statusAccentColors.warningStrong}
                         icon="archive"
                         menuOpen={openMenuId === memory._id}
                         onMenuToggle={() =>
@@ -463,7 +464,7 @@ export default function DataScreen() {
                         content={memory.content}
                         timestamp={memory.completedAt}
                         timestampLabel="Completed"
-                        accentColor="#16a34a"
+                        accentColor={statusAccentColors.successStrong}
                         icon="check-circle"
                         menuOpen={openMenuId === memory._id}
                         onMenuToggle={() =>

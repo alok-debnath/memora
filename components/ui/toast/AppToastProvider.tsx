@@ -19,6 +19,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, useTheme, View, XStack, YStack } from "tamagui";
+import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -68,11 +69,11 @@ const MAX_TOASTS = 2;
 const SWIPE_DISMISS_THRESHOLD = 50;
 
 const TONE_COLORS: Record<AppToastTone, string> = {
-  default: "#7C3AED",
-  info:    "#0EA5E9",
-  success: "#10B981",
-  warning: "#F59E0B",
-  error:   "#EF4444",
+  default: integrationAccentColors.reasoning,
+  info: statusAccentColors.info,
+  success: statusAccentColors.success,
+  warning: statusAccentColors.warning,
+  error: statusAccentColors.error,
 };
 
 export const AppToastContext = createContext<AppToastContextValue | null>(null);
@@ -227,7 +228,7 @@ function AnimatedToast({
             maxWidth,
             backgroundColor: theme.backgroundStrong?.val,
             borderColor: theme.borderColor?.val,
-            shadowColor: "#000",
+            shadowColor: theme.shadowColor?.val,
           },
         ]}
         {...panResponder.panHandlers}

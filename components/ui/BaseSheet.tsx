@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { BackHandler, Keyboard, Platform } from "react-native";
 import { Sheet, type SheetProps, View } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { withAlpha } from "@/components/ui/themeHelpers";
 
 import { selectSheetStack, useUIStore } from "@/store/ui";
 
@@ -10,12 +11,11 @@ export const SHEET_CONFIG = {
   snapPointsMode: "percent" as const,
   dismissOnSnapToBottom: true,
   zIndex: 100_000,
-  overlayBackgroundColor: "rgba(0,0,0,0.5)",
   frameBorderRadius: 30,
 };
 
 interface BaseSheetProps
-  extends Omit<SheetProps, "snapPoints" | "snapPointsMode" | "children"> {
+  extends Omit<SheetProps, "children"> {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   backgroundColor?: string;
@@ -42,6 +42,9 @@ export function BaseSheet({
   const sheetStack = useUIStore(selectSheetStack);
 
   const { snapPoints, zIndex } = useMemo(() => {
+    if (props.snapPoints) {
+      return { snapPoints: props.snapPoints as number[], zIndex: props.zIndex ?? SHEET_CONFIG.zIndex };
+    }
     if (!sheetId) {
       return { snapPoints: SHEET_CONFIG.snapPoints, zIndex: SHEET_CONFIG.zIndex };
     }
@@ -56,7 +59,7 @@ export function BaseSheet({
     const computedZIndex = SHEET_CONFIG.zIndex + stackIndex;
 
     return { snapPoints: [snapPoint], zIndex: computedZIndex };
-  }, [sheetId, sheetStack]);
+  }, [props.snapPoints, props.zIndex, sheetId, sheetStack]);
 
   const isTopSheet = sheetId ? sheetStack[sheetStack.length - 1] === sheetId : true;
   const wasTopSheet = useRef(isTopSheet);
@@ -104,7 +107,7 @@ export function BaseSheet({
       open={open}
       onOpenChange={handleOpenChange}
       snapPoints={snapPoints}
-      snapPointsMode={SHEET_CONFIG.snapPointsMode}
+      snapPointsMode={props.snapPointsMode ?? SHEET_CONFIG.snapPointsMode}
       dismissOnSnapToBottom={SHEET_CONFIG.dismissOnSnapToBottom}
       // By default, disable drag-to-close so swiping inside the sheet body
       // (e.g. scroll or gesture areas) doesn't accidentally move/close it.
@@ -115,7 +118,7 @@ export function BaseSheet({
       zIndex={zIndex}
       {...props}
     >
-      <Sheet.Overlay backgroundColor={SHEET_CONFIG.overlayBackgroundColor} />
+      <Sheet.Overlay backgroundColor={withAlpha(theme.shadowColor.val, "80")} />
       <Sheet.Frame
         backgroundColor={resolvedBg}
         borderTopLeftRadius={SHEET_CONFIG.frameBorderRadius}

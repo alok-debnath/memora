@@ -4,7 +4,7 @@ import { Feather } from "@expo/vector-icons";
 import { Text, XStack, YStack, useTheme } from "tamagui";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import Colors from "@/constants/colors";
+import { AppButton } from "@/components/ui/AppButton";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
@@ -83,11 +83,11 @@ function DesktopProtectedShell() {
                 width={40}
                 height={40}
                 borderRadius={14}
-                backgroundColor={Colors.primary + "18"}
+                backgroundColor={theme.primary.val + "18"}
                 alignItems="center"
                 justifyContent="center"
               >
-                <Feather name="layers" size={20} color={Colors.primary} />
+                <Feather name="layers" size={20} color={theme.primary.val} />
               </YStack>
               <YStack flex={1}>
                 <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
@@ -98,7 +98,7 @@ function DesktopProtectedShell() {
                 </Text>
               </YStack>
             </XStack>
-            <YStack borderRadius={18} padding={14} backgroundColor={Colors.primary + "10"} gap={8}>
+            <YStack borderRadius={18} padding={14} backgroundColor={theme.primary.val + "10"} gap={8}>
               <Text fontSize={11} letterSpacing={1} textTransform="uppercase" color="$primary" fontWeight="700">
                 Quick Capture
               </Text>
@@ -123,8 +123,8 @@ function DesktopProtectedShell() {
                     paddingHorizontal: 14,
                     borderRadius: 18,
                     borderWidth: 1,
-                    borderColor: active ? Colors.primary + "22" : "transparent",
-                    backgroundColor: active ? Colors.primary + "12" : "transparent",
+                    borderColor: active ? theme.primary.val + "22" : "transparent",
+                    backgroundColor: active ? theme.primary.val + "12" : "transparent",
                   }}
                 >
                   <YStack
@@ -133,12 +133,12 @@ function DesktopProtectedShell() {
                     borderRadius={12}
                     alignItems="center"
                     justifyContent="center"
-                    backgroundColor={active ? Colors.primary + "18" : theme.secondary.val}
+                    backgroundColor={active ? theme.primary.val + "18" : theme.secondary.val}
                   >
                     <Feather
                       name={item.icon}
                       size={18}
-                      color={active ? Colors.primary : theme.colorMuted.val}
+                      color={active ? theme.primary.val : theme.colorMuted.val}
                     />
                   </YStack>
                   <YStack flex={1} gap={2}>
@@ -167,24 +167,13 @@ function DesktopProtectedShell() {
 
           <YStack flex={1} />
 
-          <Pressable
+          <AppButton
+            title="New Memory"
             onPress={openCommand}
-            style={({ pressed }) => ({
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 8,
-              paddingVertical: 14,
-              borderRadius: 18,
-              backgroundColor: Colors.primary,
-              opacity: pressed ? 0.85 : 1,
-            })}
-          >
-            <Feather name="plus" size={20} color="#FFFFFF" />
-            <Text fontSize={14} fontFamily="$body" fontWeight="600" color="#FFFFFF">
-              New Memory
-            </Text>
-          </Pressable>
+            icon="plus"
+            variant="gradient"
+            fullWidth
+          />
         </YStack>
 
         <YStack flex={1} padding={14}>
@@ -219,7 +208,7 @@ export default function ProtectedLayout() {
   if (isLoading) {
     return (
       <YStack flex={1} alignItems="center" justifyContent="center" backgroundColor="$background">
-        <ActivityIndicator size="large" color={Colors.primary} />
+        <ActivityIndicator size="large" color={theme.primary?.val} />
       </YStack>
     );
   }

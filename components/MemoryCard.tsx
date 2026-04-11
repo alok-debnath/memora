@@ -7,6 +7,8 @@ import { useAppTheme } from "@/hooks/useAppTheme";
 import type { MemoryNote } from "@/types/memory";
 import { getReminderDate, isReminder } from "@/types/memoryKind";
 import { ContextMenu, type ContextMenuItemDef } from "./ui/ContextMenu";
+import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
+import { withAlpha } from "@/components/ui/themeHelpers";
 
 interface MemoryCardProps {
   memory: MemoryNote;
@@ -36,30 +38,30 @@ interface CardBodyProps {
   framed?: boolean;
 }
 
-function getReminderSyncTone(memory: MemoryNote) {
+function getReminderSyncTone(theme: ReturnType<typeof useAppTheme>, memory: MemoryNote) {
   if (memory.googleSyncStatus === "synced") {
     return {
-      border: "rgba(34, 197, 94, 0.28)",
-      bg: "rgba(34, 197, 94, 0.08)",
+      border: withAlpha(theme.success.val, "47"),
+      bg: theme.surfaceSuccessSoft.val,
       label: "synced",
-      labelColor: "#16A34A",
+      labelColor: theme.textSuccess.val,
     };
   }
 
   if (memory.googleSyncStatus === "failed") {
     return {
-      border: "rgba(239, 68, 68, 0.24)",
-      bg: "rgba(239, 68, 68, 0.08)",
+      border: withAlpha(theme.destructive.val, "3D"),
+      bg: theme.surfaceDangerSoft.val,
       label: "sync failed",
-      labelColor: "#DC2626",
+      labelColor: theme.textError.val,
     };
   }
 
   return {
-    border: "rgba(245, 158, 11, 0.24)",
-    bg: "rgba(245, 158, 11, 0.08)",
+    border: withAlpha(theme.warning.val, "3D"),
+    bg: withAlpha(theme.warning.val, "14"),
     label: "syncing…",
-    labelColor: "#D97706",
+    labelColor: theme.textWarning.val,
   };
 }
 
@@ -76,7 +78,7 @@ export const CardBody = React.memo(function CardBody({
 }: CardBodyProps) {
   const theme = useAppTheme();
   const hasGoogleSyncInfo = !!(memory.googleSyncStatus || memory.googleEventId || memory.googleSyncMessage);
-  const reminderSyncTone = isReminder(memory) && hasGoogleSyncInfo ? getReminderSyncTone(memory) : null;
+  const reminderSyncTone = isReminder(memory) && hasGoogleSyncInfo ? getReminderSyncTone(theme, memory) : null;
   // Determine whether to reserve the bottom row space — only when there's a reminder date or sync info
   const hasBottomRow = !!((isReminder(memory) && getReminderDate(memory)) || reminderSyncTone);
 
@@ -204,7 +206,7 @@ export const CardBody = React.memo(function CardBody({
                     hitSlop={12}
                     style={styles.actionBtn}
                   >
-                    <Feather name="check-circle" size={14} color="#16a34a" />
+                    <Feather name="check-circle" size={14} color={statusAccentColors.successStrong} />
                   </Pressable>
                 )}
                 {onShare && (
@@ -265,11 +267,11 @@ export const CardBody = React.memo(function CardBody({
                   paddingVertical={4}
                   borderRadius={20}
                   borderWidth={1}
-                  borderColor="rgba(26,115,232,0.25)"
-                  backgroundColor="rgba(26,115,232,0.07)"
+                  borderColor={withAlpha(integrationAccentColors.googleDrive, "40")}
+                  backgroundColor={withAlpha(integrationAccentColors.googleDrive, "12")}
                 >
-                  <FontAwesome5 name="google-drive" size={11} color="#1A73E8" />
-                  <Text fontSize={10} fontFamily="$body" fontWeight="600" color="#1A73E8">
+                  <FontAwesome5 name="google-drive" size={11} color={integrationAccentColors.googleDrive} />
+                  <Text fontSize={10} fontFamily="$body" fontWeight="600" color={integrationAccentColors.googleDrive}>
                     in Drive
                   </Text>
                 </XStack>
@@ -313,7 +315,7 @@ export const MemoryCard = React.memo(function MemoryCard({
       ? [{
       label: "Mark as Completed",
       icon: "check-circle",
-      iconColor: "#16a34a",
+      iconColor: statusAccentColors.successStrong,
       onPress: onComplete!,
     }]
       : []),

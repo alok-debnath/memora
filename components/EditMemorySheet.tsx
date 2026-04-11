@@ -38,6 +38,8 @@ import { VoiceRecorder } from "./VoiceRecorder";
 import { KeyboardAwareScrollViewCompat } from "./KeyboardAwareScrollViewCompat";
 import { useAppConfirm } from "./ui/confirm/AppConfirmProvider";
 import { FontFamily } from "@/constants/fonts";
+import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
+import { withAlpha } from "@/components/ui/themeHelpers";
 import type { MemoryNote } from "@/types/memory";
 import { getReminderDate, inferMemoryEntryKind } from "@/types/memoryKind";
 
@@ -515,7 +517,7 @@ export function EditMemorySheet({
                     <View
                       style={{
                         flex: 1,
-                        backgroundColor: "rgba(0,0,0,0.5)",
+                        backgroundColor: withAlpha(theme.shadowColor.val, "80"),
                         justifyContent: "center",
                         alignItems: "center",
                         padding: 20,
@@ -533,7 +535,7 @@ export function EditMemorySheet({
                         padding={16}
                         width="100%"
                         maxWidth={400}
-                        shadowColor="#000"
+                        shadowColor={theme.shadowColor.val}
                         shadowOffset={{ width: 0, height: 4 }}
                         shadowOpacity={0.2}
                         shadowRadius={12}
@@ -560,7 +562,7 @@ export function EditMemorySheet({
                           styles={{
                             day_label: { color: theme.color.val, fontFamily: FontFamily.regular },
                             selected: { backgroundColor: theme.primary.val, borderRadius: 8 },
-                            selected_label: { color: "#fff", fontFamily: FontFamily.bold },
+                            selected_label: { color: theme.textInverse.val, fontFamily: FontFamily.bold },
                             month_selector_label: { color: theme.color.val, fontFamily: FontFamily.bold },
                             year_selector_label: { color: theme.color.val, fontFamily: FontFamily.bold },
                             time_selector_label: { color: theme.color.val, fontFamily: FontFamily.bold },
@@ -602,7 +604,7 @@ export function EditMemorySheet({
                     value={form.isRecurring}
                     onValueChange={(v) => setField("isRecurring", v)}
                     trackColor={{ true: theme.primary.val, false: theme.borderColor.val }}
-                    thumbColor="#FFFFFF"
+                    thumbColor={theme.textInverse.val}
                   />
                 </XStack>
               </>
@@ -613,10 +615,10 @@ export function EditMemorySheet({
               const status = memory.googleSyncStatus;
               const syncBadge =
                 status === "synced"
-                  ? { border: "rgba(34,197,94,0.28)", bg: "rgba(34,197,94,0.08)", label: "synced", labelColor: "#16A34A" }
+                  ? { border: withAlpha(theme.success.val, "47"), bg: theme.surfaceSuccessSoft.val, label: "synced", labelColor: theme.textSuccess.val }
                   : status === "failed"
-                  ? { border: "rgba(239,68,68,0.24)", bg: "rgba(239,68,68,0.08)", label: "sync failed", labelColor: "#DC2626" }
-                  : { border: "rgba(245,158,11,0.24)", bg: "rgba(245,158,11,0.08)", label: "syncing\u2026", labelColor: "#D97706" };
+                  ? { border: withAlpha(theme.destructive.val, "3D"), bg: theme.surfaceDangerSoft.val, label: "sync failed", labelColor: theme.textError.val }
+                  : { border: withAlpha(theme.warning.val, "3D"), bg: withAlpha(theme.warning.val, "14"), label: "syncing\u2026", labelColor: theme.textWarning.val };
               return (
                 <XStack gap={6} alignItems="center" flexWrap="wrap" paddingHorizontal={2}>
                   <XStack
@@ -648,11 +650,11 @@ export function EditMemorySheet({
                   paddingVertical={5}
                   borderRadius={20}
                   borderWidth={1}
-                  borderColor="rgba(26,115,232,0.25)"
-                  backgroundColor="rgba(26,115,232,0.07)"
+                  borderColor={withAlpha(integrationAccentColors.googleDrive, "40")}
+                  backgroundColor={withAlpha(integrationAccentColors.googleDrive, "12")}
                 >
-                  <FontAwesome5 name="google-drive" size={12} color="#1A73E8" />
-                  <Text fontSize={11} fontFamily="$body" fontWeight="600" color="#1A73E8">
+                  <FontAwesome5 name="google-drive" size={12} color={integrationAccentColors.googleDrive} />
+                  <Text fontSize={11} fontFamily="$body" fontWeight="600" color={integrationAccentColors.googleDrive}>
                     in Drive
                   </Text>
                 </XStack>
@@ -816,10 +818,10 @@ export function EditMemorySheet({
                           </Text>
                           {att.processingStatus === "completed" && att.extractionMethod && (() => {
                             const methodMap: Record<string, { label: string; icon: string; color: string; bg: string }> = {
-                              mlkit:        { label: "device", icon: "smartphone", color: "#16A34A", bg: "rgba(34,197,94,0.10)" },
-                              gemini:       { label: "AI",     icon: "zap",        color: "#7C3AED", bg: "rgba(124,58,237,0.10)" },
-                              openai:       { label: "AI",     icon: "cpu",        color: "#0F766E", bg: "rgba(15,118,110,0.10)" },
-                              "pdf-extract":{ label: "text",   icon: "file-text",  color: "#6B7280", bg: "rgba(107,114,128,0.10)" },
+                              mlkit:        { label: "device", icon: "smartphone", color: statusAccentColors.successStrong, bg: withAlpha(statusAccentColors.success, "1A") },
+                              gemini:       { label: "AI",     icon: "zap",        color: integrationAccentColors.reasoning, bg: withAlpha(integrationAccentColors.reasoning, "1A") },
+                              openai:       { label: "AI",     icon: "cpu",        color: integrationAccentColors.openai, bg: withAlpha(integrationAccentColors.openai, "1A") },
+                              "pdf-extract":{ label: "text",   icon: "file-text",  color: statusAccentColors.neutral, bg: withAlpha(statusAccentColors.neutral, "1A") },
                             };
                             const m = methodMap[att.extractionMethod];
                             if (!m) return null;
@@ -851,7 +853,7 @@ export function EditMemorySheet({
                           onPress={() => handleDeleteExisting(att._id, att.filename)}
                           hitSlop={8}
                         >
-                          <Feather name="trash-2" size={15} color="#EF4444" />
+                          <Feather name="trash-2" size={15} color={statusAccentColors.error} />
                         </Pressable>
                       </XStack>
                     </XStack>

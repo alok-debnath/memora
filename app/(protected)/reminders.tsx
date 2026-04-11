@@ -175,7 +175,7 @@ export default function RemindersScreen() {
                     justifyContent="center"
                     paddingHorizontal={4}
                   >
-                    <Text fontSize={10} fontFamily="$body" fontWeight="600" color={active ? "#fff" : "$color"}>
+                    <Text fontSize={10} fontFamily="$body" fontWeight="600" color={active ? "$textInverse" : "$color"}>
                       {count}
                     </Text>
                   </YStack>

@@ -4,6 +4,7 @@ import Animated, { FadeInUp } from "react-native-reanimated";
 import { XStack, YStack, Text } from "tamagui";
 import { Card } from "./ui/Card";
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { statAccentColors } from "@/constants/colors";
 
 interface StatCardProps {
   icon: keyof typeof Feather.glyphMap;
@@ -58,9 +59,9 @@ interface DashboardSummaryProps {
 export function DashboardSummary({ totalMemories, totalReminders, categories }: DashboardSummaryProps) {
   return (
     <XStack gap={10} paddingHorizontal={16}>
-      <StatCard icon="layers" label="Memories" value={totalMemories} color="#3B82F6" index={0} />
-      <StatCard icon="bell" label="Reminders" value={totalReminders} color="#F59E0B" index={1} />
-      <StatCard icon="folder" label="Categories" value={categories} color="#10B981" index={2} />
+      <StatCard icon="layers" label="Memories" value={totalMemories} color={statAccentColors.memories} index={0} />
+      <StatCard icon="bell" label="Reminders" value={totalReminders} color={statAccentColors.reminders} index={1} />
+      <StatCard icon="folder" label="Categories" value={categories} color={statAccentColors.categories} index={2} />
     </XStack>
   );
 }

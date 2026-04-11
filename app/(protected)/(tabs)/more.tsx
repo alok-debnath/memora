@@ -6,10 +6,12 @@ import Animated, { FadeInUp } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { XStack, YStack, Text } from "tamagui";
 
+import { navigationAccentColors } from "@/constants/colors";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
 
 interface MenuItem {
@@ -21,13 +23,13 @@ interface MenuItem {
 }
 
 const menuItems: MenuItem[] = [
-  { icon: "clock", label: "Timeline", description: "Chronological memory view", route: "/timeline", color: "#6366F1" },
-  { icon: "bell", label: "Reminders", description: "Upcoming and past reminders", route: "/reminders", color: "#F59E0B" },
-  { icon: "paperclip", label: "Files", description: "Images and documents stored in Google Drive", route: "/documents", color: "#3B82F6" },
-  { icon: "share-2", label: "Knowledge Graph", description: "Visual memory connections", route: "/knowledge-graph", color: "#10B981" },
-  { icon: "bar-chart-2", label: "Statistics", description: "Memory analytics and trends", route: "/statistics", color: "#EC4899" },
-  { icon: "archive", label: "Data", description: "Deleted memories and clean-slate controls", route: "/data", color: "#D97706" },
-  { icon: "user", label: "Profile", description: "Settings and preferences", route: "/profile", color: "#8B5CF6" },
+  { icon: "clock", label: "Timeline", description: "Chronological memory view", route: "/timeline", color: navigationAccentColors.timeline },
+  { icon: "bell", label: "Reminders", description: "Upcoming and past reminders", route: "/reminders", color: navigationAccentColors.reminders },
+  { icon: "paperclip", label: "Files", description: "Images and documents stored in Google Drive", route: "/documents", color: navigationAccentColors.documents },
+  { icon: "share-2", label: "Knowledge Graph", description: "Visual memory connections", route: "/knowledge-graph", color: navigationAccentColors.knowledgeGraph },
+  { icon: "bar-chart-2", label: "Statistics", description: "Memory analytics and trends", route: "/statistics", color: navigationAccentColors.statistics },
+  { icon: "archive", label: "Data", description: "Deleted memories and clean-slate controls", route: "/data", color: navigationAccentColors.data },
+  { icon: "user", label: "Profile", description: "Settings and preferences", route: "/profile", color: navigationAccentColors.profile },
 ];
 
 export default function MoreScreen() {
@@ -75,7 +77,7 @@ export default function MoreScreen() {
           </XStack>
           <XStack gap={10} marginTop={16} flexWrap="wrap">
             <Badge label={`${totalRoutes} sections`} color={theme.primary.val} />
-            <Badge label="Fast actions" />
+            <Badge label="Fast actions" tone="neutral" />
           </XStack>
         </Card>
       </Animated.View>
@@ -85,40 +87,31 @@ export default function MoreScreen() {
             <Animated.View key={item.route} entering={FadeInUp.delay(i * 60).duration(400)}>
               <PressableScale
                 onPress={() => router.push(item.route as never)}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  padding: 16,
-                  borderRadius: 22,
-                  borderWidth: 1,
-                  gap: 14,
-                  backgroundColor: theme.card.val,
-                  borderColor: theme.borderColor.val,
-                  shadowColor: "#000",
-                  shadowOpacity: 0.05,
-                  shadowRadius: 12,
-                  shadowOffset: { width: 0, height: 8 },
-                }}
+                style={{ borderRadius: 22 }}
               >
-                <YStack
-                  width={46}
-                  height={46}
-                  borderRadius={14}
-                  backgroundColor={item.color + "15"}
-                  alignItems="center"
-                  justifyContent="center"
-                >
-                  <Feather name={item.icon} size={22} color={item.color} />
-                </YStack>
-                <YStack flex={1}>
-                  <Text fontSize={16} fontFamily="$body" fontWeight="600" color="$color">
-                    {item.label}
-                  </Text>
-                  <Text fontSize={13} fontFamily="$body" color="$colorMuted" marginTop={2}>
-                    {item.description}
-                  </Text>
-                </YStack>
-                <Feather name="chevron-right" size={18} color={theme.colorMuted.val} />
+                <SurfaceCard padding={16} style={{ borderRadius: 22 }}>
+                  <XStack alignItems="center" gap={14}>
+                    <YStack
+                      width={46}
+                      height={46}
+                      borderRadius={14}
+                      backgroundColor={item.color + "15"}
+                      alignItems="center"
+                      justifyContent="center"
+                    >
+                      <Feather name={item.icon} size={22} color={item.color} />
+                    </YStack>
+                    <YStack flex={1}>
+                      <Text fontSize={16} fontFamily="$body" fontWeight="600" color="$color">
+                        {item.label}
+                      </Text>
+                      <Text fontSize={13} fontFamily="$body" color="$colorMuted" marginTop={2}>
+                        {item.description}
+                      </Text>
+                    </YStack>
+                    <Feather name="chevron-right" size={18} color={theme.colorMuted.val} />
+                  </XStack>
+                </SurfaceCard>
               </PressableScale>
             </Animated.View>
           ))}

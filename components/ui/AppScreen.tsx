@@ -7,6 +7,7 @@ import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
 import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 
 type AppScreenProps = {
   children: React.ReactNode;
@@ -34,7 +35,7 @@ export function AppScreen({
       <YStack flex={1} backgroundColor="$background">
         <LinearGradient
           colors={[
-            theme.accent.val + "C0",
+            theme.surfaceAccent.val,
             theme.background.val,
             theme.background.val,
           ]}
@@ -48,10 +49,10 @@ export function AppScreen({
             position: "absolute",
             top: 40,
             right: -32,
-            width: 180,
-            height: 180,
+            width: 196,
+            height: 196,
             borderRadius: 999,
-            backgroundColor: theme.primary.val + "12",
+            backgroundColor: theme.primary.val + "10",
             transform: [{ rotate: "-12deg" }],
           }}
         />
@@ -89,7 +90,7 @@ export function AppScreen({
                     </Text>
                   ) : null}
                   {subtitle ? (
-                    <Text color="$colorMuted" fontSize={14} lineHeight={21} maxWidth={720}>
+                    <Text color="$colorMuted" fontSize={15} lineHeight={22} maxWidth={720}>
                       {subtitle}
                     </Text>
                   ) : null}
@@ -121,42 +122,33 @@ export function SectionCard({
   padded = true,
 }: SectionCardProps) {
   return (
-    <YStack
-      backgroundColor="$card"
-      borderColor="$borderColor"
-      borderWidth={1}
-      borderRadius={28}
-      padding={padded ? 18 : 0}
-      gap={16}
-      shadowColor="$shadowColor"
-      shadowOffset={{ width: 0, height: 12 }}
-      shadowOpacity={0.08}
-      shadowRadius={28}
-    >
-      {(title || eyebrow || action) && (
-        <XStack alignItems="center" justifyContent="space-between" gap={16}>
-          <YStack flex={1} gap={4}>
-            {eyebrow ? (
-              <Text
-                color="$primary"
-                fontSize={11}
-                letterSpacing={1.2}
-                textTransform="uppercase"
-                fontWeight="700"
-              >
-                {eyebrow}
-              </Text>
-            ) : null}
-            {title ? (
-              <Text color="$color" fontSize={18} fontFamily="$heading" fontWeight="700">
-                {title}
-              </Text>
-            ) : null}
-          </YStack>
-          {action}
-        </XStack>
-      )}
-      {children}
-    </YStack>
+    <SurfaceCard padding={padded ? 18 : 0}>
+      <YStack gap={16}>
+        {(title || eyebrow || action) && (
+          <XStack alignItems="center" justifyContent="space-between" gap={16}>
+            <YStack flex={1} gap={4}>
+              {eyebrow ? (
+                <Text
+                  color="$primary"
+                  fontSize={11}
+                  letterSpacing={1.2}
+                  textTransform="uppercase"
+                  fontWeight="700"
+                >
+                  {eyebrow}
+                </Text>
+              ) : null}
+              {title ? (
+                <Text color="$color" fontSize={18} fontFamily="$heading" fontWeight="700">
+                  {title}
+                </Text>
+              ) : null}
+            </YStack>
+            {action}
+          </XStack>
+        )}
+        {children}
+      </YStack>
+    </SurfaceCard>
   );
 }

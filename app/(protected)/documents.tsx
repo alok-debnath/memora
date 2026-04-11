@@ -9,7 +9,7 @@ import {
   Dimensions,
 } from "react-native";
 import { Image } from "expo-image";
-import { XStack, YStack, Text, Sheet } from "tamagui";
+import { XStack, YStack, Text } from "tamagui";
 import { Feather } from "@expo/vector-icons";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useQuery, useMutation } from "convex/react";
@@ -18,9 +18,10 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/useAuth";
 import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
 import { useColors } from "@/hooks/useColors";
-import { useAppTheme } from "@/hooks/useAppTheme";
+import { BaseSheet } from "@/components/ui/BaseSheet";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { useAppToast } from "@/components/ui/toast";
+import { statusAccentColors } from "@/constants/colors";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const GRID_PADDING = 16;
@@ -46,14 +47,13 @@ type AttachmentDoc = {
 type FilterType = "all" | "image" | "document";
 
 const processingColors = {
-  pending: "#F59E0B",
-  processing: "#3B82F6",
-  completed: "#10B981",
-  failed: "#EF4444",
+  pending: statusAccentColors.warning,
+  processing: statusAccentColors.info,
+  completed: statusAccentColors.success,
+  failed: statusAccentColors.error,
 };
 
 export default function FilesScreen() {
-  const theme = useAppTheme();
   const colors = useColors();
   const auth = useAuth();
   const token = auth.token;
@@ -209,7 +209,7 @@ export default function FilesScreen() {
             <Text
               fontSize={12}
               fontWeight="600"
-              color={filter === f ? "#FFFFFF" : colors.textSecondary}
+              color={filter === f ? colors.destructiveForeground : colors.textSecondary}
               textTransform="capitalize"
             >
               {f === "all" ? "All" : f === "image" ? "Images" : "Documents"}
@@ -250,19 +250,15 @@ export default function FilesScreen() {
       />
 
       {/* Preview sheet */}
-      <Sheet
+      <BaseSheet
         open={previewOpen}
         onOpenChange={setPreviewOpen}
         snapPoints={[70]}
-        snapPointsMode="percent"
         dismissOnSnapToBottom
         modal
         zIndex={100000}
-        animation="quick"
       >
-        <Sheet.Overlay animation="quick" enterStyle={{ opacity: 0 }} exitStyle={{ opacity: 0 }} />
-        <Sheet.Handle />
-        <Sheet.Frame
+        <YStack
           padding="$4"
           backgroundColor="$background"
           borderTopLeftRadius="$6"
@@ -276,8 +272,8 @@ export default function FilesScreen() {
               colors={colors}
             />
           )}
-        </Sheet.Frame>
-      </Sheet>
+        </YStack>
+      </BaseSheet>
     </MorePageScaffold>
   );
 }
@@ -321,7 +317,7 @@ function PreviewContent({
           <Text fontSize={11} color={colors.textSecondary}>
             {formatFileSize(attachment.sizeBytes)} · {formatDate(attachment.createdAt)}
           </Text>
-          <XStack alignItems="center" gap={4} mt={2}>
+          <XStack alignItems="center" gap={4} marginTop={2}>
             <View
               style={[
                 styles.statusDot,
@@ -346,7 +342,7 @@ function PreviewContent({
         </YStack>
       )}
 
-      <YStack gap="$2" mt="$2">
+      <YStack gap="$2" marginTop="$2">
         <Pressable
           onPress={onOpenDrive}
           style={[styles.actionBtn, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}
@@ -359,10 +355,10 @@ function PreviewContent({
 
         <Pressable
           onPress={onDelete}
-          style={[styles.actionBtn, { backgroundColor: "#FEF2F2", borderColor: "#FECACA" }]}
+          style={[styles.actionBtn, { backgroundColor: colors.surfaceDangerSoft, borderColor: colors.textError }]}
         >
-          <Feather name="trash-2" size={16} color="#EF4444" />
-          <Text fontSize={14} fontWeight="600" color="#EF4444">
+          <Feather name="trash-2" size={16} color={colors.textError} />
+          <Text fontSize={14} fontWeight="600" color={colors.textError}>
             Delete File
           </Text>
         </Pressable>

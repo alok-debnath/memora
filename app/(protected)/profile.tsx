@@ -27,6 +27,7 @@ import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
 import { useAppToast } from "@/components/ui/toast";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { FontFamily } from "@/constants/fonts";
+import { brandGradients } from "@/constants/colors";
 import { Dropdown, type IDropdownRef } from "react-native-element-dropdown";
 import { getTimeZones } from "@vvo/tzdb";
 import * as Google from "expo-auth-session/providers/google";
@@ -324,8 +325,8 @@ export default function ProfileScreen() {
           <Card style={{ ...styles.profileCard, padding: 18, borderRadius: 26 }}>
             <XStack alignItems="flex-start" justifyContent="space-between" gap={14}>
               <XStack alignItems="center" gap={14} flex={1}>
-                <LinearGradient colors={["#E8911B", "#D4710F"]} style={styles.avatar}>
-                  <Text style={styles.avatarText}>
+                <LinearGradient colors={[brandGradients.ember[0], brandGradients.ember[1]] as const} style={styles.avatar}>
+                  <Text style={[styles.avatarText, { color: theme.textInverse.val }]}>
                     {user?.name?.charAt(0)?.toUpperCase() || "?"}
                   </Text>
                 </LinearGradient>
@@ -583,7 +584,7 @@ export default function ProfileScreen() {
                 value={notificationPrefs?.dailyReview ?? true}
                 onValueChange={(value: boolean) => updatePreference({ dailyReview: value })}
                 trackColor={{ true: theme.primary.val, false: theme.borderColor.val }}
-                thumbColor="#FFFFFF"
+                thumbColor={theme.textInverse.val}
               />
             </XStack>
             <YStack paddingBottom={10}>
@@ -627,7 +628,7 @@ export default function ProfileScreen() {
                 value={notificationPrefs?.weeklyDigest ?? true}
                 onValueChange={(value: boolean) => updatePreference({ weeklyDigest: value })}
                 trackColor={{ true: theme.primary.val, false: theme.borderColor.val }}
-                thumbColor="#FFFFFF"
+                thumbColor={theme.textInverse.val}
               />
             </XStack>
             <YStack paddingBottom={10}>
@@ -672,7 +673,7 @@ export default function ProfileScreen() {
                 value={notificationPrefs?.memoryNudges ?? true}
                 onValueChange={(value: boolean) => updatePreference({ memoryNudges: value })}
                 trackColor={{ true: theme.primary.val, false: theme.borderColor.val }}
-                thumbColor="#FFFFFF"
+                thumbColor={theme.textInverse.val}
               />
             </XStack>
             <YStack height={StyleSheet.hairlineWidth} backgroundColor="$borderColor" />
@@ -687,7 +688,7 @@ export default function ProfileScreen() {
                 value={notificationPrefs?.pushEnabled ?? false}
                 onValueChange={(value: boolean) => updatePreference({ pushEnabled: value })}
                 trackColor={{ true: theme.primary.val, false: theme.borderColor.val }}
-                thumbColor="#FFFFFF"
+                thumbColor={theme.textInverse.val}
               />
             </XStack>
             <YStack height={StyleSheet.hairlineWidth} backgroundColor="$borderColor" />
@@ -702,7 +703,7 @@ export default function ProfileScreen() {
                 value={notificationPrefs?.capsuleAlerts ?? true}
                 onValueChange={(value: boolean) => updatePreference({ capsuleAlerts: value })}
                 trackColor={{ true: theme.primary.val, false: theme.borderColor.val }}
-                thumbColor="#FFFFFF"
+                thumbColor={theme.textInverse.val}
               />
             </XStack>
           </Card>
@@ -732,7 +733,7 @@ export default function ProfileScreen() {
                 onValueChange={handleToggleGoogleSync}
                 disabled={!request || isConnectingGoogle}
                 trackColor={{ true: theme.primary.val, false: theme.borderColor.val }}
-                thumbColor="#FFFFFF"
+                thumbColor={theme.textInverse.val}
               />
             </XStack>
           </Card>
@@ -794,7 +795,7 @@ const styles = StyleSheet.create({
     width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center",
     marginBottom: 12,
   },
-  avatarText: { color: "#FFFFFF", fontSize: 28, fontFamily: FontFamily.bold, fontWeight: "700" as const },
+  avatarText: { fontSize: 28, fontFamily: FontFamily.bold, fontWeight: "700" as const },
   groupCard: { gap: 0 },
   input: {
     borderRadius: 14,

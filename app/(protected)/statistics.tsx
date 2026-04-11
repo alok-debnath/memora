@@ -13,6 +13,7 @@ import { SectionLabel } from "@/components/ui/SectionLabel";
 import { Badge } from "@/components/ui/Badge";
 import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
 import { isReminder } from "@/types/memoryKind";
+import { statAccentColors } from "@/constants/colors";
 
 export default function StatisticsScreen() {
   const theme = useAppTheme();
@@ -81,10 +82,10 @@ export default function StatisticsScreen() {
   }, [activeDays]);
 
   const statCards = [
-    { label: "Total memories", value: stats?.totalMemories ?? memoryOnly.length, icon: "layers" as const, color: "#3B82F6" },
-    { label: "Topics", value: topics.length, icon: "zap" as const, color: "#F59E0B" },
-    { label: "Words written", value: totalWords, icon: "edit-3" as const, color: "#10B981" },
-    { label: "Diary entries", value: diaryEntries.length, icon: "book" as const, color: "#8B5CF6" },
+    { label: "Total memories", value: stats?.totalMemories ?? memoryOnly.length, icon: "layers" as const, color: statAccentColors.memories },
+    { label: "Topics", value: topics.length, icon: "zap" as const, color: statAccentColors.topics },
+    { label: "Words written", value: totalWords, icon: "edit-3" as const, color: statAccentColors.words },
+    { label: "Diary entries", value: diaryEntries.length, icon: "book" as const, color: statAccentColors.diary },
   ];
 
   return (

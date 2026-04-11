@@ -562,7 +562,7 @@ export function VoiceRecorder({
               elevation: compact ? 1 : 4,
             }}
           >
-            <Feather name={mainIcon} size={compact ? 18 : 28} color="#FFFFFF" />
+            <Feather name={mainIcon} size={compact ? 18 : 28} color={theme.textInverse.val} />
           </Pressable>
         </YStack>
 

@@ -36,6 +36,19 @@ export type AppTheme = {
   card: ThemeToken;
   cardBorder: ThemeToken;
   overlay: ThemeToken;
+  overlayStrong: ThemeToken;
+  surface: ThemeToken;
+  surfaceElevated: ThemeToken;
+  surfaceAccent: ThemeToken;
+  surfaceDangerSoft: ThemeToken;
+  surfaceSuccessSoft: ThemeToken;
+  textInverse: ThemeToken;
+  textSuccess: ThemeToken;
+  textWarning: ThemeToken;
+  textError: ThemeToken;
+  borderStrong: ThemeToken;
+  borderSubtle: ThemeToken;
+  focusRing: ThemeToken;
 };
 
 export function useAppTheme(): AppTheme {

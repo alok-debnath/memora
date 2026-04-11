@@ -25,6 +25,7 @@ import { AIChatPanel } from "./AIChatPanel";
 import { BaseSheet } from "./ui/BaseSheet";
 import { PressableScale } from "./ui/PressableScale";
 import { SegmentedControl } from "./ui/SegmentedControl";
+import { statusAccentColors } from "@/constants/colors";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -111,7 +112,7 @@ function TipsCard() {
       gap={8}
     >
       <XStack alignItems="center" gap={6} marginBottom={4}>
-        <Feather name="zap" size={14} color="#F59E0B" />
+        <Feather name="zap" size={14} color={statusAccentColors.warning} />
         <Text fontSize={14} fontFamily="$body" fontWeight="600" color="$color">Tips</Text>
       </XStack>
       {TIPS.map((tip, i) => (
@@ -476,7 +477,7 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
                         name="send"
                         size={16}
                         color={
-                          noteText.trim() && !isSaving ? "#FFFFFF" : theme.colorMuted.val
+                          noteText.trim() && !isSaving ? theme.textInverse.val : theme.colorMuted.val
                         }
                       />
                     </XStack>
