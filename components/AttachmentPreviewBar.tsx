@@ -1,11 +1,10 @@
-import React, { useCallback } from "react";
+import React from "react";
 import {
   View,
   ScrollView,
   Pressable,
   StyleSheet,
   Animated,
-  Platform,
 } from "react-native";
 import { Image } from "expo-image";
 import { Feather } from "@expo/vector-icons";
@@ -89,7 +88,6 @@ function AttachmentSquare({
         },
       ]}
     >
-      {/* Content */}
       {attachment.type === "image" ? (
         <Image
           source={{ uri: attachment.uri }}
@@ -106,36 +104,31 @@ function AttachmentSquare({
             color={colors.textSecondary}
             textAlign="center"
             numberOfLines={2}
-            mt="$1"
-            px="$1"
+            style={{ marginTop: 4, paddingHorizontal: 4 }}
           >
             {trimFilename(attachment.name)}
           </Text>
         </View>
       )}
 
-      {/* Uploading shimmer overlay */}
       {isUploading && (
         <View style={[styles.overlay, { backgroundColor: "rgba(0,0,0,0.45)" }]}>
           <UploadingIndicator color="#FFFFFF" />
         </View>
       )}
 
-      {/* Error overlay */}
       {isError && (
         <View style={[styles.overlay, { backgroundColor: "rgba(239,68,68,0.25)" }]}>
           <Feather name="alert-circle" size={20} color="#EF4444" />
         </View>
       )}
 
-      {/* Done badge */}
       {isDone && (
         <View style={[styles.badge, { backgroundColor: colors.primary }]}>
           <Feather name="check-circle" size={10} color="#FFFFFF" />
         </View>
       )}
 
-      {/* Remove button */}
       <Pressable
         onPress={() => onRemove(attachment.id)}
         hitSlop={8}

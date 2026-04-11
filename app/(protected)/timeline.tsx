@@ -139,7 +139,6 @@ export default function TimelineScreen() {
                       importance: "normal" as const,
                       linkedUrls: [],
                       extractedActions: [],
-                      attachments: [],
                       createdAt: new Date(m._creationTime).toISOString(),
                       updatedAt: new Date(m._creationTime).toISOString(),
                     } as MemoryNote}

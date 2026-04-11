@@ -2,10 +2,9 @@ import React, { useState, useCallback } from "react";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImageManipulator from "expo-image-manipulator";
-import { useConvexAuth } from "convex/react";
-import { useMutation, useAction } from "convex/react";
+import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { uploadFileToDrive, type DriveUploadResult } from "@/lib/driveUpload";
+import { uploadFileToDrive } from "@/lib/driveUpload";
 import * as Crypto from "expo-crypto";
 
 export type PendingAttachmentUploadStatus =
@@ -79,7 +78,6 @@ export function useFileAttachments({ token }: UseFileAttachmentsOptions = {}) {
         format: ImageManipulator.SaveFormat.JPEG,
       }
     );
-    // Get approximate size from the result
     let sizeBytes = 0;
     try {
       const response = await fetch(result.uri);
@@ -105,9 +103,7 @@ export function useFileAttachments({ token }: UseFileAttachmentsOptions = {}) {
 
     for (const asset of result.assets) {
       const localId = await Crypto.randomUUID();
-      const name =
-        asset.fileName ??
-        `image_${Date.now()}.jpg`;
+      const name = asset.fileName ?? `image_${Date.now()}.jpg`;
 
       const pending: PendingAttachment = {
         id: localId,
@@ -124,18 +120,12 @@ export function useFileAttachments({ token }: UseFileAttachmentsOptions = {}) {
 
     setAttachments((prev) => [...prev, ...newAttachments]);
 
-    // Compress each image in the background
     for (const attachment of newAttachments) {
       compressImage(attachment.originalUri)
         .then(({ uri, sizeBytes }) => {
-          updateAttachment(attachment.id, {
-            uri,
-            sizeBytes,
-            uploadStatus: "idle",
-          });
+          updateAttachment(attachment.id, { uri, sizeBytes, uploadStatus: "idle" });
         })
         .catch(() => {
-          // Compression failed — use original
           updateAttachment(attachment.id, { uploadStatus: "idle" });
         });
     }
@@ -145,10 +135,7 @@ export function useFileAttachments({ token }: UseFileAttachmentsOptions = {}) {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) return;
 
-    const result = await ImagePicker.launchCameraAsync({
-      quality: 1,
-    });
-
+    const result = await ImagePicker.launchCameraAsync({ quality: 1 });
     if (result.canceled) return;
 
     const asset = result.assets[0];
@@ -217,7 +204,6 @@ export function useFileAttachments({ token }: UseFileAttachmentsOptions = {}) {
    * Returns the list of successfully uploaded attachments.
    */
   const uploadAll = useCallback(async (): Promise<UploadedAttachment[]> => {
-    // Wait for any in-progress compression to settle (idle or error)
     const hasCompressing = attachmentsRef.current.some(
       (a) => a.uploadStatus === "compressing"
     );
@@ -239,7 +225,6 @@ export function useFileAttachments({ token }: UseFileAttachmentsOptions = {}) {
     const toUpload = attachmentsRef.current.filter((a) => a.uploadStatus === "idle");
     if (toUpload.length === 0) return [];
 
-    // Fetch credentials once
     let accessToken: string;
     let folderId: string;
     try {
@@ -254,12 +239,10 @@ export function useFileAttachments({ token }: UseFileAttachmentsOptions = {}) {
       throw err;
     }
 
-    // Mark all as uploading
     for (const a of toUpload) {
       updateAttachment(a.id, { uploadStatus: "uploading" });
     }
 
-    // Upload in parallel
     const results = await Promise.allSettled(
       toUpload.map(async (attachment) => {
         const driveResult = await uploadFileToDrive(
@@ -306,9 +289,7 @@ export function useFileAttachments({ token }: UseFileAttachmentsOptions = {}) {
       } else {
         const a = toUpload[i];
         const msg =
-          result.reason instanceof Error
-            ? result.reason.message
-            : "Upload failed";
+          result.reason instanceof Error ? result.reason.message : "Upload failed";
         console.error("[useFileAttachments] upload error for", a.name, ":", msg);
         if (!firstError) firstError = msg;
         updateAttachment(a.id, { uploadStatus: "error", errorMessage: msg });

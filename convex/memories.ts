@@ -96,6 +96,10 @@ async function deleteMemoryRelatedData(
       .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
       .take(RELATED_DELETE_BATCH);
     for (const doc of attachments) {
+      await ctx.scheduler.runAfter(0, internal.integrations.deleteDriveFile, {
+        userId: doc.userId,
+        driveFileId: doc.driveFileId,
+      });
       await ctx.db.delete(doc._id);
     }
     if (attachments.length < RELATED_DELETE_BATCH) break;
@@ -207,6 +211,13 @@ async function softDeleteMemory(
       googleEventId: googleEventIdToDelete,
     });
   }
+
+  // Soft-delete all Drive attachments so they're hidden from the files section
+  const attachmentsToHide = await ctx.db
+    .query("memoryAttachments")
+    .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
+    .collect();
+  await Promise.all(attachmentsToHide.map((a) => ctx.db.patch(a._id, { isDeleted: true })));
 }
 
 function hasSchedulingInput(value: {
@@ -975,6 +986,14 @@ export const restore = mutation({
         topicIds,
       });
     }
+
+    // Restore soft-deleted attachments
+    const deletedAttachments = await ctx.db
+      .query("memoryAttachments")
+      .withIndex("by_memory", (q) => q.eq("memoryId", args.id))
+      .filter((q) => q.eq(q.field("isDeleted"), true))
+      .collect();
+    await Promise.all(deletedAttachments.map((a) => ctx.db.patch(a._id, { isDeleted: undefined })));
 
     if (nextMemory.entryKind === "reminder") {
       await ctx.runMutation(internal.integrations.queueReminderSync, {

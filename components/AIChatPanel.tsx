@@ -10,7 +10,7 @@ import {
 import Clipboard from "@react-native-clipboard/clipboard";
 import { XStack, YStack, Text, TooltipSimple } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Feather, FontAwesome5 } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Speech from "expo-speech";
 import Markdown from "react-native-markdown-display";
@@ -47,7 +47,7 @@ import { getReminderDate, inferMemoryEntryKind } from "@/types/memoryKind";
 import { AttachmentPreviewBar } from "@/components/AttachmentPreviewBar";
 import { AttachmentPickerButton } from "@/components/AttachmentPickerButton";
 import { useFileAttachments, type PendingAttachment } from "@/hooks/useFileAttachments";
-import { Linking } from "react-native";
+import { Linking, StyleSheet } from "react-native";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -333,6 +333,7 @@ type ChatMsg = {
   role: string;
   content: string;
   _creationTime: number;
+  attachments?: Array<{ attachmentId: string; name: string; type: string; mimeType: string }>;
 };
 
 type DeletionItem = {
@@ -381,7 +382,6 @@ function chatToMemoryNote(m: Record<string, unknown>): MemoryNote {
     recurrenceType: (m.schedule as { recurrenceType?: MemoryNote["recurrenceType"] } | undefined)
       ?.recurrenceType,
     capsuleUnlockDate: m.capsuleUnlockDate as string | undefined,
-    attachments: [],
     isPublic: m.isPublic as boolean | undefined,
     googleEventId: m.googleEventId as string | undefined,
     googleSyncStatus: m.googleSyncStatus as MemoryNote["googleSyncStatus"] | undefined,
@@ -427,10 +427,33 @@ function extractSpeakableText(content: string): string {
   return text;
 }
 
+type CardFlowSearch = {
+  source: "grounding" | "tool";
+  query?: string;
+  resultCount: number;
+  cacheState?: "cached" | "fresh";
+  searchMode?: "recent_only" | "semantic_fresh" | "semantic_cached";
+};
+
+type CardFlowAttachment = {
+  name: string;
+  type: "image" | "document";
+  status: "completed" | "failed";
+  method?: "gemini" | "openai" | "pdf-extract";
+};
+
+type CardFlow = {
+  assistantProvider?: "openai";
+  toolSequence?: string[];
+  searches?: CardFlowSearch[];
+  attachments?: CardFlowAttachment[];
+};
+
 function parseCardIds(content: string): { 
   ids: string[]; 
   isCached: boolean; 
   turns?: number;
+  flow?: CardFlow;
   cleanText: string 
 } | null {
   const marker = "<!--MEMORA_CARD_IDS:";
@@ -444,12 +467,14 @@ function parseCardIds(content: string): {
     const ids: string[] = Array.isArray(parsed.ids) ? parsed.ids : [];
     const isCached: boolean = parsed.isCached ?? false;
     const turns: number | undefined = typeof parsed.turns === "number" ? parsed.turns : undefined;
+    const flow: CardFlow | undefined =
+      parsed.flow && typeof parsed.flow === "object" ? parsed.flow : undefined;
     
     // Remove only THIS marker from the text
     const markerFull = content.slice(startIdx, endIdx + endMarker.length);
     const cleanText = content.replace(markerFull, "").trim();
     
-    return ids.length > 0 ? { ids, isCached, turns, cleanText } : null;
+    return ids.length > 0 ? { ids, isCached, turns, flow, cleanText } : null;
   } catch {
     return null;
   }
@@ -746,6 +771,7 @@ function SearchResultRow({
   onEdit,
   onTriggerSync,
   onRemoveSync,
+  hasFiles = false,
 }: {
   item: SearchResultItem;
   index: number;
@@ -757,6 +783,7 @@ function SearchResultRow({
   onEdit: (id: string) => void;
   onTriggerSync: (item: SearchResultItem) => void;
   onRemoveSync: (item: SearchResultItem) => void;
+  hasFiles?: boolean;
 }) {
   const menuRef = useRef<ContextMenuHandle>(null);
   const isReminder = item.entry_kind === "reminder" || !!item.schedule_due_at;
@@ -770,40 +797,24 @@ function SearchResultRow({
   const syncTone =
     item.google_sync_status === "synced"
       ? {
-          border: "rgba(34, 197, 94, 0.30)",
+          border: "rgba(34, 197, 94, 0.28)",
           bg: "rgba(34, 197, 94, 0.08)",
-          icon: "check-circle",
-          iconColor: "#16A34A",
-          label: "Saved in Memora and synced to Google Calendar",
+          label: "synced",
+          labelColor: "#16A34A",
         }
       : item.google_sync_status === "failed"
         ? {
             border: "rgba(239, 68, 68, 0.24)",
             bg: "rgba(239, 68, 68, 0.08)",
-            icon: "alert-circle",
-            iconColor: "#DC2626",
-            label: "Saved in Memora, but Google Calendar sync failed",
+            label: "sync failed",
+            labelColor: "#DC2626",
           }
         : {
             border: "rgba(245, 158, 11, 0.24)",
             bg: "rgba(245, 158, 11, 0.08)",
-            icon: "clock",
-            iconColor: "#D97706",
-            label: "Saved in Memora, waiting for Google Calendar sync",
+            label: "syncing\u2026",
+            labelColor: "#D97706",
           };
-  const rawSyncMessage = item.google_sync_message?.trim() ?? "";
-  const isGenericSyncMessage = [
-    "Reminder saved. Waiting to sync to Google Calendar...",
-    "Reminder updated. Syncing changes to Google Calendar...",
-    "Syncing reminder to Google Calendar...",
-    "Google Calendar event created.",
-    "Google Calendar event updated.",
-  ].includes(rawSyncMessage);
-  const syncDetailMessage =
-    (!isGenericSyncMessage ? rawSyncMessage : "") ||
-    (item.google_sync_status === "failed"
-      ? "Check your Google Calendar connection and try again."
-      : "");
   const showTriggerSyncAction =
     isReminder && (!hasGoogleSyncInfo || item.google_sync_status === "failed");
   const showRemoveSyncAction = isReminder && hasGoogleSyncInfo;
@@ -895,28 +906,43 @@ function SearchResultRow({
           </Text>
         </XStack>
       ) : null}
-      {isReminder && hasGoogleSyncInfo ? (
-        <YStack
-          marginTop={2}
-          padding={10}
-          gap={4}
-          borderRadius={12}
-          borderWidth={1}
-          borderColor={syncTone.border}
-          backgroundColor={syncTone.bg}
-        >
-          <XStack gap={7} alignItems="center">
-            <Feather name={syncTone.icon as any} size={13} color={syncTone.iconColor} />
-            <Text fontSize={11} fontFamily={FontFamily.semiBold} color="$color" flex={1}>
-              {syncTone.label}
-            </Text>
-          </XStack>
-          {syncDetailMessage ? (
-            <Text fontSize={11} fontFamily="$body" color="$colorMuted" lineHeight={16}>
-              {syncDetailMessage}
-            </Text>
+      {isReminder && (hasGoogleSyncInfo || hasFiles) ? (
+        <XStack marginTop={6} gap={6} alignItems="center" flexWrap="wrap">
+          {isReminder && hasGoogleSyncInfo ? (
+            <XStack
+              alignItems="center"
+              gap={4}
+              paddingHorizontal={8}
+              paddingVertical={5}
+              borderRadius={20}
+              borderWidth={1}
+              borderColor={syncTone.border}
+              backgroundColor={syncTone.bg}
+            >
+              <FontAwesome5 name="calendar-alt" size={12} color={syncTone.labelColor} />
+              <Text fontSize={11} fontFamily={FontFamily.semiBold} color={syncTone.labelColor}>
+                {syncTone.label}
+              </Text>
+            </XStack>
           ) : null}
-        </YStack>
+          {hasFiles ? (
+            <XStack
+              alignItems="center"
+              gap={4}
+              paddingHorizontal={8}
+              paddingVertical={5}
+              borderRadius={20}
+              borderWidth={1}
+              borderColor="rgba(26,115,232,0.25)"
+              backgroundColor="rgba(26,115,232,0.07)"
+            >
+              <FontAwesome5 name="google-drive" size={12} color="#1A73E8" />
+              <Text fontSize={11} fontFamily={FontFamily.semiBold} color="#1A73E8">
+                in Drive
+              </Text>
+            </XStack>
+          ) : null}
+        </XStack>
       ) : null}
     </YStack>
   );
@@ -971,28 +997,43 @@ function SearchResultRow({
                 </Text>
               </XStack>
             ) : null}
-            {isReminder && hasGoogleSyncInfo ? (
-              <YStack
-                paddingHorizontal={9}
-                paddingVertical={8}
-                gap={3}
-                borderRadius={10}
-                borderWidth={1}
-                borderColor={syncTone.border}
-                backgroundColor={syncTone.bg}
-              >
-                <XStack gap={6} alignItems="center">
-                  <Feather name={syncTone.icon as any} size={12} color={syncTone.iconColor} />
-                  <Text fontSize={10} fontFamily={FontFamily.semiBold} color="$color" flex={1}>
-                    {syncTone.label}
-                  </Text>
-                </XStack>
-                {syncDetailMessage ? (
-                  <Text fontSize={10} fontFamily="$body" color="$colorMuted" lineHeight={15}>
-                    {syncDetailMessage}
-                  </Text>
+            {(isReminder && hasGoogleSyncInfo) || hasFiles ? (
+              <XStack marginTop={2} gap={5} alignItems="center" flexWrap="wrap">
+                {isReminder && hasGoogleSyncInfo ? (
+                  <XStack
+                    alignItems="center"
+                    gap={4}
+                    paddingHorizontal={7}
+                    paddingVertical={4}
+                    borderRadius={20}
+                    borderWidth={1}
+                    borderColor={syncTone.border}
+                    backgroundColor={syncTone.bg}
+                  >
+                    <FontAwesome5 name="calendar-alt" size={10} color={syncTone.labelColor} />
+                    <Text fontSize={10} fontFamily={FontFamily.semiBold} color={syncTone.labelColor}>
+                      {syncTone.label}
+                    </Text>
+                  </XStack>
                 ) : null}
-              </YStack>
+                {hasFiles ? (
+                  <XStack
+                    alignItems="center"
+                    gap={4}
+                    paddingHorizontal={7}
+                    paddingVertical={4}
+                    borderRadius={20}
+                    borderWidth={1}
+                    borderColor="rgba(26,115,232,0.25)"
+                    backgroundColor="rgba(26,115,232,0.07)"
+                  >
+                    <FontAwesome5 name="google-drive" size={10} color="#1A73E8" />
+                    <Text fontSize={10} fontFamily={FontFamily.semiBold} color="#1A73E8">
+                      in Drive
+                    </Text>
+                  </XStack>
+                ) : null}
+              </XStack>
             ) : null}
           </YStack>
 
@@ -1025,59 +1066,617 @@ function SearchResultRow({
 
 // ─── Performance Pill ────────────────────────────────────────────────────────
 
-function PerformancePill({ 
-  isCached, 
-  turns = 1,
-  theme 
-}: { 
-  isCached: boolean; 
-  turns?: number;
+const TOOL_LABELS: Record<string, string> = {
+  search_memories: "Search",
+  create_memory: "Create",
+  update_memory: "Update",
+  sync_reminder: "Sync",
+  remove_reminder_sync: "Unsync",
+  propose_deletion: "Find delete matches",
+  list_deleted_memories: "Load deleted",
+  restore_memory: "Restore",
+  list_memories: "List",
+  get_stats: "Stats",
+  analyze_memories: "Analyze",
+  history: "History",
+  manage_topics: "Topics",
+  surface_cards: "Surface cards",
+};
+
+function formatToolLabel(toolName: string) {
+  return TOOL_LABELS[toolName] ?? toolName.replace(/_/g, " ");
+}
+
+function getFlowUsageBadges(
+  flow: CardFlow | undefined,
+  theme: ReturnType<typeof useAppTheme>
+) {
+  const assistantLabel = flow?.assistantProvider === "openai" ? "OpenAI" : "Assistant";
+  const attachments = flow?.attachments ?? [];
+  const completedAttachments = attachments.filter(
+    (attachment) => attachment.status === "completed"
+  );
+  const geminiCount = completedAttachments.filter(
+    (attachment) => attachment.method === "gemini"
+  ).length;
+  const openAiVisionCount = completedAttachments.filter(
+    (attachment) => attachment.method === "openai"
+  ).length;
+  const directPdfCount = completedAttachments.filter(
+    (attachment) => attachment.method === "pdf-extract"
+  ).length;
+  const failedCount = attachments.filter(
+    (attachment) => attachment.status === "failed"
+  ).length;
+
+  const badges = [
+    {
+      icon: "cpu",
+      label: assistantLabel,
+      value: "reason + reply",
+      color: theme.primary.val,
+    },
+  ];
+
+  if (geminiCount > 0) {
+    badges.push({
+      icon: "image",
+      label: "Gemini",
+      value: `read ${geminiCount} file${geminiCount === 1 ? "" : "s"}`,
+      color: "#7C3AED",
+    });
+  }
+
+  if (openAiVisionCount > 0) {
+    badges.push({
+      icon: "camera",
+      label: "OpenAI vision",
+      value: `fallback × ${openAiVisionCount}`,
+      color: "#EA580C",
+    });
+  }
+
+  if (directPdfCount > 0) {
+    badges.push({
+      icon: "file-text",
+      label: "No AI",
+      value: `PDF text × ${directPdfCount}`,
+      color: "#0F766E",
+    });
+  }
+
+  if (failedCount > 0) {
+    badges.push({
+      icon: "alert-circle",
+      label: "Read failed",
+      value: `${failedCount} file${failedCount === 1 ? "" : "s"}`,
+      color: "#DC2626",
+    });
+  }
+
+  return badges;
+}
+
+function describeAttachmentFlow(flow: CardFlow | undefined) {
+  const attachments = flow?.attachments ?? [];
+  if (attachments.length === 0) return null;
+
+  const completedAttachments = attachments.filter(
+    (attachment) => attachment.status === "completed"
+  );
+  const failedCount = attachments.length - completedAttachments.length;
+  const geminiCount = completedAttachments.filter(
+    (attachment) => attachment.method === "gemini"
+  ).length;
+  const openAiVisionCount = completedAttachments.filter(
+    (attachment) => attachment.method === "openai"
+  ).length;
+  const directPdfCount = completedAttachments.filter(
+    (attachment) => attachment.method === "pdf-extract"
+  ).length;
+
+  const parts: string[] = [];
+  if (directPdfCount > 0) parts.push(`direct PDF text on ${directPdfCount}`);
+  if (geminiCount > 0) parts.push(`Gemini read ${geminiCount}`);
+  if (openAiVisionCount > 0) parts.push(`OpenAI vision fallback on ${openAiVisionCount}`);
+  if (failedCount > 0) parts.push(`${failedCount} failed`);
+
+  return parts.join(" · ");
+}
+
+function describeSearchStep(search: CardFlowSearch) {
+  const cacheLabel =
+    search.cacheState === "cached"
+      ? "cached"
+      : search.cacheState === "fresh"
+        ? "fresh"
+        : null;
+  const queryLabel = search.query?.trim() ? ` for "${search.query.trim()}"` : "";
+  const resultLabel = `${search.resultCount} match${search.resultCount === 1 ? "" : "es"}`;
+  const prefix =
+    search.source === "grounding" ? "Grounding checked memories" : "Search ran";
+
+  return `${prefix}${queryLabel}${cacheLabel ? ` on the ${cacheLabel} path` : ""} and found ${resultLabel}.`;
+}
+
+function FlowToolPath({
+  tools,
+  theme,
+}: {
+  tools: string[];
+  theme: ReturnType<typeof useAppTheme>;
+}) {
+  if (tools.length === 0) return null;
+
+  return (
+    <XStack gap={6} alignItems="center" flexWrap="wrap">
+      {tools.map((tool, index) => (
+        <React.Fragment key={`${tool}-${index}`}>
+          <XStack
+            alignItems="center"
+            gap={5}
+            paddingHorizontal={9}
+            paddingVertical={6}
+            borderRadius={999}
+            backgroundColor={`${theme.primary.val}10`}
+            borderWidth={1}
+            borderColor={`${theme.primary.val}18`}
+          >
+            <Feather name="corner-down-right" size={10} color={theme.primary.val} />
+            <Text fontSize={10} fontFamily="$body" fontWeight="700" color="$color">
+              {formatToolLabel(tool)}
+            </Text>
+          </XStack>
+          {index < tools.length - 1 ? (
+            <Feather name="chevron-right" size={12} color={theme.colorMuted.val} />
+          ) : null}
+        </React.Fragment>
+      ))}
+    </XStack>
+  );
+}
+
+function CurrentFlowSummary({
+  flow,
+  turns,
+  theme,
+}: {
+  flow?: CardFlow;
+  turns: number;
+  theme: ReturnType<typeof useAppTheme>;
+}) {
+  const searches = flow?.searches ?? [];
+  const groundingSearch = searches.find((search) => search.source === "grounding");
+  const latestToolSearch = [...searches]
+    .reverse()
+    .find((search) => search.source === "tool");
+  const latestSearch = latestToolSearch ?? groundingSearch;
+  const toolSequence = flow?.toolSequence ?? [];
+  const attachmentSummary = describeAttachmentFlow(flow);
+  const usageBadges = getFlowUsageBadges(flow, theme);
+  const assistantLabel = flow?.assistantProvider === "openai" ? "OpenAI" : "Assistant";
+
+  return (
+    <YStack gap={12}>
+      <YStack gap={8}>
+        <Text
+          fontSize={10}
+          fontFamily="$body"
+          fontWeight="600"
+          color="$colorMuted"
+          style={{ textTransform: "uppercase", letterSpacing: 0.5 }}
+        >
+          Used This Turn
+        </Text>
+        <XStack gap={8} flexWrap="wrap">
+          {usageBadges.map((badge) => (
+            <InsightStatChip
+              key={`${badge.label}-${badge.value}`}
+              icon={badge.icon}
+              label={badge.label}
+              value={badge.value}
+              color={badge.color}
+            />
+          ))}
+        </XStack>
+      </YStack>
+
+      <YStack
+        gap={10}
+        padding={12}
+        borderRadius={14}
+        backgroundColor={
+          latestSearch?.cacheState === "cached"
+            ? "rgba(245,158,11,0.08)"
+            : `${theme.primary.val}10`
+        }
+        borderWidth={1}
+        borderColor={
+          latestSearch?.cacheState === "cached"
+            ? "rgba(245,158,11,0.16)"
+            : `${theme.primary.val}20`
+        }
+      >
+        <Text
+          fontSize={10}
+          fontFamily="$body"
+          fontWeight="600"
+          color="$colorMuted"
+          style={{ textTransform: "uppercase", letterSpacing: 0.5 }}
+        >
+          Current Path
+        </Text>
+
+        {attachmentSummary ? (
+          <InsightLine
+            icon="paperclip"
+            color="#7C3AED"
+            text={`Attachments: ${attachmentSummary}.`}
+          />
+        ) : null}
+
+        {groundingSearch ? (
+          <InsightLine
+            icon={groundingSearch.cacheState === "cached" ? "zap" : "search"}
+            color={groundingSearch.cacheState === "cached" ? "#F59E0B" : theme.primary.val}
+            text={describeSearchStep(groundingSearch)}
+          />
+        ) : null}
+
+        {latestToolSearch ? (
+          <InsightLine
+            icon={latestToolSearch.cacheState === "cached" ? "zap" : "radio"}
+            color={latestToolSearch.cacheState === "cached" ? "#F59E0B" : theme.primary.val}
+            text={describeSearchStep(latestToolSearch)}
+          />
+        ) : null}
+
+        {toolSequence.length > 0 ? (
+          <YStack gap={8}>
+            <InsightLine
+              icon="layers"
+              color={theme.primary.val}
+              text="Tool path for this reply."
+            />
+            <FlowToolPath tools={toolSequence} theme={theme} />
+          </YStack>
+        ) : null}
+
+        <InsightLine
+          icon="cpu"
+          color={theme.primary.val}
+          text={`${assistantLabel} handled reasoning across ${turns} pass${turns === 1 ? "" : "es"} for this reply.`}
+        />
+      </YStack>
+    </YStack>
+  );
+}
+
+function SearchStatsPreview({
+  isCached,
+  turns,
+  resultCount,
+  canDeepSearch,
+  flow,
+  theme,
+}: {
+  isCached: boolean;
+  turns: number;
+  resultCount: number;
+  canDeepSearch?: boolean;
+  flow?: CardFlow;
   theme: ReturnType<typeof useAppTheme>;
 }) {
   const isReasoned = turns > 1;
-  
-  // Base colors for the pill states
-  const baseColor = isReasoned 
-    ? "#7C3AED" 
-    : (isCached ? "#F59E0B" : theme.primary.val);
+  const baseColor = isReasoned ? "#7C3AED" : isCached ? "#F59E0B" : theme.primary.val;
+  const latestSearch = [...(flow?.searches ?? [])].reverse()[0];
+  const modeLabel = latestSearch?.cacheState === "cached" || isCached ? "Fast path" : "Fresh path";
+  const subtitle = latestSearch?.query?.trim()
+    ? `${modeLabel} · "${latestSearch.query.trim()}"`
+    : modeLabel;
 
   return (
-    <View style={{
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      paddingHorizontal: 10,
-      paddingVertical: 4,
-      borderRadius: 20,
-      backgroundColor: `${baseColor}15`,
-      borderWidth: 1,
-      borderColor: `${baseColor}40`,
-    }}>
-      <Feather name={isCached ? "zap" : "search"} size={11} color={baseColor} />
-      <Text 
-        fontSize={11} 
-        fontFamily={FontFamily.bold} 
-        color={baseColor}
-        style={{ opacity: 0.9 }}
-      >
-        {isCached ? "Fast" : "Full scan"}
-      </Text>
-
-      {isReasoned && (
-        <>
-          <View style={{ width: 1, height: 10, backgroundColor: baseColor, opacity: 0.2, marginLeft: 2 }} />
-          <Feather name="layers" size={11} color={baseColor} />
-          <Text 
-            fontSize={11} 
-            fontFamily={FontFamily.bold} 
-            color={baseColor}
-            style={{ opacity: 0.9 }}
-          >
-            {`× ${turns}`}
+    <YStack
+      backgroundColor="$card"
+      borderRadius={18}
+      borderWidth={1}
+      borderColor="$borderColor"
+      padding={18}
+      gap={16}
+    >
+      <XStack alignItems="center" gap={10}>
+        <YStack
+          width={42}
+          height={42}
+          borderRadius={12}
+          alignItems="center"
+          justifyContent="center"
+          backgroundColor={`${baseColor}18`}
+        >
+          <Feather name="search" size={16} color={baseColor} />
+        </YStack>
+        <YStack flex={1}>
+          <Text fontSize={15} fontFamily="$body" fontWeight="700" color="$color">
+            Live flow
           </Text>
-        </>
-      )}
-    </View>
+          <Text fontSize={11} fontFamily="$body" color="$colorMuted" lineHeight={16}>
+            {subtitle} · {resultCount} {resultCount === 1 ? "card" : "cards"} surfaced
+          </Text>
+        </YStack>
+      </XStack>
+
+      <XStack gap={8} flexWrap="wrap">
+        <InsightStatChip
+          icon={isCached ? "zap" : "radio"}
+          label="Search"
+          value={isCached ? "cached" : "fresh"}
+          color={isCached ? "#F59E0B" : theme.primary.val}
+        />
+        <InsightStatChip
+          icon="layers"
+          label="Passes"
+          value={`${turns} pass${turns === 1 ? "" : "es"}`}
+          color={isReasoned ? "#7C3AED" : "#6B7280"}
+        />
+        <InsightStatChip
+          icon="archive"
+          label="Cards"
+          value={`${resultCount}`}
+          color={theme.colorMuted.val}
+        />
+        {(flow?.attachments?.length ?? 0) > 0 ? (
+          <InsightStatChip
+            icon="paperclip"
+            label="Files"
+            value={`${flow?.attachments?.length ?? 0}`}
+            color="#7C3AED"
+          />
+        ) : null}
+      </XStack>
+
+      <CurrentFlowSummary flow={flow} turns={turns} theme={theme} />
+
+      {canDeepSearch ? (
+        <YStack
+          gap={8}
+          paddingTop={12}
+          borderTopWidth={StyleSheet.hairlineWidth}
+          borderTopColor="$borderColor"
+        >
+          <Text fontSize={10} fontFamily="$body" fontWeight="600" color="$colorMuted" style={{ textTransform: "uppercase", letterSpacing: 0.5 }}>
+            Next Step
+          </Text>
+          <XStack
+            alignItems="flex-start"
+            gap={8}
+            padding={10}
+            borderRadius={14}
+            backgroundColor="rgba(124,58,237,0.08)"
+            borderWidth={1}
+            borderColor="rgba(124,58,237,0.16)"
+          >
+            <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: "rgba(124,58,237,0.14)", alignItems: "center", justifyContent: "center" }}>
+              <Feather name="refresh-cw" size={13} color="#7C3AED" />
+            </View>
+            <YStack flex={1} gap={2}>
+              <Text fontSize={12} fontFamily="$body" fontWeight="700" color="$color">
+                Deep scan available
+              </Text>
+              <Text fontSize={11} fontFamily="$body" color="$colorMuted" lineHeight={17}>
+                Reruns retrieval fresh while keeping the rest of this flow aligned.
+              </Text>
+            </YStack>
+          </XStack>
+        </YStack>
+      ) : null}
+    </YStack>
+  );
+}
+
+function DeepSearchPreview({
+  resultCount,
+  turns,
+  flow,
+  theme,
+}: {
+  resultCount: number;
+  turns: number;
+  flow?: CardFlow;
+  theme: ReturnType<typeof useAppTheme>;
+}) {
+  const latestSearch = [...(flow?.searches ?? [])].reverse()[0];
+
+  return (
+    <YStack
+      backgroundColor="$card"
+      borderRadius={18}
+      borderWidth={1}
+      borderColor="$borderColor"
+      padding={18}
+      gap={16}
+    >
+      <XStack alignItems="center" gap={10}>
+        <YStack
+          width={42}
+          height={42}
+          borderRadius={12}
+          alignItems="center"
+          justifyContent="center"
+          backgroundColor="rgba(124,58,237,0.14)"
+        >
+          <Feather name="refresh-cw" size={16} color="#7C3AED" />
+        </YStack>
+        <YStack flex={1}>
+          <Text fontSize={15} fontFamily="$body" fontWeight="700" color="$color">
+            Deep scan
+          </Text>
+          <Text fontSize={11} fontFamily="$body" color="$colorMuted" lineHeight={16}>
+            Rebuild this reply with a fresh retrieval pass.
+          </Text>
+        </YStack>
+      </XStack>
+
+      <XStack gap={8} flexWrap="wrap">
+        <InsightStatChip icon="archive" label="Cards" value={`${resultCount}`} color={theme.primary.val} />
+        <InsightStatChip icon="layers" label="Passes" value={`${turns}`} color="#7C3AED" />
+        <InsightStatChip
+          icon={latestSearch?.cacheState === "cached" ? "zap" : "radio"}
+          label="Current search"
+          value={latestSearch?.cacheState === "cached" ? "cached" : "fresh"}
+          color={latestSearch?.cacheState === "cached" ? "#F59E0B" : theme.primary.val}
+        />
+      </XStack>
+
+      <CurrentFlowSummary flow={flow} turns={turns} theme={theme} />
+
+      <YStack
+        gap={8}
+        padding={12}
+        borderRadius={14}
+        backgroundColor="rgba(124,58,237,0.08)"
+        borderWidth={1}
+        borderColor="rgba(124,58,237,0.16)"
+      >
+        <Text fontSize={10} fontFamily="$body" fontWeight="600" color="$colorMuted" style={{ textTransform: "uppercase", letterSpacing: 0.5 }}>
+          What Changes
+        </Text>
+        <InsightLine
+          icon="refresh-cw"
+          color="#7C3AED"
+          text="The memory retrieval step reruns fresh and ignores the cached path."
+        />
+        <InsightLine
+          icon="git-branch"
+          color={theme.primary.val}
+          text="Attachment reading and the rest of the tool path stay aligned unless the new results change the plan."
+        />
+      </YStack>
+    </YStack>
+  );
+}
+
+function InsightStatChip({
+  icon,
+  label,
+  value,
+  color,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  color: string;
+}) {
+  return (
+    <XStack
+      alignItems="center"
+      gap={6}
+      paddingHorizontal={10}
+      paddingVertical={7}
+      borderRadius={999}
+      backgroundColor={`${color}12`}
+      borderWidth={1}
+      borderColor={`${color}22`}
+    >
+      <Feather name={icon as any} size={11} color={color} />
+      <Text fontSize={10} fontFamily="$body" fontWeight="700" color={color}>
+        {label}
+      </Text>
+      <Text fontSize={10} fontFamily="$body" color="$colorMuted">
+        {value}
+      </Text>
+    </XStack>
+  );
+}
+
+function InsightLine({
+  icon,
+  color,
+  text,
+}: {
+  icon: string;
+  color: string;
+  text: string;
+}) {
+  return (
+    <XStack alignItems="flex-start" gap={8}>
+      <View
+        style={{
+          width: 24,
+          height: 24,
+          borderRadius: 12,
+          backgroundColor: `${color}14`,
+          alignItems: "center",
+          justifyContent: "center",
+          marginTop: 1,
+        }}
+      >
+        <Feather name={icon as any} size={11} color={color} />
+      </View>
+      <Text fontSize={11} fontFamily="$body" color="$colorMuted" flex={1} lineHeight={17}>
+        {text}
+      </Text>
+    </XStack>
+  );
+}
+
+function PerformancePill({
+  isCached,
+  turns = 1,
+  resultCount,
+  flow,
+  theme,
+}: {
+  isCached: boolean;
+  turns?: number;
+  resultCount: number;
+  flow?: CardFlow;
+  theme: ReturnType<typeof useAppTheme>;
+}) {
+  const isReasoned = (turns ?? 1) > 1;
+  const baseColor = isReasoned ? "#7C3AED" : isCached ? "#F59E0B" : theme.primary.val;
+
+  return (
+    <ContextMenu
+      openOn="press"
+      preview={
+        <SearchStatsPreview
+          isCached={isCached}
+          turns={turns ?? 1}
+          resultCount={resultCount}
+          canDeepSearch={isCached}
+          flow={flow}
+          theme={theme}
+        />
+      }
+      items={[]}
+      previewMinWidth={300}
+    >
+      <View style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 20,
+        backgroundColor: `${baseColor}15`,
+        borderWidth: 1,
+        borderColor: `${baseColor}40`,
+      }}>
+        <Feather name={isCached ? "zap" : "search"} size={11} color={baseColor} />
+        <Text fontSize={11} fontFamily={FontFamily.bold} color={baseColor} style={{ opacity: 0.9 }}>
+          {isCached ? "Fast" : "Full scan"}
+        </Text>
+        {isReasoned && (
+          <>
+            <View style={{ width: 1, height: 10, backgroundColor: baseColor, opacity: 0.2, marginLeft: 2 }} />
+            <Feather name="layers" size={11} color={baseColor} />
+            <Text fontSize={11} fontFamily={FontFamily.bold} color={baseColor} style={{ opacity: 0.9 }}>
+              {`× ${turns}`}
+            </Text>
+          </>
+        )}
+      </View>
+    </ContextMenu>
   );
 }
 
@@ -1087,6 +1686,7 @@ function SearchResultsCard({
   ids,
   isCached,
   turns = 1,
+  flow,
   token,
   theme,
   onDeepSearch,
@@ -1095,6 +1695,7 @@ function SearchResultsCard({
   ids: string[];
   isCached: boolean;
   turns?: number;
+  flow?: CardFlow;
   token?: string | null;
   theme: ReturnType<typeof useAppTheme>;
   onDeepSearch?: (query: string) => void;
@@ -1125,6 +1726,13 @@ function SearchResultsCard({
     google_sync_message: doc.googleSyncMessage,
     google_sync_updated_at: doc.googleSyncUpdatedAt,
   }));
+
+  // Batch-fetch attachment counts so we can show the Drive badge per row
+  const memoryIds = useMemo(() => (fetchedDocs ?? []).map((d) => d._id), [fetchedDocs]);
+  const attachmentCounts = useQuery(
+    api.attachments.getAttachmentCountsForMemories,
+    token && memoryIds.length > 0 ? { token, memoryIds: memoryIds as any[] } : "skip"
+  ) ?? {};
 
   const displayItems = expanded ? items : items.slice(0, 3);
   const hasMore = items.length > 3;
@@ -1222,9 +1830,6 @@ function SearchResultsCard({
     }
   };
 
-  const badgeLabel = isCached ? "⚡ Fast" : "✓ Full scan";
-  const badgeColor = isCached ? "#F59E0B" : theme.primary.val;
-
   return (
     <Animated.View entering={FadeInDown.duration(320)} style={{ marginTop: 8 }}>
       <YStack
@@ -1258,31 +1863,55 @@ function SearchResultsCard({
             </Text>
           </XStack>
           <XStack gap={6} alignItems="center">
-            <PerformancePill isCached={isCached} turns={turns} theme={theme} />
+            <PerformancePill
+              isCached={isCached}
+              turns={turns}
+              resultCount={ids.length}
+              flow={flow}
+              theme={theme}
+            />
 
             {isCached && onDeepSearch && (
-              <Pressable
-                onPress={handleDeepSearch}
-                disabled={isDeepSearching}
-                hitSlop={6}
-                style={({ pressed }) => ({
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 4,
-                  paddingHorizontal: 8,
-                  paddingVertical: 3,
-                  borderRadius: 20,
-                  borderWidth: 1,
-                  borderColor: theme.primary.val + "50",
-                  backgroundColor: pressed ? theme.primary.val + "25" : theme.primary.val + "12",
-                  opacity: isDeepSearching ? 0.5 : 1,
-                })}
+              <ContextMenu
+                openOn="press"
+                preview={
+                  <DeepSearchPreview
+                    resultCount={ids.length}
+                    turns={turns ?? 1}
+                    flow={flow}
+                    theme={theme}
+                  />
+                }
+                items={[
+                  {
+                    label: isDeepSearching ? "Scanning..." : "Run deep scan",
+                    icon: "refresh-cw",
+                    iconColor: theme.primary.val,
+                    onPress: handleDeepSearch,
+                  },
+                ]}
+                previewMinWidth={320}
               >
-                <Feather name="refresh-cw" size={10} color={theme.primary.val} />
-                <Text style={{ fontSize: 11, fontFamily: FontFamily.semiBold, color: theme.primary.val }}>
-                  {isDeepSearching ? "Scanning..." : "Deep scan"}
-                </Text>
-              </Pressable>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 4,
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    borderRadius: 20,
+                    borderWidth: 1,
+                    borderColor: theme.primary.val + "50",
+                    backgroundColor: theme.primary.val + "12",
+                    opacity: isDeepSearching ? 0.5 : 1,
+                  }}
+                >
+                  <Feather name="refresh-cw" size={10} color={theme.primary.val} />
+                  <Text style={{ fontSize: 11, fontFamily: FontFamily.semiBold, color: theme.primary.val }}>
+                    {isDeepSearching ? "Scanning..." : "Deep scan"}
+                  </Text>
+                </View>
+              </ContextMenu>
             )}
           </XStack>
         </XStack>
@@ -1297,6 +1926,7 @@ function SearchResultsCard({
               theme={theme}
               token={token}
               isCompleted={completedIds.has(item.id)}
+              hasFiles={!!(attachmentCounts as Record<string, number>)[item.id]}
               onComplete={handleComplete}
               onDelete={handleDelete}
               onEdit={handleEdit}
@@ -1720,14 +2350,13 @@ function AttachmentChip({
   attachmentId: string;
   token?: string | null;
 }) {
-  const theme = useAppTheme();
   const attachment = useQuery(
     api.attachments.getAttachment,
     token ? { token, attachmentId: attachmentId as any } : "skip"
   );
 
   const handlePress = () => {
-    const link = attachment?.driveWebViewLink;
+    const link = (attachment as any)?.driveWebViewLink;
     if (link) Linking.openURL(link);
   };
 
@@ -1768,6 +2397,7 @@ const ChatBubble = React.memo(function ChatBubble({
   cardIds,
   cardIsCached,
   cardTurns,
+  cardFlow,
   onDeepSearch,
   onEditMemory,
 }: {
@@ -1782,6 +2412,7 @@ const ChatBubble = React.memo(function ChatBubble({
   cardIds?: string[];
   cardIsCached?: boolean;
   cardTurns?: number;
+  cardFlow?: CardFlow;
   onDeepSearch?: (messageId: string, query: string) => void;
   onEditMemory?: (id: string) => void;
 }) {
@@ -1946,6 +2577,7 @@ const ChatBubble = React.memo(function ChatBubble({
           ids={cardIds}
           isCached={cardIsCached ?? false}
           turns={cardTurns}
+          flow={cardFlow}
           token={token}
           theme={theme}
           onDeepSearch={onDeepSearch ? (q) => onDeepSearch(msg._id, q) : undefined}
@@ -2564,7 +3196,7 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
           }
         }
 
-        await sendMessage({
+        const response = await sendMessage({
           token,
           message: text.trim() || " ",
           currentTime: new Date().toISOString(),
@@ -2574,6 +3206,15 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
         });
 
         fileAttachments.clear();
+
+        if (Array.isArray(response?.attachmentFailures) && response.attachmentFailures.length > 0) {
+          const [firstFailure] = response.attachmentFailures;
+          showToast({
+            title: firstFailure.reason,
+            tone: "error",
+            duration: 6500,
+          });
+        }
       } catch (error) {
         setOptimisticMessage(null);
         showToast({
@@ -2738,6 +3379,7 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
       let displayMsg = item;
       let cardIsCached: boolean | undefined;
       let cardTurns: number | undefined;
+      let cardFlow: CardFlow | undefined;
 
       if (item.role !== "user") {
           let content = item.content ?? "";
@@ -2753,6 +3395,7 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
               cardIds = cParsed.ids;
               cardIsCached = cParsed.isCached;
               cardTurns = cParsed.turns;
+              cardFlow = cParsed.flow;
               content = cParsed.cleanText;
           }
 
@@ -2778,6 +3421,7 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
           cardIds={cardIds}
           cardIsCached={cardIsCached}
           cardTurns={cardTurns}
+          cardFlow={cardFlow}
           onDeepSearch={handleDeepSearch}
           onEditMemory={handleEditMemory}
         />

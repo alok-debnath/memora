@@ -181,7 +181,14 @@ export default defineSchema({
       v.literal("failed")
     ),
     processingError: v.optional(v.string()),
+    extractionMethod: v.optional(v.union(
+      v.literal("mlkit"),
+      v.literal("gemini"),
+      v.literal("openai"),
+      v.literal("pdf-extract"),
+    )),
     createdAt: v.number(),
+    isDeleted: v.optional(v.boolean()),
   })
     .index("by_user", ["userId"])
     .index("by_memory", ["memoryId"])

@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable, Platform, StyleSheet } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Feather, FontAwesome5 } from "@expo/vector-icons";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -19,6 +19,8 @@ interface MemoryCardProps {
   onTriggerSync?: () => void;
   onRemoveSync?: () => void;
   index?: number;
+  /** True when this memory has ≥1 Drive file attachment */
+  hasFiles?: boolean;
 }
 
 interface CardBodyProps {
@@ -29,39 +31,35 @@ interface CardBodyProps {
   onAddToReview?: () => void;
   onDelete?: () => void;
   showActions?: boolean;
+  /** True when this memory has ≥1 Drive file attachment */
+  hasFiles?: boolean;
 }
 
 function getReminderSyncTone(memory: MemoryNote) {
   if (memory.googleSyncStatus === "synced") {
     return {
-      border: "rgba(34, 197, 94, 0.30)",
+      border: "rgba(34, 197, 94, 0.28)",
       bg: "rgba(34, 197, 94, 0.08)",
-      icon: "check-circle",
-      iconColor: "#16A34A",
-      label: "Google Calendar synced",
-      detail: memory.googleSyncMessage || "Calendar event is up to date.",
-    } as const;
+      label: "synced",
+      labelColor: "#16A34A",
+    };
   }
 
   if (memory.googleSyncStatus === "failed") {
     return {
       border: "rgba(239, 68, 68, 0.24)",
       bg: "rgba(239, 68, 68, 0.08)",
-      icon: "alert-circle",
-      iconColor: "#DC2626",
-      label: "Google sync failed",
-      detail: memory.googleSyncMessage || "Reconnect Google Calendar and try again.",
-    } as const;
+      label: "sync failed",
+      labelColor: "#DC2626",
+    };
   }
 
   return {
     border: "rgba(245, 158, 11, 0.24)",
     bg: "rgba(245, 158, 11, 0.08)",
-    icon: "clock",
-    iconColor: "#D97706",
-    label: "Google sync pending",
-    detail: memory.googleSyncMessage || "Waiting to sync this reminder to Google Calendar.",
-  } as const;
+    label: "syncing…",
+    labelColor: "#D97706",
+  };
 }
 
 export const CardBody = React.memo(function CardBody({
@@ -72,6 +70,7 @@ export const CardBody = React.memo(function CardBody({
   onAddToReview,
   onDelete,
   showActions = false,
+  hasFiles = false,
 }: CardBodyProps) {
   const theme = useAppTheme();
   const hasGoogleSyncInfo = !!(memory.googleSyncStatus || memory.googleEventId || memory.googleSyncMessage);
@@ -237,27 +236,43 @@ export const CardBody = React.memo(function CardBody({
             )}
           </XStack>
 
-          {reminderSyncTone ? (
-            <YStack
-              marginTop={8}
-              paddingHorizontal={9}
-              paddingVertical={8}
-              gap={3}
-              borderRadius={10}
-              borderWidth={1}
-              borderColor={reminderSyncTone.border}
-              backgroundColor={reminderSyncTone.bg}
-            >
-              <XStack gap={6} alignItems="center">
-                <Feather name={reminderSyncTone.icon as any} size={12} color={reminderSyncTone.iconColor} />
-                <Text fontSize={10} fontFamily="$body" fontWeight="600" color="$color">
-                  {reminderSyncTone.label}
-                </Text>
-              </XStack>
-              <Text fontSize={10} fontFamily="$body" color="$colorMuted" lineHeight={14} numberOfLines={2}>
-                {reminderSyncTone.detail}
-              </Text>
-            </YStack>
+          {(reminderSyncTone || hasFiles) ? (
+            <XStack marginTop={8} gap={6} alignItems="center" flexWrap="wrap">
+              {reminderSyncTone ? (
+                <XStack
+                  alignItems="center"
+                  gap={4}
+                  paddingHorizontal={7}
+                  paddingVertical={4}
+                  borderRadius={20}
+                  borderWidth={1}
+                  borderColor={reminderSyncTone.border}
+                  backgroundColor={reminderSyncTone.bg}
+                >
+                  <FontAwesome5 name="calendar-alt" size={11} color={reminderSyncTone.labelColor} />
+                  <Text fontSize={10} fontFamily="$body" fontWeight="600" color={reminderSyncTone.labelColor}>
+                    {reminderSyncTone.label}
+                  </Text>
+                </XStack>
+              ) : null}
+              {hasFiles ? (
+                <XStack
+                  alignItems="center"
+                  gap={4}
+                  paddingHorizontal={7}
+                  paddingVertical={4}
+                  borderRadius={20}
+                  borderWidth={1}
+                  borderColor="rgba(26,115,232,0.25)"
+                  backgroundColor="rgba(26,115,232,0.07)"
+                >
+                  <FontAwesome5 name="google-drive" size={11} color="#1A73E8" />
+                  <Text fontSize={10} fontFamily="$body" fontWeight="600" color="#1A73E8">
+                    in Drive
+                  </Text>
+                </XStack>
+              ) : null}
+            </XStack>
           ) : null}
         </>
       )}
@@ -276,6 +291,7 @@ export const MemoryCard = React.memo(function MemoryCard({
   onTriggerSync,
   onRemoveSync,
   index = 0,
+  hasFiles = false,
 }: MemoryCardProps) {
   const theme = useAppTheme();
   const reminderHasSyncInfo =
@@ -301,7 +317,7 @@ export const MemoryCard = React.memo(function MemoryCard({
       : []),
     ...(canTriggerSync
       ? [{
-          label: memory.googleSyncStatus === "failed" ? "Retry Google Sync" : "Trigger Google Sync",
+          label: memory.googleSyncStatus === "failed" ? "Retry Calendar Sync" : "Sync to Calendar",
           icon: "refresh-cw",
           iconColor: theme.primary.val,
           onPress: onTriggerSync!,
@@ -309,7 +325,7 @@ export const MemoryCard = React.memo(function MemoryCard({
       : []),
     ...(canRemoveSync
       ? [{
-          label: "Remove Google Sync",
+          label: "Remove Calendar Sync",
           icon: "link-2",
           destructive: true,
           onPress: onRemoveSync!,
@@ -345,7 +361,7 @@ export const MemoryCard = React.memo(function MemoryCard({
     <Animated.View entering={FadeIn.delay(Math.min(index * 40, 300)).duration(300)}>
       <ContextMenu
         preview={
-          <CardBody memory={memory} resolvedTopics={resolvedTopics} showActions={false} />
+          <CardBody memory={memory} resolvedTopics={resolvedTopics} showActions={false} hasFiles={hasFiles} />
         }
         items={menuItems}
         onPress={onPress}
@@ -358,6 +374,7 @@ export const MemoryCard = React.memo(function MemoryCard({
           onShare={onShare}
           onAddToReview={onAddToReview}
           onDelete={onDelete}
+          hasFiles={hasFiles}
         />
       </ContextMenu>
     </Animated.View>

@@ -22,6 +22,34 @@ export const getAttachmentsForMemory = query({
   },
 });
 
+/**
+ * Returns attachment counts keyed by memory ID.
+ * Use this to efficiently check if multiple memories have Drive files.
+ */
+export const getAttachmentCountsForMemories = query({
+  args: {
+    token: v.string(),
+    memoryIds: v.array(v.id("memories")),
+  },
+  handler: async (ctx, args) => {
+    if (args.memoryIds.length === 0) return {} as Record<string, number>;
+    const user = await resolveUser(ctx, args.token);
+    const counts: Record<string, number> = {};
+    await Promise.all(
+      args.memoryIds.map(async (memoryId) => {
+        const rows = await ctx.db
+          .query("memoryAttachments")
+          .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
+          .filter((q) => q.eq(q.field("userId"), user._id))
+          .take(1);
+        if (rows.length > 0) counts[memoryId] = rows.length;
+      })
+    );
+    return counts as Record<string, number>;
+  },
+});
+
+
 export const getAttachmentsForMessage = query({
   args: {
     token: v.optional(v.string()),
@@ -50,12 +78,13 @@ export const listAttachmentsForUser = query({
       .withIndex("by_user_and_createdAt", (q) => q.eq("userId", user._id))
       .order("desc");
 
+    const active = base.filter((q) => q.neq(q.field("isDeleted"), true));
     if (args.type) {
-      return base
+      return active
         .filter((q) => q.eq(q.field("type"), args.type!))
         .paginate(args.paginationOpts);
     }
-    return base.paginate(args.paginationOpts);
+    return active.paginate(args.paginationOpts);
   },
 });
 
@@ -149,7 +178,6 @@ export const recordAttachmentsForMessage = mutation({
         mimeType: file.mimeType,
       });
 
-      // Schedule background content extraction
       await ctx.scheduler.runAfter(0, internal.actions.processAttachment.processAttachment, {
         attachmentId,
         userId: user._id,
@@ -290,6 +318,7 @@ export const recordAttachmentsInternal = internalMutation({
     userId: v.id("users"),
     chatMessageId: v.id("chatMessages"),
     files: v.array(driveAttachmentInput),
+    scheduleProcessing: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -298,6 +327,9 @@ export const recordAttachmentsInternal = internalMutation({
       name: string;
       type: "image" | "document";
       mimeType: string;
+      driveFileId: string;
+      driveThumbnailLink?: string;
+      driveWebViewLink?: string;
     }> = [];
 
     for (const file of args.files) {
@@ -321,12 +353,17 @@ export const recordAttachmentsInternal = internalMutation({
         name: file.filename,
         type: file.type,
         mimeType: file.mimeType,
+        driveFileId: file.driveFileId,
+        driveThumbnailLink: file.driveThumbnailLink,
+        driveWebViewLink: file.driveWebViewLink,
       });
 
-      await ctx.scheduler.runAfter(0, internal.actions.processAttachment.processAttachment, {
-        attachmentId,
-        userId: args.userId,
-      });
+      if (args.scheduleProcessing ?? true) {
+        await ctx.scheduler.runAfter(0, internal.actions.processAttachment.processAttachment, {
+          attachmentId,
+          userId: args.userId,
+        });
+      }
     }
 
     // Patch the chat message with attachment stubs
@@ -345,6 +382,33 @@ export const recordAttachmentsInternal = internalMutation({
         ],
       });
     }
+
+    return {
+      attachments: newStubs,
+    };
+  },
+});
+
+/**
+ * Links all attachments from a chat message to a memory.
+ * Called after create_memory / update_memory so Drive files sent in the
+ * same message appear under the memory's attachment count.
+ */
+export const linkChatAttachmentsToMemory = internalMutation({
+  args: {
+    chatMessageId: v.id("chatMessages"),
+    memoryId: v.id("memories"),
+  },
+  handler: async (ctx, args) => {
+    const attachments = await ctx.db
+      .query("memoryAttachments")
+      .withIndex("by_chat_message", (q) => q.eq("chatMessageId", args.chatMessageId))
+      .collect();
+    await Promise.all(
+      attachments
+        .filter((a) => !a.memoryId)
+        .map((a) => ctx.db.patch(a._id, { memoryId: args.memoryId }))
+    );
   },
 });
 
@@ -361,6 +425,12 @@ export const updateAttachmentStatus = internalMutation({
     processingError: v.optional(v.string()),
     driveThumbnailLink: v.optional(v.string()),
     driveWebViewLink: v.optional(v.string()),
+    extractionMethod: v.optional(v.union(
+      v.literal("mlkit"),
+      v.literal("gemini"),
+      v.literal("openai"),
+      v.literal("pdf-extract"),
+    )),
   },
   handler: async (ctx, args) => {
     const { attachmentId, ...patch } = args;
@@ -370,6 +440,7 @@ export const updateAttachmentStatus = internalMutation({
     if (patch.processingError !== undefined) update.processingError = patch.processingError;
     if (patch.driveThumbnailLink !== undefined) update.driveThumbnailLink = patch.driveThumbnailLink;
     if (patch.driveWebViewLink !== undefined) update.driveWebViewLink = patch.driveWebViewLink;
+    if (patch.extractionMethod !== undefined) update.extractionMethod = patch.extractionMethod;
     await ctx.db.patch(attachmentId, update);
   },
 });

@@ -18,7 +18,7 @@ import dayjs from "dayjs";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import * as Haptics from "expo-haptics";
-import { Feather } from "@expo/vector-icons";
+import { Feather, FontAwesome5 } from "@expo/vector-icons";
 import * as Speech from "expo-speech";
 import { useAction, useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -609,6 +609,57 @@ export function EditMemorySheet({
               </>
             ) : null}
 
+            {/* Google Calendar sync badge — reminders with google sync only */}
+            {memory && form.entryKind === "reminder" && (memory.googleSyncStatus || memory.googleEventId) ? (() => {
+              const status = memory.googleSyncStatus;
+              const syncBadge =
+                status === "synced"
+                  ? { border: "rgba(34,197,94,0.28)", bg: "rgba(34,197,94,0.08)", label: "synced", labelColor: "#16A34A" }
+                  : status === "failed"
+                  ? { border: "rgba(239,68,68,0.24)", bg: "rgba(239,68,68,0.08)", label: "sync failed", labelColor: "#DC2626" }
+                  : { border: "rgba(245,158,11,0.24)", bg: "rgba(245,158,11,0.08)", label: "syncing\u2026", labelColor: "#D97706" };
+              return (
+                <XStack gap={6} alignItems="center" flexWrap="wrap" paddingHorizontal={2}>
+                  <XStack
+                    alignItems="center"
+                    gap={4}
+                    paddingHorizontal={8}
+                    paddingVertical={5}
+                    borderRadius={20}
+                    borderWidth={1}
+                    borderColor={syncBadge.border}
+                    backgroundColor={syncBadge.bg}
+                  >
+                    <FontAwesome5 name="calendar-alt" size={12} color={syncBadge.labelColor} />
+                    <Text fontSize={11} fontFamily="$body" fontWeight="600" color={syncBadge.labelColor}>
+                      {syncBadge.label}
+                    </Text>
+                  </XStack>
+                </XStack>
+              );
+            })() : null}
+
+            {/* Drive badge — any memory/reminder that has attached Drive files */}
+            {existingAttachments.length > 0 ? (
+              <XStack gap={6} alignItems="center" flexWrap="wrap" paddingHorizontal={2}>
+                <XStack
+                  alignItems="center"
+                  gap={4}
+                  paddingHorizontal={8}
+                  paddingVertical={5}
+                  borderRadius={20}
+                  borderWidth={1}
+                  borderColor="rgba(26,115,232,0.25)"
+                  backgroundColor="rgba(26,115,232,0.07)"
+                >
+                  <FontAwesome5 name="google-drive" size={12} color="#1A73E8" />
+                  <Text fontSize={11} fontFamily="$body" fontWeight="600" color="#1A73E8">
+                    in Drive
+                  </Text>
+                </XStack>
+              </XStack>
+            ) : null}
+
             {/* AI Topics (readonly) */}
             {resolvedTopics.length > 0 && (
               <YStack
@@ -756,13 +807,40 @@ export function EditMemorySheet({
                           <Feather name="file-text" size={18} color={colors.primary} />
                         </View>
                       )}
-                      <YStack flex={1} gap={2}>
+                      <YStack flex={1} gap={3}>
                         <Text fontSize={13} fontWeight="600" color={colors.text} numberOfLines={1}>
                           {att.filename}
                         </Text>
-                        <Text fontSize={11} color={colors.textSecondary} textTransform="capitalize">
-                          {att.processingStatus}
-                        </Text>
+                        <XStack alignItems="center" gap={6}>
+                          <Text fontSize={11} color={colors.textSecondary} textTransform="capitalize">
+                            {att.processingStatus}
+                          </Text>
+                          {att.processingStatus === "completed" && att.extractionMethod && (() => {
+                            const methodMap: Record<string, { label: string; icon: string; color: string; bg: string }> = {
+                              mlkit:        { label: "device", icon: "smartphone", color: "#16A34A", bg: "rgba(34,197,94,0.10)" },
+                              gemini:       { label: "AI",     icon: "zap",        color: "#7C3AED", bg: "rgba(124,58,237,0.10)" },
+                              openai:       { label: "AI",     icon: "cpu",        color: "#0F766E", bg: "rgba(15,118,110,0.10)" },
+                              "pdf-extract":{ label: "text",   icon: "file-text",  color: "#6B7280", bg: "rgba(107,114,128,0.10)" },
+                            };
+                            const m = methodMap[att.extractionMethod];
+                            if (!m) return null;
+                            return (
+                              <XStack
+                                alignItems="center"
+                                gap={3}
+                                paddingHorizontal={6}
+                                paddingVertical={2}
+                                borderRadius={6}
+                                backgroundColor={m.bg}
+                              >
+                                <Feather name={m.icon as any} size={9} color={m.color} />
+                                <Text fontSize={10} fontFamily="$body" fontWeight="600" color={m.color}>
+                                  {m.label}
+                                </Text>
+                              </XStack>
+                            );
+                          })()}
+                        </XStack>
                       </YStack>
                       <XStack gap={8} alignItems="center">
                         {att.driveWebViewLink && (

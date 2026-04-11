@@ -45,19 +45,8 @@ export interface MemoryNote {
   googleSyncStatus?: "pending" | "synced" | "failed";
   googleSyncMessage?: string;
   googleSyncUpdatedAt?: number;
-  attachments: MemoryAttachment[];
   createdAt: string;
   updatedAt: string;
-}
-
-export interface MemoryAttachment {
-  id: string;
-  memoryId: string;
-  fileName: string;
-  filePath: string;
-  fileType: string;
-  fileSize: number;
-  createdAt: string;
 }
 
 export interface DiaryEntry {

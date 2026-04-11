@@ -6,6 +6,12 @@ import { api, internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { action, type ActionCtx } from "../_generated/server";
 import {
+  ATTACHMENT_TEXT_LIMIT,
+  extractAttachmentFromDrive,
+  getGoogleDriveAccessToken,
+  type AttachmentExtractionResult,
+} from "../lib/attachmentExtraction";
+import {
   embedText,
   extractTextContent,
   getOpenAIClient,
@@ -30,6 +36,19 @@ type ParsedAttachment = {
   fileType: string;
   url: string;
 };
+
+type ChatAttachmentRecord = {
+  attachmentId: Id<"memoryAttachments">;
+  name: string;
+  type: "image" | "document";
+  mimeType: string;
+  driveFileId: string;
+  driveThumbnailLink?: string;
+  driveWebViewLink?: string;
+};
+
+type ChatAttachmentExtraction = ChatAttachmentRecord &
+  AttachmentExtractionResult;
 
 type StreamingEvent = {
   label: string;
@@ -66,6 +85,28 @@ type GroundingContext = {
   searchResults: ReturnType<typeof toMemorySummary>[];
   recentMemories: ReturnType<typeof toMemoryCompact>[];
   isCached: boolean;
+};
+
+type CardFlowSearch = {
+  source: "grounding" | "tool";
+  query?: string;
+  resultCount: number;
+  cacheState?: "cached" | "fresh";
+  searchMode?: MemorySearchResult["searchMode"];
+};
+
+type CardFlowAttachment = {
+  name: string;
+  type: "image" | "document";
+  status: AttachmentExtractionResult["processingStatus"];
+  method?: AttachmentExtractionResult["extractionMethod"];
+};
+
+type CardFlowPayload = {
+  assistantProvider: "openai";
+  toolSequence: string[];
+  searches: CardFlowSearch[];
+  attachments: CardFlowAttachment[];
 };
 
 const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
@@ -920,14 +961,23 @@ export const chat = action({
       userId: session._id,
     });
 
-    // Record attachments and schedule background extraction
+    const setStreamingStatus = async (status: StreamingStatus) => {
+      await ctx.runMutation(internal.chat.setSearchStatus, {
+        userId: session._id,
+        ...status,
+      });
+    };
+
+    const chatAttachments: ChatAttachmentRecord[] = [];
     if (args.attachments && args.attachments.length > 0) {
       try {
-        await ctx.runMutation(internal.attachments.recordAttachmentsInternal, {
+        const recorded = await ctx.runMutation(internal.attachments.recordAttachmentsInternal, {
           userId: session._id,
           chatMessageId,
           files: args.attachments,
+          scheduleProcessing: false,
         });
+        chatAttachments.push(...recorded.attachments);
       } catch (err) {
         console.error("Failed to record attachments:", err);
       }
@@ -970,66 +1020,24 @@ export const chat = action({
     }
 
     const legacyAttachments = parseAttachments(args.message);
-
-    // For image attachments: download from Drive inline so the model can see them via vision.
-    // For documents: content is extracted in background by processAttachment.
-    type InlineImage = { mimeType: string; base64: string; filename: string };
-    const inlineImages: InlineImage[] = [];
-    const docAttachments = (args.attachments ?? []).filter((a) => a.type !== "image");
-
-    const imageAttachments = (args.attachments ?? []).filter((a) => a.type === "image");
-    if (imageAttachments.length > 0) {
-      try {
-        const integration = await ctx.runQuery(
-          internal.integrations.getGoogleIntegrationInternal,
-          { userId: session._id }
-        );
-        if (integration) {
-          const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({
-              refresh_token: integration.refreshToken,
-              client_id: integration.clientId ?? process.env.GOOGLE_CLIENT_ID_WEB ?? "",
-              client_secret: process.env.GOOGLE_CLIENT_SECRET_WEB ?? "",
-              grant_type: "refresh_token",
-            }),
-          });
-          const tokenData = await tokenRes.json() as { access_token?: string };
-          if (tokenData.access_token) {
-            for (const img of imageAttachments) {
-              try {
-                const res = await fetch(
-                  `https://www.googleapis.com/drive/v3/files/${img.driveFileId}?alt=media`,
-                  { headers: { Authorization: `Bearer ${tokenData.access_token}` } }
-                );
-                if (res.ok) {
-                  const buffer = await res.arrayBuffer();
-                  const base64 = arrayBufferToBase64Chat(buffer);
-                  const ct = res.headers.get("content-type") ?? img.mimeType;
-                  inlineImages.push({ mimeType: ct, base64, filename: img.filename });
-                }
-              } catch (imgErr) {
-                console.error("[chat] Failed to download image for vision:", imgErr);
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.error("[chat] Failed to fetch Drive credentials for vision:", err);
-      }
-    }
+    const extractedChatAttachments = await extractChatAttachmentsForConversation(ctx, {
+      userId: session._id,
+      attachments: chatAttachments,
+      setStreamingStatus,
+    });
+    const flowAttachments: CardFlowAttachment[] = extractedChatAttachments.map(
+      (attachment) => ({
+        name: attachment.name,
+        type: attachment.type,
+        status: attachment.processingStatus,
+        method: attachment.extractionMethod,
+      })
+    );
     let aiResponse =
       "I'm having trouble connecting right now. Please try again in a moment.";
 
     if (client) {
       try {
-        const setStreamingStatus = async (status: StreamingStatus) => {
-          await ctx.runMutation(internal.chat.setSearchStatus, {
-            userId: session._id,
-            ...status,
-          });
-        };
         let recentMemoriesCache: MemoryDoc[] | undefined;
         const getRecentMemoriesCache = async (): Promise<MemoryDoc[]> => {
           if (!recentMemoriesCache) {
@@ -1069,29 +1077,17 @@ export const chat = action({
                 },
               ]
             : []),
-          ...(docAttachments.length > 0
+          ...(extractedChatAttachments.length > 0
             ? [
                 {
                   role: "system" as const,
-                  content: `The user has attached the following document(s) to this message. Content extraction is processing in background:\n${docAttachments.map((a) => `[Document: ${a.filename}]`).join("\n")}`,
+                  content: buildAttachmentContextMessage(extractedChatAttachments),
                 },
               ]
             : []),
           {
             role: "user" as const,
-            content:
-              inlineImages.length > 0
-                ? ([
-                    { type: "text" as const, text: args.message || " " },
-                    ...inlineImages.map((img) => ({
-                      type: "image_url" as const,
-                      image_url: {
-                        url: `data:${img.mimeType};base64,${img.base64}`,
-                        detail: "low" as const,
-                      },
-                    })),
-                  ] as OpenAI.Chat.Completions.ChatCompletionContentPart[])
-                : args.message,
+            content: args.message,
           },
         ];
 
@@ -1101,8 +1097,24 @@ export const chat = action({
           userId: session._id,
           recentMemories: await getRecentMemoriesCache(),
         });
+        const flowSearches: CardFlowSearch[] = [];
+        const flowToolSequence: string[] = [];
+        const appendFlowTool = (toolName: string) => {
+          if (flowToolSequence[flowToolSequence.length - 1] !== toolName) {
+            flowToolSequence.push(toolName);
+          }
+        };
 
         if (initialGrounding.shouldGround) {
+          flowSearches.push({
+            source: "grounding",
+            query: args.message,
+            resultCount: initialGrounding.searchCount,
+            cacheState: initialGrounding.isCached ? "cached" : "fresh",
+            searchMode: initialGrounding.isCached
+              ? "semantic_cached"
+              : "semantic_fresh",
+          });
           conversation.splice(conversation.length - 1, 0, {
             role: "system",
             content: [
@@ -1231,6 +1243,7 @@ export const chat = action({
             }
 
             const fnName = toolCall.function.name;
+            appendFlowTool(fnName);
             const fnArgs = JSON.parse(toolCall.function.arguments || "{}") as Record<
               string,
               unknown
@@ -1394,6 +1407,18 @@ export const chat = action({
                         recentMemories: await getRecentMemoriesCache(),
                       });
                 pendingSearchIsCached = searchRes.isCached ?? false;
+                flowSearches.push({
+                  source: "tool",
+                  query: searchQuery.trim() || undefined,
+                  resultCount: searchRes.count,
+                  cacheState:
+                    searchRes.searchMode === "semantic_cached"
+                      ? "cached"
+                      : searchRes.searchMode === "semantic_fresh"
+                        ? "fresh"
+                        : undefined,
+                  searchMode: searchRes.searchMode,
+                });
                 surfaceCandidates = searchRes.results.map((r: { id: string; title?: string }) => ({ id: String(r.id), title: r.title ?? "" }));
                 await setStreamingStatus({
                   query: searchQuery.trim() || undefined,
@@ -1567,6 +1592,12 @@ export const chat = action({
                 });
                 recentMemoriesCache = undefined;
                 pendingCardIds.add(forcedUpdateTargetId);
+                if (args.attachments && args.attachments.length > 0) {
+                  await ctx.runMutation(internal.attachments.linkChatAttachmentsToMemory, {
+                    chatMessageId,
+                    memoryId: forcedUpdateTargetId as Id<"memories">,
+                  });
+                }
                 await setStreamingStatus({
                   phase: "writing",
                   toolName: "create_memory",
@@ -1603,6 +1634,12 @@ export const chat = action({
                   recentMemoriesCache = undefined;
                 }
                 pendingCardIds.add(String(existingCreated.id));
+                if (args.attachments && args.attachments.length > 0) {
+                  await ctx.runMutation(internal.attachments.linkChatAttachmentsToMemory, {
+                    chatMessageId,
+                    memoryId: existingCreated.id as Id<"memories">,
+                  });
+                }
                 await setStreamingStatus({
                   phase: "writing",
                   toolName: "create_memory",
@@ -1651,6 +1688,12 @@ export const chat = action({
                   title: resolvedTitle,
                 });
                 pendingCardIds.add(String(created.memoryId));
+                if (args.attachments && args.attachments.length > 0) {
+                  await ctx.runMutation(internal.attachments.linkChatAttachmentsToMemory, {
+                    chatMessageId,
+                    memoryId: created.memoryId as Id<"memories">,
+                  });
+                }
                 await setStreamingStatus({
                   phase: "writing",
                   toolName: "create_memory",
@@ -1732,6 +1775,12 @@ export const chat = action({
                 });
                 recentMemoriesCache = undefined;
                 pendingCardIds.add(targetMemoryId);
+                if (args.attachments && args.attachments.length > 0) {
+                  await ctx.runMutation(internal.attachments.linkChatAttachmentsToMemory, {
+                    chatMessageId,
+                    memoryId: targetMemoryId as Id<"memories">,
+                  });
+                }
                 await setStreamingStatus({
                   phase: "writing",
                   toolName: "update_memory",
@@ -2373,7 +2422,13 @@ export const chat = action({
           appendedComments += `\n<!--MEMORA_CARD_IDS:${JSON.stringify({ 
             ids: Array.from(pendingCardIds), 
             isCached: pendingSearchIsCached,
-            turns: finalIteration + 1 
+            turns: finalIteration + 1,
+            flow: {
+              assistantProvider: "openai",
+              toolSequence: flowToolSequence,
+              searches: flowSearches,
+              attachments: flowAttachments,
+            } satisfies CardFlowPayload,
           })}-->`;
         }
 
@@ -2388,6 +2443,10 @@ export const chat = action({
         aiResponse =
           "I'm having trouble connecting right now. Please try again in a moment.";
       }
+    } else {
+      await ctx.runMutation(internal.chat.clearSearchStatus, {
+        userId: session._id,
+      });
     }
 
     await ctx.runMutation(internal.chat.send, {
@@ -2402,18 +2461,168 @@ export const chat = action({
       deletionIdx !== -1 ? deletionIdx : Infinity,
       cardIdsIdx !== -1 ? cardIdsIdx : Infinity
     );
-    return { reply: (minIdxStr !== Infinity ? aiResponse.slice(0, minIdxStr) : aiResponse).trim() };
+    const attachmentFailures = extractedChatAttachments
+      .filter(
+        (attachment): attachment is ChatAttachmentExtraction & { processingError: string } =>
+          attachment.processingStatus === "failed" &&
+          typeof attachment.processingError === "string" &&
+          attachment.processingError.trim().length > 0
+      )
+      .map((attachment) => ({
+        name: attachment.name,
+        reason: attachment.processingError.trim(),
+      }));
+
+    return {
+      reply: (minIdxStr !== Infinity ? aiResponse.slice(0, minIdxStr) : aiResponse).trim(),
+      attachmentFailures,
+    };
   },
 });
 
-/** Convert an ArrayBuffer to base64 without Node's Buffer (Convex compat). */
-function arrayBufferToBase64Chat(buffer: ArrayBuffer): string {
-  const uint8 = new Uint8Array(buffer);
-  const chunkSize = 8192;
-  const chunks: string[] = [];
-  for (let i = 0; i < uint8.length; i += chunkSize) {
-    const slice = uint8.subarray(i, Math.min(i + chunkSize, uint8.length));
-    chunks.push(String.fromCharCode(...(slice as unknown as number[])));
+async function extractChatAttachmentsForConversation(
+  ctx: ActionCtx,
+  args: {
+    userId: Id<"users">;
+    attachments: ChatAttachmentRecord[];
+    setStreamingStatus: (status: StreamingStatus) => Promise<void>;
   }
-  return btoa(chunks.join(""));
+): Promise<ChatAttachmentExtraction[]> {
+  if (args.attachments.length === 0) {
+    return [];
+  }
+
+  await args.setStreamingStatus({
+    phase: "loading",
+    toolName: "attachment_extraction",
+    detail: `Reading ${args.attachments.length} attachment${args.attachments.length === 1 ? "" : "s"}`,
+    source: "attachments",
+    events: [
+      { label: "Images", value: "Gemini extraction" },
+      { label: "PDFs", value: `direct text up to ${ATTACHMENT_TEXT_LIMIT} chars` },
+    ],
+    step: 1,
+    totalSteps: 4,
+  });
+
+  const integration = await ctx.runQuery(
+    internal.integrations.getGoogleIntegrationInternal,
+    { userId: args.userId }
+  );
+  if (!integration) {
+    const errorMessage = "Google integration not connected";
+    await Promise.all(
+      args.attachments.map((attachment) =>
+        ctx.runMutation(internal.attachments.updateAttachmentStatus, {
+          attachmentId: attachment.attachmentId,
+          processingStatus: "failed",
+          processingError: errorMessage,
+          driveThumbnailLink: attachment.driveThumbnailLink,
+          driveWebViewLink: attachment.driveWebViewLink,
+        })
+      )
+    );
+    return args.attachments.map((attachment) => ({
+      ...attachment,
+      processingStatus: "failed" as const,
+      processingError: errorMessage,
+      driveThumbnailLink: attachment.driveThumbnailLink,
+      driveWebViewLink: attachment.driveWebViewLink,
+    }));
+  }
+
+  let accessToken: string;
+  try {
+    accessToken = await getGoogleDriveAccessToken({
+      refreshToken: integration.refreshToken,
+      clientId: integration.clientId,
+    });
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Could not refresh Google access token";
+    await Promise.all(
+      args.attachments.map((attachment) =>
+        ctx.runMutation(internal.attachments.updateAttachmentStatus, {
+          attachmentId: attachment.attachmentId,
+          processingStatus: "failed",
+          processingError: errorMessage,
+          driveThumbnailLink: attachment.driveThumbnailLink,
+          driveWebViewLink: attachment.driveWebViewLink,
+        })
+      )
+    );
+    return args.attachments.map((attachment) => ({
+      ...attachment,
+      processingStatus: "failed" as const,
+      processingError: errorMessage,
+      driveThumbnailLink: attachment.driveThumbnailLink,
+      driveWebViewLink: attachment.driveWebViewLink,
+    }));
+  }
+
+  const results: ChatAttachmentExtraction[] = [];
+  for (const attachment of args.attachments) {
+    await ctx.runMutation(internal.attachments.updateAttachmentStatus, {
+      attachmentId: attachment.attachmentId,
+      processingStatus: "processing",
+      driveThumbnailLink: attachment.driveThumbnailLink,
+      driveWebViewLink: attachment.driveWebViewLink,
+    });
+
+    const result = await extractAttachmentFromDrive({
+      accessToken,
+      attachment: {
+        type: attachment.type,
+        filename: attachment.name,
+        driveFileId: attachment.driveFileId,
+        driveThumbnailLink: attachment.driveThumbnailLink,
+        driveWebViewLink: attachment.driveWebViewLink,
+      },
+      textLimit: ATTACHMENT_TEXT_LIMIT,
+    });
+
+    await ctx.runMutation(internal.attachments.updateAttachmentStatus, {
+      attachmentId: attachment.attachmentId,
+      processingStatus: result.processingStatus,
+      extractedContent: result.extractedContent,
+      processingError: result.processingError,
+      extractionMethod: result.extractionMethod,
+      driveThumbnailLink: result.driveThumbnailLink,
+      driveWebViewLink: result.driveWebViewLink,
+    });
+
+    results.push({
+      ...attachment,
+      ...result,
+    });
+  }
+
+  return results;
+}
+
+function buildAttachmentContextMessage(attachments: ChatAttachmentExtraction[]) {
+  const lines = [
+    "Attachment context for the latest user message is below.",
+    "Treat extracted text as file-derived context that can be used for answering and tool calls.",
+    "Do not claim to have seen the raw file directly. Refer to the extracted attachment context instead.",
+  ];
+
+  for (const attachment of attachments) {
+    lines.push(
+      "",
+      `[Attachment: ${attachment.name}]`,
+      `Type: ${attachment.type}`,
+      `Status: ${attachment.processingStatus}`
+    );
+    if (attachment.extractionMethod) {
+      lines.push(`Extraction method: ${attachment.extractionMethod}`);
+    }
+    if (attachment.processingStatus === "completed" && attachment.extractedContent) {
+      lines.push(`Extracted content:\n${attachment.extractedContent}`);
+    } else if (attachment.processingError) {
+      lines.push(`Extraction error: ${attachment.processingError}`);
+    }
+  }
+
+  return lines.join("\n");
 }

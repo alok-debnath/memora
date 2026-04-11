@@ -28,6 +28,7 @@ import type * as history from "../history.js";
 import type * as http from "../http.js";
 import type * as integrations from "../integrations.js";
 import type * as lib_aiNormalization from "../lib/aiNormalization.js";
+import type * as lib_attachmentExtraction from "../lib/attachmentExtraction.js";
 import type * as lib_memoryKind from "../lib/memoryKind.js";
 import type * as lib_memorySnapshot from "../lib/memorySnapshot.js";
 import type * as lib_memoryStats from "../lib/memoryStats.js";
@@ -75,6 +76,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   integrations: typeof integrations;
   "lib/aiNormalization": typeof lib_aiNormalization;
+  "lib/attachmentExtraction": typeof lib_attachmentExtraction;
   "lib/memoryKind": typeof lib_memoryKind;
   "lib/memorySnapshot": typeof lib_memorySnapshot;
   "lib/memoryStats": typeof lib_memoryStats;

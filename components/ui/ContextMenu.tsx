@@ -26,6 +26,7 @@ import {
   Modal,
   Pressable,
   Platform,
+  ScrollView,
   StyleSheet,
   useWindowDimensions,
   View,
@@ -65,6 +66,8 @@ export interface ContextMenuProps {
   items: (ContextMenuItemDef | null | undefined | false)[];
   onPress?: () => void;
   openOn?: "longPress" | "press";
+  /** Minimum width of the floating preview card (defaults to trigger width). */
+  previewMinWidth?: number;
 }
 
 // ─── Menu item ────────────────────────────────────────────────────────────────
@@ -90,13 +93,7 @@ function MenuItem({
           justifyContent="space-between"
           paddingHorizontal={16}
           paddingVertical={14}
-          backgroundColor={
-            pressed
-              ? item.destructive
-                ? theme.destructive.val + "20"
-                : "$secondary"
-              : "$card"
-          }
+          backgroundColor={pressed ? "$secondary" : "$card"}
         >
           <Text
             fontSize={15}
@@ -129,6 +126,7 @@ export const ContextMenu = React.forwardRef<ContextMenuHandle, ContextMenuProps>
   items,
   onPress,
   openOn = "longPress",
+  previewMinWidth,
 }: ContextMenuProps, ref) {
   const { resolvedMode } = useThemeStore();
   const cardRef = useRef<View>(null);
@@ -214,13 +212,15 @@ export const ContextMenu = React.forwardRef<ContextMenuHandle, ContextMenuProps>
     transform: [{ scale: triggerScale.value }],
   }));
 
+  const minW = previewMinWidth ?? 0;
   const animatedCardStyle = useAnimatedStyle(() => {
     "worklet";
-    const targetLeft = (winW.value - cardW.value) / 2;
+    const effectiveW = cardW.value < minW ? minW : cardW.value;
+    const targetLeft = (winW.value - effectiveW) / 2;
     const targetTop = winH.value * 0.36 - cardH.value / 2;
     return {
       position: "absolute" as const,
-      width: cardW.value,
+      width: effectiveW,
       left: cardX.value + (targetLeft - cardX.value) * progress.value,
       top: cardY.value + (targetTop - cardY.value) * progress.value,
       transform: [{ scale: 1 + progress.value * 0.03 }],
@@ -244,6 +244,13 @@ export const ContextMenu = React.forwardRef<ContextMenuHandle, ContextMenuProps>
 
   const validItems = items.filter(Boolean) as ContextMenuItemDef[];
   const overlayPreview = preview ?? children;
+  const previewMaxHeight = Math.max(
+    180,
+    Math.min(
+      windowHeight * (validItems.length > 0 ? 0.38 : 0.48),
+      windowHeight - 220,
+    ),
+  );
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -298,7 +305,27 @@ export const ContextMenu = React.forwardRef<ContextMenuHandle, ContextMenuProps>
 
             <Pressable style={StyleSheet.absoluteFill} onPress={closeMenu}>
               <Animated.View style={animatedCardStyle} pointerEvents="box-none">
-                <View pointerEvents="none">{overlayPreview}</View>
+                <Pressable onPress={() => {}}>
+                  <View
+                    style={{
+                      maxHeight: previewMaxHeight,
+                      borderRadius: 18,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <ScrollView
+                      style={{ maxHeight: previewMaxHeight }}
+                      showsVerticalScrollIndicator={false}
+                      bounces={false}
+                      nestedScrollEnabled
+                      keyboardShouldPersistTaps="handled"
+                      directionalLockEnabled
+                      contentContainerStyle={{ flexGrow: 1 }}
+                    >
+                      {overlayPreview}
+                    </ScrollView>
+                  </View>
+                </Pressable>
 
                 {validItems.length > 0 && (
                   <Animated.View

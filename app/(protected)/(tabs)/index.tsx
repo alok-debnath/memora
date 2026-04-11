@@ -93,7 +93,6 @@ const toMemoryNote = (m: Record<string, unknown>): MemoryNote => ({
   recurrenceType: (m.schedule as { recurrenceType?: MemoryNote["recurrenceType"] } | undefined)
     ?.recurrenceType,
   capsuleUnlockDate: m.capsuleUnlockDate as string | undefined,
-  attachments: [],
   isPublic: m.isPublic as boolean | undefined,
   googleEventId: m.googleEventId as string | undefined,
   googleSyncStatus: m.googleSyncStatus as MemoryNote["googleSyncStatus"] | undefined,
@@ -254,6 +253,17 @@ export default function HomeScreen() {
   const createShareLink = useMutation(api.sharing.createShareLink);
   const triggerReminderSync = useMutation(api.integrations.triggerReminderSync);
   const removeReminderSync = useMutation(api.integrations.removeReminderSync);
+
+  // Batch-fetch attachment counts for the visible feed IDs
+  const visibleMemoryIds = useMemo(
+    () => (allMemoryResult ?? []).map((m) => m._id as Id<"memories">),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allMemoryResult?.length]
+  ) as Id<"memories">[];
+  const attachmentCounts = useQuery(
+    api.attachments.getAttachmentCountsForMemories,
+    token && visibleMemoryIds.length > 0 ? { token, memoryIds: visibleMemoryIds } : "skip"
+  ) ?? {};
 
   const isEditMemoryOpen = useUIStore((state) => state.isEditMemoryOpen);
   const openEditMemory = useUIStore((state) => state.openEditMemory);
@@ -846,12 +856,14 @@ export default function HomeScreen() {
                     ...(primaryTopic ? [primaryTopic] : []),
                     ...secondaryTopics,
                   ];
+                  const hasFiles = !!(attachmentCounts as Record<string, number>)[raw._id];
                   return (
                     <MemoryCard
                       key={raw._id}
                       memory={note}
                       index={index}
                       resolvedTopics={resolvedTopics.length > 0 ? resolvedTopics : undefined}
+                      hasFiles={hasFiles}
                       onPress={() => {
                         setEditMemory(raw);
                         openEditMemory();
