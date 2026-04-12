@@ -102,7 +102,7 @@ export const detectConflicts = action({
 });
 
 async function analyzeConflicts(
-  ctx: Pick<ActionCtx, "runMutation">,
+  ctx: Pick<ActionCtx, "runMutation" | "runQuery">,
   userId: Id<"users">,
   newContent: string,
   existingText: string,

@@ -5,31 +5,33 @@ import { toFile } from "openai/uploads";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
+import {
+  DEFAULT_ROUTING,
+  FEATURE_TO_CAPABILITY,
+  supportsFeature,
+  type AiBillingOwner,
+  type AiCredentialSource,
+  type AiFeature,
+  type AiProvider,
+  type AiVisibility,
+} from "./ai";
+import { decryptSecret } from "./aiSecrets";
 
 export const OPENAI_CHAT_MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini";
 export const OPENAI_EMBEDDING_MODEL =
   process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small";
 export const OPENAI_TRANSCRIPTION_MODEL =
   process.env.OPENAI_TRANSCRIPTION_MODEL ?? "gpt-4o-mini-transcribe";
+export const GOOGLE_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL ?? "gemini-2.0-flash";
+export const GOOGLE_VISION_MODEL = process.env.GEMINI_VISION_MODEL ?? "gemini-2.0-flash";
+export const GOOGLE_EMBEDDING_MODEL = process.env.GEMINI_EMBEDDING_MODEL ?? "gemini-embedding-001";
 
-type UsageRecorderCtx = Pick<ActionCtx, "runMutation">;
-type AiVisibility = "user_visible" | "background";
+type UsageRecorderCtx = Pick<ActionCtx, "runMutation" | "runQuery">;
 type AnalyticsLink = {
   chatTurnId?: Id<"chatMessages">;
   chatMessageId?: Id<"chatMessages">;
   conversationId?: string;
 };
-
-type OpenAIFeature =
-  | "memory_chat"
-  | "memory_search"
-  | "memory_processing"
-  | "memory_capture"
-  | "diary_processing"
-  | "topic_management"
-  | "conflict_detection"
-  | "attachment_extraction"
-  | "audio_transcription";
 
 type ChatUsage = {
   prompt_tokens?: number;
@@ -43,6 +45,33 @@ type PriceConfig = {
   audioUsdPerMinute?: number;
 };
 
+type ResolvedRoute = {
+  provider: AiProvider;
+  model: string;
+  apiKey?: string;
+  baseUrl?: string;
+  credentialSource: AiCredentialSource;
+  billingOwner: AiBillingOwner;
+  routingReason: string;
+};
+
+type ProviderState = {
+  preference: {
+    userId: Id<"users">;
+    byokEnabled: boolean;
+    preferredProvider: AiProvider;
+    updatedAt: number;
+  };
+  secrets: Array<{
+    provider: AiProvider;
+    ciphertext: string;
+    iv: string;
+    authTag: string;
+    keyVersion: number;
+    baseUrl?: string;
+  }>;
+};
+
 const OPENAI_PRICING: Record<string, PriceConfig> = {
   "gpt-4o": { inputUsdPer1M: 5, outputUsdPer1M: 15 },
   "gpt-4o-mini": { inputUsdPer1M: 0.15, outputUsdPer1M: 0.6 },
@@ -50,47 +79,76 @@ const OPENAI_PRICING: Record<string, PriceConfig> = {
   "text-embedding-3-small": { inputUsdPer1M: 0.02 },
 };
 
-let cachedClient: OpenAI | null | undefined;
+let cachedPlatformClient: OpenAI | null | undefined;
 
-function getApiKey() {
+function getPlatformOpenAiApiKey() {
   return process.env.OPENAI_API_KEY ?? process.env.CONVEX_OPENAI_API_KEY ?? null;
 }
 
-function getBaseURL() {
+function getPlatformOpenAiBaseURL() {
   return process.env.OPENAI_BASE_URL ?? process.env.CONVEX_OPENAI_BASE_URL;
 }
 
+function getGoogleApiKey() {
+  return process.env.GEMINI_API_KEY ?? null;
+}
+
+function getOpenAIClientForCredentials(args?: { apiKey?: string; baseURL?: string }) {
+  if (args?.apiKey) {
+    return new OpenAI({
+      apiKey: args.apiKey,
+      ...(args.baseURL ? { baseURL: args.baseURL } : {}),
+    });
+  }
+
+  if (cachedPlatformClient !== undefined) {
+    return cachedPlatformClient;
+  }
+
+  const apiKey = getPlatformOpenAiApiKey();
+  if (!apiKey) {
+    cachedPlatformClient = null;
+    return cachedPlatformClient;
+  }
+
+  cachedPlatformClient = new OpenAI({
+    apiKey,
+    ...(getPlatformOpenAiBaseURL() ? { baseURL: getPlatformOpenAiBaseURL() } : {}),
+  });
+  return cachedPlatformClient;
+}
+
 export function hasOpenAI() {
-  return Boolean(getApiKey());
+  return Boolean(getPlatformOpenAiApiKey());
 }
 
 export function getOpenAIClient() {
-  if (cachedClient !== undefined) {
-    return cachedClient;
-  }
+  return getOpenAIClientForCredentials();
+}
 
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    cachedClient = null;
-    return cachedClient;
+export async function getOpenAIClientForFeature(
+  ctx: UsageRecorderCtx,
+  args: { userId: Id<"users">; feature: AiFeature },
+) {
+  const route = await resolveAiRoute(ctx, args);
+  if (route.provider !== "openai") {
+    return null;
   }
-
-  cachedClient = new OpenAI({
-    apiKey,
-    ...(getBaseURL() ? { baseURL: getBaseURL() } : {}),
+  return getOpenAIClientForCredentials({
+    apiKey: route.apiKey,
+    baseURL: route.baseUrl,
   });
-  return cachedClient;
 }
 
 export function requireOpenAI() {
-  const client = getOpenAIClient();
+  const client = getOpenAIClientForCredentials();
   if (!client) {
     throw new Error("OPENAI_API_KEY is not configured in Convex.");
   }
   return client;
 }
 
-function getChatPricing(model: string) {
+function getOpenAiPricing(model: string) {
   return OPENAI_PRICING[model] ?? null;
 }
 
@@ -102,11 +160,120 @@ function minutesToMicros(minutes: number, pricePerMinute: number) {
   return Math.round(minutes * pricePerMinute * 1_000_000);
 }
 
-async function recordOpenAiUsage(
+function platformRouteForFeature(feature: AiFeature): ResolvedRoute {
+  const capability = FEATURE_TO_CAPABILITY[feature];
+  const route = DEFAULT_ROUTING[capability];
+  if (route.provider === "openai") {
+    if (!getPlatformOpenAiApiKey()) {
+      throw new Error("Platform OpenAI credentials are not configured.");
+    }
+    return {
+      provider: "openai",
+      model: route.model,
+      apiKey: getPlatformOpenAiApiKey() ?? undefined,
+      baseUrl: getPlatformOpenAiBaseURL(),
+      credentialSource: "platform",
+      billingOwner: "platform",
+      routingReason: "platform_default",
+    };
+  }
+
+  if (!getGoogleApiKey()) {
+    throw new Error("Platform Google AI credentials are not configured.");
+  }
+  return {
+    provider: "google",
+    model: route.model,
+    apiKey: getGoogleApiKey() ?? undefined,
+    credentialSource: "platform",
+    billingOwner: "platform",
+    routingReason: "platform_default",
+  };
+}
+
+export async function resolveAiRoute(
   ctx: UsageRecorderCtx,
+  args: { userId: Id<"users">; feature: AiFeature },
+): Promise<ResolvedRoute> {
+  const capability = FEATURE_TO_CAPABILITY[args.feature];
+  const [routing, providerState]: [
+    Record<string, { provider: AiProvider; model: string; enabled: boolean }>,
+    ProviderState,
+  ] = await Promise.all([
+    ctx.runQuery(internal.aiProviders.getRoutingInternal, {}),
+    ctx.runQuery(internal.aiProviders.getUserProviderStateInternal, { userId: args.userId }),
+  ]);
+
+  const adminRoute = routing[capability];
+  const preferredProvider = providerState.preference.preferredProvider;
+  const byokEnabled = providerState.preference.byokEnabled;
+  const preferredSecret = providerState.secrets.find(
+    (row: ProviderState["secrets"][number]) => row.provider === preferredProvider,
+  );
+
+  if (byokEnabled && preferredSecret && supportsFeature(preferredProvider, args.feature)) {
+    return {
+      provider: preferredProvider,
+      model:
+        capability === "embeddings"
+          ? preferredProvider === "openai"
+            ? OPENAI_EMBEDDING_MODEL
+            : GOOGLE_EMBEDDING_MODEL
+          : capability === "vision"
+            ? preferredProvider === "openai"
+              ? "gpt-4o"
+              : GOOGLE_VISION_MODEL
+            : capability === "transcription"
+              ? OPENAI_TRANSCRIPTION_MODEL
+              : preferredProvider === "openai"
+                ? OPENAI_CHAT_MODEL
+                : GOOGLE_TEXT_MODEL,
+      apiKey: decryptSecret(preferredSecret),
+      baseUrl: preferredSecret.baseUrl,
+      credentialSource: "user_byok" as const,
+      billingOwner: "user" as const,
+      routingReason: "user_byok",
+    };
+  }
+
+  if (adminRoute.enabled && supportsFeature(adminRoute.provider, args.feature)) {
+    if (adminRoute.provider === "openai") {
+      if (!getPlatformOpenAiApiKey()) {
+        throw new Error("Platform OpenAI credentials are not configured.");
+      }
+      return {
+        provider: "openai" as const,
+        model: adminRoute.model,
+        apiKey: getPlatformOpenAiApiKey() ?? undefined,
+        baseUrl: getPlatformOpenAiBaseURL(),
+        credentialSource: "platform" as const,
+        billingOwner: "platform" as const,
+        routingReason:
+          byokEnabled && preferredSecret ? "provider_unsupported_for_feature" : "admin_routing",
+      };
+    }
+    if (!getGoogleApiKey()) {
+      throw new Error("Platform Google AI credentials are not configured.");
+    }
+    return {
+      provider: "google" as const,
+      model: adminRoute.model,
+      apiKey: getGoogleApiKey() ?? undefined,
+      credentialSource: "platform" as const,
+      billingOwner: "platform" as const,
+      routingReason: "admin_routing",
+    };
+  }
+
+  return platformRouteForFeature(args.feature);
+}
+
+async function recordAiUsage(
+  ctx: UsageRecorderCtx,
+  route: ResolvedRoute,
   args: {
     userId: Id<"users">;
-    feature: OpenAIFeature;
+    feature: AiFeature;
     operation: string;
     model: string;
     status: "success" | "error";
@@ -126,7 +293,7 @@ async function recordOpenAiUsage(
     chatTurnId: args.link?.chatTurnId,
     chatMessageId: args.link?.chatMessageId,
     conversationId: args.link?.conversationId,
-    provider: "openai",
+    provider: route.provider,
     model: args.model,
     operation: args.operation,
     feature: args.feature,
@@ -136,12 +303,156 @@ async function recordOpenAiUsage(
     outputTokens: args.usage?.completion_tokens,
     totalTokens: args.usage?.total_tokens,
     audioSeconds: args.audioSeconds,
-    costUsdMicros: args.costUsdMicros,
-    costAvailability: args.costAvailability,
+    costUsdMicros: route.billingOwner === "platform" ? args.costUsdMicros : undefined,
+    costAvailability: route.billingOwner === "platform" ? args.costAvailability : "unavailable",
     stage: args.stage,
     visibility: args.visibility,
-    metadata: args.metadata,
+    credentialSource: route.credentialSource,
+    billingOwner: route.billingOwner,
+    routingReason: route.routingReason,
+    metadata: {
+      ...(args.metadata ?? {}),
+      credentialSource: route.credentialSource,
+      billingOwner: route.billingOwner,
+      routingReason: route.routingReason,
+    },
   });
+}
+
+function googleApiBase(model: string) {
+  return `https://generativelanguage.googleapis.com/v1beta/models/${model}`;
+}
+
+function buildTextPrompt(
+  messages: Array<{
+    role: string;
+    content: string | Array<{ type?: string; text?: string; image_url?: { url: string } }>;
+  }>,
+) {
+  return messages
+    .map((message) => {
+      const text = extractTextContent(message.content as never);
+      return `${message.role.toUpperCase()}: ${text}`;
+    })
+    .join("\n\n");
+}
+
+function buildSchemaInstructions(
+  request: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming,
+) {
+  const tool = request.tools?.[0];
+  if (request.tool_choice && tool?.type === "function") {
+    return `Return JSON only for function "${tool.function.name}" with this schema:\n${JSON.stringify(
+      tool.function.parameters,
+    )}`;
+  }
+  if (
+    (request as { response_format?: { type?: string } }).response_format?.type === "json_object"
+  ) {
+    return "Return valid JSON only.";
+  }
+  return "";
+}
+
+async function callGoogleGenerate(args: {
+  apiKey: string;
+  model: string;
+  request: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming;
+}) {
+  const prompt = [
+    buildSchemaInstructions(args.request),
+    buildTextPrompt(args.request.messages as never),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const response = await fetch(`${googleApiBase(args.model)}:generateContent?key=${args.apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: (args.request as { temperature?: number }).temperature ?? 0.3,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      `Google generateContent failed with status ${response.status}${body ? `: ${body.slice(0, 200)}` : ""}`,
+    );
+  }
+
+  const data = (await response.json()) as {
+    usageMetadata?: {
+      promptTokenCount?: number;
+      candidatesTokenCount?: number;
+      totalTokenCount?: number;
+    };
+    candidates?: Array<{
+      content?: { parts?: Array<{ text?: string }> };
+    }>;
+  };
+  const text = data.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("") ?? "";
+  return {
+    choices: [
+      {
+        message: {
+          content: text,
+          tool_calls:
+            args.request.tool_choice && args.request.tools?.[0]?.type === "function"
+              ? [
+                  {
+                    type: "function",
+                    function: {
+                      name: args.request.tools[0].function.name,
+                      arguments: text,
+                    },
+                  },
+                ]
+              : undefined,
+        },
+      },
+    ],
+    usage: {
+      prompt_tokens: data.usageMetadata?.promptTokenCount,
+      completion_tokens: data.usageMetadata?.candidatesTokenCount,
+      total_tokens: data.usageMetadata?.totalTokenCount,
+    },
+  };
+}
+
+async function callGoogleEmbeddings(args: {
+  apiKey: string;
+  model: string;
+  input: string | string[];
+}) {
+  const values = Array.isArray(args.input) ? args.input : [args.input];
+  const embeddings: number[][] = [];
+  for (const value of values) {
+    const response = await fetch(`${googleApiBase(args.model)}:embedContent?key=${args.apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: `models/${args.model}`,
+        content: { parts: [{ text: value }] },
+        outputDimensionality: 1536,
+      }),
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(
+        `Google embeddings failed with status ${response.status}${body ? `: ${body.slice(0, 200)}` : ""}`,
+      );
+    }
+    const data = (await response.json()) as {
+      embedding?: { values?: number[] };
+      usageMetadata?: { promptTokenCount?: number; totalTokenCount?: number };
+    };
+    embeddings.push(data.embedding?.values ?? []);
+  }
+  return embeddings;
 }
 
 export function extractTextContent(
@@ -200,7 +511,6 @@ export async function transcribeBase64Audio(args: {
   const client = requireOpenAI();
   const audio = Buffer.from(args.audioBase64, "base64");
   const file = await toFile(audio, `recording.${args.format}`);
-
   return await client.audio.transcriptions.create({
     file,
     model: OPENAI_TRANSCRIPTION_MODEL,
@@ -212,7 +522,7 @@ export async function trackedChatCompletion(
   ctx: UsageRecorderCtx,
   args: {
     userId: Id<"users">;
-    feature: OpenAIFeature;
+    feature: AiFeature;
     model?: string;
     stage?: string;
     visibility?: AiVisibility;
@@ -221,20 +531,38 @@ export async function trackedChatCompletion(
     request: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming;
   },
 ) {
-  const client = requireOpenAI();
-  const model =
-    args.model ?? (typeof args.request.model === "string" ? args.request.model : OPENAI_CHAT_MODEL);
+  const route = await resolveAiRoute(ctx, { userId: args.userId, feature: args.feature });
+  const model = args.model ?? route.model;
   const startedAt = Date.now();
   try {
-    const response = await client.chat.completions.create(args.request);
+    const response =
+      route.provider === "openai"
+        ? await getOpenAIClientForCredentials({
+            apiKey: route.apiKey,
+            baseURL: route.baseUrl,
+          })!.chat.completions.create({
+            ...args.request,
+            model,
+          })
+        : await callGoogleGenerate({
+            apiKey: route.apiKey!,
+            model,
+            request: {
+              ...args.request,
+              model,
+            },
+          });
     const usage = response.usage as ChatUsage | undefined;
-    const pricing = getChatPricing(model);
+    const pricing =
+      route.provider === "openai" && route.billingOwner === "platform"
+        ? getOpenAiPricing(model)
+        : null;
     const costUsdMicros =
       pricing && usage
         ? tokensToMicros(usage.prompt_tokens ?? 0, pricing.inputUsdPer1M ?? 0) +
           tokensToMicros(usage.completion_tokens ?? 0, pricing.outputUsdPer1M ?? 0)
         : undefined;
-    await recordOpenAiUsage(ctx, {
+    await recordAiUsage(ctx, route, {
       userId: args.userId,
       feature: args.feature,
       operation: "chat_completion",
@@ -249,9 +577,9 @@ export async function trackedChatCompletion(
       metadata: args.metadata,
       link: args.link,
     });
-    return response;
+    return response as OpenAI.Chat.Completions.ChatCompletion;
   } catch (error) {
-    await recordOpenAiUsage(ctx, {
+    await recordAiUsage(ctx, route, {
       userId: args.userId,
       feature: args.feature,
       operation: "chat_completion",
@@ -272,7 +600,7 @@ export async function trackedEmbedText(
   ctx: UsageRecorderCtx,
   args: {
     userId: Id<"users">;
-    feature: OpenAIFeature;
+    feature: AiFeature;
     input: string;
     stage?: string;
     visibility?: AiVisibility;
@@ -297,7 +625,7 @@ export async function trackedEmbedTexts(
   ctx: UsageRecorderCtx,
   args: {
     userId: Id<"users">;
-    feature: OpenAIFeature;
+    feature: AiFeature;
     input: string | string[];
     stage?: string;
     visibility?: AiVisibility;
@@ -305,44 +633,47 @@ export async function trackedEmbedTexts(
     link?: AnalyticsLink;
   },
 ) {
-  const client = requireOpenAI();
+  const route = await resolveAiRoute(ctx, { userId: args.userId, feature: args.feature });
+  const model =
+    route.provider === "openai" ? OPENAI_EMBEDDING_MODEL : route.model || GOOGLE_EMBEDDING_MODEL;
   const startedAt = Date.now();
   try {
-    const response = await client.embeddings.create({
-      model: OPENAI_EMBEDDING_MODEL,
-      input: args.input,
-    });
-    const usage = {
-      prompt_tokens: response.usage?.prompt_tokens,
-      total_tokens: response.usage?.total_tokens,
-    };
-    const pricing = getChatPricing(OPENAI_EMBEDDING_MODEL);
-    const costUsdMicros =
-      pricing && usage.prompt_tokens
-        ? tokensToMicros(usage.prompt_tokens, pricing.inputUsdPer1M ?? 0)
-        : undefined;
-    await recordOpenAiUsage(ctx, {
+    const embeddings =
+      route.provider === "openai"
+        ? (
+            await getOpenAIClientForCredentials({
+              apiKey: route.apiKey,
+              baseURL: route.baseUrl,
+            })!.embeddings.create({
+              model,
+              input: args.input,
+            })
+          ).data.map((item) => item.embedding)
+        : await callGoogleEmbeddings({
+            apiKey: route.apiKey!,
+            model,
+            input: args.input,
+          });
+    await recordAiUsage(ctx, route, {
       userId: args.userId,
       feature: args.feature,
       operation: "embedding",
-      model: OPENAI_EMBEDDING_MODEL,
+      model,
       status: "success",
       latencyMs: Date.now() - startedAt,
-      usage,
-      costUsdMicros,
-      costAvailability: usage.prompt_tokens ? "estimated" : "unavailable",
+      costAvailability: "unavailable",
       stage: args.stage ?? "embedding",
       visibility: args.visibility ?? "background",
       metadata: args.metadata,
       link: args.link,
     });
-    return response.data.map((item) => item.embedding);
+    return embeddings;
   } catch (error) {
-    await recordOpenAiUsage(ctx, {
+    await recordAiUsage(ctx, route, {
       userId: args.userId,
       feature: args.feature,
       operation: "embedding",
-      model: OPENAI_EMBEDDING_MODEL,
+      model,
       status: "error",
       latencyMs: Date.now() - startedAt,
       costAvailability: "unavailable",
@@ -364,8 +695,12 @@ export async function trackedTranscribeBase64Audio(
     language?: string;
     durationMs?: number;
   },
-) {
-  const client = requireOpenAI();
+): Promise<{ text?: string | null }> {
+  const route = await resolveAiRoute(ctx, { userId: args.userId, feature: "audio_transcription" });
+  if (route.provider !== "openai") {
+    throw new Error("Transcription is only available via OpenAI in this build.");
+  }
+  const client = getOpenAIClientForCredentials({ apiKey: route.apiKey, baseURL: route.baseUrl })!;
   const startedAt = Date.now();
   const audio = Buffer.from(args.audioBase64, "base64");
   const file = await toFile(audio, `recording.${args.format}`);
@@ -379,12 +714,13 @@ export async function trackedTranscribeBase64Audio(
       typeof args.durationMs === "number" && args.durationMs > 0
         ? args.durationMs / 1000
         : undefined;
-    const pricing = getChatPricing(OPENAI_TRANSCRIPTION_MODEL);
+    const pricing =
+      route.billingOwner === "platform" ? getOpenAiPricing(OPENAI_TRANSCRIPTION_MODEL) : null;
     const costUsdMicros =
       pricing?.audioUsdPerMinute && audioSeconds
         ? minutesToMicros(audioSeconds / 60, pricing.audioUsdPerMinute)
         : undefined;
-    await recordOpenAiUsage(ctx, {
+    await recordAiUsage(ctx, route, {
       userId: args.userId,
       feature: "audio_transcription",
       operation: "transcription",
@@ -397,7 +733,7 @@ export async function trackedTranscribeBase64Audio(
     });
     return response;
   } catch (error) {
-    await recordOpenAiUsage(ctx, {
+    await recordAiUsage(ctx, route, {
       userId: args.userId,
       feature: "audio_transcription",
       operation: "transcription",

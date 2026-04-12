@@ -13,6 +13,10 @@ import {
   energyLevelValidator,
   priorityValidator,
   auditActionValidator,
+  aiProviderValidator,
+  aiCapabilityValidator,
+  aiCredentialSourceValidator,
+  aiBillingOwnerValidator,
 } from "./lib/validators";
 
 export default defineSchema({
@@ -208,6 +212,8 @@ export default defineSchema({
     feature: v.string(),
     stage: v.optional(v.string()),
     visibility: v.optional(v.union(v.literal("user_visible"), v.literal("background"))),
+    credentialSource: v.optional(aiCredentialSourceValidator),
+    billingOwner: v.optional(aiBillingOwnerValidator),
     requests: v.number(),
     errors: v.number(),
     inputTokens: v.number(),
@@ -236,6 +242,9 @@ export default defineSchema({
     feature: v.string(),
     stage: v.optional(v.string()),
     visibility: v.optional(v.union(v.literal("user_visible"), v.literal("background"))),
+    credentialSource: v.optional(aiCredentialSourceValidator),
+    billingOwner: v.optional(aiBillingOwnerValidator),
+    routingReason: v.optional(v.string()),
     status: v.union(v.literal("success"), v.literal("error")),
     latencyMs: v.optional(v.number()),
     inputTokens: v.optional(v.number()),
@@ -525,6 +534,41 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_user_hash", ["userId", "queryHash"])
     .index("by_last_used_at", ["lastUsedAt"]),
+
+  aiRoutingConfig: defineTable({
+    capability: aiCapabilityValidator,
+    provider: aiProviderValidator,
+    model: v.string(),
+    enabled: v.boolean(),
+    notes: v.optional(v.string()),
+    updatedAt: v.number(),
+  }).index("by_capability", ["capability"]),
+
+  userAiProviderPreferences: defineTable({
+    userId: v.id("users"),
+    byokEnabled: v.boolean(),
+    preferredProvider: aiProviderValidator,
+    updatedAt: v.number(),
+  }).index("by_user", ["userId"]),
+
+  userAiProviderSecrets: defineTable({
+    userId: v.id("users"),
+    provider: aiProviderValidator,
+    label: v.optional(v.string()),
+    maskedKeySuffix: v.string(),
+    ciphertext: v.string(),
+    iv: v.string(),
+    authTag: v.string(),
+    keyVersion: v.number(),
+    baseUrl: v.optional(v.string()),
+    lastValidatedAt: v.optional(v.number()),
+    lastValidationStatus: v.optional(v.union(v.literal("valid"), v.literal("invalid"))),
+    lastValidationMessage: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_and_provider", ["userId", "provider"]),
 
   userIntegrations: defineTable({
     userId: v.id("users"),

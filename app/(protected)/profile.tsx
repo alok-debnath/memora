@@ -156,6 +156,15 @@ export default function ProfileScreen() {
   const updateNotifications = useMutation(api.notifications.upsert);
   const deleteAccount = useMutation(api.auth.deleteAccount);
   const updateProfile = useMutation(api.auth.updateProfile);
+  const aiProviderSettings = useQuery(api.aiProviders.getSettings, token ? {} : "skip");
+  const setAiByokPreference = useMutation(api.aiProviders.setByokPreference);
+  const deleteAiProviderKey = useMutation(api.aiProviders.deleteProviderKey);
+  const upsertAiProviderKey = useAction(api.actions.aiProviderKeys.upsertProviderKey);
+  const [selectedAiProvider, setSelectedAiProvider] = React.useState<"openai" | "google">("openai");
+  const [aiApiKey, setAiApiKey] = React.useState("");
+  const [aiBaseUrl, setAiBaseUrl] = React.useState("");
+  const [isSavingAiKey, setIsSavingAiKey] = React.useState(false);
+  const [isUpdatingByok, setIsUpdatingByok] = React.useState(false);
 
   // --- Google Integration (Calendar + Drive) ---
   const googleIntegration = useQuery(api.integrations.getGoogleIntegration, {
@@ -306,6 +315,20 @@ export default function ProfileScreen() {
   }, [user?.timezone]);
 
   React.useEffect(() => {
+    const preferred = aiProviderSettings?.preference?.preferredProvider;
+    if (preferred) {
+      setSelectedAiProvider(preferred);
+    }
+  }, [aiProviderSettings?.preference?.preferredProvider]);
+
+  React.useEffect(() => {
+    const selectedConfig = aiProviderSettings?.providers?.find(
+      (provider: any) => provider.provider === selectedAiProvider,
+    );
+    setAiBaseUrl(selectedConfig?.baseUrl ?? "");
+  }, [aiProviderSettings?.providers, selectedAiProvider]);
+
+  React.useEffect(() => {
     if (!exportRequested || !exportData || Platform.OS !== "web") {
       return;
     }
@@ -412,6 +435,100 @@ export default function ProfileScreen() {
       setIsSavingProfile(false);
     }
   };
+
+  const handleToggleByok = async (value: boolean) => {
+    setIsUpdatingByok(true);
+    try {
+      await setAiByokPreference({
+        preferredProvider: selectedAiProvider,
+        byokEnabled: value,
+      });
+      showToast({
+        title: value ? "BYOK enabled" : "BYOK disabled",
+        message: value
+          ? "Supported AI requests will use your own provider key."
+          : "AI requests will use Memora's provider routing.",
+        tone: "success",
+      });
+    } catch (error) {
+      showToast({
+        title: "Update failed",
+        message: error instanceof Error ? error.message : "Unable to update BYOK settings.",
+        tone: "error",
+      });
+    } finally {
+      setIsUpdatingByok(false);
+    }
+  };
+
+  const handleSaveAiKey = async () => {
+    if (!aiApiKey.trim()) {
+      showToast({
+        title: "API key required",
+        message: "Paste a provider API key before saving.",
+        tone: "error",
+      });
+      return;
+    }
+    setIsSavingAiKey(true);
+    try {
+      await upsertAiProviderKey({
+        provider: selectedAiProvider,
+        apiKey: aiApiKey.trim(),
+        baseUrl: aiBaseUrl.trim() || undefined,
+        validate: true,
+      });
+      await setAiByokPreference({
+        preferredProvider: selectedAiProvider,
+        byokEnabled: aiProviderSettings?.preference?.byokEnabled ?? false,
+      });
+      setAiApiKey("");
+      showToast({
+        title: "Key saved",
+        message: "The API key was encrypted and stored successfully.",
+        tone: "success",
+      });
+    } catch (error) {
+      showToast({
+        title: "Save failed",
+        message: error instanceof Error ? error.message : "Unable to save API key.",
+        tone: "error",
+        closeMode: "manual",
+      });
+    } finally {
+      setIsSavingAiKey(false);
+    }
+  };
+
+  const handleDeleteAiKey = async () => {
+    const confirmed = await confirm({
+      title: "Delete API key",
+      message: `Remove your ${selectedAiProvider} API key from Memora?`,
+      confirmLabel: "Delete",
+      tone: "destructive",
+      icon: "trash-2",
+    });
+    if (!confirmed) return;
+    try {
+      await deleteAiProviderKey({ provider: selectedAiProvider });
+      setAiApiKey("");
+      showToast({
+        title: "Key removed",
+        message: "Stored provider credentials were deleted.",
+        tone: "success",
+      });
+    } catch (error) {
+      showToast({
+        title: "Delete failed",
+        message: error instanceof Error ? error.message : "Unable to delete API key.",
+        tone: "error",
+      });
+    }
+  };
+
+  const selectedAiConfig = aiProviderSettings?.providers?.find(
+    (provider: any) => provider.provider === selectedAiProvider,
+  );
 
   return (
     <MorePageScaffold title="Profile" scrollProps={{ contentContainerStyle: styles.content }}>
@@ -1010,6 +1127,196 @@ export default function ProfileScreen() {
         </Card>
       </Animated.View>
 
+      <Animated.View entering={FadeInUp.delay(190).duration(400)}>
+        <SectionLabel>AI PROVIDERS</SectionLabel>
+        <Card style={styles.groupCard}>
+          <XStack alignItems="center" gap={12} paddingVertical={4}>
+            <YStack flex={1}>
+              <Text fontSize={15} fontFamily="$body" color="$color">
+                Bring Your Own Key
+              </Text>
+              <Text
+                fontSize={12}
+                fontFamily="$body"
+                marginTop={3}
+                lineHeight={18}
+                color="$colorMuted"
+              >
+                Use one provider for supported AI capabilities and skip Memora pricing on those
+                requests.
+              </Text>
+            </YStack>
+            <Switch
+              value={aiProviderSettings?.preference?.byokEnabled ?? false}
+              onValueChange={(value) => void handleToggleByok(value)}
+              disabled={isUpdatingByok}
+              trackColor={{
+                true: theme.primary.val,
+                false: theme.borderColor.val,
+              }}
+              thumbColor={theme.textInverse.val}
+            />
+          </XStack>
+
+          <YStack height={StyleSheet.hairlineWidth} backgroundColor="$borderColor" marginTop={14} />
+
+          <XStack gap={10} marginTop={14}>
+            {(["openai", "google"] as const).map((provider) => {
+              const isActive = selectedAiProvider === provider;
+              return (
+                <PressableScale
+                  key={provider}
+                  onPress={() => setSelectedAiProvider(provider)}
+                  style={[
+                    styles.providerChip,
+                    {
+                      borderColor: isActive ? theme.primary.val : theme.borderColor.val,
+                      backgroundColor: isActive ? theme.primary.val + "14" : theme.background.val,
+                    },
+                  ]}
+                >
+                  <Text
+                    fontSize={13}
+                    fontFamily="$body"
+                    fontWeight="600"
+                    color={isActive ? theme.primary.val : theme.color.val}
+                  >
+                    {provider === "openai" ? "OpenAI" : "Google"}
+                  </Text>
+                </PressableScale>
+              );
+            })}
+          </XStack>
+
+          <YStack gap={6} marginTop={16}>
+            <Text
+              fontSize={12}
+              fontFamily="$heading"
+              fontWeight="600"
+              textTransform="uppercase"
+              letterSpacing={0.8}
+              marginLeft={4}
+              color="$colorMuted"
+            >
+              API Key
+            </Text>
+            <TextInput
+              value={aiApiKey}
+              onChangeText={setAiApiKey}
+              placeholder={`Paste your ${selectedAiProvider === "openai" ? "OpenAI" : "Google"} API key`}
+              placeholderTextColor={theme.colorMuted.val}
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.secondary.val,
+                  color: theme.color.val,
+                  borderColor: theme.borderColor.val,
+                },
+              ]}
+            />
+          </YStack>
+
+          {selectedAiProvider === "openai" ? (
+            <YStack gap={6} marginTop={12}>
+              <Text
+                fontSize={12}
+                fontFamily="$heading"
+                fontWeight="600"
+                textTransform="uppercase"
+                letterSpacing={0.8}
+                marginLeft={4}
+                color="$colorMuted"
+              >
+                Base URL
+              </Text>
+              <TextInput
+                value={aiBaseUrl}
+                onChangeText={setAiBaseUrl}
+                placeholder="Optional custom OpenAI-compatible base URL"
+                placeholderTextColor={theme.colorMuted.val}
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: theme.secondary.val,
+                    color: theme.color.val,
+                    borderColor: theme.borderColor.val,
+                  },
+                ]}
+              />
+            </YStack>
+          ) : null}
+
+          <XStack gap={10} marginTop={16}>
+            <GradientButton
+              title={isSavingAiKey ? "Saving..." : "Save Key"}
+              onPress={() => void handleSaveAiKey()}
+              icon="key"
+              style={{ flex: 1 }}
+            />
+            <GradientButton
+              title="Delete"
+              onPress={() => void handleDeleteAiKey()}
+              icon="trash-2"
+              style={{ flex: 1 }}
+            />
+          </XStack>
+
+          <YStack
+            marginTop={16}
+            padding={14}
+            borderRadius={18}
+            borderWidth={1}
+            borderColor={theme.borderColor.val}
+            backgroundColor={theme.background.val}
+            gap={8}
+          >
+            <XStack alignItems="center" justifyContent="space-between">
+              <Text fontSize={14} fontFamily="$body" fontWeight="600" color="$color">
+                {selectedAiProvider === "openai" ? "OpenAI" : "Google"} status
+              </Text>
+              {selectedAiConfig?.configured ? (
+                <Badge
+                  label={`••••${selectedAiConfig.maskedKeySuffix ?? ""}`}
+                  color={theme.primary.val}
+                  small
+                />
+              ) : (
+                <Badge label="No key" color={theme.borderColor.val} small />
+              )}
+            </XStack>
+            <Text fontSize={12} fontFamily="$body" lineHeight={18} color="$colorMuted">
+              {selectedAiConfig?.lastValidationStatus === "valid"
+                ? (selectedAiConfig.lastValidationMessage ?? "Last validation succeeded.")
+                : (selectedAiConfig?.lastValidationMessage ??
+                  "Your key is encrypted server-side and only used to execute your AI requests.")}
+            </Text>
+          </YStack>
+
+          <YStack marginTop={16} gap={8}>
+            {aiProviderSettings?.capabilityMatrix?.map((item: any) => (
+              <XStack
+                key={item.capability}
+                alignItems="center"
+                justifyContent="space-between"
+                paddingVertical={6}
+              >
+                <Text fontSize={13} fontFamily="$body" color="$color">
+                  {item.capability.replace(/_/g, " ")}
+                </Text>
+                <Text fontSize={12} fontFamily="$body" color="$colorMuted">
+                  {item.effectiveProvider} · {item.billingOwner === "user" ? "BYOK" : "Memora"}
+                </Text>
+              </XStack>
+            ))}
+          </YStack>
+        </Card>
+      </Animated.View>
+
       <Animated.View entering={FadeInUp.delay(200).duration(400)}>
         <SectionLabel>DATA</SectionLabel>
         <Card style={styles.groupCard}>
@@ -1068,6 +1375,12 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   content: { padding: 16, gap: 16 },
   profileCard: { alignItems: "center", paddingVertical: 24 },
+  providerChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
   avatar: {
     width: 72,
     height: 72,

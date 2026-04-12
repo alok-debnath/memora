@@ -13,7 +13,7 @@ import {
 } from "../lib/attachmentExtraction";
 import {
   extractTextContent,
-  getOpenAIClient,
+  getOpenAIClientForFeature,
   OPENAI_CHAT_MODEL,
   trackedChatCompletion,
 } from "../lib/openai";
@@ -1058,10 +1058,16 @@ export const chat = action({
     attachments: v.optional(v.array(driveAttachmentArg)),
   },
   handler: async (ctx, args) => {
-    const client = getOpenAIClient();
     const session = await ctx.runQuery(api.auth.me, { token: args.token });
     if (!session) {
       throw new Error("Unauthorized");
+    }
+    const client = await getOpenAIClientForFeature(ctx, {
+      userId: session._id,
+      feature: "memory_chat",
+    });
+    if (!client) {
+      throw new Error("AI chat is not configured.");
     }
 
     const effectiveTimezone = args.currentTimezone?.trim() || session.timezone || "UTC";

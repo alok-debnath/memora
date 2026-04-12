@@ -5,7 +5,6 @@ import { action } from "../_generated/server";
 import { internal } from "../_generated/api";
 import {
   extractTextContent,
-  getOpenAIClient,
   OPENAI_CHAT_MODEL,
   safeJsonParse,
   trackedChatCompletion,
@@ -18,8 +17,6 @@ export const processDiary = action({
     rawText: v.string(),
   },
   handler: async (ctx, args) => {
-    const client = getOpenAIClient();
-    if (!client) return;
     const entry = await ctx.runQuery(internal.diary.getEntryInternal, {
       entryId: args.entryId,
     });
@@ -199,7 +196,7 @@ export const processDiary = action({
       if (recentEntries.length >= 3) {
         const summary = recentEntries
           .map(
-            (entry) =>
+            (entry: any) =>
               `Mood: ${entry.mood ?? "neutral"} | Summary: ${entry.summary ?? ""} | Habits: ${JSON.stringify(entry.habitsDetected ?? [])}`,
           )
           .join("\n");

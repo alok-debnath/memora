@@ -3,7 +3,7 @@
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import { extractTextContent, getOpenAIClient, trackedChatCompletion } from "./openai";
+import { extractTextContent, resolveAiRoute, trackedChatCompletion } from "./openai";
 
 export const ATTACHMENT_TEXT_LIMIT = 3000;
 
@@ -58,7 +58,7 @@ export async function extractAttachmentFromDrive(args: {
   attachment: AttachmentLike;
   textLimit?: number;
   analytics?: {
-    ctx: Pick<ActionCtx, "runMutation">;
+    ctx: Pick<ActionCtx, "runMutation" | "runQuery">;
     userId: Id<"users">;
     chatTurnId?: Id<"chatMessages">;
     chatMessageId?: Id<"chatMessages">;
@@ -169,7 +169,7 @@ async function callGemini(body: object): Promise<string | undefined> {
 
 async function recordGeminiUsage(args: {
   analytics?: {
-    ctx: Pick<ActionCtx, "runMutation">;
+    ctx: Pick<ActionCtx, "runMutation" | "runQuery">;
     userId: Id<"users">;
     chatTurnId?: Id<"chatMessages">;
     chatMessageId?: Id<"chatMessages">;
@@ -207,7 +207,7 @@ async function extractImageWithGemini(
   driveFileId: string,
   filename: string,
   analytics?: {
-    ctx: Pick<ActionCtx, "runMutation">;
+    ctx: Pick<ActionCtx, "runMutation" | "runQuery">;
     userId: Id<"users">;
     chatTurnId?: Id<"chatMessages">;
     chatMessageId?: Id<"chatMessages">;
@@ -270,13 +270,33 @@ async function extractImageWithFallback(
   driveFileId: string,
   filename: string,
   analytics?: {
-    ctx: Pick<ActionCtx, "runMutation">;
+    ctx: Pick<ActionCtx, "runMutation" | "runQuery">;
     userId: Id<"users">;
     chatTurnId?: Id<"chatMessages">;
     chatMessageId?: Id<"chatMessages">;
     conversationId?: string;
   },
 ): Promise<AttachmentExtractionResult> {
+  const preferredProvider = analytics
+    ? (
+        await resolveAiRoute(analytics.ctx, {
+          userId: analytics.userId,
+          feature: "attachment_extraction",
+        })
+      ).provider
+    : "google";
+
+  if (preferredProvider === "openai") {
+    const openAiFirst = await extractImageWithOpenAI(accessToken, driveFileId, filename, analytics);
+    if (openAiFirst) {
+      return {
+        processingStatus: "completed",
+        extractedContent: openAiFirst,
+        extractionMethod: "openai",
+      };
+    }
+  }
+
   try {
     const geminiText = await extractImageWithGemini(accessToken, driveFileId, filename, analytics);
     if (geminiText?.trim()) {
@@ -333,15 +353,14 @@ async function extractImageWithOpenAI(
   driveFileId: string,
   filename: string,
   analytics?: {
-    ctx: Pick<ActionCtx, "runMutation">;
+    ctx: Pick<ActionCtx, "runMutation" | "runQuery">;
     userId: Id<"users">;
     chatTurnId?: Id<"chatMessages">;
     chatMessageId?: Id<"chatMessages">;
     conversationId?: string;
   },
 ): Promise<string | undefined> {
-  const client = getOpenAIClient();
-  if (!client) {
+  if (!analytics && !process.env.OPENAI_API_KEY && !process.env.CONVEX_OPENAI_API_KEY) {
     return undefined;
   }
 
@@ -395,7 +414,11 @@ async function extractImageWithOpenAI(
           },
           request,
         })
-      : await client.chat.completions.create(request);
+      : undefined;
+
+    if (!visionResponse) {
+      return undefined;
+    }
 
     const extracted = extractTextContent(visionResponse.choices[0]?.message?.content);
     return extracted.trim() || undefined;
@@ -409,7 +432,7 @@ async function extractPdfContent(
   driveFileId: string,
   textLimit: number,
   analytics?: {
-    ctx: Pick<ActionCtx, "runMutation">;
+    ctx: Pick<ActionCtx, "runMutation" | "runQuery">;
     userId: Id<"users">;
     chatTurnId?: Id<"chatMessages">;
     chatMessageId?: Id<"chatMessages">;

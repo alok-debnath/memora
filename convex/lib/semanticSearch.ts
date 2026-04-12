@@ -3,7 +3,7 @@
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import { hasOpenAI, trackedEmbedText } from "./openai";
+import { trackedEmbedText } from "./openai";
 import { cleanSearchQuery, extractSearchTerms, normalizeSearchQueryHash } from "./search";
 
 type SearchableMemory = Doc<"memories"> & { _score?: number };
@@ -91,10 +91,6 @@ export async function runSemanticSearch(
 
   await Promise.allSettled([
     (async () => {
-      if (!hasOpenAI()) {
-        return;
-      }
-
       try {
         const cached = await ctx.runQuery(internal.memories.getQueryCache, {
           userId: args.userId,

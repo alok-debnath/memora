@@ -6,7 +6,6 @@ import { action, type ActionCtx } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import {
   extractTextContent,
-  getOpenAIClient,
   OPENAI_CHAT_MODEL,
   safeJsonParse,
   trackedChatCompletion,
@@ -183,7 +182,7 @@ function buildEmbeddingText(args: {
 export { buildEmbeddingText };
 
 async function extractStructuredMemory(args: {
-  ctx: Pick<ActionCtx, "runMutation">;
+  ctx: Pick<ActionCtx, "runMutation" | "runQuery">;
   userId: Id<"users">;
   input: string;
   userTz: string;
@@ -335,7 +334,7 @@ async function extractStructuredMemory(args: {
 }
 
 async function buildMemoryEmbedding(args: {
-  ctx: Pick<ActionCtx, "runMutation">;
+  ctx: Pick<ActionCtx, "runMutation" | "runQuery">;
   userId: Id<"users">;
   feature: "memory_processing" | "memory_capture";
   title?: string;
@@ -376,11 +375,6 @@ export const processMemory = action({
     sourceChatTurnId: v.optional(v.id("chatMessages")),
   },
   handler: async (ctx, args) => {
-    const client = getOpenAIClient();
-    if (!client) {
-      return;
-    }
-
     const memory = await ctx.runQuery(internal.memories.getInternal, {
       memoryId: args.memoryId,
     });
@@ -544,8 +538,7 @@ export const captureMemory = action({
     let structured = fallback;
     let embedding: number[] | undefined;
 
-    const client = getOpenAIClient();
-    if (client) {
+    {
       const userTz = args.currentTimezone?.trim() || session.timezone || "UTC";
       const currentTime = args.currentTime ?? new Date().toISOString();
       const skipConflictPrefetch = looksLikeDirectReminderCapture(args.content);

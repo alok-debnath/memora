@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as actions_aiProviderKeys from "../actions/aiProviderKeys.js";
 import type * as actions_backfillEmbeddings from "../actions/backfillEmbeddings.js";
 import type * as actions_detectConflicts from "../actions/detectConflicts.js";
 import type * as actions_manageTopics from "../actions/manageTopics.js";
@@ -17,6 +18,7 @@ import type * as actions_processDiary from "../actions/processDiary.js";
 import type * as actions_processMemory from "../actions/processMemory.js";
 import type * as actions_semanticSearch from "../actions/semanticSearch.js";
 import type * as actions_transcribeAudio from "../actions/transcribeAudio.js";
+import type * as aiProviders from "../aiProviders.js";
 import type * as analytics from "../analytics.js";
 import type * as attachments from "../attachments.js";
 import type * as auth from "../auth.js";
@@ -28,7 +30,9 @@ import type * as diary from "../diary.js";
 import type * as history from "../history.js";
 import type * as http from "../http.js";
 import type * as integrations from "../integrations.js";
+import type * as lib_ai from "../lib/ai.js";
 import type * as lib_aiNormalization from "../lib/aiNormalization.js";
+import type * as lib_aiSecrets from "../lib/aiSecrets.js";
 import type * as lib_attachmentExtraction from "../lib/attachmentExtraction.js";
 import type * as lib_memoryKind from "../lib/memoryKind.js";
 import type * as lib_memorySnapshot from "../lib/memorySnapshot.js";
@@ -57,6 +61,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "actions/aiProviderKeys": typeof actions_aiProviderKeys;
   "actions/backfillEmbeddings": typeof actions_backfillEmbeddings;
   "actions/detectConflicts": typeof actions_detectConflicts;
   "actions/manageTopics": typeof actions_manageTopics;
@@ -66,6 +71,7 @@ declare const fullApi: ApiFromModules<{
   "actions/processMemory": typeof actions_processMemory;
   "actions/semanticSearch": typeof actions_semanticSearch;
   "actions/transcribeAudio": typeof actions_transcribeAudio;
+  aiProviders: typeof aiProviders;
   analytics: typeof analytics;
   attachments: typeof attachments;
   auth: typeof auth;
@@ -77,7 +83,9 @@ declare const fullApi: ApiFromModules<{
   history: typeof history;
   http: typeof http;
   integrations: typeof integrations;
+  "lib/ai": typeof lib_ai;
   "lib/aiNormalization": typeof lib_aiNormalization;
+  "lib/aiSecrets": typeof lib_aiSecrets;
   "lib/attachmentExtraction": typeof lib_attachmentExtraction;
   "lib/memoryKind": typeof lib_memoryKind;
   "lib/memorySnapshot": typeof lib_memorySnapshot;

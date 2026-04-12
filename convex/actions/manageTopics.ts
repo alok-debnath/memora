@@ -5,12 +5,7 @@ import { action, internalAction } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import {
-  getOpenAIClient,
-  OPENAI_CHAT_MODEL,
-  trackedChatCompletion,
-  trackedEmbedText,
-} from "../lib/openai";
+import { OPENAI_CHAT_MODEL, trackedChatCompletion, trackedEmbedText } from "../lib/openai";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -215,15 +210,12 @@ function topicDataFromRequestedName(name: string): TopicData {
 }
 
 async function aiCreateTopic(
-  ctx: Pick<ActionCtx, "runMutation">,
+  ctx: Pick<ActionCtx, "runMutation" | "runQuery">,
   userId: Id<"users">,
   title: string,
   content: string,
   existingTopics: Array<{ name: string; description: string }>,
 ): Promise<TopicData> {
-  const client = getOpenAIClient();
-  if (!client) return fallbackTopicData(title);
-
   const existingSummary =
     existingTopics.length > 0
       ? existingTopics.map((t) => `"${t.name}" (${t.description || "no description"})`).join(", ")
@@ -281,7 +273,7 @@ Return ONLY valid JSON: { "name": "Title Case", "slug": "kebab-case", "descripti
  * Only called when cosine similarity doesn't give a clear answer (< AUTO_ASSIGN_THRESHOLD).
  */
 async function aiSelectOrCreateTopic(
-  ctx: Pick<ActionCtx, "runMutation">,
+  ctx: Pick<ActionCtx, "runMutation" | "runQuery">,
   userId: Id<"users">,
   title: string,
   content: string,
@@ -293,16 +285,6 @@ async function aiSelectOrCreateTopic(
   }>,
   allExistingTopics: Array<{ name: string; description: string }>,
 ): Promise<{ action: "existing"; topicId: string } | { action: "new"; topicData: TopicData }> {
-  const client = getOpenAIClient();
-
-  if (!client) {
-    // No LLM: use best candidate if similarity is decent, else create new
-    if (candidates.length > 0 && candidates[0].similarity >= 0.6) {
-      return { action: "existing", topicId: candidates[0]._id };
-    }
-    return { action: "new", topicData: fallbackTopicData(title) };
-  }
-
   const candidateList = candidates
     .map((c, i) => `${i + 1}. "${c.name}" — ${c.description || "a topic in the user's taxonomy"}`)
     .join("\n");
@@ -679,31 +661,28 @@ export const handleManageTopic = internalAction({
 
     if (args.operation === "rename" && args.newName) {
       const newSlug = args.newName.toLowerCase().replace(/\s+/g, "-");
-      const client = getOpenAIClient();
       let description = topic.description;
-      if (client) {
-        try {
-          const resp = await trackedChatCompletion(ctx, {
-            userId: args.userId,
-            feature: "topic_management",
-            stage: "topic_assignment",
-            visibility: "background",
-            metadata: { stage: "rename_topic" },
-            request: {
-              model: OPENAI_CHAT_MODEL,
-              messages: [
-                {
-                  role: "user",
-                  content: `Write a one-sentence description for a personal memory topic called "${args.newName}". Be concise.`,
-                },
-              ],
-              max_tokens: 60,
-            },
-          });
-          description = resp.choices[0]?.message?.content?.trim() ?? description;
-        } catch {
-          /* use existing */
-        }
+      try {
+        const resp = await trackedChatCompletion(ctx, {
+          userId: args.userId,
+          feature: "topic_management",
+          stage: "topic_assignment",
+          visibility: "background",
+          metadata: { stage: "rename_topic" },
+          request: {
+            model: OPENAI_CHAT_MODEL,
+            messages: [
+              {
+                role: "user",
+                content: `Write a one-sentence description for a personal memory topic called "${args.newName}". Be concise.`,
+              },
+            ],
+            max_tokens: 60,
+          },
+        });
+        description = resp.choices[0]?.message?.content?.trim() ?? description;
+      } catch {
+        /* use existing */
       }
       await ctx.runMutation(internal.userTopics.renameTopic, {
         topicId: topic._id,

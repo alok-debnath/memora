@@ -193,6 +193,8 @@ export const deleteAccount = mutation({
       "chatMessages",
       "userMemoryStats",
       "userMemoryDailyCounts",
+      "userAiProviderPreferences",
+      "userAiProviderSecrets",
     ] as const;
 
     for (const table of tables) {

@@ -3,7 +3,7 @@
 import { v } from "convex/values";
 import { action } from "../_generated/server";
 import { api } from "../_generated/api";
-import { hasOpenAI, trackedTranscribeBase64Audio } from "../lib/openai";
+import { trackedTranscribeBase64Audio } from "../lib/openai";
 
 export const transcribe = action({
   args: {
@@ -12,7 +12,7 @@ export const transcribe = action({
     format: v.string(),
     durationMs: v.optional(v.number()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{ text: string }> => {
     const user = await ctx.runQuery(api.auth.me, { token: args.token });
     if (!user) {
       return { text: "Authentication required." };
@@ -22,20 +22,21 @@ export const transcribe = action({
     if (args.audioBase64.length > maxSizeBytes * 1.37) {
       return { text: "Audio file too large. Maximum 10MB." };
     }
-    if (!hasOpenAI()) {
-      return { text: "Transcription service is not configured." };
-    }
-
     try {
-      const response = await trackedTranscribeBase64Audio(ctx, {
+      const response: { text?: string | null } = await trackedTranscribeBase64Audio(ctx, {
         userId: user._id,
         audioBase64: args.audioBase64,
         format: args.format,
         durationMs: args.durationMs,
       });
       return { text: response.text || "" };
-    } catch {
-      return { text: "Transcription failed. Please try again." };
+    } catch (error) {
+      return {
+        text:
+          error instanceof Error && /not configured/i.test(error.message)
+            ? "Transcription service is not configured."
+            : "Transcription failed. Please try again.",
+      };
     }
   },
 });

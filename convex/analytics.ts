@@ -190,6 +190,8 @@ async function getOrCreateModelDaily(
     feature: string;
     stage?: string;
     visibility?: AiVisibility;
+    credentialSource?: "platform" | "user_byok";
+    billingOwner?: "platform" | "user";
   },
 ): Promise<ModelDailyDoc> {
   const rows = await ctx.db
@@ -208,7 +210,9 @@ async function getOrCreateModelDaily(
         row.operation === args.operation &&
         row.feature === args.feature &&
         row.stage === args.stage &&
-        row.visibility === args.visibility,
+        row.visibility === args.visibility &&
+        row.credentialSource === args.credentialSource &&
+        row.billingOwner === args.billingOwner,
     ) ?? null;
   if (existing) {
     return existing;
@@ -224,6 +228,8 @@ async function getOrCreateModelDaily(
     feature: args.feature,
     stage: args.stage,
     visibility: args.visibility,
+    credentialSource: args.credentialSource,
+    billingOwner: args.billingOwner,
     requests: 0,
     errors: 0,
     inputTokens: 0,
@@ -425,6 +431,9 @@ export const recordAiUsage = internalMutation({
     feature: v.string(),
     stage: v.optional(v.string()),
     visibility: v.optional(v.union(v.literal("user_visible"), v.literal("background"))),
+    credentialSource: v.optional(v.union(v.literal("platform"), v.literal("user_byok"))),
+    billingOwner: v.optional(v.union(v.literal("platform"), v.literal("user"))),
+    routingReason: v.optional(v.string()),
     status: v.union(v.literal("success"), v.literal("error")),
     latencyMs: v.optional(v.number()),
     inputTokens: v.optional(v.number()),
@@ -451,6 +460,8 @@ export const recordAiUsage = internalMutation({
       feature: args.feature,
       stage: args.stage,
       visibility,
+      credentialSource: args.credentialSource,
+      billingOwner: args.billingOwner,
     });
 
     const inputTokens = Math.max(0, Math.floor(args.inputTokens ?? 0));
@@ -473,6 +484,9 @@ export const recordAiUsage = internalMutation({
       feature: args.feature,
       stage: args.stage,
       visibility,
+      credentialSource: args.credentialSource,
+      billingOwner: args.billingOwner,
+      routingReason: args.routingReason,
       status: args.status,
       latencyMs: args.latencyMs,
       inputTokens: inputTokens || undefined,
@@ -517,6 +531,8 @@ export const recordAiUsage = internalMutation({
       analyticsSubjectId,
       stage: args.stage,
       visibility,
+      credentialSource: args.credentialSource,
+      billingOwner: args.billingOwner,
       requests: modelDaily.requests + 1,
       errors: modelDaily.errors + (args.status === "error" ? 1 : 0),
       inputTokens: modelDaily.inputTokens + inputTokens,

@@ -26,6 +26,8 @@ export const exportAllData = query({
       memoryHistory,
       memoryAttachments,
       notificationPreferences,
+      aiProviderPreference,
+      aiProviderSecrets,
       auditLogs,
       privacyConsent,
     ] = await Promise.all([
@@ -61,6 +63,14 @@ export const exportAllData = query({
         .query("notificationPreferences")
         .withIndex("by_user", (q) => q.eq("userId", user._id))
         .first(),
+      ctx.db
+        .query("userAiProviderPreferences")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .unique(),
+      ctx.db
+        .query("userAiProviderSecrets")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .take(20),
       ctx.db
         .query("auditLogs")
         .withIndex("by_user", (q) => q.eq("userId", user._id))
@@ -173,6 +183,22 @@ export const exportAllData = query({
             pushEnabled: notificationPreferences.pushEnabled,
           }
         : null,
+      aiProviderSettings: {
+        preference: aiProviderPreference
+          ? {
+              byokEnabled: aiProviderPreference.byokEnabled,
+              preferredProvider: aiProviderPreference.preferredProvider,
+            }
+          : null,
+        configuredProviders: aiProviderSecrets.map((secret) => ({
+          provider: secret.provider,
+          maskedKeySuffix: secret.maskedKeySuffix,
+          lastValidatedAt: secret.lastValidatedAt
+            ? new Date(secret.lastValidatedAt).toISOString()
+            : undefined,
+          lastValidationStatus: secret.lastValidationStatus,
+        })),
+      },
       auditLogs: auditLogs.map((a) => ({
         action: a.action,
         resourceType: a.resourceType,

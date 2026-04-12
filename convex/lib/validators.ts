@@ -73,6 +73,21 @@ export const energyLevelValidator = v.union(
 
 export const priorityValidator = v.union(v.literal("high"), v.literal("normal"), v.literal("low"));
 
+export const aiProviderValidator = v.union(v.literal("openai"), v.literal("google"));
+
+export const aiCapabilityValidator = v.union(
+  v.literal("chat"),
+  v.literal("structured_text"),
+  v.literal("embeddings"),
+  v.literal("vision"),
+  v.literal("transcription"),
+  v.literal("image_generation"),
+);
+
+export const aiCredentialSourceValidator = v.union(v.literal("platform"), v.literal("user_byok"));
+
+export const aiBillingOwnerValidator = v.union(v.literal("platform"), v.literal("user"));
+
 /**
  * Audit log action types
  */

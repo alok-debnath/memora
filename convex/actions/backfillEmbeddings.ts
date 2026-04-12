@@ -51,7 +51,7 @@ export const backfill = internalAction({
       return { processed: 0 };
     }
 
-    const inputs = memories.map((m) => buildEmbeddingText(m).slice(0, 6000));
+    const inputs = memories.map((m: any) => buildEmbeddingText(m).slice(0, 6000));
 
     try {
       const embeddings = await embedTexts(inputs);
@@ -100,7 +100,7 @@ export const reembedAll = internalAction({
       return { processed: 0, hasMore: false };
     }
 
-    const inputs = memories.batch.map((m) => buildEmbeddingText(m).slice(0, 6000));
+    const inputs = memories.batch.map((m: any) => buildEmbeddingText(m).slice(0, 6000));
 
     try {
       const embeddings = await embedTexts(inputs);
