@@ -4,7 +4,7 @@ import { Sheet, type SheetProps, View } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { withAlpha } from "@/components/ui/themeHelpers";
 
-import { selectSheetStack, useUIStore } from "@/store/ui";
+import { useUIStore } from "@/store/ui";
 
 export const SHEET_CONFIG = {
   snapPoints: [90] as number[],
@@ -12,7 +12,42 @@ export const SHEET_CONFIG = {
   dismissOnSnapToBottom: true,
   zIndex: 100_000,
   frameBorderRadius: 30,
+  stackHeightStep: 2,
+  maxStackedSnapPoint: 96,
 };
+
+function resolveSheetPresentation(args: {
+  sheetId?: string;
+  depth: number;
+  stackIndex: number;
+  snapPoints?: number[];
+  zIndex?: number;
+}) {
+  if (args.snapPoints) {
+    return {
+      snapPoints: args.snapPoints,
+      zIndex: args.zIndex ?? SHEET_CONFIG.zIndex,
+    };
+  }
+
+  if (!args.sheetId || args.stackIndex === -1) {
+    return {
+      snapPoints: SHEET_CONFIG.snapPoints,
+      zIndex: args.zIndex ?? SHEET_CONFIG.zIndex,
+    };
+  }
+
+  const baseSnapPoint = SHEET_CONFIG.snapPoints[0] ?? 90;
+  const stackedSnapPoint = Math.min(
+    SHEET_CONFIG.maxStackedSnapPoint,
+    baseSnapPoint + args.depth * SHEET_CONFIG.stackHeightStep
+  );
+
+  return {
+    snapPoints: [stackedSnapPoint],
+    zIndex: args.zIndex ?? SHEET_CONFIG.zIndex + args.stackIndex,
+  };
+}
 
 interface BaseSheetProps
   extends Omit<SheetProps, "children"> {
@@ -35,33 +70,23 @@ export function BaseSheet({
 }: BaseSheetProps) {
   const theme = useAppTheme();
   const resolvedBg = backgroundColor ?? theme.backgroundStrong?.val ?? "$backgroundStrong";
-
-  // sheetStack is managed entirely by uiStore open/close actions (eager stack push/pop).
-  // No useEffect sync needed — that caused extra store updates mid-animation,
-  // making Tamagui Sheet drop open transitions on native.
-  const sheetStack = useUIStore(selectSheetStack);
+  const sheetStack = useUIStore((state) => state.sheetStack);
+  const stackIndex = sheetId ? sheetStack.indexOf(sheetId) : -1;
+  const stackSize = sheetStack.length;
+  const topSheetId = sheetStack[stackSize - 1] ?? null;
+  const depth = stackIndex === -1 ? 0 : stackSize - 1 - stackIndex;
+  const isTopSheet = sheetId ? topSheetId === sheetId : true;
 
   const { snapPoints, zIndex } = useMemo(() => {
-    if (props.snapPoints) {
-      return { snapPoints: props.snapPoints as number[], zIndex: props.zIndex ?? SHEET_CONFIG.zIndex };
-    }
-    if (!sheetId) {
-      return { snapPoints: SHEET_CONFIG.snapPoints, zIndex: SHEET_CONFIG.zIndex };
-    }
+    return resolveSheetPresentation({
+      sheetId,
+      depth,
+      stackIndex,
+      snapPoints: props.snapPoints as number[] | undefined,
+      zIndex: props.zIndex,
+    });
+  }, [depth, props.snapPoints, props.zIndex, sheetId, stackIndex]);
 
-    const stackIndex = sheetStack.indexOf(sheetId);
-    if (stackIndex === -1) {
-      return { snapPoints: SHEET_CONFIG.snapPoints, zIndex: SHEET_CONFIG.zIndex };
-    }
-
-    const depth = sheetStack.length - 1 - stackIndex;
-    const snapPoint = 90 + depth * 2;
-    const computedZIndex = SHEET_CONFIG.zIndex + stackIndex;
-
-    return { snapPoints: [snapPoint], zIndex: computedZIndex };
-  }, [props.snapPoints, props.zIndex, sheetId, sheetStack]);
-
-  const isTopSheet = sheetId ? sheetStack[sheetStack.length - 1] === sheetId : true;
   const wasTopSheet = useRef(isTopSheet);
   useEffect(() => {
     if (open && wasTopSheet.current && !isTopSheet) {

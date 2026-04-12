@@ -2,6 +2,7 @@ import React, { useState, useCallback } from "react";
 import {
   FlatList,
   Pressable,
+  ScrollView,
   StyleSheet,
   RefreshControl,
   Linking,
@@ -18,10 +19,13 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/useAuth";
 import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
 import { useColors } from "@/hooks/useColors";
+import { useDrivePreviewUrls } from "@/hooks/useDrivePreviewUrls";
 import { BaseSheet } from "@/components/ui/BaseSheet";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { useAppToast } from "@/components/ui/toast";
+import { SheetHeader } from "@/components/ui/SheetHeader";
 import { statusAccentColors } from "@/constants/colors";
+import { useUIStore } from "@/store/ui";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const GRID_PADDING = 16;
@@ -59,11 +63,25 @@ export default function FilesScreen() {
   const token = auth.token;
   const { showToast } = useAppToast();
   const { confirm } = useAppConfirm();
+  const pushSheet = useUIStore((state) => state.pushSheet);
+  const popSheet = useUIStore((state) => state.popSheet);
 
   const [filter, setFilter] = useState<FilterType>("all");
   const [selectedAttachment, setSelectedAttachment] = useState<AttachmentDoc | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [contentTopPadding, setContentTopPadding] = useState(86);
+
+  const handlePreviewOpenChange = useCallback((open: boolean) => {
+    if (open) {
+      pushSheet("filePreview");
+    } else {
+      popSheet("filePreview");
+    }
+    setPreviewOpen(open);
+    if (!open) {
+      setSelectedAttachment(null);
+    }
+  }, [popSheet, pushSheet]);
 
   const googleIntegration = useQuery(
     api.integrations.getGoogleIntegration,
@@ -85,6 +103,7 @@ export default function FilesScreen() {
 
   const attachments = (attachmentsResult?.page ?? []) as AttachmentDoc[];
   const isLoading = attachmentsResult === undefined;
+  const previewUrls = useDrivePreviewUrls(attachments, token);
 
   const driveConnected = !!(googleIntegration?.connected && (googleIntegration as any).hasDriveScope);
 
@@ -101,13 +120,13 @@ export default function FilesScreen() {
       if (!confirmed) return;
       try {
         await deleteAttachment({ token, attachmentId: attachment._id });
-        setPreviewOpen(false);
+        handlePreviewOpenChange(false);
         showToast({ title: "File deleted", tone: "success" });
       } catch {
         showToast({ title: "Could not delete file", tone: "error" });
       }
     },
-    [confirm, token, deleteAttachment, showToast]
+    [confirm, deleteAttachment, handlePreviewOpenChange, showToast, token]
   );
 
   const handleOpenDrive = useCallback((link?: string) => {
@@ -115,67 +134,74 @@ export default function FilesScreen() {
   }, []);
 
   const renderItem = useCallback(
-    ({ item, index }: { item: AttachmentDoc; index: number }) => (
-      <Animated.View entering={FadeInDown.delay(index * 30).duration(200)}>
-        <Pressable
-          onPress={() => {
-            setSelectedAttachment(item);
-            setPreviewOpen(true);
-          }}
-          style={({ pressed }) => [
-            styles.card,
-            {
-              backgroundColor: colors.surface,
-              borderColor: colors.border,
-              opacity: pressed ? 0.85 : 1,
-            },
-          ]}
-        >
-          {item.type === "image" && item.driveThumbnailLink ? (
-            <Image
-              source={{ uri: item.driveThumbnailLink }}
-              style={styles.thumbnail}
-              contentFit="cover"
-              transition={300}
-              placeholder={{ blurhash: "L6PZfSi_.AyE_3t7t7R**0o#DgR4" }}
-            />
-          ) : (
-            <View style={[styles.docIconContainer, { backgroundColor: colors.backgroundSecondary }]}>
-              <Feather name="file-text" size={36} color={colors.primary} />
-            </View>
-          )}
+    ({ item, index }: { item: AttachmentDoc; index: number }) => {
+      const previewUri =
+        item.type === "image"
+          ? previewUrls[item.driveFileId] ?? item.driveThumbnailLink
+          : undefined;
 
-          <YStack
-            paddingHorizontal={8}
-            paddingVertical={6}
-            gap={2}
-            borderTopWidth={StyleSheet.hairlineWidth}
-            borderTopColor={colors.border}
+      return (
+        <Animated.View entering={FadeInDown.delay(index * 30).duration(200)}>
+          <Pressable
+            onPress={() => {
+              setSelectedAttachment(item);
+              handlePreviewOpenChange(true);
+            }}
+            style={({ pressed }) => [
+              styles.card,
+              {
+                backgroundColor: colors.surface,
+                borderColor: colors.border,
+                opacity: pressed ? 0.85 : 1,
+              },
+            ]}
           >
-            <Text
-              fontSize={11}
-              fontWeight="600"
-              color={colors.text}
-              numberOfLines={1}
-            >
-              {item.filename}
-            </Text>
-            <XStack alignItems="center" gap={4}>
-              <View
-                style={[
-                  styles.statusDot,
-                  { backgroundColor: processingColors[item.processingStatus] },
-                ]}
+            {item.type === "image" && previewUri ? (
+              <Image
+                source={{ uri: previewUri }}
+                style={styles.thumbnail}
+                contentFit="cover"
+                transition={300}
+                placeholder={{ blurhash: "L6PZfSi_.AyE_3t7t7R**0o#DgR4" }}
               />
-              <Text fontSize={10} color={colors.textSecondary}>
-                {formatDate(item.createdAt)}
+            ) : (
+              <View style={[styles.docIconContainer, { backgroundColor: colors.backgroundSecondary }]}>
+                <Feather name="file-text" size={36} color={colors.primary} />
+              </View>
+            )}
+
+            <YStack
+              paddingHorizontal={8}
+              paddingVertical={6}
+              gap={2}
+              borderTopWidth={StyleSheet.hairlineWidth}
+              borderTopColor={colors.border}
+            >
+              <Text
+                fontSize={11}
+                fontWeight="600"
+                color={colors.text}
+                numberOfLines={1}
+              >
+                {item.filename}
               </Text>
-            </XStack>
-          </YStack>
-        </Pressable>
-      </Animated.View>
-    ),
-    [colors]
+              <XStack alignItems="center" gap={4}>
+                <View
+                  style={[
+                    styles.statusDot,
+                    { backgroundColor: processingColors[item.processingStatus] },
+                  ]}
+                />
+                <Text fontSize={10} color={colors.textSecondary}>
+                  {formatDate(item.createdAt)}
+                </Text>
+              </XStack>
+            </YStack>
+          </Pressable>
+        </Animated.View>
+      );
+    },
+    [colors, previewUrls]
   );
 
   const listHeader = (
@@ -252,27 +278,20 @@ export default function FilesScreen() {
       {/* Preview sheet */}
       <BaseSheet
         open={previewOpen}
-        onOpenChange={setPreviewOpen}
-        snapPoints={[70]}
-        dismissOnSnapToBottom
-        modal
-        zIndex={100000}
+        onOpenChange={handlePreviewOpenChange}
+        sheetId="filePreview"
       >
-        <YStack
-          padding="$4"
-          backgroundColor="$background"
-          borderTopLeftRadius="$6"
-          borderTopRightRadius="$6"
-        >
-          {selectedAttachment && (
-            <PreviewContent
-              attachment={selectedAttachment}
-              onOpenDrive={() => handleOpenDrive(selectedAttachment.driveWebViewLink)}
-              onDelete={() => handleDelete(selectedAttachment)}
-              colors={colors}
-            />
-          )}
-        </YStack>
+        {selectedAttachment && (
+          <PreviewContent
+            key={selectedAttachment._id}
+            attachment={selectedAttachment}
+            previewUri={previewUrls[selectedAttachment.driveFileId] ?? selectedAttachment.driveThumbnailLink}
+            onClose={() => handlePreviewOpenChange(false)}
+            onOpenDrive={() => handleOpenDrive(selectedAttachment.driveWebViewLink)}
+            onDelete={() => handleDelete(selectedAttachment)}
+            colors={colors}
+          />
+        )}
       </BaseSheet>
     </MorePageScaffold>
   );
@@ -280,90 +299,149 @@ export default function FilesScreen() {
 
 function PreviewContent({
   attachment,
+  previewUri,
+  onClose,
   onOpenDrive,
   onDelete,
   colors,
 }: {
   attachment: AttachmentDoc;
+  previewUri?: string;
+  onClose: () => void;
   onOpenDrive: () => void;
   onDelete: () => void;
   colors: ReturnType<typeof useColors>;
 }) {
   return (
-    <YStack gap="$4" flex={1}>
-      <XStack alignItems="center" gap="$2" flexWrap="wrap">
+    <>
+      <SheetHeader
+        title="File Preview"
+        subtitle={attachment.type === "image" ? "Image" : "Document"}
+        right={
+          <Pressable onPress={onClose} hitSlop={8}>
+            <XStack
+              width={34}
+              height={34}
+              borderRadius={12}
+              alignItems="center"
+              justifyContent="center"
+              backgroundColor={colors.backgroundSecondary}
+            >
+              <Feather name="x" size={18} color={colors.text} />
+            </XStack>
+          </Pressable>
+        }
+      />
+      <ScrollView
+        contentContainerStyle={styles.previewScrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         {attachment.type === "image" ? (
-          <Image
-            source={{ uri: attachment.driveThumbnailLink ?? "" }}
-            style={styles.previewImage}
-            contentFit="contain"
-          />
+          <YStack
+            style={[
+              styles.previewHero,
+              { backgroundColor: colors.backgroundSecondary, borderColor: colors.border },
+            ]}
+          >
+            {previewUri ? (
+              <Image
+                source={{ uri: previewUri }}
+                style={styles.previewHeroImage}
+                contentFit="contain"
+                transition={200}
+              />
+            ) : (
+              <YStack flex={1} alignItems="center" justifyContent="center" gap="$2">
+                <Feather name="image" size={32} color={colors.textSecondary} />
+                <Text fontSize={13} color={colors.textSecondary} textAlign="center">
+                  Preview unavailable for this image
+                </Text>
+              </YStack>
+            )}
+          </YStack>
         ) : (
           <XStack
-            width={60}
-            height={60}
-            borderRadius={12}
-            backgroundColor={colors.backgroundSecondary}
+            style={[
+              styles.documentHero,
+              { backgroundColor: colors.backgroundSecondary, borderColor: colors.border },
+            ]}
             alignItems="center"
             justifyContent="center"
           >
-            <Feather name="file-text" size={28} color={colors.primary} />
+            <Feather name="file-text" size={42} color={colors.primary} />
           </XStack>
         )}
-        <YStack flex={1} gap={2}>
-          <Text fontSize={14} fontWeight="700" color={colors.text} numberOfLines={2}>
-            {attachment.filename}
-          </Text>
-          <Text fontSize={11} color={colors.textSecondary}>
-            {formatFileSize(attachment.sizeBytes)} · {formatDate(attachment.createdAt)}
-          </Text>
-          <XStack alignItems="center" gap={4} marginTop={2}>
+
+        <YStack
+          gap="$3"
+          padding="$4"
+          borderRadius="$5"
+          borderWidth={1}
+          backgroundColor={colors.surface}
+          borderColor={colors.border}
+        >
+          <YStack gap="$1.5">
+            <Text fontSize={18} fontWeight="700" color={colors.text}>
+              {attachment.filename}
+            </Text>
+            <Text fontSize={13} color={colors.textSecondary}>
+              {formatFileSize(attachment.sizeBytes)} · {formatDate(attachment.createdAt)}
+            </Text>
+          </YStack>
+
+          <XStack alignItems="center" gap={6}>
             <View
               style={[
                 styles.statusDot,
                 { backgroundColor: processingColors[attachment.processingStatus] },
               ]}
             />
-            <Text fontSize={11} color={colors.textSecondary} textTransform="capitalize">
+            <Text fontSize={12} color={colors.textSecondary} textTransform="capitalize">
               {attachment.processingStatus}
             </Text>
           </XStack>
+
+          {attachment.extractedContent ? (
+            <YStack gap={6}>
+              <Text
+                fontSize={12}
+                fontWeight="600"
+                color={colors.textSecondary}
+                textTransform="uppercase"
+                letterSpacing={0.5}
+              >
+                Extracted Content
+              </Text>
+              <Text fontSize={13} color={colors.text} lineHeight={20}>
+                {attachment.extractedContent}
+              </Text>
+            </YStack>
+          ) : null}
         </YStack>
-      </XStack>
 
-      {attachment.extractedContent && (
-        <YStack gap={6}>
-          <Text fontSize={12} fontWeight="600" color={colors.textSecondary} textTransform="uppercase" letterSpacing={0.5}>
-            Extracted Content
-          </Text>
-          <Text fontSize={13} color={colors.text} numberOfLines={8} lineHeight={20}>
-            {attachment.extractedContent}
-          </Text>
+        <YStack gap="$2">
+          <Pressable
+            onPress={onOpenDrive}
+            style={[styles.actionBtn, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}
+          >
+            <Feather name="external-link" size={16} color={colors.text} />
+            <Text fontSize={14} fontWeight="600" color={colors.text}>
+              Open in Google Drive
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={onDelete}
+            style={[styles.actionBtn, { backgroundColor: colors.surfaceDangerSoft, borderColor: colors.textError }]}
+          >
+            <Feather name="trash-2" size={16} color={colors.textError} />
+            <Text fontSize={14} fontWeight="600" color={colors.textError}>
+              Delete File
+            </Text>
+          </Pressable>
         </YStack>
-      )}
-
-      <YStack gap="$2" marginTop="$2">
-        <Pressable
-          onPress={onOpenDrive}
-          style={[styles.actionBtn, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}
-        >
-          <Feather name="external-link" size={16} color={colors.text} />
-          <Text fontSize={14} fontWeight="600" color={colors.text}>
-            Open in Google Drive
-          </Text>
-        </Pressable>
-
-        <Pressable
-          onPress={onDelete}
-          style={[styles.actionBtn, { backgroundColor: colors.surfaceDangerSoft, borderColor: colors.textError }]}
-        >
-          <Feather name="trash-2" size={16} color={colors.textError} />
-          <Text fontSize={14} fontWeight="600" color={colors.textError}>
-            Delete File
-          </Text>
-        </Pressable>
-      </YStack>
-    </YStack>
+      </ScrollView>
+    </>
   );
 }
 
@@ -426,10 +504,26 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
   },
-  previewImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 10,
+  previewScrollContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+    gap: 16,
+  },
+  previewHero: {
+    minHeight: 280,
+    borderRadius: 18,
+    borderWidth: 1,
+    overflow: "hidden",
+    justifyContent: "center",
+  },
+  previewHeroImage: {
+    width: "100%",
+    height: 320,
+  },
+  documentHero: {
+    minHeight: 180,
+    borderRadius: 18,
+    borderWidth: 1,
   },
   actionBtn: {
     flexDirection: "row",

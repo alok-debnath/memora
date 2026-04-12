@@ -24,6 +24,7 @@ import { useAction, useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useColors } from "@/hooks/useColors";
+import { useDrivePreviewUrls } from "@/hooks/useDrivePreviewUrls";
 import { useFileAttachments } from "@/hooks/useFileAttachments";
 import { AttachmentPreviewBar } from "./AttachmentPreviewBar";
 import { AttachmentPickerButton } from "./AttachmentPickerButton";
@@ -110,6 +111,7 @@ export function EditMemorySheet({
     api.attachments.getAttachmentsForMemory,
     token && memory?.id ? { token, memoryId: memory.id as any } : "skip"
   ) ?? [];
+  const drivePreviewUrls = useDrivePreviewUrls(existingAttachments as any[], token);
 
   const recordAttachmentsForMemory = useMutation(api.attachments.recordAttachmentsForMemory);
   const deleteAttachment = useMutation(api.attachments.deleteAttachment);
@@ -796,9 +798,12 @@ export function EditMemorySheet({
                       borderColor={colors.border}
                       backgroundColor={colors.surface}
                     >
-                      {att.type === "image" && att.driveThumbnailLink ? (
+                      {att.type === "image" &&
+                      (drivePreviewUrls[att.driveFileId] ?? att.driveThumbnailLink) ? (
                         <Image
-                          source={{ uri: att.driveThumbnailLink }}
+                          source={{
+                            uri: drivePreviewUrls[att.driveFileId] ?? att.driveThumbnailLink,
+                          }}
                           style={attStyles.thumb}
                           contentFit="cover"
                           transition={200}

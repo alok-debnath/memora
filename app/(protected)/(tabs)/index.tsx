@@ -1,4 +1,5 @@
 import React, {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -271,6 +272,8 @@ export default function HomeScreen() {
   const isEditMemoryOpen = useUIStore((state) => state.isEditMemoryOpen);
   const openEditMemory = useUIStore((state) => state.openEditMemory);
   const closeEditMemory = useUIStore((state) => state.closeEditMemory);
+  const pushSheet = useUIStore((state) => state.pushSheet);
+  const popSheet = useUIStore((state) => state.popSheet);
 
   useEffect(() => {
     if (!trimmedSearchQuery || trimmedSearchQuery.length < 3 || !token) {
@@ -317,6 +320,15 @@ export default function HomeScreen() {
       setSelectedTopic(null);
     }
   }, [activeTopicSummaries, selectedTopic]);
+
+  const handleOverviewOpenChange = useCallback((open: boolean) => {
+    if (open) {
+      pushSheet("homeOverview");
+    } else {
+      popSheet("homeOverview");
+    }
+    setIsOverviewOpen(open);
+  }, [popSheet, pushSheet]);
 
   const handleSyncTopics = async () => {
     if (!token || isSyncingTopics) return;
@@ -632,7 +644,7 @@ export default function HomeScreen() {
             ) : null}
 
             {!searchMode ? (
-              <PressableScale onPress={() => setIsOverviewOpen(true)}>
+              <PressableScale onPress={() => handleOverviewOpenChange(true)}>
                 <XStack
                   alignItems="center"
                   justifyContent="space-between"
@@ -888,7 +900,7 @@ export default function HomeScreen() {
 
       <BaseSheet
         open={isOverviewOpen}
-        onOpenChange={setIsOverviewOpen}
+        onOpenChange={handleOverviewOpenChange}
         sheetId="homeOverview"
       >
         <ScrollView
@@ -900,7 +912,7 @@ export default function HomeScreen() {
               <Text fontSize={26} fontFamily="$heading" fontWeight="700" color="$color">
                 Overview
               </Text>
-              <PressableScale onPress={() => setIsOverviewOpen(false)}>
+              <PressableScale onPress={() => handleOverviewOpenChange(false)}>
                 <YStack
                   width={38}
                   height={38}
@@ -1065,7 +1077,7 @@ export default function HomeScreen() {
                       <FlashbackCard
                         memory={toMemoryNote(memory)}
                         onPress={() => {
-                          setIsOverviewOpen(false);
+                          handleOverviewOpenChange(false);
                           setEditMemory(memory as MemoryItem);
                           openEditMemory();
                         }}

@@ -13,7 +13,7 @@ interface UIStore {
   // Sheet stack for stacking system
   sheetStack: string[];
 
-  // Actions — eager stack management (push/pop inline, no useEffect)
+  // Actions — centralized stack management for all sheets
   openAIChat: () => void;
   closeAIChat: () => void;
   openEditMemory: () => void;
@@ -21,10 +21,19 @@ interface UIStore {
   openCommand: () => void;
   closeCommand: () => void;
 
-  // Generic stack helpers (for sheets not tracked above)
   pushSheet: (id: string) => void;
   popSheet: (id: string) => void;
   resetSheets: () => void;
+}
+
+function registerSheetId(stack: string[], id: string) {
+  const next = stack.filter((sheetId) => sheetId !== id);
+  next.push(id);
+  return next;
+}
+
+function unregisterSheetId(stack: string[], id: string) {
+  return stack.filter((sheetId) => sheetId !== id);
 }
 
 export const useUIStore = create<UIStore>()((set) => ({
@@ -36,51 +45,43 @@ export const useUIStore = create<UIStore>()((set) => ({
   openAIChat: () =>
     set((state) => ({
       isAIChatOpen: true,
-      sheetStack: state.sheetStack.includes("aiChat")
-        ? state.sheetStack
-        : [...state.sheetStack, "aiChat"],
+      sheetStack: registerSheetId(state.sheetStack, "aiChat"),
     })),
   closeAIChat: () =>
     set((state) => ({
       isAIChatOpen: false,
-      sheetStack: state.sheetStack.filter((s) => s !== "aiChat"),
+      sheetStack: unregisterSheetId(state.sheetStack, "aiChat"),
     })),
 
   openEditMemory: () =>
     set((state) => ({
       isEditMemoryOpen: true,
-      sheetStack: state.sheetStack.includes("editMemory")
-        ? state.sheetStack
-        : [...state.sheetStack, "editMemory"],
+      sheetStack: registerSheetId(state.sheetStack, "editMemory"),
     })),
   closeEditMemory: () =>
     set((state) => ({
       isEditMemoryOpen: false,
-      sheetStack: state.sheetStack.filter((s) => s !== "editMemory"),
+      sheetStack: unregisterSheetId(state.sheetStack, "editMemory"),
     })),
 
   openCommand: () =>
     set((state) => ({
       isCommandOpen: true,
-      sheetStack: state.sheetStack.includes("unifiedCommand")
-        ? state.sheetStack
-        : [...state.sheetStack, "unifiedCommand"],
+      sheetStack: registerSheetId(state.sheetStack, "unifiedCommand"),
     })),
   closeCommand: () =>
     set((state) => ({
       isCommandOpen: false,
-      sheetStack: state.sheetStack.filter((s) => s !== "unifiedCommand"),
+      sheetStack: unregisterSheetId(state.sheetStack, "unifiedCommand"),
     })),
 
   pushSheet: (id) =>
     set((state) => ({
-      sheetStack: state.sheetStack.includes(id)
-        ? state.sheetStack
-        : [...state.sheetStack, id],
+      sheetStack: registerSheetId(state.sheetStack, id),
     })),
   popSheet: (id) =>
     set((state) => ({
-      sheetStack: state.sheetStack.filter((s) => s !== id),
+      sheetStack: unregisterSheetId(state.sheetStack, id),
     })),
   resetSheets: () =>
     set({

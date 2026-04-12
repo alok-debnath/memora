@@ -480,6 +480,27 @@ async function findGoogleEventsByMemoryId(args: {
     .filter((id): id is string => typeof id === "string" && id.length > 0);
 }
 
+async function fetchDrivePreviewUrl(args: {
+  accessToken: string;
+  fileId: string;
+}): Promise<string | null> {
+  const response = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${args.fileId}?fields=thumbnailLink`,
+    {
+      headers: { Authorization: `Bearer ${args.accessToken}` },
+    }
+  );
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = (await response.json()) as { thumbnailLink?: string };
+  return typeof payload.thumbnailLink === "string" && payload.thumbnailLink.length > 0
+    ? payload.thumbnailLink
+    : null;
+}
+
 export const queueReminderSync = internalMutation({
   args: {
     memoryId: v.id("memories"),
@@ -1151,6 +1172,56 @@ export const getDriveUploadCredentials = action({
     );
 
     return { accessToken, folderId: monthFolderId };
+  },
+});
+
+/**
+ * Public action: returns fresh Google Drive preview URLs for image attachments.
+ * These URLs are transient and should be cached client-side for a short time,
+ * not stored as the canonical attachment preview source.
+ */
+export const getDrivePreviewUrls = action({
+  args: {
+    token: v.optional(v.string()),
+    fileIds: v.array(v.string()),
+  },
+  handler: async (ctx, args): Promise<Record<string, string>> => {
+    const dedupedFileIds = [...new Set(args.fileIds)].filter((id) => id.length > 0).slice(0, 100);
+    if (dedupedFileIds.length === 0) {
+      return {};
+    }
+
+    const user = await ctx.runQuery(api.auth.me, { token: args.token });
+    if (!user) throw new Error("Not authenticated");
+
+    const integration = await ctx.runQuery(
+      internal.integrations.getGoogleIntegrationInternal,
+      { userId: user._id }
+    );
+    if (!integration) throw new Error("GOOGLE_NOT_CONNECTED");
+    if (!hasDriveScope(integration.grantedScopes)) throw new Error("DRIVE_SCOPE_MISSING");
+
+    const accessToken = await getAccessToken({
+      refreshToken: integration.refreshToken,
+      clientId: integration.clientId,
+      platform: integration.platform,
+    });
+
+    const settled = await Promise.allSettled(
+      dedupedFileIds.map(async (fileId) => ({
+        fileId,
+        previewUrl: await fetchDrivePreviewUrl({ accessToken, fileId }),
+      }))
+    );
+
+    const previews: Record<string, string> = {};
+    for (const result of settled) {
+      if (result.status !== "fulfilled") continue;
+      if (result.value.previewUrl) {
+        previews[result.value.fileId] = result.value.previewUrl;
+      }
+    }
+    return previews;
   },
 });
 

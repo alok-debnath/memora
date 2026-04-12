@@ -51,6 +51,7 @@ import { useFileAttachments, type PendingAttachment } from "@/hooks/useFileAttac
 import { Linking, StyleSheet } from "react-native";
 import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
 import { withAlpha } from "@/components/ui/themeHelpers";
+import { useUIStore } from "@/store/ui";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -2959,6 +2960,8 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
   const theme = useAppTheme();
   const auth = useAuth();
   const { showToast } = useAppToast();
+  const pushSheet = useUIStore((state) => state.pushSheet);
+  const popSheet = useUIStore((state) => state.popSheet);
   const token = tokenProp ?? auth.token;
   const insets = useSafeAreaInsets();
   const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
@@ -3008,9 +3011,10 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
   // Auto-open edit sheet as soon as the memory document arrives
   useEffect(() => {
     if (editMemoryNote && editTargetId && !isEditSheetOpen) {
+      pushSheet("editMemory");
       setIsEditSheetOpen(true);
     }
-  }, [editMemoryNote, editTargetId, isEditSheetOpen]);
+  }, [editMemoryNote, editTargetId, isEditSheetOpen, pushSheet]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3245,9 +3249,10 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
   }, []);
 
   const handleCloseEdit = useCallback(() => {
+    popSheet("editMemory");
     setIsEditSheetOpen(false);
     setEditTargetId(null);
-  }, []);
+  }, [popSheet]);
 
   const handleSaveEdit = useCallback(async (data: Record<string, unknown>) => {
     if (!editTargetId || !token) return;
