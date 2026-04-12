@@ -6,6 +6,7 @@ import {
   Platform,
   Alert,
   View,
+  Text as RNText,
 } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
 import { XStack, YStack, Text, TooltipSimple } from "tamagui";
@@ -19,6 +20,7 @@ import Animated, {
   FadeInDown,
   FadeOut,
   LinearTransition,
+  type SharedValue,
   useSharedValue,
   useAnimatedStyle,
   withRepeat,
@@ -108,6 +110,8 @@ const getBubbleShadow = (shadowColor: string) => Platform.select({
 const PROGRESS_LAYOUT = LinearTransition.springify()
   .damping(18)
   .stiffness(180);
+
+const AnimatedRNText = Animated.createAnimatedComponent(RNText);
 
 function getPreferredSpeechLocale() {
   try {
@@ -2269,6 +2273,94 @@ function AnimatedSwapText({
   );
 }
 
+function LoadingSweepChar({
+  char,
+  index,
+  sweep,
+  color,
+  fontSize,
+  fontFamily,
+  numberOfLines,
+}: {
+  char: string;
+  index: number;
+  sweep: SharedValue<number>;
+  color: string;
+  fontSize: number;
+  fontFamily?: string;
+  numberOfLines?: number;
+}) {
+  const animatedStyle = useAnimatedStyle(() => {
+    const distance = Math.abs(sweep.value - index);
+    let opacity = 1;
+    if (distance < 0.6) opacity = 0.38;
+    else if (distance < 1.2) opacity = 0.56;
+    else if (distance < 2) opacity = 0.78;
+    return { opacity };
+  }, [index, sweep]);
+
+  return (
+    <AnimatedRNText
+      numberOfLines={numberOfLines}
+      style={[
+        {
+          color,
+          fontSize,
+          fontFamily,
+        },
+        animatedStyle,
+      ]}
+    >
+      {char}
+    </AnimatedRNText>
+  );
+}
+
+function LoadingSweepText({
+  text,
+  color,
+  fontSize,
+  fontFamily,
+  numberOfLines,
+}: {
+  text: string;
+  color: string;
+  fontSize: number;
+  fontFamily?: string;
+  numberOfLines?: number;
+}) {
+  const sweep = useSharedValue(-3);
+  const characters = useMemo(() => text.split(""), [text]);
+
+  useEffect(() => {
+    sweep.value = -3;
+    sweep.value = withRepeat(
+      withTiming(characters.length + 2, { duration: Math.max(1200, characters.length * 85) }),
+      -1,
+      false,
+    );
+  }, [characters.length, sweep, text]);
+
+  return (
+    <View style={{ flexDirection: "row", flexWrap: "nowrap", flexShrink: 1 }}>
+      {characters.map((char, index) => {
+        return (
+          <LoadingSweepChar
+            key={`${char}-${index}`}
+            char={char}
+            index={index}
+            sweep={sweep}
+            color={color}
+            fontSize={fontSize}
+            fontFamily={fontFamily}
+            numberOfLines={numberOfLines}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
 function ThinkingIndicator() {
   const theme = useAppTheme();
   const color = theme.primary.val;
@@ -2406,9 +2498,13 @@ function ToolProgressBubble({ status }: { status: ProgressStatus }) {
               
               <YStack gap={1} flex={1}>
                 <XStack justifyContent="space-between" alignItems="center" gap={8}>
-                  <Text fontSize={13} color="$color" fontFamily={FontFamily.semiBold} numberOfLines={1}>
-                    {title}
-                  </Text>
+                  <LoadingSweepText
+                    text={title}
+                    fontSize={13}
+                    color={theme.color.val}
+                    fontFamily={FontFamily.semiBold}
+                    numberOfLines={1}
+                  />
                   {elapsedLabel && (
                     <Text fontSize={9} color="$colorMuted" opacity={0.6}>
                       {elapsedLabel}
@@ -2550,7 +2646,7 @@ const ChatBubble = React.memo(function ChatBubble({
 
   return (
     <Animated.View
-      entering={FadeInDown.duration(220)}
+      entering={undefined}
       style={{ marginBottom: CHAT.messageGap }}
     >
       <XStack
