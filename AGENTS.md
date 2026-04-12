@@ -6,13 +6,15 @@ When working on Convex code, **always read `convex/_generated/ai/guidelines.md` 
 Convex agent skills for common tasks can be installed by running `bunx convex ai-files install`.
 <!-- convex-ai-end -->
 
-# Project Notes
+# Memora Agent Guide
 
-## Overview
+## Project Snapshot
 
-- Memora is an Expo React Native app with Expo Router and a Convex backend.
-- The repository is a single app at the root, not a monorepo.
-- Package management uses `bun`.
+- Single Expo React Native app at the repo root.
+- Navigation uses Expo Router.
+- Backend uses Convex with Better Auth integration.
+- Package manager is `bun`.
+- TypeScript is strict and uses the `@/*` path alias.
 
 ## Core Commands
 
@@ -26,19 +28,26 @@ Convex agent skills for common tasks can be installed by running `bunx convex ai
 
 ## Environment
 
-- The app expects `EXPO_PUBLIC_CONVEX_URL` for the client connection.
-- AI-related backend work uses `CONVEX_OPENAI_BASE_URL` and `CONVEX_OPENAI_API_KEY` when configured.
+- `EXPO_PUBLIC_CONVEX_URL`: Convex client URL used by the Expo app.
+- `EXPO_PUBLIC_CONVEX_SITE_URL`: Better Auth base URL when configured.
+- `SITE_URL`: trusted site origin for auth flows.
+- `CONVEX_OPENAI_BASE_URL`, `CONVEX_OPENAI_API_KEY`: AI backend configuration when used.
+- `RESEND_API_KEY`, `BETTER_AUTH_FROM_EMAIL`: optional password reset email delivery.
 
-## High-Level Structure
+## Repo Map
 
-- `app/`: Expo Router routes. Public auth screens live under `app/(public)`, authenticated app screens under `app/(protected)`.
-- `components/`: Shared UI and auth components.
-- `hooks/`, `constants/`, `store/`, `types/`: client-side support code.
-- `convex/`: backend schema, queries, mutations, actions, and auth helpers.
-- `assets/`: static assets such as icons and splash images.
+- `app/`: Expo Router routes and route groups.
+- `components/`: shared UI, auth, and sheet components.
+- `convex/`: schema, queries, mutations, actions, auth, and backend helpers.
+- `store/`, `hooks/`, `constants/`, `types/`, `lib/`: client support code.
+- `assets/`: images and static assets.
+- `docs/`: project-specific implementation notes.
+- `android/`, `ios/`: native Expo prebuild output.
 
-## Product Notes
+## Project Conventions
 
-- Authentication is session-token based and stored client-side.
-- Memory data, diary flows, review cards, sharing, notifications, and chat all live in Convex.
-- The design system uses amber/gold accents with Inter and Space Grotesk.
+- Public routes live under `app/(public)` and authenticated flows live under `app/(protected)`.
+- Prefer existing shared UI primitives before adding screen-local components or raw styling.
+- Follow `docs/ui-styling.md` for UI work; Tamagui is the primary styling system.
+- Prefer Bun commands in this repo; do not treat it as a monorepo.
+- For Convex work, treat generated types and `convex/_generated/ai/guidelines.md` as the source of truth.
