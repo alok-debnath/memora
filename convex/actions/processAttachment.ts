@@ -3,10 +3,7 @@
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
-import {
-  extractAttachmentFromDrive,
-  getGoogleDriveAccessToken,
-} from "../lib/attachmentExtraction";
+import { extractAttachmentFromDrive, getGoogleDriveAccessToken } from "../lib/attachmentExtraction";
 
 /**
  * Background action: download an attachment from Drive and extract content.
@@ -38,10 +35,9 @@ export const processAttachment = internalAction({
         return;
       }
 
-      const integration = await ctx.runQuery(
-        internal.integrations.getGoogleIntegrationInternal,
-        { userId: args.userId }
-      );
+      const integration = await ctx.runQuery(internal.integrations.getGoogleIntegrationInternal, {
+        userId: args.userId,
+      });
       if (!integration) {
         await ctx.runMutation(internal.attachments.updateAttachmentStatus, {
           attachmentId: args.attachmentId,
@@ -64,6 +60,10 @@ export const processAttachment = internalAction({
           driveThumbnailLink: attachment.driveThumbnailLink,
           driveWebViewLink: attachment.driveWebViewLink,
         },
+        analytics: {
+          ctx,
+          userId: args.userId,
+        },
       });
 
       await ctx.runMutation(internal.attachments.updateAttachmentStatus, {
@@ -76,8 +76,7 @@ export const processAttachment = internalAction({
         driveWebViewLink: result.driveWebViewLink,
       });
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Unknown error during extraction";
+      const message = err instanceof Error ? err.message : "Unknown error during extraction";
       console.error("processAttachment error:", err);
       await ctx.runMutation(internal.attachments.updateAttachmentStatus, {
         attachmentId: args.attachmentId,

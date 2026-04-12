@@ -8,6 +8,7 @@ import {
   getOpenAIClient,
   OPENAI_CHAT_MODEL,
   safeJsonParse,
+  trackedChatCompletion,
 } from "../lib/openai";
 import { normalizeDiaryFields } from "../lib/aiNormalization";
 
@@ -19,117 +20,119 @@ export const processDiary = action({
   handler: async (ctx, args) => {
     const client = getOpenAIClient();
     if (!client) return;
+    const entry = await ctx.runQuery(internal.diary.getEntryInternal, {
+      entryId: args.entryId,
+    });
+    if (!entry) return;
 
     try {
-      const response = await client.chat.completions.create({
-        model: OPENAI_CHAT_MODEL,
-        temperature: 0.3,
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a personal diary AI analyst. Analyze the user's diary entry and extract structured insights. Always preserve the user's meaning and voice while correcting grammar.",
-          },
-          { role: "user", content: args.rawText },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "extract_diary_insights",
-              description: "Extract structured insights from a diary entry",
-              parameters: {
-                type: "object",
-                properties: {
-                  correctedText: { type: "string" },
-                  summary: { type: "string" },
-                  keyPoints: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        point: { type: "string" },
-                        category: {
-                          type: "string",
-                          enum: [
-                            "thought",
-                            "event",
-                            "feeling",
-                            "decision",
-                            "goal",
-                            "concern",
-                          ],
+      const response = await trackedChatCompletion(ctx, {
+        userId: entry.userId,
+        feature: "diary_processing",
+        metadata: { stage: "analysis" },
+        request: {
+          model: OPENAI_CHAT_MODEL,
+          temperature: 0.3,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are a personal diary AI analyst. Analyze the user's diary entry and extract structured insights. Always preserve the user's meaning and voice while correcting grammar.",
+            },
+            { role: "user", content: args.rawText },
+          ],
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "extract_diary_insights",
+                description: "Extract structured insights from a diary entry",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    correctedText: { type: "string" },
+                    summary: { type: "string" },
+                    keyPoints: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          point: { type: "string" },
+                          category: {
+                            type: "string",
+                            enum: ["thought", "event", "feeling", "decision", "goal", "concern"],
+                          },
                         },
+                        required: ["point", "category"],
                       },
-                      required: ["point", "category"],
                     },
-                  },
-                  mood: {
-                    type: "string",
-                    enum: [
-                      "happy",
-                      "sad",
-                      "anxious",
-                      "excited",
-                      "neutral",
-                      "grateful",
-                      "frustrated",
-                      "hopeful",
-                      "nostalgic",
-                      "motivated",
-                    ],
-                  },
-                  energyLevel: {
-                    type: "string",
-                    enum: ["high", "medium", "low"],
-                  },
-                  topics: { type: "array", items: { type: "string" } },
-                  habitsDetected: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        habit: { type: "string" },
-                        sentiment: {
-                          type: "string",
-                          enum: ["positive", "negative", "neutral"],
+                    mood: {
+                      type: "string",
+                      enum: [
+                        "happy",
+                        "sad",
+                        "anxious",
+                        "excited",
+                        "neutral",
+                        "grateful",
+                        "frustrated",
+                        "hopeful",
+                        "nostalgic",
+                        "motivated",
+                      ],
+                    },
+                    energyLevel: {
+                      type: "string",
+                      enum: ["high", "medium", "low"],
+                    },
+                    topics: { type: "array", items: { type: "string" } },
+                    habitsDetected: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          habit: { type: "string" },
+                          sentiment: {
+                            type: "string",
+                            enum: ["positive", "negative", "neutral"],
+                          },
+                          frequencyHint: { type: "string" },
                         },
-                        frequencyHint: { type: "string" },
+                        required: ["habit", "sentiment"],
                       },
-                      required: ["habit", "sentiment"],
                     },
-                  },
-                  personalityTraits: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        trait: { type: "string" },
-                        evidence: { type: "string" },
+                    personalityTraits: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          trait: { type: "string" },
+                          evidence: { type: "string" },
+                        },
+                        required: ["trait", "evidence"],
                       },
-                      required: ["trait", "evidence"],
                     },
+                    likes: { type: "array", items: { type: "string" } },
+                    dislikes: { type: "array", items: { type: "string" } },
+                    actionItems: { type: "array", items: { type: "string" } },
                   },
-                  likes: { type: "array", items: { type: "string" } },
-                  dislikes: { type: "array", items: { type: "string" } },
-                  actionItems: { type: "array", items: { type: "string" } },
+                  required: [
+                    "correctedText",
+                    "summary",
+                    "keyPoints",
+                    "mood",
+                    "energyLevel",
+                    "topics",
+                  ],
+                  additionalProperties: false,
                 },
-                required: [
-                  "correctedText",
-                  "summary",
-                  "keyPoints",
-                  "mood",
-                  "energyLevel",
-                  "topics",
-                ],
-                additionalProperties: false,
               },
             },
+          ],
+          tool_choice: {
+            type: "function",
+            function: { name: "extract_diary_insights" },
           },
-        ],
-        tool_choice: {
-          type: "function",
-          function: { name: "extract_diary_insights" },
         },
       });
       const toolCall = response.choices[0]?.message?.tool_calls?.[0];
@@ -152,7 +155,7 @@ export const processDiary = action({
       }>(
         toolCall?.type === "function"
           ? toolCall.function.arguments
-          : extractTextContent(response.choices[0]?.message?.content)
+          : extractTextContent(response.choices[0]?.message?.content),
       );
       if (!analysis) return;
       const normalized = normalizeDiaryFields({
@@ -197,67 +200,72 @@ export const processDiary = action({
         const summary = recentEntries
           .map(
             (entry) =>
-              `Mood: ${entry.mood ?? "neutral"} | Summary: ${entry.summary ?? ""} | Habits: ${JSON.stringify(entry.habitsDetected ?? [])}`
+              `Mood: ${entry.mood ?? "neutral"} | Summary: ${entry.summary ?? ""} | Habits: ${JSON.stringify(entry.habitsDetected ?? [])}`,
           )
           .join("\n");
 
-        const nudgeResponse = await client.chat.completions.create({
-          model: OPENAI_CHAT_MODEL,
-          temperature: 0.3,
-          messages: [
-            {
-              role: "system",
-              content:
-                "You are a gentle behavioral coach. Based on recent diary entries, generate 1-2 actionable nudges that are warm, specific, and non-judgmental.",
-            },
-            { role: "user", content: `Recent diary entries:\n${summary}` },
-          ],
-          tools: [
-            {
-              type: "function",
-              function: {
-                name: "generate_nudges",
-                description: "Generate behavioral nudges based on diary patterns",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    nudges: {
-                      type: "array",
-                      items: {
-                        type: "object",
-                        properties: {
-                          title: { type: "string" },
-                          message: { type: "string" },
-                          nudgeType: {
-                            type: "string",
-                            enum: [
-                              "habit_reinforce",
-                              "habit_redirect",
-                              "mood_boost",
-                              "self_care",
-                              "social",
-                              "growth",
-                            ],
+        const nudgeResponse = await trackedChatCompletion(ctx, {
+          userId: entry.userId,
+          feature: "diary_processing",
+          metadata: { stage: "nudge_generation" },
+          request: {
+            model: OPENAI_CHAT_MODEL,
+            temperature: 0.3,
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are a gentle behavioral coach. Based on recent diary entries, generate 1-2 actionable nudges that are warm, specific, and non-judgmental.",
+              },
+              { role: "user", content: `Recent diary entries:\n${summary}` },
+            ],
+            tools: [
+              {
+                type: "function",
+                function: {
+                  name: "generate_nudges",
+                  description: "Generate behavioral nudges based on diary patterns",
+                  parameters: {
+                    type: "object",
+                    properties: {
+                      nudges: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            title: { type: "string" },
+                            message: { type: "string" },
+                            nudgeType: {
+                              type: "string",
+                              enum: [
+                                "habit_reinforce",
+                                "habit_redirect",
+                                "mood_boost",
+                                "self_care",
+                                "social",
+                                "growth",
+                              ],
+                            },
+                            priority: {
+                              type: "string",
+                              enum: ["low", "normal", "high"],
+                            },
                           },
-                          priority: {
-                            type: "string",
-                            enum: ["low", "normal", "high"],
-                          },
+                          required: ["title", "message", "nudgeType", "priority"],
+                          additionalProperties: false,
                         },
-                        required: ["title", "message", "nudgeType", "priority"],
-                        additionalProperties: false,
                       },
                     },
+                    required: ["nudges"],
+                    additionalProperties: false,
                   },
-                  required: ["nudges"],
-                  additionalProperties: false,
                 },
               },
+            ],
+            tool_choice: {
+              type: "function",
+              function: { name: "generate_nudges" },
             },
-          ],
-          tool_choice: {
-            type: "function",
-            function: { name: "generate_nudges" },
           },
         });
 
@@ -278,21 +286,12 @@ export const processDiary = action({
             nudgeType: string;
             priority: "high" | "normal" | "low";
           }> = nudgePayload.nudges.flatMap((nudge) => {
-            if (
-              !nudge.title ||
-              !nudge.message ||
-              !nudge.nudgeType ||
-              !nudge.priority
-            ) {
+            if (!nudge.title || !nudge.message || !nudge.nudgeType || !nudge.priority) {
               return [];
             }
 
             const priority: "high" | "normal" | "low" =
-              nudge.priority === "high"
-                ? "high"
-                : nudge.priority === "low"
-                  ? "low"
-                  : "normal";
+              nudge.priority === "high" ? "high" : nudge.priority === "low" ? "low" : "normal";
 
             return [
               {

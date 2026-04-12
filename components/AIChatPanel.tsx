@@ -43,7 +43,11 @@ import { useAppToast } from "@/components/ui/toast";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { logDevError } from "@/lib/devLog";
 import { Badge } from "@/components/ui/Badge";
-import { ContextMenu, type ContextMenuHandle, type ContextMenuItemDef } from "@/components/ui/ContextMenu";
+import {
+  ContextMenu,
+  type ContextMenuHandle,
+  type ContextMenuItemDef,
+} from "@/components/ui/ContextMenu";
 import type { MemoryNote } from "@/types/memory";
 import { getReminderDate, inferMemoryEntryKind } from "@/types/memoryKind";
 import { AttachmentPreviewBar } from "@/components/AttachmentPreviewBar";
@@ -81,35 +85,35 @@ const SENTENCE_BREAK_PAUSE_MS = 60;
 const CLAUSE_BREAK_PAUSE_MS = 35;
 const SHORT_BREAK_PAUSE_MS = 18;
 
-const getSurfaceShadow = (shadowColor: string) => Platform.select({
-  ios: {
-    shadowColor,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-  },
-  android: {
-    elevation: 1,
-  },
-  default: {},
-});
+const getSurfaceShadow = (shadowColor: string) =>
+  Platform.select({
+    ios: {
+      shadowColor,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.04,
+      shadowRadius: 10,
+    },
+    android: {
+      elevation: 1,
+    },
+    default: {},
+  });
 
-const getBubbleShadow = (shadowColor: string) => Platform.select({
-  ios: {
-    shadowColor,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.03,
-    shadowRadius: 3,
-  },
-  android: {
-    elevation: 0,
-  },
-  default: {},
-});
+const getBubbleShadow = (shadowColor: string) =>
+  Platform.select({
+    ios: {
+      shadowColor,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.03,
+      shadowRadius: 3,
+    },
+    android: {
+      elevation: 0,
+    },
+    default: {},
+  });
 
-const PROGRESS_LAYOUT = LinearTransition.springify()
-  .damping(18)
-  .stiffness(180);
+const PROGRESS_LAYOUT = LinearTransition.springify().damping(18).stiffness(180);
 
 const AnimatedRNText = Animated.createAnimatedComponent(RNText);
 
@@ -261,10 +265,7 @@ function getConsistentPitch() {
   return clamp(DEFAULT_SPEECH_PITCH, MIN_SPEECH_PITCH, MAX_SPEECH_PITCH);
 }
 
-function pickBestSpeechVoice(
-  voices: Speech.Voice[],
-  locale: string,
-): Speech.Voice | null {
+function pickBestSpeechVoice(voices: Speech.Voice[], locale: string): Speech.Voice | null {
   if (!voices.length) return null;
 
   const localeLower = locale.toLowerCase();
@@ -273,7 +274,8 @@ function pickBestSpeechVoice(
   const languageScore = (language: string) => {
     const voiceLang = language.toLowerCase();
     if (voiceLang === localeLower) return 6;
-    if (voiceLang.startsWith(`${localeLower}-`) || localeLower.startsWith(`${voiceLang}-`)) return 5;
+    if (voiceLang.startsWith(`${localeLower}-`) || localeLower.startsWith(`${voiceLang}-`))
+      return 5;
     if (voiceLang.startsWith(localeBase)) return 4;
     if (voiceLang.startsWith("en")) return 2;
     return 0;
@@ -283,18 +285,18 @@ function pickBestSpeechVoice(
     const normalizedName = name.toLowerCase();
     let score = 0;
     if (
-      normalizedName.includes("enhanced")
-      || normalizedName.includes("neural")
-      || normalizedName.includes("premium")
-      || normalizedName.includes("natural")
-      || normalizedName.includes("siri")
+      normalizedName.includes("enhanced") ||
+      normalizedName.includes("neural") ||
+      normalizedName.includes("premium") ||
+      normalizedName.includes("natural") ||
+      normalizedName.includes("siri")
     ) {
       score += 2;
     }
     if (
-      normalizedName.includes("novelty")
-      || normalizedName.includes("whisper")
-      || normalizedName.includes("compact")
+      normalizedName.includes("novelty") ||
+      normalizedName.includes("whisper") ||
+      normalizedName.includes("compact")
     ) {
       score -= 2;
     }
@@ -313,19 +315,23 @@ function pickBestSpeechVoice(
     return score;
   };
 
-  return [...voices].sort((a, b) => {
-    const aScore = languageScore(a.language)
-      + (a.quality === Speech.VoiceQuality.Enhanced ? 4 : 1)
-      + naturalnessScore(a.name)
-      + platformVoiceScore(a);
-    const bScore = languageScore(b.language)
-      + (b.quality === Speech.VoiceQuality.Enhanced ? 4 : 1)
-      + naturalnessScore(b.name)
-      + platformVoiceScore(b);
+  return (
+    [...voices].sort((a, b) => {
+      const aScore =
+        languageScore(a.language) +
+        (a.quality === Speech.VoiceQuality.Enhanced ? 4 : 1) +
+        naturalnessScore(a.name) +
+        platformVoiceScore(a);
+      const bScore =
+        languageScore(b.language) +
+        (b.quality === Speech.VoiceQuality.Enhanced ? 4 : 1) +
+        naturalnessScore(b.name) +
+        platformVoiceScore(b);
 
-    if (aScore !== bScore) return bScore - aScore;
-    return a.name.localeCompare(b.name);
-  })[0] ?? null;
+      if (aScore !== bScore) return bScore - aScore;
+      return a.name.localeCompare(b.name);
+    })[0] ?? null
+  );
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -340,7 +346,12 @@ type ChatMsg = {
   role: string;
   content: string;
   _creationTime: number;
-  attachments?: Array<{ attachmentId: string; name: string; type: string; mimeType: string }>;
+  attachments?: Array<{
+    attachmentId: string;
+    name: string;
+    type: string;
+    mimeType: string;
+  }>;
 };
 
 type DeletionItem = {
@@ -352,10 +363,10 @@ type DeletionItem = {
 
 // Matches the shape produced by toMemorySummary() in convex/actions/memoryChat.ts
 type SearchResultItem = {
-  id: string;           // Convex _id, re-keyed to 'id' by toMemorySummary
+  id: string; // Convex _id, re-keyed to 'id' by toMemorySummary
   title?: string;
   content?: string;
-  entry_kind: string;   // snake_case from toMemorySummaryFields
+  entry_kind: string; // snake_case from toMemorySummaryFields
   schedule_due_at?: string | null;
   google_event_id?: string;
   google_sync_status?: "pending" | "synced" | "failed";
@@ -401,7 +412,9 @@ function chatToMemoryNote(m: Record<string, unknown>): MemoryNote {
 
 // ─── Deletion Proposal Helpers ────────────────────────────────────────────────
 
-function parseDeletionProposal(content: string): { items: DeletionItem[]; cleanText: string } | null {
+function parseDeletionProposal(
+  content: string,
+): { items: DeletionItem[]; cleanText: string } | null {
   const marker = "<!--MEMORA_DELETION_PROPOSAL:";
   const endMarker = "-->";
   const startIdx = content.indexOf(marker);
@@ -495,12 +508,12 @@ type CardFlow = {
   steps: CardFlowStep[];
 };
 
-function parseCardIds(content: string): { 
-  ids: string[]; 
-  isCached: boolean; 
+function parseCardIds(content: string): {
+  ids: string[];
+  isCached: boolean;
   turns?: number;
   flow?: CardFlow;
-  cleanText: string 
+  cleanText: string;
 } | null {
   const marker = "<!--MEMORA_CARD_IDS:";
   const endMarker = "-->";
@@ -514,17 +527,14 @@ function parseCardIds(content: string): {
     const isCached: boolean = parsed.isCached ?? false;
     const turns: number | undefined = typeof parsed.turns === "number" ? parsed.turns : undefined;
     const flow: CardFlow | undefined =
-      parsed.flow &&
-      typeof parsed.flow === "object" &&
-      parsed.flow.summary &&
-      parsed.flow.steps
-        ? parsed.flow as CardFlow
+      parsed.flow && typeof parsed.flow === "object" && parsed.flow.summary && parsed.flow.steps
+        ? (parsed.flow as CardFlow)
         : undefined;
-    
+
     // Remove only THIS marker from the text
     const markerFull = content.slice(startIdx, endIdx + endMarker.length);
     const cleanText = content.replace(markerFull, "").trim();
-    
+
     return ids.length > 0 ? { ids, isCached, turns, flow, cleanText } : null;
   } catch {
     return null;
@@ -593,11 +603,16 @@ function DeletionProposalCard({
           alignItems="center"
           style={getBubbleShadow(theme.shadowColor.val)}
         >
-          <View style={{
-            width: 34, height: 34, borderRadius: 17,
-            backgroundColor: withAlpha(statusAccentColors.success, "26"),
-            alignItems: "center", justifyContent: "center",
-          }}>
+          <View
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 17,
+              backgroundColor: withAlpha(statusAccentColors.success, "26"),
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
             <Feather name="check" size={16} color={statusAccentColors.success} />
           </View>
           <YStack flex={1}>
@@ -627,11 +642,16 @@ function DeletionProposalCard({
           alignItems="center"
           style={getBubbleShadow(theme.shadowColor.val)}
         >
-          <View style={{
-            width: 34, height: 34, borderRadius: 17,
-            backgroundColor: theme.accent.val,
-            alignItems: "center", justifyContent: "center",
-          }}>
+          <View
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 17,
+              backgroundColor: theme.accent.val,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
             <Feather name="x" size={16} color={theme.colorMuted.val} />
           </View>
           <Text fontSize={13} fontFamily="$body" color="$colorMuted">
@@ -670,12 +690,11 @@ function DeletionProposalCard({
             </Text>
           </XStack>
           {selectedCount < items.length ? (
-            <Pressable
-              onPress={() => setSelected(new Set(items.map((i) => i.id)))}
-              hitSlop={8}
-            >
+            <Pressable onPress={() => setSelected(new Set(items.map((i) => i.id)))} hitSlop={8}>
               <Text fontSize={11} fontFamily={FontFamily.semiBold} color={theme.primary.val}>
-                {selectedCount === 0 ? "Select all" : `${selectedCount} of ${items.length} · Select all`}
+                {selectedCount === 0
+                  ? "Select all"
+                  : `${selectedCount} of ${items.length} · Select all`}
               </Text>
             </Pressable>
           ) : (
@@ -708,14 +727,19 @@ function DeletionProposalCard({
                   backgroundColor={isSelected ? `${theme.primary.val}08` : "transparent"}
                 >
                   {/* Checkbox */}
-                  <View style={{
-                    width: 22, height: 22, borderRadius: 11,
-                    borderWidth: 1.5,
-                    borderColor: isSelected ? theme.primary.val : theme.borderColor.val,
-                    backgroundColor: isSelected ? theme.primary.val : "transparent",
-                    alignItems: "center", justifyContent: "center",
-                    flexShrink: 0,
-                  }}>
+                  <View
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: 11,
+                      borderWidth: 1.5,
+                      borderColor: isSelected ? theme.primary.val : theme.borderColor.val,
+                      backgroundColor: isSelected ? theme.primary.val : "transparent",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
                     {isSelected && <Feather name="check" size={12} color={theme.textInverse.val} />}
                   </View>
 
@@ -756,12 +780,7 @@ function DeletionProposalCard({
         </YStack>
 
         {/* Action buttons */}
-        <XStack
-          padding={12}
-          gap={8}
-          borderTopWidth={1}
-          borderTopColor="$borderColor"
-        >
+        <XStack padding={12} gap={8} borderTopWidth={1} borderTopColor="$borderColor">
           <Pressable
             onPress={handleCancel}
             disabled={cardState === "deleting"}
@@ -787,8 +806,7 @@ function DeletionProposalCard({
               paddingVertical: 11,
               borderRadius: 12,
               alignItems: "center",
-              backgroundColor:
-                selectedCount === 0 ? theme.accent.val : statusAccentColors.error,
+              backgroundColor: selectedCount === 0 ? theme.accent.val : statusAccentColors.error,
               opacity: pressed || cardState === "deleting" || selectedCount === 0 ? 0.6 : 1,
             })}
           >
@@ -873,31 +891,35 @@ function SearchResultRow({
 
   const menuItems: ContextMenuItemDef[] = [
     ...(isReminder && !isCompleted
-      ? [{
-          label: "Mark as Completed",
-          icon: "check-circle" as const,
-          iconColor: SUCCESS,
-          onPress: () => onComplete(item),
-        }]
+      ? [
+          {
+            label: "Mark as Completed",
+            icon: "check-circle" as const,
+            iconColor: SUCCESS,
+            onPress: () => onComplete(item),
+          },
+        ]
       : []),
     ...(showTriggerSyncAction
-      ? [{
-          label:
-            item.google_sync_status === "failed"
-              ? "Retry Calendar Sync"
-              : "Sync to Calendar",
-          icon: "refresh-cw" as const,
-          iconColor: theme.primary.val,
-          onPress: () => onTriggerSync(item),
-        }]
+      ? [
+          {
+            label:
+              item.google_sync_status === "failed" ? "Retry Calendar Sync" : "Sync to Calendar",
+            icon: "refresh-cw" as const,
+            iconColor: theme.primary.val,
+            onPress: () => onTriggerSync(item),
+          },
+        ]
       : []),
     ...(showRemoveSyncAction
-      ? [{
-          label: "Remove Calendar Sync",
-          icon: "link-2" as const,
-          destructive: true as const,
-          onPress: () => onRemoveSync(item),
-        }]
+      ? [
+          {
+            label: "Remove Calendar Sync",
+            icon: "link-2" as const,
+            destructive: true as const,
+            onPress: () => onRemoveSync(item),
+          },
+        ]
       : []),
     {
       label: "Edit Memory",
@@ -914,16 +936,18 @@ function SearchResultRow({
 
   // Preview card shown in the blur overlay (mirroring the home screen style)
   const previewCard = (
-    <YStack
-      padding={14}
-      gap={8}
-    >
+    <YStack padding={14} gap={8}>
       <XStack gap={10} alignItems="center">
-        <View style={{
-          width: 36, height: 36, borderRadius: 18,
-          backgroundColor: isReminder ? theme.warning.val + "18" : theme.primary.val + "15",
-          alignItems: "center", justifyContent: "center",
-        }}>
+        <View
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 18,
+            backgroundColor: isReminder ? theme.warning.val + "18" : theme.primary.val + "15",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
           <Feather
             name={isReminder ? "bell" : "file-text"}
             size={16}
@@ -984,8 +1008,16 @@ function SearchResultRow({
               borderColor={withAlpha(integrationAccentColors.googleDrive, "40")}
               backgroundColor={withAlpha(integrationAccentColors.googleDrive, "12")}
             >
-              <FontAwesome5 name="google-drive" size={12} color={integrationAccentColors.googleDrive} />
-              <Text fontSize={11} fontFamily={FontFamily.semiBold} color={integrationAccentColors.googleDrive}>
+              <FontAwesome5
+                name="google-drive"
+                size={12}
+                color={integrationAccentColors.googleDrive}
+              />
+              <Text
+                fontSize={11}
+                fontFamily={FontFamily.semiBold}
+                color={integrationAccentColors.googleDrive}
+              >
                 in Drive
               </Text>
             </XStack>
@@ -1008,12 +1040,17 @@ function SearchResultRow({
           opacity={isCompleted ? 0.45 : 1}
         >
           {/* Icon */}
-          <View style={{
-            width: 32, height: 32, borderRadius: 16,
-            backgroundColor: isCompleted ? SUCCESS + "20" : theme.accent.val,
-            alignItems: "center", justifyContent: "center",
-            flexShrink: 0,
-          }}>
+          <View
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 16,
+              backgroundColor: isCompleted ? SUCCESS + "20" : theme.accent.val,
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
             <Feather
               name={isCompleted ? "check" : isReminder ? "bell" : "file-text"}
               size={14}
@@ -1059,7 +1096,11 @@ function SearchResultRow({
                     backgroundColor={syncTone.bg}
                   >
                     <FontAwesome5 name="calendar-alt" size={10} color={syncTone.labelColor} />
-                    <Text fontSize={10} fontFamily={FontFamily.semiBold} color={syncTone.labelColor}>
+                    <Text
+                      fontSize={10}
+                      fontFamily={FontFamily.semiBold}
+                      color={syncTone.labelColor}
+                    >
                       {syncTone.label}
                     </Text>
                   </XStack>
@@ -1075,8 +1116,16 @@ function SearchResultRow({
                     borderColor={withAlpha(integrationAccentColors.googleDrive, "40")}
                     backgroundColor={withAlpha(integrationAccentColors.googleDrive, "12")}
                   >
-                    <FontAwesome5 name="google-drive" size={10} color={integrationAccentColors.googleDrive} />
-                    <Text fontSize={10} fontFamily={FontFamily.semiBold} color={integrationAccentColors.googleDrive}>
+                    <FontAwesome5
+                      name="google-drive"
+                      size={10}
+                      color={integrationAccentColors.googleDrive}
+                    />
+                    <Text
+                      fontSize={10}
+                      fontFamily={FontFamily.semiBold}
+                      color={integrationAccentColors.googleDrive}
+                    >
                       in Drive
                     </Text>
                   </XStack>
@@ -1097,8 +1146,11 @@ function SearchResultRow({
               onPress={() => menuRef.current?.open()}
               hitSlop={8}
               style={({ pressed }) => ({
-                width: 28, height: 28, borderRadius: 14,
-                alignItems: "center", justifyContent: "center",
+                width: 28,
+                height: 28,
+                borderRadius: 14,
+                alignItems: "center",
+                justifyContent: "center",
                 backgroundColor: pressed ? theme.accent.val : "transparent",
                 opacity: pressed ? 0.6 : 1,
               })}
@@ -1155,7 +1207,7 @@ function normalizeCardFlow(
         assistantProvider: "openai" as const,
         turns,
         cardCount: resultCount,
-        pathMode: isCached ? "cached" as const : "fresh" as const,
+        pathMode: isCached ? ("cached" as const) : ("fresh" as const),
         hasFiles: false,
       },
       steps: [
@@ -1190,10 +1242,18 @@ function normalizeCardFlow(
 }
 
 function getAttachmentMethodSummary(attachments: CardFlowAttachment[]) {
-  const completedAttachments = attachments.filter((attachment) => attachment.status === "completed");
-  const geminiCount = completedAttachments.filter((attachment) => attachment.method === "gemini").length;
-  const openAiVisionCount = completedAttachments.filter((attachment) => attachment.method === "openai").length;
-  const directPdfCount = completedAttachments.filter((attachment) => attachment.method === "pdf-extract").length;
+  const completedAttachments = attachments.filter(
+    (attachment) => attachment.status === "completed",
+  );
+  const geminiCount = completedAttachments.filter(
+    (attachment) => attachment.method === "gemini",
+  ).length;
+  const openAiVisionCount = completedAttachments.filter(
+    (attachment) => attachment.method === "openai",
+  ).length;
+  const directPdfCount = completedAttachments.filter(
+    (attachment) => attachment.method === "pdf-extract",
+  ).length;
   const failedCount = attachments.filter((attachment) => attachment.status === "failed").length;
 
   return {
@@ -1255,10 +1315,7 @@ function getFlowCapabilityPills(
   return chips;
 }
 
-function getStepTone(
-  step: CardFlowStep,
-  theme: ReturnType<typeof useAppTheme>,
-) {
+function getStepTone(step: CardFlowStep, theme: ReturnType<typeof useAppTheme>) {
   if ((step.kind === "grounding" || step.kind === "search") && step.cacheState === "cached") {
     return statusAccentColors.warning;
   }
@@ -1307,7 +1364,11 @@ function describeFlowStep(step: CardFlowStep) {
           : "Checked stored context before answering.",
         meta: [
           `${step.resultCount} match${step.resultCount === 1 ? "" : "es"}`,
-          step.cacheState === "cached" ? "fast cached path" : step.cacheState === "fresh" ? "fresh retrieval" : null,
+          step.cacheState === "cached"
+            ? "fast cached path"
+            : step.cacheState === "fresh"
+              ? "fresh retrieval"
+              : null,
         ].filter(Boolean) as string[],
       };
     case "search":
@@ -1389,12 +1450,14 @@ function FlowSummaryStrip({
       color: summary.turns > 1 ? integrationAccentColors.reasoning : theme.colorMuted.val,
     },
     ...(summary.hasFiles
-      ? [{
-          icon: "paperclip",
-          label: "Files",
-          value: `${attachments.length}`,
-          color: integrationAccentColors.reasoning,
-        }]
+      ? [
+          {
+            icon: "paperclip",
+            label: "Files",
+            value: `${attachments.length}`,
+            color: integrationAccentColors.reasoning,
+          },
+        ]
       : []),
   ];
   const capabilityPills = getFlowCapabilityPills(attachments, theme);
@@ -1402,7 +1465,13 @@ function FlowSummaryStrip({
   return (
     <YStack gap={10}>
       <YStack gap={8}>
-        <Text fontSize={10} fontFamily="$body" fontWeight="600" color="$colorMuted" style={{ textTransform: "uppercase", letterSpacing: 0.5 }}>
+        <Text
+          fontSize={10}
+          fontFamily="$body"
+          fontWeight="600"
+          color="$colorMuted"
+          style={{ textTransform: "uppercase", letterSpacing: 0.5 }}
+        >
           Used This Turn
         </Text>
         <XStack gap={8} flexWrap="wrap">
@@ -1540,8 +1609,7 @@ function FlowTimeline({
   summary: ReturnType<typeof normalizeCardFlow>["summary"];
   theme: ReturnType<typeof useAppTheme>;
 }) {
-  const tone =
-    summary.pathMode === "cached" ? statusAccentColors.warning : theme.primary.val;
+  const tone = summary.pathMode === "cached" ? statusAccentColors.warning : theme.primary.val;
 
   return (
     <YStack
@@ -1552,7 +1620,13 @@ function FlowTimeline({
       borderWidth={1}
       borderColor={withAlpha(tone, "20")}
     >
-      <Text fontSize={10} fontFamily="$body" fontWeight="600" color="$colorMuted" style={{ textTransform: "uppercase", letterSpacing: 0.5 }}>
+      <Text
+        fontSize={10}
+        fontFamily="$body"
+        fontWeight="600"
+        color="$colorMuted"
+        style={{ textTransform: "uppercase", letterSpacing: 0.5 }}
+      >
         Current Path
       </Text>
       <YStack gap={10}>
@@ -1605,10 +1679,7 @@ function SearchStatsPreview({
       : `${modeLabel} · ${normalizedFlow.summary.cardCount} ${normalizedFlow.summary.cardCount === 1 ? "card" : "cards"}`;
 
   return (
-    <YStack
-      padding={18}
-      gap={16}
-    >
+    <YStack padding={18} gap={16}>
       <XStack alignItems="center" gap={10}>
         <YStack
           width={42}
@@ -1635,11 +1706,7 @@ function SearchStatsPreview({
         attachments={normalizedFlow.attachments}
         theme={theme}
       />
-      <FlowTimeline
-        steps={normalizedFlow.steps}
-        summary={normalizedFlow.summary}
-        theme={theme}
-      />
+      <FlowTimeline steps={normalizedFlow.steps} summary={normalizedFlow.summary} theme={theme} />
 
       {canDeepSearch ? (
         <YStack
@@ -1648,7 +1715,13 @@ function SearchStatsPreview({
           borderTopWidth={StyleSheet.hairlineWidth}
           borderTopColor="$borderColor"
         >
-          <Text fontSize={10} fontFamily="$body" fontWeight="600" color="$colorMuted" style={{ textTransform: "uppercase", letterSpacing: 0.5 }}>
+          <Text
+            fontSize={10}
+            fontFamily="$body"
+            fontWeight="600"
+            color="$colorMuted"
+            style={{ textTransform: "uppercase", letterSpacing: 0.5 }}
+          >
             Optional Fallback
           </Text>
           <YStack
@@ -1660,7 +1733,16 @@ function SearchStatsPreview({
             borderColor={withAlpha(integrationAccentColors.reasoning, "29")}
           >
             <XStack alignItems="flex-start" gap={8}>
-              <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: withAlpha(integrationAccentColors.reasoning, "24"), alignItems: "center", justifyContent: "center" }}>
+              <View
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  backgroundColor: withAlpha(integrationAccentColors.reasoning, "24"),
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
                 <Feather name="refresh-cw" size={13} color={integrationAccentColors.reasoning} />
               </View>
               <YStack flex={1} gap={2}>
@@ -1689,7 +1771,11 @@ function SearchStatsPreview({
               })}
             >
               <Feather name="refresh-cw" size={12} color={integrationAccentColors.reasoning} />
-              <Text fontSize={11} fontFamily={FontFamily.semiBold} color={integrationAccentColors.reasoning}>
+              <Text
+                fontSize={11}
+                fontFamily={FontFamily.semiBold}
+                color={integrationAccentColors.reasoning}
+              >
                 {isDeepSearching ? "Running deep scan..." : "Run deep scan"}
               </Text>
             </Pressable>
@@ -1733,15 +1819,7 @@ function InsightStatChip({
   );
 }
 
-function InsightLine({
-  icon,
-  color,
-  text,
-}: {
-  icon: string;
-  color: string;
-  text: string;
-}) {
+function InsightLine({ icon, color, text }: { icon: string; color: string; text: string }) {
   return (
     <XStack alignItems="flex-start" gap={8}>
       <View
@@ -1812,26 +1890,41 @@ function PerformancePill({
       previewMinWidth={300}
       previewFrame
     >
-      <View style={{
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 6,
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 20,
-        backgroundColor: `${baseColor}15`,
-        borderWidth: 1,
-        borderColor: `${baseColor}40`,
-      }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+          paddingHorizontal: 10,
+          paddingVertical: 4,
+          borderRadius: 20,
+          backgroundColor: `${baseColor}15`,
+          borderWidth: 1,
+          borderColor: `${baseColor}40`,
+        }}
+      >
         <Feather name={isCached ? "zap" : "search"} size={11} color={baseColor} />
         <Text fontSize={11} fontFamily={FontFamily.bold} color={baseColor} style={{ opacity: 0.9 }}>
           {isCached ? "Fast" : "Full scan"}
         </Text>
         {isReasoned && (
           <>
-            <View style={{ width: 1, height: 10, backgroundColor: baseColor, opacity: 0.2, marginLeft: 2 }} />
+            <View
+              style={{
+                width: 1,
+                height: 10,
+                backgroundColor: baseColor,
+                opacity: 0.2,
+                marginLeft: 2,
+              }}
+            />
             <Feather name="layers" size={11} color={baseColor} />
-            <Text fontSize={11} fontFamily={FontFamily.bold} color={baseColor} style={{ opacity: 0.9 }}>
+            <Text
+              fontSize={11}
+              fontFamily={FontFamily.bold}
+              color={baseColor}
+              style={{ opacity: 0.9 }}
+            >
               {`× ${turns}`}
             </Text>
           </>
@@ -1875,7 +1968,7 @@ function SearchResultsCard({
   // Fetch full memory docs by ID reactively
   const fetchedDocs = useQuery(
     api.memories.listByIds,
-    token && ids.length > 0 ? { token, ids: ids as any[] } : "skip"
+    token && ids.length > 0 ? { token, ids: ids as any[] } : "skip",
   );
   const items: SearchResultItem[] = (fetchedDocs ?? []).map((doc) => ({
     id: doc._id,
@@ -1891,96 +1984,116 @@ function SearchResultsCard({
 
   // Batch-fetch attachment counts so we can show the Drive badge per row
   const memoryIds = useMemo(() => (fetchedDocs ?? []).map((d) => d._id), [fetchedDocs]);
-  const attachmentCounts = useQuery(
-    api.attachments.getAttachmentCountsForMemories,
-    token && memoryIds.length > 0 ? { token, memoryIds: memoryIds as any[] } : "skip"
-  ) ?? {};
+  const attachmentCounts =
+    useQuery(
+      api.attachments.getAttachmentCountsForMemories,
+      token && memoryIds.length > 0 ? { token, memoryIds: memoryIds as any[] } : "skip",
+    ) ?? {};
 
   const displayItems = expanded ? items : items.slice(0, 3);
   const hasMore = items.length > 3;
 
-  const handleComplete = useCallback(async (item: SearchResultItem) => {
-    if (!token) return;
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    try {
-      await completeMemory({ token, id: item.id as any });
-      setCompletedIds((prev) => new Set([...prev, item.id]));
-      showToast({ title: "Marked complete", tone: "success" });
-    } catch {
-      showToast({ title: "Couldn't complete — try again", tone: "error" });
-    }
-  }, [token, completeMemory, showToast]);
+  const handleComplete = useCallback(
+    async (item: SearchResultItem) => {
+      if (!token) return;
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      try {
+        await completeMemory({ token, id: item.id as any });
+        setCompletedIds((prev) => new Set([...prev, item.id]));
+        showToast({ title: "Marked complete", tone: "success" });
+      } catch {
+        showToast({ title: "Couldn't complete — try again", tone: "error" });
+      }
+    },
+    [token, completeMemory, showToast],
+  );
 
-  const handleDelete = useCallback(async (id: string) => {
-    if (!token) return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    const confirmed = await confirm({
-      title: "Delete Memory",
-      message: "This will move the memory to trash.",
-      confirmLabel: "Delete",
-      tone: "destructive",
-      icon: "trash-2",
-    });
-    if (!confirmed) return;
-    try {
-      await deleteMemory({ token, id: id as any });
-      showToast({ title: "Memory deleted", tone: "success" });
-    } catch {
-      showToast({ title: "Couldn't delete — try again", tone: "error" });
-    }
-  }, [confirm, token, deleteMemory, showToast]);
+  const handleDelete = useCallback(
+    async (id: string) => {
+      if (!token) return;
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      const confirmed = await confirm({
+        title: "Delete Memory",
+        message: "This will move the memory to trash.",
+        confirmLabel: "Delete",
+        tone: "destructive",
+        icon: "trash-2",
+      });
+      if (!confirmed) return;
+      try {
+        await deleteMemory({ token, id: id as any });
+        showToast({ title: "Memory deleted", tone: "success" });
+      } catch {
+        showToast({ title: "Couldn't delete — try again", tone: "error" });
+      }
+    },
+    [confirm, token, deleteMemory, showToast],
+  );
 
-  const handleEdit = useCallback((id: string) => {
-    onEdit?.(id);
-  }, [onEdit]);
+  const handleEdit = useCallback(
+    (id: string) => {
+      onEdit?.(id);
+    },
+    [onEdit],
+  );
 
-  const handleTriggerSync = useCallback(async (item: SearchResultItem) => {
-    if (!token) return;
-    try {
-      const result = await triggerReminderSync({
-        token,
-        memoryId: item.id as any,
-      });
-      showToast({
-        title: result.message,
-        tone: result.queued ? "success" : "info",
-      });
-    } catch {
-      showToast({ title: "Couldn't trigger Google sync", tone: "error" });
-    }
-  }, [token, triggerReminderSync, showToast]);
+  const handleTriggerSync = useCallback(
+    async (item: SearchResultItem) => {
+      if (!token) return;
+      try {
+        const result = await triggerReminderSync({
+          token,
+          memoryId: item.id as any,
+        });
+        showToast({
+          title: result.message,
+          tone: result.queued ? "success" : "info",
+        });
+      } catch {
+        showToast({ title: "Couldn't trigger Google sync", tone: "error" });
+      }
+    },
+    [token, triggerReminderSync, showToast],
+  );
 
-  const handleRemoveSync = useCallback(async (item: SearchResultItem) => {
-    if (!token) return;
-    const confirmed = await confirm({
-      title: "Remove Google sync",
-      message:
-        "This removes linked Google Calendar event data for this reminder and clears local sync state.",
-      confirmLabel: "Remove sync",
-      tone: "destructive",
-      icon: "link-2",
-    });
-    if (!confirmed) return;
-    try {
-      const result = await removeReminderSync({
-        token,
-        memoryId: item.id as any,
+  const handleRemoveSync = useCallback(
+    async (item: SearchResultItem) => {
+      if (!token) return;
+      const confirmed = await confirm({
+        title: "Remove Google sync",
+        message:
+          "This removes linked Google Calendar event data for this reminder and clears local sync state.",
+        confirmLabel: "Remove sync",
+        tone: "destructive",
+        icon: "link-2",
       });
-      showToast({
-        title: result.message,
-        tone: result.removed ? "success" : "info",
-      });
-    } catch {
-      showToast({ title: "Couldn't remove Google sync", tone: "error" });
-    }
-  }, [confirm, token, removeReminderSync, showToast]);
+      if (!confirmed) return;
+      try {
+        const result = await removeReminderSync({
+          token,
+          memoryId: item.id as any,
+        });
+        showToast({
+          title: result.message,
+          tone: result.removed ? "success" : "info",
+        });
+      } catch {
+        showToast({ title: "Couldn't remove Google sync", tone: "error" });
+      }
+    },
+    [confirm, token, removeReminderSync, showToast],
+  );
 
   const handleDeepSearch = async () => {
     if (!onDeepSearch || isDeepSearching) return;
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setIsDeepSearching(true);
     try {
-      const inferredQuery = items.slice(0, 3).map(i => i.title ?? "").filter(Boolean).join(" ");
+      const inferredQuery = items
+        .slice(0, 3)
+        .map((i) => i.title ?? "")
+        .filter(Boolean)
+        .join(" ");
       onDeepSearch(inferredQuery);
     } finally {
       setIsDeepSearching(false);
@@ -2008,11 +2121,16 @@ function SearchResultsCard({
           borderBottomColor="$borderColor"
         >
           <XStack gap={7} alignItems="center">
-            <View style={{
-              width: 24, height: 24, borderRadius: 12,
-              backgroundColor: theme.primary.val + "15",
-              alignItems: "center", justifyContent: "center",
-            }}>
+            <View
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: 12,
+                backgroundColor: theme.primary.val + "15",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
               <Feather name="search" size={12} color={theme.primary.val} />
             </View>
             <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
@@ -2134,24 +2252,23 @@ function getUsefulEvents(status: ProgressStatus) {
     "composing final text",
   ]);
 
-  return (status.events ?? [])
-    .filter((event) => {
-      const label = (event.label ?? "").trim().toLowerCase();
-      const value = (event.value ?? "").trim().toLowerCase();
-      if (!label && !value) {
-        return false;
-      }
-      if (label === "step" || label === "loop" || label === "next") {
-        return false;
-      }
-      if (label === "mode" && genericValues.has(value)) {
-        return false;
-      }
-      if (label === "matches" && typeof status.resultCount === "number") {
-        return false;
-      }
-      return true;
-    });
+  return (status.events ?? []).filter((event) => {
+    const label = (event.label ?? "").trim().toLowerCase();
+    const value = (event.value ?? "").trim().toLowerCase();
+    if (!label && !value) {
+      return false;
+    }
+    if (label === "step" || label === "loop" || label === "next") {
+      return false;
+    }
+    if (label === "mode" && genericValues.has(value)) {
+      return false;
+    }
+    if (label === "matches" && typeof status.resultCount === "number") {
+      return false;
+    }
+    return true;
+  });
 }
 
 function getProgressTitle(status: ProgressStatus) {
@@ -2204,7 +2321,11 @@ function getProgressIcon(status: ProgressStatus) {
   const phase = (status.phase ?? "").toLowerCase();
   const toolName = (status.toolName ?? "").toLowerCase();
 
-  if (toolName === "search_memories" || toolName === "deep_search" || toolName === "search_documents") {
+  if (
+    toolName === "search_memories" ||
+    toolName === "deep_search" ||
+    toolName === "search_documents"
+  ) {
     return "search";
   }
   if (toolName === "memory_grounding" || phase === "grounding") {
@@ -2335,7 +2456,9 @@ function LoadingSweepText({
   useEffect(() => {
     sweep.value = -3;
     sweep.value = withRepeat(
-      withTiming(characters.length + 2, { duration: Math.max(1200, characters.length * 85) }),
+      withTiming(characters.length + 2, {
+        duration: Math.max(1200, characters.length * 85),
+      }),
       -1,
       false,
     );
@@ -2375,12 +2498,7 @@ function ThinkingIndicator() {
 
   return (
     <Animated.View entering={FadeInDown.duration(220)} layout={PROGRESS_LAYOUT}>
-      <XStack
-        gap={8}
-        alignSelf="flex-start"
-        marginBottom={CHAT.messageGap}
-        alignItems="flex-end"
-      >
+      <XStack gap={8} alignSelf="flex-start" marginBottom={CHAT.messageGap} alignItems="flex-end">
         <Animated.View layout={PROGRESS_LAYOUT}>
           <YStack
             paddingHorizontal={14}
@@ -2421,7 +2539,6 @@ function ThinkingIndicator() {
                 </YStack>
               </XStack>
             </Animated.View>
-
           </YStack>
         </Animated.View>
       </XStack>
@@ -2438,10 +2555,7 @@ function ToolProgressBubble({ status }: { status: ProgressStatus }) {
 
   useEffect(() => {
     shimmer.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 900 }),
-        withTiming(0, { duration: 900 }),
-      ),
+      withSequence(withTiming(1, { duration: 900 }), withTiming(0, { duration: 900 })),
       -1,
       false,
     );
@@ -2454,11 +2568,13 @@ function ToolProgressBubble({ status }: { status: ProgressStatus }) {
     return () => clearInterval(timer);
   }, [status.startedAt]);
 
-  const dotStyle = useAnimatedStyle(() => ({ opacity: 0.35 + shimmer.value * 0.65 }));
+  const dotStyle = useAnimatedStyle(() => ({
+    opacity: 0.35 + shimmer.value * 0.65,
+  }));
   const title = getProgressTitle(status);
   const iconName = getProgressIcon(status);
   const accentColor = getAccentColor(status, theme.primary.val);
-  
+
   const events = getUsefulEvents(status);
   const latestEvent = events[events.length - 1];
   const metaLabel = formatMetaLabel(status);
@@ -2478,7 +2594,10 @@ function ToolProgressBubble({ status }: { status: ProgressStatus }) {
             backgroundColor="$backgroundStrong"
             borderWidth={1}
             borderColor="$borderColor"
-            style={[getBubbleShadow(theme.shadowColor.val), { minWidth: 200, maxWidth: 320, position: "relative" }]}
+            style={[
+              getBubbleShadow(theme.shadowColor.val),
+              { minWidth: 200, maxWidth: 320, position: "relative" },
+            ]}
           >
             <XStack gap={10} alignItems="center">
               <Animated.View style={dotStyle}>
@@ -2495,7 +2614,7 @@ function ToolProgressBubble({ status }: { status: ProgressStatus }) {
                   <Feather name={iconName as any} size={12} color={accentColor} />
                 </View>
               </Animated.View>
-              
+
               <YStack gap={1} flex={1}>
                 <XStack justifyContent="space-between" alignItems="center" gap={8}>
                   <LoadingSweepText
@@ -2513,12 +2632,26 @@ function ToolProgressBubble({ status }: { status: ProgressStatus }) {
                 </XStack>
 
                 <XStack gap={5} alignItems="center" paddingRight={4}>
-                   <Text fontSize={11} color="$colorMuted" numberOfLines={1} opacity={0.84} flexShrink={1}>
+                  <Text
+                    fontSize={11}
+                    color="$colorMuted"
+                    numberOfLines={1}
+                    opacity={0.84}
+                    flexShrink={1}
+                  >
                     {status.detail?.trim() || "Working..."}
                   </Text>
                   {metaLabel && (
                     <>
-                      <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: "$colorMuted", opacity: 0.2 }} />
+                      <View
+                        style={{
+                          width: 3,
+                          height: 3,
+                          borderRadius: 1.5,
+                          backgroundColor: "$colorMuted",
+                          opacity: 0.2,
+                        }}
+                      />
                       <Text fontSize={10} color="$colorMuted" opacity={0.6} numberOfLines={1}>
                         {metaLabel}
                       </Text>
@@ -2531,9 +2664,24 @@ function ToolProgressBubble({ status }: { status: ProgressStatus }) {
             {latestEvent && (
               <Animated.View layout={PROGRESS_LAYOUT} entering={FadeIn.duration(200)}>
                 <XStack gap={6} alignItems="center" marginTop={6} paddingLeft={36}>
-                  <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: accentColor, opacity: 0.6 }} />
-                  <Text fontSize={10} color="$colorMuted" opacity={0.7} numberOfLines={1} paddingRight={10}>
-                    <Text fontFamily={FontFamily.medium}>{latestEvent.label}:</Text> {latestEvent.value}
+                  <View
+                    style={{
+                      width: 4,
+                      height: 4,
+                      borderRadius: 2,
+                      backgroundColor: accentColor,
+                      opacity: 0.6,
+                    }}
+                  />
+                  <Text
+                    fontSize={10}
+                    color="$colorMuted"
+                    opacity={0.7}
+                    numberOfLines={1}
+                    paddingRight={10}
+                  >
+                    <Text fontFamily={FontFamily.medium}>{latestEvent.label}:</Text>{" "}
+                    {latestEvent.value}
                   </Text>
                 </XStack>
               </Animated.View>
@@ -2561,7 +2709,7 @@ function AttachmentChip({
   const theme = useAppTheme();
   const attachment = useQuery(
     api.attachments.getAttachment,
-    token ? { token, attachmentId: attachmentId as any } : "skip"
+    token ? { token, attachmentId: attachmentId as any } : "skip",
   );
 
   const handlePress = () => {
@@ -2585,7 +2733,12 @@ function AttachmentChip({
       })}
     >
       <Feather name="paperclip" size={11} color={withAlpha(theme.textInverse.val, "CC")} />
-      <Text fontSize={11} color={withAlpha(theme.textInverse.val, "E6")} numberOfLines={1} maxWidth={160}>
+      <Text
+        fontSize={11}
+        color={withAlpha(theme.textInverse.val, "E6")}
+        numberOfLines={1}
+        maxWidth={160}
+      >
         {name}
       </Text>
     </Pressable>
@@ -2645,15 +2798,8 @@ const ChatBubble = React.memo(function ChatBubble({
   };
 
   return (
-    <Animated.View
-      entering={undefined}
-      style={{ marginBottom: CHAT.messageGap }}
-    >
-      <XStack
-        maxWidth="82%"
-        gap={8}
-        alignSelf={isUser ? "flex-end" : "flex-start"}
-      >
+    <Animated.View entering={undefined} style={{ marginBottom: CHAT.messageGap }}>
+      <XStack maxWidth="82%" gap={8} alignSelf={isUser ? "flex-end" : "flex-start"}>
         <YStack flex={1} gap={4}>
           <XStack alignItems="center" gap={8} alignSelf={isUser ? "flex-end" : "flex-start"}>
             <Pressable onLongPress={handleLongPress} delayLongPress={400} style={{ flexShrink: 1 }}>
@@ -2674,15 +2820,22 @@ const ChatBubble = React.memo(function ChatBubble({
                   {msg.content ? <Markdown style={mdStyles}>{msg.content}</Markdown> : null}
                   {isUser && msg.attachments && msg.attachments.length > 0 && (
                     <YStack gap={4}>
-                      {msg.attachments.map((att: { attachmentId: string; name: string; type: string; mimeType: string }) => (
-                        <AttachmentChip
-                          key={att.attachmentId}
-                          name={att.name}
-                          type={att.type as "image" | "document"}
-                          attachmentId={att.attachmentId}
-                          token={token}
-                        />
-                      ))}
+                      {msg.attachments.map(
+                        (att: {
+                          attachmentId: string;
+                          name: string;
+                          type: string;
+                          mimeType: string;
+                        }) => (
+                          <AttachmentChip
+                            key={att.attachmentId}
+                            name={att.name}
+                            type={att.type as "image" | "document"}
+                            attachmentId={att.attachmentId}
+                            token={token}
+                          />
+                        ),
+                      )}
                     </YStack>
                   )}
                 </YStack>
@@ -2690,8 +2843,8 @@ const ChatBubble = React.memo(function ChatBubble({
             </Pressable>
 
             {/* Speaker icon — always to the right of AI messages */}
-            {!isUser && (
-              isSpeaking ? (
+            {!isUser &&
+              (isSpeaking ? (
                 <Animated.View entering={ZoomIn.duration(200)}>
                   <Pressable
                     onPress={() => onSpeak(msg._id, extractSpeakableText(msg.content ?? ""))}
@@ -2725,20 +2878,18 @@ const ChatBubble = React.memo(function ChatBubble({
                     <Feather name="volume-2" size={18} color={theme.colorMuted.val} />
                   </Pressable>
                 </Animated.View>
-              )
-            )}
+              ))}
           </XStack>
 
           {/* Inline action bar — shown on long press */}
           {showActions && (
             <Animated.View entering={ZoomIn.duration(200)}>
-              <XStack
-                gap={6}
-                alignSelf={isUser ? "flex-end" : "flex-start"}
-                paddingHorizontal={4}
-              >
+              <XStack gap={6} alignSelf={isUser ? "flex-end" : "flex-start"} paddingHorizontal={4}>
                 <Pressable
-                  onPress={() => { onCopy(msg.content); setShowActions(false); }}
+                  onPress={() => {
+                    onCopy(msg.content);
+                    setShowActions(false);
+                  }}
                   style={({ pressed }) => ({
                     flexDirection: "row",
                     alignItems: "center",
@@ -2753,7 +2904,9 @@ const ChatBubble = React.memo(function ChatBubble({
                   })}
                 >
                   <Feather name="copy" size={12} color={theme.colorMuted.val} />
-                  <Text fontSize={11} fontFamily="$body" color="$colorMuted">Copy</Text>
+                  <Text fontSize={11} fontFamily="$body" color="$colorMuted">
+                    Copy
+                  </Text>
                 </Pressable>
               </XStack>
             </Animated.View>
@@ -2809,10 +2962,7 @@ function WaveformBar({ height, delay, color }: { height: number; delay: number; 
     scaleY.value = withRepeat(
       withDelay(
         delay,
-        withSequence(
-          withTiming(1, { duration: 350 }),
-          withTiming(0.25, { duration: 350 }),
-        ),
+        withSequence(withTiming(1, { duration: 350 }), withTiming(0.25, { duration: 350 })),
       ),
       -1,
       true,
@@ -2824,9 +2974,7 @@ function WaveformBar({ height, delay, color }: { height: number; delay: number; 
   }));
 
   return (
-    <Animated.View
-      style={[{ width: 3, height, borderRadius: 2, backgroundColor: color }, style]}
-    />
+    <Animated.View style={[{ width: 3, height, borderRadius: 2, backgroundColor: color }, style]} />
   );
 }
 
@@ -2882,13 +3030,16 @@ function ChatInputBar({
   const [isVoicePaused, setIsVoicePaused] = useState(false);
   const hasLiveTranscript = voiceLiveTranscript.trim().length > 0;
 
-  const handleVoiceComplete = useCallback((transcript: string) => {
-    if (transcript.trim()) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      // Pass true to indicate this was a voice message
-      (onSend as any)(transcript, true);
-    }
-  }, [onSend]);
+  const handleVoiceComplete = useCallback(
+    (transcript: string) => {
+      if (transcript.trim()) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        // Pass true to indicate this was a voice message
+        (onSend as any)(transcript, true);
+      }
+    },
+    [onSend],
+  );
 
   const hasAttachments = (attachments?.length ?? 0) > 0;
   const canSend = (text.trim().length > 0 || hasAttachments) && !isSending;
@@ -2951,41 +3102,41 @@ function ChatInputBar({
             </YStack>
           ) : null}
           <XStack alignItems="center" justifyContent="center" position="relative" minHeight={56}>
-              {/* Single mic: tap = continuous, long-press = walkie-talkie */}
-              <VoiceRecorder
-                onTranscription={setVoiceLiveTranscript}
-                onTranscriptionComplete={(text) => {
-                  setVoiceLiveTranscript("");
-                  setIsVoicePaused(false);
-                  handleVoiceComplete(text);
-                }}
-                onPauseChange={setIsVoicePaused}
-                transcriptOverride={isVoicePaused ? voiceLiveTranscript : undefined}
-                compact
-                inputMode="auto"
-              />
+            {/* Single mic: tap = continuous, long-press = walkie-talkie */}
+            <VoiceRecorder
+              onTranscription={setVoiceLiveTranscript}
+              onTranscriptionComplete={(text) => {
+                setVoiceLiveTranscript("");
+                setIsVoicePaused(false);
+                handleVoiceComplete(text);
+              }}
+              onPauseChange={setIsVoicePaused}
+              transcriptOverride={isVoicePaused ? voiceLiveTranscript : undefined}
+              compact
+              inputMode="auto"
+            />
 
-               {/* Right Keyboard Button */}
-               <Pressable
-                 onPress={() => setMode("keyboard")}
-                 hitSlop={12}
-                 style={({ pressed }) => ({
-                   position: "absolute",
-                   right: 8,
-                   width: 34,
-                   height: 34,
-                   borderRadius: 17,
-                   alignItems: "center",
-                   justifyContent: "center",
-                   backgroundColor: theme.backgroundStrong.val,
-                   borderWidth: 1,
-                   borderColor: theme.borderColor.val,
-                   opacity: pressed ? 0.7 : 1,
-                 })}
-               >
-                 <Feather name="type" size={16} color={theme.colorMuted.val} />
-               </Pressable>
-           </XStack>
+            {/* Right Keyboard Button */}
+            <Pressable
+              onPress={() => setMode("keyboard")}
+              hitSlop={12}
+              style={({ pressed }) => ({
+                position: "absolute",
+                right: 8,
+                width: 34,
+                height: 34,
+                borderRadius: 17,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: theme.backgroundStrong.val,
+                borderWidth: 1,
+                borderColor: theme.borderColor.val,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Feather name="type" size={16} color={theme.colorMuted.val} />
+            </Pressable>
+          </XStack>
         </YStack>
       </Animated.View>
     );
@@ -3020,67 +3171,67 @@ function ChatInputBar({
           size={18}
         />
 
-      <TextInput
-        ref={inputRef}
-        value={text}
-        onChangeText={setText}
-        placeholder="Ask Memora anything..."
-        placeholderTextColor={theme.colorMuted.val}
-        multiline
-        returnKeyType="send"
-        onSubmitEditing={handleSend}
-        editable={!isSending}
-        style={{
-          flex: 1,
-          minHeight: 40,
-          maxHeight: 120,
-          borderRadius: 18,
-          paddingHorizontal: 14,
-          paddingVertical: 10,
-          fontSize: 15,
-          fontFamily: FontFamily.regular,
-          borderWidth: 0.5,
-          color: theme.color.val,
-          backgroundColor: theme.background.val,
-          borderColor: theme.borderColor.val,
-        }}
-      />
-
-      <Pressable
-        onPress={() => setMode("voice")}
-        hitSlop={6}
-        style={({ pressed }) => ({
-          width: 38,
-          height: 38,
-          borderRadius: 19,
-          alignItems: "center",
-          justifyContent: "center",
-          opacity: pressed ? 0.6 : 1,
-        })}
-      >
-        <Feather name="mic" size={18} color={theme.colorMuted.val} />
-      </Pressable>
-
-      <Pressable
-        onPress={handleSend}
-        disabled={!canSend}
-        hitSlop={6}
-        style={({ pressed }) => ({
-          width: 38,
-          height: 38,
-          borderRadius: 19,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: canSend ? theme.primary.val : theme.borderColor.val,
-          opacity: pressed ? 0.8 : 1,
-        })}
-      >
-        <Feather
-          name="arrow-up"
-          size={18}
-          color={canSend ? theme.textInverse.val : theme.colorMuted.val}
+        <TextInput
+          ref={inputRef}
+          value={text}
+          onChangeText={setText}
+          placeholder="Ask Memora anything..."
+          placeholderTextColor={theme.colorMuted.val}
+          multiline
+          returnKeyType="send"
+          onSubmitEditing={handleSend}
+          editable={!isSending}
+          style={{
+            flex: 1,
+            minHeight: 40,
+            maxHeight: 120,
+            borderRadius: 18,
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            fontSize: 15,
+            fontFamily: FontFamily.regular,
+            borderWidth: 0.5,
+            color: theme.color.val,
+            backgroundColor: theme.background.val,
+            borderColor: theme.borderColor.val,
+          }}
         />
-      </Pressable>
+
+        <Pressable
+          onPress={() => setMode("voice")}
+          hitSlop={6}
+          style={({ pressed }) => ({
+            width: 38,
+            height: 38,
+            borderRadius: 19,
+            alignItems: "center",
+            justifyContent: "center",
+            opacity: pressed ? 0.6 : 1,
+          })}
+        >
+          <Feather name="mic" size={18} color={theme.colorMuted.val} />
+        </Pressable>
+
+        <Pressable
+          onPress={handleSend}
+          disabled={!canSend}
+          hitSlop={6}
+          style={({ pressed }) => ({
+            width: 38,
+            height: 38,
+            borderRadius: 19,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: canSend ? theme.primary.val : theme.borderColor.val,
+            opacity: pressed ? 0.8 : 1,
+          })}
+        >
+          <Feather
+            name="arrow-up"
+            size={18}
+            color={canSend ? theme.textInverse.val : theme.colorMuted.val}
+          />
+        </Pressable>
       </XStack>
     </YStack>
   );
@@ -3131,10 +3282,7 @@ function EmptyState() {
 
       <XStack flexWrap="wrap" gap={6} width="100%" justifyContent="center">
         {FEATURE_BULLETS.map((feature, i) => (
-          <Animated.View
-            key={feature}
-            entering={FadeInDown.delay(i * 50).duration(250)}
-          >
+          <Animated.View key={feature} entering={FadeInDown.delay(i * 50).duration(250)}>
             <XStack
               alignItems="center"
               gap={5}
@@ -3167,7 +3315,13 @@ interface ExtendedAIChatPanelProps extends AIChatPanelProps {
   autoVoiceOutput?: boolean;
 }
 
-export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatInputMode, autoVoiceOutput = true }: ExtendedAIChatPanelProps) {
+export function AIChatPanel({
+  compact,
+  token: tokenProp,
+  chatInputMode,
+  setChatInputMode,
+  autoVoiceOutput = true,
+}: ExtendedAIChatPanelProps) {
   const theme = useAppTheme();
   const auth = useAuth();
   const { showToast } = useAppToast();
@@ -3184,13 +3338,15 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
   const searchStatus = useQuery(api.chat.getSearchStatus, token ? { token } : "skip");
   const googleIntegration = useQuery(
     api.integrations.getGoogleIntegration,
-    token ? { token } : "skip"
+    token ? { token } : "skip",
   );
   const sendMessage = useAction(api.actions.memoryChat.chat);
   const runDeepSearch = useAction(api.chat.deepSearch);
   const clearChat = useMutation(api.chat.clear);
 
-  const driveConnected = !!(googleIntegration?.connected && (googleIntegration as any).hasDriveScope);
+  const driveConnected = !!(
+    googleIntegration?.connected && (googleIntegration as any).hasDriveScope
+  );
 
   const fileAttachments = useFileAttachments({ token: token ?? undefined });
 
@@ -3260,10 +3416,14 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
       // Auto-readout logic
       if (autoVoiceOutput && lastInputModeRef.current === "voice" && messages.length > 0) {
         const lastMsg = messages[messages.length - 1]; // Assume latest message is at end of array (since query sorts ascending)
-        if (lastMsg && lastMsg.role !== "user" && !unreadVoiceResponsesRef.current.has(lastMsg._id)) {
-            unreadVoiceResponsesRef.current.add(lastMsg._id);
-            const textToSpeak = extractSpeakableText(lastMsg.content ?? "");
-            speakMessage(lastMsg._id, textToSpeak);
+        if (
+          lastMsg &&
+          lastMsg.role !== "user" &&
+          !unreadVoiceResponsesRef.current.has(lastMsg._id)
+        ) {
+          unreadVoiceResponsesRef.current.add(lastMsg._id);
+          const textToSpeak = extractSpeakableText(lastMsg.content ?? "");
+          speakMessage(lastMsg._id, textToSpeak);
         }
       }
 
@@ -3359,7 +3519,11 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
   const copyMessage = useCallback(
     (text: string) => {
       Clipboard.setString(text);
-      showToast({ title: "Copied to clipboard", tone: "success", duration: 2000 });
+      showToast({
+        title: "Copied to clipboard",
+        tone: "success",
+        duration: 2000,
+      });
     },
     [showToast],
   );
@@ -3370,7 +3534,7 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
   const handleSend = useCallback(
     async (text: string, isVoice: boolean = false) => {
       const hasPendingAttachments = fileAttachments.attachments.some(
-        (a) => a.uploadStatus === "idle" || a.uploadStatus === "compressing"
+        (a) => a.uploadStatus === "idle" || a.uploadStatus === "compressing",
       );
       if ((!text.trim() && !hasPendingAttachments) || !token) return;
       if (Platform.OS !== "web") {
@@ -3408,8 +3572,7 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
           token,
           message: text.trim() || " ",
           currentTime: new Date().toISOString(),
-          currentTimezone:
-            Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+          currentTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
           attachments: uploadedAttachments.length > 0 ? uploadedAttachments : undefined,
         });
 
@@ -3520,8 +3683,16 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
     let base = [...messages];
 
     // Add optimistic message if it exists
-    if (optimisticMessage && !base.some(m => m.content === optimisticMessage.content && m.role === "user" && m._creationTime > optimisticMessage._creationTime - 5000)) {
-       base.push(optimisticMessage as any);
+    if (
+      optimisticMessage &&
+      !base.some(
+        (m) =>
+          m.content === optimisticMessage.content &&
+          m.role === "user" &&
+          m._creationTime > optimisticMessage._creationTime - 5000,
+      )
+    ) {
+      base.push(optimisticMessage as any);
     }
 
     base = base.reverse();
@@ -3529,14 +3700,24 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
     if (isSending || searchStatus) {
       if (searchStatus) {
         return [
-          { _id: "__tool_progress__", role: "tool_progress", status: searchStatus, _creationTime: 0 } as any,
+          {
+            _id: "__tool_progress__",
+            role: "tool_progress",
+            status: searchStatus,
+            _creationTime: 0,
+          } as any,
           ...base,
         ];
       }
     }
     if (isSending) {
       return [
-        { _id: "__thinking__", role: "thinking", content: "", _creationTime: 0 } as any,
+        {
+          _id: "__thinking__",
+          role: "thinking",
+          content: "",
+          _creationTime: 0,
+        } as any,
         ...base,
       ];
     }
@@ -3569,30 +3750,30 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
       let cardFlow: CardFlow | undefined;
 
       if (item.role !== "user") {
-          let content = item.content ?? "";
-          
-          const dParsed = parseDeletionProposal(content);
-          if (dParsed) {
-              deletionItems = dParsed.items;
-              content = dParsed.cleanText;
-          }
-          
-          const cParsed = parseCardIds(content);
-          if (cParsed) {
-              cardIds = cParsed.ids;
-              cardIsCached = cParsed.isCached;
-              cardTurns = cParsed.turns;
-              cardFlow = cParsed.flow;
-              content = cParsed.cleanText;
-          }
+        let content = item.content ?? "";
 
-          // Final cleanup for any leftover legacy markers or accidental comments
-          const cleanContent = content
-            .replace(/<!--MEMORA_SEARCH_RESULTS:[\s\S]*?-->/g, "")
-            .replace(/<!--[\s\S]*?-->/g, "")
-            .trim();
-            
-          displayMsg = { ...displayMsg, content: cleanContent };
+        const dParsed = parseDeletionProposal(content);
+        if (dParsed) {
+          deletionItems = dParsed.items;
+          content = dParsed.cleanText;
+        }
+
+        const cParsed = parseCardIds(content);
+        if (cParsed) {
+          cardIds = cParsed.ids;
+          cardIsCached = cParsed.isCached;
+          cardTurns = cParsed.turns;
+          cardFlow = cParsed.flow;
+          content = cParsed.cleanText;
+        }
+
+        // Final cleanup for any leftover legacy markers or accidental comments
+        const cleanContent = content
+          .replace(/<!--MEMORA_SEARCH_RESULTS:[\s\S]*?-->/g, "")
+          .replace(/<!--[\s\S]*?-->/g, "")
+          .trim();
+
+        displayMsg = { ...displayMsg, content: cleanContent };
       }
 
       return (
@@ -3614,7 +3795,16 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
         />
       );
     },
-    [aiMdStyles, userMdStyles, speakingId, speakMessage, copyMessage, token, handleDeepSearch, handleEditMemory],
+    [
+      aiMdStyles,
+      userMdStyles,
+      speakingId,
+      speakMessage,
+      copyMessage,
+      token,
+      handleDeepSearch,
+      handleEditMemory,
+    ],
   );
 
   const keyExtractor = useCallback((item: any) => item._id, []);

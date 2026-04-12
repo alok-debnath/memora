@@ -10,14 +10,14 @@ export const moodValidator = v.union(
   v.literal("frustrated"),
   v.literal("hopeful"),
   v.literal("nostalgic"),
-  v.literal("motivated")
+  v.literal("motivated"),
 );
 
 export const importanceValidator = v.union(
   v.literal("critical"),
   v.literal("high"),
   v.literal("normal"),
-  v.literal("low")
+  v.literal("low"),
 );
 
 export const lifeAreaValidator = v.union(
@@ -30,20 +30,17 @@ export const lifeAreaValidator = v.union(
   v.literal("education"),
   v.literal("travel"),
   v.literal("self-care"),
-  v.literal("relationships")
+  v.literal("relationships"),
 );
 
 export const recurrenceValidator = v.union(
   v.literal("yearly"),
   v.literal("monthly"),
   v.literal("weekly"),
-  v.literal("daily")
+  v.literal("daily"),
 );
 
-export const memoryEntryKindValidator = v.union(
-  v.literal("memory"),
-  v.literal("reminder")
-);
+export const memoryEntryKindValidator = v.union(v.literal("memory"), v.literal("reminder"));
 
 export const memoryScheduleValidator = v.object({
   dueAt: v.string(),
@@ -56,14 +53,9 @@ export const extractedActionsValidator = v.array(
     action: v.string(),
     completed: v.boolean(),
     actionType: v.optional(
-      v.union(
-        v.literal("task"),
-        v.literal("reminder"),
-        v.literal("fact"),
-        v.literal("decision")
-      )
+      v.union(v.literal("task"), v.literal("reminder"), v.literal("fact"), v.literal("decision")),
     ),
-  })
+  }),
 );
 
 export const contextTagsValidator = v.object({
@@ -76,14 +68,10 @@ export const contextTagsValidator = v.object({
 export const energyLevelValidator = v.union(
   v.literal("high"),
   v.literal("medium"),
-  v.literal("low")
+  v.literal("low"),
 );
 
-export const priorityValidator = v.union(
-  v.literal("high"),
-  v.literal("normal"),
-  v.literal("low")
-);
+export const priorityValidator = v.union(v.literal("high"), v.literal("normal"), v.literal("low"));
 
 /**
  * Audit log action types
@@ -103,5 +91,5 @@ export const auditActionValidator = v.union(
   v.literal("account.logout"),
   v.literal("account.delete"),
   v.literal("encryption.setup"),
-  v.literal("encryption.rekey")
+  v.literal("encryption.rekey"),
 );

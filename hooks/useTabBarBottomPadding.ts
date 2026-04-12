@@ -12,8 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 export function useTabBarBottomPadding(): number {
   const insets = useSafeAreaInsets();
   // On Android raw insets can be 0 even with gesture bar – add a 8px floor
-  const safeBottom =
-    Platform.OS === "android" ? Math.max(insets.bottom, 8) : insets.bottom;
+  const safeBottom = Platform.OS === "android" ? Math.max(insets.bottom, 8) : insets.bottom;
   // 60 (bar) + 14 (float margin) + 80 (fade) + safeBottom
   return 60 + 14 + 80 + safeBottom;
 }

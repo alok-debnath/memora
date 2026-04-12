@@ -2,14 +2,15 @@
 
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
-import { action } from "../_generated/server";
+import { action, type ActionCtx } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import {
-  embedText,
   extractTextContent,
   getOpenAIClient,
   OPENAI_CHAT_MODEL,
   safeJsonParse,
+  trackedChatCompletion,
+  trackedEmbedText,
 } from "../lib/openai";
 import { normalizeMemoryFields } from "../lib/aiNormalization";
 import { toStoredMemoryFields } from "../lib/memoryKind";
@@ -63,7 +64,11 @@ type AIExtractedMemory = {
   conflicts?: Conflict[];
 };
 
-function buildExtractionSystemPrompt(userTz: string, currentTime: string, existingContext?: string): string {
+function buildExtractionSystemPrompt(
+  userTz: string,
+  currentTime: string,
+  existingContext?: string,
+): string {
   const now = new Date(currentTime);
   const localDateStr = now.toLocaleDateString("en-US", {
     timeZone: userTz,
@@ -122,9 +127,7 @@ function fallbackStructuredData(content: string): AIExtractedMemory {
 
 function hasExplicitSchedulingFields(value: Record<string, unknown>) {
   return (
-    value.entryKind !== undefined ||
-    value.entry_kind !== undefined ||
-    value.schedule !== undefined
+    value.entryKind !== undefined || value.entry_kind !== undefined || value.schedule !== undefined
   );
 }
 
@@ -177,122 +180,155 @@ function buildEmbeddingText(args: {
 export { buildEmbeddingText };
 
 async function extractStructuredMemory(args: {
-  client: NonNullable<ReturnType<typeof getOpenAIClient>>;
+  ctx: Pick<ActionCtx, "runMutation">;
+  userId: Id<"users">;
   input: string;
   userTz: string;
   currentTime: string;
   existingMemories?: string;
 }) {
-  const response = await args.client.chat.completions.create({
-    model: OPENAI_CHAT_MODEL,
-    temperature: 0.3,
-    messages: [
-      {
-        role: "system",
-        content: buildExtractionSystemPrompt(args.userTz, args.currentTime, args.existingMemories),
-      },
-      { role: "user", content: args.input },
-    ],
-    tools: [
-      {
-        type: "function",
-        function: {
-          name: "create_memory",
-          description: "Extract structured metadata and detect conflicts",
-          parameters: {
-            type: "object",
-            properties: {
-              title: {
-                type: "string",
-                description:
-                  "Concise title, max 8 words. For reminders, keep title topic-only and never include date/time.",
-              },
-              content: { type: "string", description: "Full memory content" },
-              entry_kind: {
-                type: "string",
-                enum: ["memory", "reminder"],
-              },
-              schedule: {
-                type: "object",
-                properties: {
-                  due_at: {
-                    type: "string",
-                    description:
-                      "Exact ISO 8601 UTC datetime. Only for explicit reminders with a real schedule.",
-                  },
-                  is_recurring: { type: "boolean" },
-                  recurrence_type: {
-                    type: "string",
-                    enum: ["yearly", "monthly", "weekly", "daily"],
-                  },
+  const response = await trackedChatCompletion(args.ctx, {
+    userId: args.userId,
+    feature: "memory_processing",
+    metadata: { stage: "structured_extract" },
+    request: {
+      model: OPENAI_CHAT_MODEL,
+      temperature: 0.3,
+      messages: [
+        {
+          role: "system",
+          content: buildExtractionSystemPrompt(
+            args.userTz,
+            args.currentTime,
+            args.existingMemories,
+          ),
+        },
+        { role: "user", content: args.input },
+      ],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "create_memory",
+            description: "Extract structured metadata and detect conflicts",
+            parameters: {
+              type: "object",
+              properties: {
+                title: {
+                  type: "string",
+                  description:
+                    "Concise title, max 8 words. For reminders, keep title topic-only and never include date/time.",
                 },
-                additionalProperties: false,
-              },
-              people: { type: "array", items: { type: "string" } },
-              locations: { type: "array", items: { type: "string" } },
-              importance: {
-                type: "string",
-                enum: ["critical", "high", "normal", "low"],
-              },
-              life_area: {
-                type: "string",
-                enum: ["career", "family", "health", "finance", "social", "hobbies", "education", "travel", "self-care", "relationships"],
-              },
-              context_tags: {
-                type: "object",
-                properties: {
-                  who: { type: "array", items: { type: "string" } },
-                  what: { type: "string" },
-                  where: { type: "string" },
-                  why: { type: "string" },
+                content: { type: "string", description: "Full memory content" },
+                entry_kind: {
+                  type: "string",
+                  enum: ["memory", "reminder"],
                 },
-              },
-              sentiment_score: { type: "number", description: "-1.0 to 1.0" },
-              linked_urls: { type: "array", items: { type: "string" } },
-              extracted_actions: {
-                type: "array",
-                items: {
+                schedule: {
                   type: "object",
                   properties: {
-                    text: { type: "string" },
-                    type: { type: "string", enum: ["task", "reminder", "fact", "decision"] },
+                    due_at: {
+                      type: "string",
+                      description:
+                        "Exact ISO 8601 UTC datetime. Only for explicit reminders with a real schedule.",
+                    },
+                    is_recurring: { type: "boolean" },
+                    recurrence_type: {
+                      type: "string",
+                      enum: ["yearly", "monthly", "weekly", "daily"],
+                    },
                   },
-                  required: ["text", "type"],
+                  additionalProperties: false,
                 },
-              },
-              conflicts: {
-                type: "array",
-                items: {
+                people: { type: "array", items: { type: "string" } },
+                locations: { type: "array", items: { type: "string" } },
+                importance: {
+                  type: "string",
+                  enum: ["critical", "high", "normal", "low"],
+                },
+                life_area: {
+                  type: "string",
+                  enum: [
+                    "career",
+                    "family",
+                    "health",
+                    "finance",
+                    "social",
+                    "hobbies",
+                    "education",
+                    "travel",
+                    "self-care",
+                    "relationships",
+                  ],
+                },
+                context_tags: {
                   type: "object",
                   properties: {
-                    existingMemoryId: { type: "string" },
-                    existingMemoryTitle: { type: "string" },
-                    conflictType: { type: "string", enum: ["factual", "decision", "schedule", "preference"] },
-                    description: { type: "string" },
-                    suggestion: { type: "string", enum: ["keep_new", "keep_old", "merge", "review"] },
+                    who: { type: "array", items: { type: "string" } },
+                    what: { type: "string" },
+                    where: { type: "string" },
+                    why: { type: "string" },
                   },
-                  required: ["existingMemoryId", "conflictType", "description", "suggestion"],
+                },
+                sentiment_score: { type: "number", description: "-1.0 to 1.0" },
+                linked_urls: { type: "array", items: { type: "string" } },
+                extracted_actions: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      text: { type: "string" },
+                      type: {
+                        type: "string",
+                        enum: ["task", "reminder", "fact", "decision"],
+                      },
+                    },
+                    required: ["text", "type"],
+                  },
+                },
+                conflicts: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      existingMemoryId: { type: "string" },
+                      existingMemoryTitle: { type: "string" },
+                      conflictType: {
+                        type: "string",
+                        enum: ["factual", "decision", "schedule", "preference"],
+                      },
+                      description: { type: "string" },
+                      suggestion: {
+                        type: "string",
+                        enum: ["keep_new", "keep_old", "merge", "review"],
+                      },
+                    },
+                    required: ["existingMemoryId", "conflictType", "description", "suggestion"],
+                  },
                 },
               },
+              required: ["content"],
+              additionalProperties: false,
             },
-            required: ["content"],
-            additionalProperties: false,
           },
         },
-      },
-    ],
-    tool_choice: { type: "function", function: { name: "create_memory" } },
+      ],
+      tool_choice: { type: "function", function: { name: "create_memory" } },
+    },
   });
 
   const toolCall = response.choices[0]?.message?.tool_calls?.[0];
   return safeJsonParse<Record<string, unknown>>(
     toolCall?.type === "function"
       ? toolCall.function.arguments
-      : extractTextContent(response.choices[0]?.message?.content)
+      : extractTextContent(response.choices[0]?.message?.content),
   );
 }
 
 async function buildMemoryEmbedding(args: {
+  ctx: Pick<ActionCtx, "runMutation">;
+  userId: Id<"users">;
+  feature: "memory_processing" | "memory_capture";
   title?: string;
   content: string;
   people?: string[];
@@ -300,16 +336,18 @@ async function buildMemoryEmbedding(args: {
   lifeArea?: string;
   entryKind?: string;
 }) {
-  return await embedText(
-    buildEmbeddingText({
+  return await trackedEmbedText(args.ctx, {
+    userId: args.userId,
+    feature: args.feature,
+    input: buildEmbeddingText({
       title: args.title,
       content: args.content,
       people: args.people,
       locations: args.locations,
       lifeArea: args.lifeArea,
       entryKind: args.entryKind,
-    })
-  );
+    }),
+  });
 }
 
 export const processMemory = action({
@@ -340,14 +378,23 @@ export const processMemory = action({
     // Find conflict candidates BEFORE the LLM call to provide context
     let existingMemoriesContext = "";
     try {
-      let candidates: Array<{ _id: Id<"memories">; title?: string; content?: string }> = [];
-      const queryEmbedding = await embedText(args.content.slice(0, 4000));
+      let candidates: Array<{
+        _id: Id<"memories">;
+        title?: string;
+        content?: string;
+      }> = [];
+      const queryEmbedding = await trackedEmbedText(ctx, {
+        userId: memory.userId,
+        feature: "memory_processing",
+        input: args.content.slice(0, 4000),
+        metadata: { stage: "conflict_prefetch" },
+      });
       const semanticallySimilar = await ctx.vectorSearch("memories", "by_embedding", {
         vector: queryEmbedding,
         limit: 8,
         filter: (q) => q.eq("userId", memory.userId),
       });
-      
+
       const similarIds = semanticallySimilar
         .filter((result) => result._id !== args.memoryId && result._score > 0.65)
         .map((result) => result._id);
@@ -366,8 +413,8 @@ export const processMemory = action({
       }
 
       existingMemoriesContext = candidates
-        .filter(m => m._id !== args.memoryId)
-        .map(m => `[${m._id}] ${m.title ?? "Untitled"}: ${(m.content ?? "").slice(0, 200)}`)
+        .filter((m) => m._id !== args.memoryId)
+        .map((m) => `[${m._id}] ${m.title ?? "Untitled"}: ${(m.content ?? "").slice(0, 200)}`)
         .join("\n");
     } catch (e) {
       console.error("Error finding conflict candidates in background:", e);
@@ -376,7 +423,8 @@ export const processMemory = action({
     let extracted: Record<string, unknown> | null = null;
     try {
       extracted = await extractStructuredMemory({
-        client,
+        ctx,
+        userId: memory.userId,
         input: `Memory title: ${args.title}\nMemory content: ${args.content}`,
         userTz,
         currentTime,
@@ -392,23 +440,22 @@ export const processMemory = action({
         : normalizeMemoryFields({});
       const normalizedTitle =
         normalized.entryKind === "reminder" && normalized.schedule?.dueAt
-          ? getReminderTitleWithoutSchedule(
-              normalized.title ?? args.title,
-              args.content
-            )
+          ? getReminderTitleWithoutSchedule(normalized.title ?? args.title, args.content)
           : normalized.title;
       const normalizedForWrite = {
         ...normalized,
         title: normalizedTitle,
       };
-      const existingIsReminder =
-        memory.entryKind === "reminder" && !!memory.schedule?.dueAt;
+      const existingIsReminder = memory.entryKind === "reminder" && !!memory.schedule?.dueAt;
       const extractionHasSchedule = !!normalizedForWrite.schedule?.dueAt;
       const shouldUpdateScheduling =
         !!extracted &&
         hasExplicitSchedulingFields(extracted) &&
         (extractionHasSchedule || !existingIsReminder);
       const embedding = await buildMemoryEmbedding({
+        ctx,
+        userId: memory.userId,
+        feature: "memory_processing",
         title: normalizedForWrite.title ?? args.title,
         content: args.content,
         people: normalizedForWrite.people,
@@ -462,7 +509,10 @@ export const captureMemory = action({
     currentTime: v.optional(v.string()),
     currentTimezone: v.optional(v.string()),
   },
-  handler: async (ctx, args): Promise<{
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
     memoryId: Id<"memories">;
     structured: AIExtractedMemory;
     embedding?: number[];
@@ -479,21 +529,29 @@ export const captureMemory = action({
 
     const client = getOpenAIClient();
     if (client) {
-      const userTz =
-        args.currentTimezone?.trim() || session.timezone || "UTC";
+      const userTz = args.currentTimezone?.trim() || session.timezone || "UTC";
       const currentTime = args.currentTime ?? new Date().toISOString();
 
       // Find conflict candidates BEFORE the LLM call to provide context
       let existingMemoriesContext = "";
       try {
-        let candidates: Array<{ _id: Id<"memories">; title?: string; content?: string }> = [];
-        const queryEmbedding = await embedText(args.content.slice(0, 4000));
+        let candidates: Array<{
+          _id: Id<"memories">;
+          title?: string;
+          content?: string;
+        }> = [];
+        const queryEmbedding = await trackedEmbedText(ctx, {
+          userId: session._id,
+          feature: "memory_capture",
+          input: args.content.slice(0, 4000),
+          metadata: { stage: "conflict_prefetch" },
+        });
         const semanticallySimilar = await ctx.vectorSearch("memories", "by_embedding", {
           vector: queryEmbedding,
           limit: 8,
           filter: (q) => q.eq("userId", session._id),
         });
-        
+
         const similarIds = semanticallySimilar
           .filter((result) => result._score > 0.65)
           .map((result) => result._id);
@@ -512,7 +570,7 @@ export const captureMemory = action({
         }
 
         existingMemoriesContext = candidates
-          .map(m => `[${m._id}] ${m.title ?? "Untitled"}: ${(m.content ?? "").slice(0, 200)}`)
+          .map((m) => `[${m._id}] ${m.title ?? "Untitled"}: ${(m.content ?? "").slice(0, 200)}`)
           .join("\n");
       } catch (e) {
         console.error("Error finding conflict candidates:", e);
@@ -520,7 +578,8 @@ export const captureMemory = action({
 
       try {
         const analysisRaw = await extractStructuredMemory({
-          client,
+          ctx,
+          userId: session._id,
           input: args.content,
           userTz,
           currentTime,
@@ -535,7 +594,7 @@ export const captureMemory = action({
           if (structured.entryKind === "reminder" && structured.schedule?.dueAt) {
             structured.title = getReminderTitleWithoutSchedule(
               structured.title ?? fallback.title,
-              args.content
+              args.content,
             );
           }
         }
@@ -545,6 +604,9 @@ export const captureMemory = action({
 
       try {
         embedding = await buildMemoryEmbedding({
+          ctx,
+          userId: session._id,
+          feature: "memory_capture",
           title: structured.title,
           content: args.content,
           people: structured.people,

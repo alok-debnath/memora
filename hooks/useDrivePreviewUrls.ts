@@ -11,10 +11,7 @@ type PreviewableAttachment = {
 const PREVIEW_TTL_MS = 10 * 60 * 1000;
 const previewCache = new Map<string, { url: string; fetchedAt: number }>();
 
-function arePreviewMapsEqual(
-  left: Record<string, string>,
-  right: Record<string, string>
-) {
+function arePreviewMapsEqual(left: Record<string, string>, right: Record<string, string>) {
   const leftKeys = Object.keys(left);
   const rightKeys = Object.keys(right);
   if (leftKeys.length !== rightKeys.length) {
@@ -30,21 +27,19 @@ function arePreviewMapsEqual(
   return true;
 }
 
-export function useDrivePreviewUrls(
-  attachments: PreviewableAttachment[],
-  token?: string | null
-) {
+export function useDrivePreviewUrls(attachments: PreviewableAttachment[], token?: string | null) {
   const getDrivePreviewUrls = useAction(api.integrations.getDrivePreviewUrls);
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
 
   const imageFileIds = useMemo(
-    () =>
-      [...new Set(
+    () => [
+      ...new Set(
         attachments
           .filter((attachment) => attachment.type === "image" && !!attachment.driveFileId)
-          .map((attachment) => attachment.driveFileId!)
-      )],
-    [attachments]
+          .map((attachment) => attachment.driveFileId!),
+      ),
+    ],
+    [attachments],
   );
   const imageFileIdsKey = imageFileIds.join("|");
 
@@ -62,9 +57,7 @@ export function useDrivePreviewUrls(
       }
     }
 
-    setPreviewUrls((current) =>
-      arePreviewMapsEqual(current, cached) ? current : cached
-    );
+    setPreviewUrls((current) => (arePreviewMapsEqual(current, cached) ? current : cached));
 
     if (!token || missing.length === 0) {
       return;

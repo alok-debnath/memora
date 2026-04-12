@@ -29,7 +29,7 @@ function getContribution(memory: MemoryDoc | null) {
 
 async function getStatsDoc(
   ctx: StatsDbCtx,
-  userId: Id<"users">
+  userId: Id<"users">,
 ): Promise<UserMemoryStatsDoc | null> {
   return await ctx.db
     .query("userMemoryStats")
@@ -37,10 +37,7 @@ async function getStatsDoc(
     .unique();
 }
 
-async function ensureStatsDoc(
-  ctx: StatsDbCtx,
-  userId: Id<"users">
-): Promise<UserMemoryStatsDoc> {
+async function ensureStatsDoc(ctx: StatsDbCtx, userId: Id<"users">): Promise<UserMemoryStatsDoc> {
   const existing = await getStatsDoc(ctx, userId);
   if (existing) {
     return existing;
@@ -64,7 +61,7 @@ async function applyDailyDelta(
   ctx: StatsDbCtx,
   userId: Id<"users">,
   dayKey: string,
-  delta: number
+  delta: number,
 ) {
   if (delta === 0) {
     return;
@@ -100,7 +97,7 @@ async function applyDailyDelta(
 export async function applyUserMemoryStatsTransition(
   ctx: StatsDbCtx,
   previous: MemoryDoc | null,
-  next: MemoryDoc | null
+  next: MemoryDoc | null,
 ) {
   const targetUserId = next?.userId ?? previous?.userId;
   if (!targetUserId) {
@@ -151,10 +148,7 @@ export async function applyUserMemoryStatsTransition(
   }
 }
 
-export async function rebuildUserMemoryStats(
-  ctx: StatsDbCtx,
-  userId: Id<"users">
-) {
+export async function rebuildUserMemoryStats(ctx: StatsDbCtx, userId: Id<"users">) {
   const stats = await ensureStatsDoc(ctx, userId);
 
   while (true) {
@@ -188,10 +182,7 @@ export async function rebuildUserMemoryStats(
     totalMemories += contribution.totalMemories;
     totalReminders += contribution.totalReminders;
     recurringCount += contribution.recurringCount;
-    dailyCounts.set(
-      contribution.dayKey,
-      (dailyCounts.get(contribution.dayKey) ?? 0) + 1
-    );
+    dailyCounts.set(contribution.dayKey, (dailyCounts.get(contribution.dayKey) ?? 0) + 1);
   }
 
   await ctx.db.patch(stats._id, {

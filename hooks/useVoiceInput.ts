@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ExpoSpeechRecognitionModule,
-  useSpeechRecognitionEvent,
-} from "expo-speech-recognition";
+import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from "expo-speech-recognition";
 import {
   getBestTranscript,
   isSpeechRecognitionAvailable,
@@ -28,9 +25,7 @@ const SPEECH_END_STOP_MS = 800;
  *
  * Mirrors the Web Speech API approach: minimal config, system picks backend.
  */
-export function useVoiceInput(
-  onComplete: (text: string) => void,
-): UseVoiceInputReturn {
+export function useVoiceInput(onComplete: (text: string) => void): UseVoiceInputReturn {
   const [isListening, setIsListening] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState("");
 
@@ -124,7 +119,11 @@ export function useVoiceInput(
           ? "Try speaking louder or closer to the mic."
           : undefined;
 
-    showToastImperative({ title, message, tone: event.error === "no-speech" ? "warning" : "error" });
+    showToastImperative({
+      title,
+      message,
+      tone: event.error === "no-speech" ? "warning" : "error",
+    });
   });
 
   // ── Controls ─────────────────────────────────────────────────────────────

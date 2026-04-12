@@ -6,7 +6,7 @@ type ReminderLike = Pick<
 >;
 
 export function isSyncableReminder(
-  memory: Doc<"memories"> | null | undefined
+  memory: Doc<"memories"> | null | undefined,
 ): memory is Doc<"memories"> & {
   status: "active";
   entryKind: "reminder";

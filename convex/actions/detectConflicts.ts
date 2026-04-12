@@ -2,14 +2,14 @@
 
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
-import { action } from "../_generated/server";
+import { action, type ActionCtx } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import {
-  embedText,
   extractTextContent,
-  getOpenAIClient,
   OPENAI_CHAT_MODEL,
   safeJsonParse,
+  trackedChatCompletion,
+  trackedEmbedText,
 } from "../lib/openai";
 
 type Conflict = {
@@ -32,11 +32,6 @@ export const detectConflicts = action({
     embedding: v.optional(v.array(v.float64())),
   },
   handler: async (ctx, args): Promise<ConflictResult> => {
-    const client = getOpenAIClient();
-    if (!client) {
-      return { conflicts: [] };
-    }
-
     const session = await ctx.runQuery(api.auth.me, { token: args.token });
     if (!session) {
       throw new Error("Unauthorized");
@@ -47,7 +42,12 @@ export const detectConflicts = action({
     let semanticallySimilar: Array<{ _id: Id<"memories">; _score: number }> = [];
     try {
       const embedding =
-        args.embedding ?? (await embedText(args.content.slice(0, 4000)));
+        args.embedding ??
+        (await trackedEmbedText(ctx, {
+          userId: session._id,
+          feature: "conflict_detection",
+          input: args.content.slice(0, 4000),
+        }));
       semanticallySimilar = await ctx.vectorSearch("memories", "by_embedding", {
         vector: embedding,
         limit: 8,
@@ -75,10 +75,13 @@ export const detectConflicts = action({
       }
 
       const memoryText = filteredCandidates
-        .map((memory: { _id: Id<"memories">; title?: string; content?: string }) => `[${memory._id}] ${memory.title ?? ""}: ${(memory.content ?? "").slice(0, 150)}`)
+        .map(
+          (memory: { _id: Id<"memories">; title?: string; content?: string }) =>
+            `[${memory._id}] ${memory.title ?? ""}: ${(memory.content ?? "").slice(0, 150)}`,
+        )
         .join("\n");
 
-      return analyzeConflicts(client, args.content, memoryText);
+      return analyzeConflicts(ctx, session._id, args.content, memoryText);
     }
 
     const memories = await ctx.runQuery(internal.memories.listByIdsInternal, {
@@ -87,31 +90,35 @@ export const detectConflicts = action({
     });
     const candidateMemories = memories.map(
       (memory: { _id: Id<"memories">; title?: string; content?: string }) =>
-        `[${memory._id}] ${memory.title ?? ""}: ${(memory.content ?? "").slice(0, 150)}`
+        `[${memory._id}] ${memory.title ?? ""}: ${(memory.content ?? "").slice(0, 150)}`,
     );
 
     if (candidateMemories.length === 0) {
       return { conflicts: [] };
     }
 
-    return analyzeConflicts(client, args.content, candidateMemories.join("\n"));
+    return analyzeConflicts(ctx, session._id, args.content, candidateMemories.join("\n"));
   },
 });
 
 async function analyzeConflicts(
-  client: NonNullable<ReturnType<typeof getOpenAIClient>>,
+  ctx: Pick<ActionCtx, "runMutation">,
+  userId: Id<"users">,
   newContent: string,
-  existingText: string
+  existingText: string,
 ): Promise<ConflictResult> {
   try {
-    const response = await client.chat.completions.create({
-      model: OPENAI_CHAT_MODEL,
-      temperature: 0.2,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content: `You are a memory conflict detector. Compare a NEW memory against EXISTING memories and identify contradictions or outdated information.
+    const response = await trackedChatCompletion(ctx, {
+      userId,
+      feature: "conflict_detection",
+      request: {
+        model: OPENAI_CHAT_MODEL,
+        temperature: 0.2,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: `You are a memory conflict detector. Compare a NEW memory against EXISTING memories and identify contradictions or outdated information.
 
 Look for:
 - Factual contradictions (e.g., different passwords, addresses, phone numbers for the same thing)
@@ -124,18 +131,19 @@ Only report REAL conflicts where information genuinely contradicts. Do NOT flag 
 Return JSON: {"conflicts": [{"existingMemoryId": "...", "existingMemoryTitle": "...", "conflictType": "factual|decision|schedule|preference", "description": "brief explanation", "suggestion": "keep_new|keep_old|merge|review"}]}
 
 Return an empty conflicts array if none exist.`,
-        },
-        {
-          role: "user",
-          content: `New memory: ${newContent}\n\nExisting memories:\n${existingText}`,
-        },
-      ],
+          },
+          {
+            role: "user",
+            content: `New memory: ${newContent}\n\nExisting memories:\n${existingText}`,
+          },
+        ],
+      },
     });
 
     return (
-      safeJsonParse<ConflictResult>(
-        extractTextContent(response.choices[0]?.message?.content)
-      ) ?? { conflicts: [] }
+      safeJsonParse<ConflictResult>(extractTextContent(response.choices[0]?.message?.content)) ?? {
+        conflicts: [],
+      }
     );
   } catch {
     return { conflicts: [] };

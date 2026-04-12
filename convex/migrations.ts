@@ -22,10 +22,7 @@ export const backfillMemoryDerivedFields = migrations.define({
   migrateOne: async (ctx, memory) => {
     const nextDueAt = deriveNextDueAt(memory);
     const embeddingState = deriveEmbeddingState(memory.embedding);
-    if (
-      memory.nextDueAt === nextDueAt &&
-      memory.embeddingState === embeddingState
-    ) {
+    if (memory.nextDueAt === nextDueAt && memory.embeddingState === embeddingState) {
       return;
     }
     return {
@@ -48,10 +45,9 @@ export const runMemoryPerformanceMigrations = migrations.runner([
   internal.migrations.backfillUserMemoryStats,
 ]);
 
-
 async function repairTopicMetadataForUser(
   ctx: Pick<ActionCtx, "runQuery" | "runMutation">,
-  userId: Id<"users">
+  userId: Id<"users">,
 ) {
   const memoryTopicRefs: Array<{
     _id: Id<"memories">;
@@ -113,10 +109,7 @@ export const repairMyTopicMetadata = action({
   args: {
     token: v.string(),
   },
-  handler: async (
-    ctx,
-    args
-  ): Promise<{ repairedMemories: number; repairedTopics: number }> => {
+  handler: async (ctx, args): Promise<{ repairedMemories: number; repairedTopics: number }> => {
     const session: { _id: Id<"users"> } | null = await ctx.runQuery(api.auth.me, {
       token: args.token,
     });
@@ -135,7 +128,7 @@ export const repairAllUsersTopicMetadata = internalAction({
   },
   handler: async (
     ctx,
-    args
+    args,
   ): Promise<{
     repairedUsers: number;
     repairedMemories: number;
@@ -197,12 +190,12 @@ export const wipeAllUserData = mutation({
     if (args.confirmPhrase !== "DELETE ALL MY DATA") {
       throw new Error("Invalid confirmation phrase");
     }
-    
+
     const user = await resolveUser(ctx);
     const BATCH = 200;
     let totalDeleted = 0;
     let hasMore = false;
-    
+
     // Delete from all tables in batches
     const tables = [
       "memoryAttachments",
@@ -212,45 +205,45 @@ export const wipeAllUserData = mutation({
       "nudges",
       "chatMessages",
     ] as const;
-    
+
     for (const table of tables) {
       const docs = await ctx.db
         .query(table)
         .withIndex("by_user", (q) => q.eq("userId", user._id))
         .take(BATCH);
-      
+
       for (const doc of docs) {
         await ctx.db.delete(doc._id);
         totalDeleted++;
       }
-      
+
       if (docs.length >= BATCH) hasMore = true;
     }
-    
+
     // Delete shared memories
     const shares = await ctx.db
       .query("sharedMemories")
       .withIndex("by_user", (q) => q.eq("sharedByUserId", user._id))
       .take(BATCH);
-    
+
     for (const share of shares) {
       await ctx.db.delete(share._id);
       totalDeleted++;
     }
     if (shares.length >= BATCH) hasMore = true;
-    
+
     // Delete memories
     const memories = await ctx.db
       .query("memories")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .take(BATCH);
-    
+
     for (const memory of memories) {
       await ctx.db.delete(memory._id);
       totalDeleted++;
     }
     if (memories.length >= BATCH) hasMore = true;
-    
+
     // Log the deletion
     await ctx.db.insert("auditLogs", {
       userId: user._id,
@@ -262,7 +255,7 @@ export const wipeAllUserData = mutation({
       },
       timestamp: Date.now(),
     });
-    
+
     if (hasMore) {
       // More data to delete - client should call again
       return {
@@ -271,7 +264,7 @@ export const wipeAllUserData = mutation({
         deletedThisBatch: totalDeleted,
       };
     }
-    
+
     return {
       success: true,
       message: "All data deleted",

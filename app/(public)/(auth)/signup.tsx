@@ -86,7 +86,7 @@ export default function SignupScreen() {
           autoComplete="new-password"
           textContentType="newPassword"
           returnKeyType="next"
-          accessory={(
+          accessory={
             <PressableScale
               onPress={() => setShowPassword((value) => !value)}
               style={{ paddingHorizontal: 10, paddingVertical: 8 }}
@@ -95,7 +95,7 @@ export default function SignupScreen() {
                 {showPassword ? "Hide" : "Show"}
               </Text>
             </PressableScale>
-          )}
+          }
         />
 
         <AppTextField
@@ -107,7 +107,7 @@ export default function SignupScreen() {
           autoComplete="new-password"
           textContentType="newPassword"
           returnKeyType="done"
-          accessory={(
+          accessory={
             <PressableScale
               onPress={() => setShowConfirmPassword((value) => !value)}
               style={{ paddingHorizontal: 10, paddingVertical: 8 }}
@@ -116,7 +116,7 @@ export default function SignupScreen() {
                 {showConfirmPassword ? "Hide" : "Show"}
               </Text>
             </PressableScale>
-          )}
+          }
         />
 
         <AppButton

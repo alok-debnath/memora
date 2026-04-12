@@ -12,12 +12,7 @@ type InlineNoticeProps = {
   description: string;
 };
 
-export function InlineNotice({
-  tone = "neutral",
-  icon,
-  title,
-  description,
-}: InlineNoticeProps) {
+export function InlineNotice({ tone = "neutral", icon, title, description }: InlineNoticeProps) {
   const theme = useAppTheme();
   const colors = getStatusColors(theme, tone);
 

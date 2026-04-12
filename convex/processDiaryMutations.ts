@@ -14,18 +14,12 @@ export const updateDiaryAnalysis = internalMutation({
       v.array(
         v.object({
           habit: v.string(),
-          sentiment: v.union(
-            v.literal("positive"),
-            v.literal("negative"),
-            v.literal("neutral")
-          ),
+          sentiment: v.union(v.literal("positive"), v.literal("negative"), v.literal("neutral")),
           frequencyHint: v.optional(v.string()),
-        })
-      )
+        }),
+      ),
     ),
-    personalityTraits: v.optional(
-      v.array(v.object({ trait: v.string(), evidence: v.string() }))
-    ),
+    personalityTraits: v.optional(v.array(v.object({ trait: v.string(), evidence: v.string() }))),
     likes: v.optional(v.array(v.string())),
     dislikes: v.optional(v.array(v.string())),
     actionItems: v.optional(v.array(v.string())),
@@ -33,18 +27,17 @@ export const updateDiaryAnalysis = internalMutation({
   handler: async (ctx, args) => {
     await ctx.db.patch(args.entryId, {
       correctedText: args.correctedText,
-      mood:
-        args.mood as
-          | "happy"
-          | "sad"
-          | "anxious"
-          | "excited"
-          | "neutral"
-          | "grateful"
-          | "frustrated"
-          | "hopeful"
-          | "nostalgic"
-          | "motivated",
+      mood: args.mood as
+        | "happy"
+        | "sad"
+        | "anxious"
+        | "excited"
+        | "neutral"
+        | "grateful"
+        | "frustrated"
+        | "hopeful"
+        | "nostalgic"
+        | "motivated",
       energyLevel: args.energyLevel as "high" | "medium" | "low",
       topics: args.topics,
       summary: args.summary,

@@ -77,7 +77,13 @@ function MemoryRow({
         <Text fontSize={15} fontFamily="$body" fontWeight="600" color="$color" numberOfLines={1}>
           {title?.trim() || "Untitled memory"}
         </Text>
-        <Text fontSize={12} fontFamily="$body" color="$colorMuted" lineHeight={18} numberOfLines={2}>
+        <Text
+          fontSize={12}
+          fontFamily="$body"
+          color="$colorMuted"
+          lineHeight={18}
+          numberOfLines={2}
+        >
           {content?.trim() || "No preview available"}
         </Text>
         <Text fontSize={11} fontFamily="$body" color="$colorMuted">
@@ -129,9 +135,18 @@ function MemoryRow({
               {i > 0 && <YStack height={1} backgroundColor={theme.borderColor.val} />}
               <PressableScale
                 onPress={item.onPress}
-                style={{ paddingHorizontal: 14, paddingVertical: 11, minWidth: 160 }}
+                style={{
+                  paddingHorizontal: 14,
+                  paddingVertical: 11,
+                  minWidth: 160,
+                }}
               >
-                <Text fontSize={13} fontFamily="$body" fontWeight="600" color={item.color ?? theme.primary.val}>
+                <Text
+                  fontSize={13}
+                  fontFamily="$body"
+                  fontWeight="600"
+                  color={item.color ?? theme.primary.val}
+                >
                   {item.label}
                 </Text>
               </PressableScale>
@@ -189,7 +204,12 @@ function TabPill({
           minWidth={20}
           alignItems="center"
         >
-          <Text fontSize={10} fontFamily="$body" fontWeight="700" color={active ? "white" : "$colorMuted"}>
+          <Text
+            fontSize={10}
+            fontFamily="$body"
+            fontWeight="700"
+            color={active ? "white" : "$colorMuted"}
+          >
             {count}
           </Text>
         </YStack>
@@ -208,13 +228,15 @@ export default function DataScreen() {
   const [openMenuId, setOpenMenuId] = useState<Id<"memories"> | null>(null);
 
   // Deleted
-  const deletedMemories = useQuery(api.memories.listDeleted, token ? { token, limit: 100 } : "skip") ?? [];
+  const deletedMemories =
+    useQuery(api.memories.listDeleted, token ? { token, limit: 100 } : "skip") ?? [];
   const restoreMemory = useMutation(api.memories.restore);
   const permanentlyRemoveMemory = useMutation(api.memories.permanentlyRemove);
   const permanentlyRemoveAllDeleted = useMutation(api.memories.permanentlyRemoveAllDeleted);
 
   // Completed
-  const completedMemories = useQuery(api.memories.listCompleted, token ? { token, limit: 100 } : "skip") ?? [];
+  const completedMemories =
+    useQuery(api.memories.listCompleted, token ? { token, limit: 100 } : "skip") ?? [];
   const uncompleteMemory = useMutation(api.memories.uncomplete);
   const permanentlyRemoveCompleted = useMutation(api.memories.permanentlyRemoveCompleted);
   const permanentlyRemoveAllCompleted = useMutation(api.memories.permanentlyRemoveAllCompleted);
@@ -243,38 +265,54 @@ export default function DataScreen() {
 
   function handlePermanentDelete(id: Id<"memories">) {
     setOpenMenuId(null);
-    void confirmAction("Delete Forever", "Permanently delete this memory? This cannot be undone.", () => {
-      if (token) void permanentlyRemoveMemory({ token, id });
-    });
+    void confirmAction(
+      "Delete Forever",
+      "Permanently delete this memory? This cannot be undone.",
+      () => {
+        if (token) void permanentlyRemoveMemory({ token, id });
+      },
+    );
   }
 
   function handlePermanentDeleteAll() {
     void confirmAction(
       "Clear All Deleted",
       "Permanently delete all items in the Deleted tab? This cannot be undone.",
-      () => { if (token) void permanentlyRemoveAllDeleted({ token }); }
+      () => {
+        if (token) void permanentlyRemoveAllDeleted({ token });
+      },
     );
   }
 
   function handleUncomplete(id: Id<"memories">) {
     setOpenMenuId(null);
-    void confirmAction("Restore to Active", "Move this completed item back to your active memories?", () => {
-      if (token) void uncompleteMemory({ token, id });
-    });
+    void confirmAction(
+      "Restore to Active",
+      "Move this completed item back to your active memories?",
+      () => {
+        if (token) void uncompleteMemory({ token, id });
+      },
+    );
   }
 
   function handlePermanentRemoveCompleted(id: Id<"memories">) {
     setOpenMenuId(null);
-    void confirmAction("Delete Forever", "Permanently delete this completed item? This cannot be undone.", () => {
-      if (token) void permanentlyRemoveCompleted({ token, id });
-    });
+    void confirmAction(
+      "Delete Forever",
+      "Permanently delete this completed item? This cannot be undone.",
+      () => {
+        if (token) void permanentlyRemoveCompleted({ token, id });
+      },
+    );
   }
 
   function handleClearAllCompleted() {
     void confirmAction(
       "Clear All Completed",
       "Permanently delete all completed reminders? This cannot be undone.",
-      () => { if (token) void permanentlyRemoveAllCompleted({ token }); }
+      () => {
+        if (token) void permanentlyRemoveAllCompleted({ token });
+      },
     );
   }
 
@@ -282,7 +320,9 @@ export default function DataScreen() {
     void confirmAction(
       "Delete All Memory Data",
       "This removes ALL memories, reminders, review cards, topic links, attachments, completed items, and deleted items from your account.",
-      () => { if (token) void clearAllMemoryData({ token }); }
+      () => {
+        if (token) void clearAllMemoryData({ token });
+      },
     );
   }
 
@@ -296,7 +336,13 @@ export default function DataScreen() {
           <XStack alignItems="flex-start" justifyContent="space-between" gap={12}>
             <YStack flex={1} gap={6}>
               <Badge label="Data Controls" color={theme.primary.val} />
-              <Text fontSize={24} lineHeight={30} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text
+                fontSize={24}
+                lineHeight={30}
+                fontFamily="$heading"
+                fontWeight="700"
+                color="$color"
+              >
                 Manage your memory vault
               </Text>
               <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
@@ -321,23 +367,24 @@ export default function DataScreen() {
       <Card style={{ padding: 18, borderRadius: 26 }}>
         <YStack gap={14}>
           {/* Tab pills */}
-          <XStack
-            backgroundColor={theme.secondary.val}
-            borderRadius={14}
-            padding={4}
-            gap={4}
-          >
+          <XStack backgroundColor={theme.secondary.val} borderRadius={14} padding={4} gap={4}>
             <TabPill
               label="Deleted"
               count={deletedMemories.length}
               active={activeTab === "deleted"}
-              onPress={() => { setActiveTab("deleted"); setOpenMenuId(null); }}
+              onPress={() => {
+                setActiveTab("deleted");
+                setOpenMenuId(null);
+              }}
             />
             <TabPill
               label="Completed"
               count={completedMemories.length}
               active={activeTab === "completed"}
-              onPress={() => { setActiveTab("completed"); setOpenMenuId(null); }}
+              onPress={() => {
+                setActiveTab("completed");
+                setOpenMenuId(null);
+              }}
             />
           </XStack>
 
@@ -350,7 +397,8 @@ export default function DataScreen() {
                     Deleted memories
                   </Text>
                   <Text fontSize={13} fontFamily="$body" color="$colorMuted">
-                    Deleted memories are moved to trash and stay here until you remove them forever. You can restore any item at any time — there is no auto-expiry.
+                    Deleted memories are moved to trash and stay here until you remove them forever.
+                    You can restore any item at any time — there is no auto-expiry.
                   </Text>
                   <XStack
                     marginTop={4}
@@ -360,9 +408,21 @@ export default function DataScreen() {
                     gap={8}
                     alignItems="flex-start"
                   >
-                    <Feather name="info" size={13} color={theme.primary.val} style={{ marginTop: 1 }} />
-                    <Text fontSize={12} fontFamily="$body" color={theme.primary.val} flex={1} lineHeight={17}>
-                      Edit &amp; undo history is kept for 7 days. After that, you can still restore deleted memories but cannot undo individual edits.
+                    <Feather
+                      name="info"
+                      size={13}
+                      color={theme.primary.val}
+                      style={{ marginTop: 1 }}
+                    />
+                    <Text
+                      fontSize={12}
+                      fontFamily="$body"
+                      color={theme.primary.val}
+                      flex={1}
+                      lineHeight={17}
+                    >
+                      Edit &amp; undo history is kept for 7 days. After that, you can still restore
+                      deleted memories but cannot undo individual edits.
                     </Text>
                   </XStack>
                 </YStack>
@@ -405,7 +465,10 @@ export default function DataScreen() {
                           setOpenMenuId((cur) => (cur === memory._id ? null : memory._id))
                         }
                         menuItems={[
-                          { label: "Restore", onPress: () => handleRestore(memory._id) },
+                          {
+                            label: "Restore",
+                            onPress: () => handleRestore(memory._id),
+                          },
                           {
                             label: "Delete forever",
                             color: theme.destructive.val,
@@ -499,7 +562,8 @@ export default function DataScreen() {
               Clean slate
             </Text>
             <Text fontSize={13} fontFamily="$body" color="$colorMuted">
-              Removes all memories, reminders, review cards, topic links, attachments, and deleted/completed items.
+              Removes all memories, reminders, review cards, topic links, attachments, and
+              deleted/completed items.
             </Text>
           </YStack>
           <GradientButton

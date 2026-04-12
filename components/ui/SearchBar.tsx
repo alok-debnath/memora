@@ -31,12 +31,9 @@ export function SearchBar({
   useEffect(() => {
     if (isSearching) {
       sparkleOpacity.value = withRepeat(
-        withSequence(
-          withTiming(0.3, { duration: 400 }),
-          withTiming(1, { duration: 400 })
-        ),
+        withSequence(withTiming(0.3, { duration: 400 }), withTiming(1, { duration: 400 })),
         -1,
-        true
+        true,
       );
     } else {
       sparkleOpacity.value = withTiming(1);
@@ -79,17 +76,19 @@ export function SearchBar({
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={theme.colorMuted.val}
-        style={{
-          flex: 1,
-          alignSelf: "stretch",
-          fontSize: 15,
-          fontFamily: FontFamily.regular,
-          padding: 0,
-          color: theme.color.val,
-          // Android centres text within its own internal padding by default
-          textAlignVertical: "center",
-          includeFontPadding: false,
-        } as any}
+        style={
+          {
+            flex: 1,
+            alignSelf: "stretch",
+            fontSize: 15,
+            fontFamily: FontFamily.regular,
+            padding: 0,
+            color: theme.color.val,
+            // Android centres text within its own internal padding by default
+            textAlignVertical: "center",
+            includeFontPadding: false,
+          } as any
+        }
         returnKeyType="search"
       />
       {isSearching && (
@@ -103,11 +102,7 @@ export function SearchBar({
         </Animated.View>
       )}
       {value.length > 0 && !isSearching && (
-        <Pressable
-          onPress={() => onChangeText("")}
-          style={{ alignSelf: "center" }}
-          hitSlop={8}
-        >
+        <Pressable onPress={() => onChangeText("")} style={{ alignSelf: "center" }} hitSlop={8}>
           <Feather name="x" size={16} color={theme.colorMuted.val} />
         </Pressable>
       )}

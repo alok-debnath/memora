@@ -1,8 +1,4 @@
-import type {
-  MemoryEntryKind,
-  MemoryRecurrenceType,
-  MemorySchedule,
-} from "./memory";
+import type { MemoryEntryKind, MemoryRecurrenceType, MemorySchedule } from "./memory";
 
 type MemoryLike = {
   entryKind?: MemoryEntryKind;

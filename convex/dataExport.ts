@@ -15,7 +15,7 @@ export const exportAllData = query({
   args: {},
   handler: async (ctx) => {
     const user = await resolveUser(ctx);
-    
+
     // Fetch all user data from various tables
     const [
       memories,
@@ -70,7 +70,7 @@ export const exportAllData = query({
         .withIndex("by_user", (q) => q.eq("userId", user._id))
         .take(100),
     ]);
-    
+
     // Format the export
     const exportData = {
       exportedAt: new Date().toISOString(),
@@ -185,7 +185,7 @@ export const exportAllData = query({
         consentedAt: new Date(p.consentedAt).toISOString(),
       })),
     };
-    
+
     return exportData;
   },
 });
@@ -197,12 +197,12 @@ export const exportMemoriesOnly = query({
   args: {},
   handler: async (ctx) => {
     const user = await resolveUser(ctx);
-    
+
     const memories = await ctx.db
       .query("memories")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .take(10000);
-    
+
     const active = memories.filter((m) => m.status === "active");
     return {
       exportedAt: new Date().toISOString(),

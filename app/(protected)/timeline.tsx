@@ -19,7 +19,7 @@ function groupByDate(
     title: string;
     content: string;
     _creationTime: number;
-  }>
+  }>,
 ) {
   const now = new Date();
   const today = now.toDateString();
@@ -35,7 +35,11 @@ function groupByDate(
     if (ds === today) label = "Today";
     else if (ds === yesterday) label = "Yesterday";
     else if (d >= weekAgo) label = "This Week";
-    else label = d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+    else
+      label = d.toLocaleDateString(undefined, {
+        month: "long",
+        year: "numeric",
+      });
     if (!groups[label]) groups[label] = [];
     groups[label].push(m);
   });
@@ -57,7 +61,7 @@ export default function TimelineScreen() {
       ? allMemories.filter(
           (memory) =>
             (memory.title ?? "").toLowerCase().includes(query) ||
-            (memory.content ?? "").toLowerCase().includes(query)
+            (memory.content ?? "").toLowerCase().includes(query),
         )
       : allMemories;
 
@@ -69,63 +73,99 @@ export default function TimelineScreen() {
 
   return (
     <MorePageScaffold title="Timeline">
-        <Animated.View entering={FadeInUp.duration(400)}>
-          <Card style={{ padding: 18, borderRadius: 24, backgroundColor: theme.card.val, marginBottom: 14 }}>
-            <YStack flex={1} gap={6}>
-              <Badge label="Chronological" color={theme.primary.val} />
-              <Text fontSize={28} lineHeight={32} fontFamily="$heading" fontWeight="700" color="$color">
-                Timeline
+      <Animated.View entering={FadeInUp.duration(400)}>
+        <Card
+          style={{
+            padding: 18,
+            borderRadius: 24,
+            backgroundColor: theme.card.val,
+            marginBottom: 14,
+          }}
+        >
+          <YStack flex={1} gap={6}>
+            <Badge label="Chronological" color={theme.primary.val} />
+            <Text
+              fontSize={28}
+              lineHeight={32}
+              fontFamily="$heading"
+              fontWeight="700"
+              color="$color"
+            >
+              Timeline
+            </Text>
+            <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
+              Review memories in time order, or narrow the story with a search.
+            </Text>
+          </YStack>
+          <XStack gap={10} marginTop={16}>
+            <Card
+              style={{
+                flex: 1,
+                alignItems: "center",
+                paddingVertical: 12,
+                borderRadius: 18,
+              }}
+            >
+              <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
+                {sorted.length}
               </Text>
-              <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
-                Review memories in time order, or narrow the story with a search.
+              <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">
+                visible
               </Text>
-            </YStack>
-            <XStack gap={10} marginTop={16}>
-              <Card style={{ flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 18 }}>
-                <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
-                  {sorted.length}
-                </Text>
-                <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">
-                  visible
-                </Text>
-              </Card>
-              <Card style={{ flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 18 }}>
-                <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
-                  {sectionCount}
-                </Text>
-                <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">
-                  sections
-                </Text>
-              </Card>
-            </XStack>
-          </Card>
-        </Animated.View>
+            </Card>
+            <Card
+              style={{
+                flex: 1,
+                alignItems: "center",
+                paddingVertical: 12,
+                borderRadius: 18,
+              }}
+            >
+              <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
+                {sectionCount}
+              </Text>
+              <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">
+                sections
+              </Text>
+            </Card>
+          </XStack>
+        </Card>
+      </Animated.View>
 
-        <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search your timeline..." />
+      <SearchBar
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        placeholder="Search your timeline..."
+      />
 
-        {sectionCount === 0 ? (
-          <EmptyState icon="clock" title="No timeline" description="Create memories to see them on your timeline." />
-        ) : (
-          Object.entries(groups).map(([label, items], gi) => (
-            <Animated.View key={label} entering={FadeInUp.delay(gi * 80).duration(400)}>
-              <Text
-                color="$colorMuted"
-                fontSize={11}
-                fontFamily="$body"
-                fontWeight="600"
-                textTransform="uppercase"
-                letterSpacing={1.2}
-                marginTop={16}
-                marginBottom={10}
-                marginLeft={4}
-              >
-                {label}
-              </Text>
-              <YStack gap={10}>
-                {items.map((m, i: number) => (
-                  <MemoryCard
-                    key={m._id}
-                    memory={{
+      {sectionCount === 0 ? (
+        <EmptyState
+          icon="clock"
+          title="No timeline"
+          description="Create memories to see them on your timeline."
+        />
+      ) : (
+        Object.entries(groups).map(([label, items], gi) => (
+          <Animated.View key={label} entering={FadeInUp.delay(gi * 80).duration(400)}>
+            <Text
+              color="$colorMuted"
+              fontSize={11}
+              fontFamily="$body"
+              fontWeight="600"
+              textTransform="uppercase"
+              letterSpacing={1.2}
+              marginTop={16}
+              marginBottom={10}
+              marginLeft={4}
+            >
+              {label}
+            </Text>
+            <YStack gap={10}>
+              {items.map((m, i: number) => (
+                <MemoryCard
+                  key={m._id}
+                  memory={
+                    {
                       ...m,
                       id: m._id,
                       userId: "" as never,
@@ -141,14 +181,15 @@ export default function TimelineScreen() {
                       extractedActions: [],
                       createdAt: new Date(m._creationTime).toISOString(),
                       updatedAt: new Date(m._creationTime).toISOString(),
-                    } as MemoryNote}
-                    index={i}
-                  />
-                ))}
-              </YStack>
-            </Animated.View>
-          ))
-        )}
+                    } as MemoryNote
+                  }
+                  index={i}
+                />
+              ))}
+            </YStack>
+          </Animated.View>
+        ))
+      )}
     </MorePageScaffold>
   );
 }

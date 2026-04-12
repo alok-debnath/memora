@@ -21,11 +21,14 @@ export function SheetHeader({
   const safePad = Math.max(leftWidth, rightWidth);
 
   return (
-    <XStack minHeight={44} paddingVertical={10} paddingHorizontal={paddingHorizontal} alignItems="center">
+    <XStack
+      minHeight={44}
+      paddingVertical={10}
+      paddingHorizontal={paddingHorizontal}
+      alignItems="center"
+    >
       <XStack minWidth={safePad} justifyContent="flex-start" alignItems="center">
-        <XStack onLayout={(e) => setLeftWidth(e.nativeEvent.layout.width)}>
-          {left ?? null}
-        </XStack>
+        <XStack onLayout={(e) => setLeftWidth(e.nativeEvent.layout.width)}>{left ?? null}</XStack>
       </XStack>
 
       <YStack flex={1} alignItems="center" justifyContent="center">
@@ -55,9 +58,7 @@ export function SheetHeader({
       </YStack>
 
       <XStack minWidth={safePad} justifyContent="flex-end" alignItems="center">
-        <XStack onLayout={(e) => setRightWidth(e.nativeEvent.layout.width)}>
-          {right ?? null}
-        </XStack>
+        <XStack onLayout={(e) => setRightWidth(e.nativeEvent.layout.width)}>{right ?? null}</XStack>
       </XStack>
     </XStack>
   );

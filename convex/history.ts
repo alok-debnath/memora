@@ -7,9 +7,16 @@ import { deriveEmbeddingState, toStoredMemoryFields } from "./lib/memoryKind";
 import { parseMemorySnapshot, serializeMemorySnapshot } from "./lib/memorySnapshot";
 import type { Id } from "./_generated/dataModel";
 
-function withDerivedMemoryFields<T extends { entryKind?: "memory" | "reminder"; schedule?: { dueAt: string; isRecurring: boolean; recurrenceType?: "daily" | "weekly" | "monthly" | "yearly" } }>(
-  memory: T
-) {
+function withDerivedMemoryFields<
+  T extends {
+    entryKind?: "memory" | "reminder";
+    schedule?: {
+      dueAt: string;
+      isRecurring: boolean;
+      recurrenceType?: "daily" | "weekly" | "monthly" | "yearly";
+    };
+  },
+>(memory: T) {
   return {
     ...memory,
     ...toStoredMemoryFields({
@@ -131,7 +138,10 @@ export const undo = mutation({
       // memories.restore. We do NOT do a full db.replace here — we just flip
       // the soft-delete flag so nothing else changes.
       if (existing && existing.status === "deleted") {
-        await ctx.db.patch(entry.memoryId, { status: "active", deletedAt: undefined });
+        await ctx.db.patch(entry.memoryId, {
+          status: "active",
+          deletedAt: undefined,
+        });
         await applyUserMemoryStatsTransition(ctx, existing, {
           ...existing,
           status: "active",
@@ -156,12 +166,14 @@ export const undo = mutation({
       const topicIds = Array.from(
         new Set(
           [snapshot.primaryTopicId, ...(snapshot.topicIds ?? [])].filter(
-            (id): id is Id<"userTopics"> => id !== undefined
-          )
-        )
+            (id): id is Id<"userTopics"> => id !== undefined,
+          ),
+        ),
       );
       if (topicIds.length > 0) {
-        await ctx.runMutation(internal.userTopics.incrementTopicCounts, { topicIds });
+        await ctx.runMutation(internal.userTopics.incrementTopicCounts, {
+          topicIds,
+        });
       }
       await ctx.db.delete(entry._id); // consume the undo entry
       return { success: true, action: "restored", memoryId: entry.memoryId };

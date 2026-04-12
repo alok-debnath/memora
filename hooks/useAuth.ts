@@ -76,7 +76,7 @@ export function useAuthState(): AuthContextValue {
     api.auth.me,
     convexAuth.isAuthenticated && syncedSessionRef.current === sessionId
       ? { token: "authenticated" }
-      : "skip"
+      : "skip",
   );
 
   const login = useCallback(async (email: string, password: string) => {

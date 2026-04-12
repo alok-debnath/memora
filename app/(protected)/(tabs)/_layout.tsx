@@ -5,12 +5,7 @@ import { Tabs, useRouter, usePathname, Slot } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import React, { useEffect, useRef } from "react";
-import {
-  Platform,
-  Pressable,
-  StyleSheet,
-  View,
-} from "react-native";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   useAnimatedStyle,
@@ -71,9 +66,7 @@ const BAR_BOTTOM_MARGIN = 14; // How far the pill floats above the safe-area bot
 
 // Maps state.index (0–3) → visual slot (0, 1, 3, 4) → indicator translateX
 // Pill is centered on the slot but wider, so offset = side_pad + slot_center - half_pill
-const IND_X = [0, 1, 3, 4].map(
-  (slot) => BAR_SIDE_PAD + slot * SLOT_W + SLOT_W / 2 - IND_W / 2
-);
+const IND_X = [0, 1, 3, 4].map((slot) => BAR_SIDE_PAD + slot * SLOT_W + SLOT_W / 2 - IND_W / 2);
 // = [8, 76, 212, 280]
 
 // ─── Animation config (tweak here) ───────────────────────────────────────────
@@ -81,7 +74,12 @@ const IND_X = [0, 1, 3, 4].map(
 
 const ANIM = {
   // Indicator pill sliding between tabs
-  indicator: { damping: 30, stiffness: 270, mass: 0.8, overshootClamping: true },
+  indicator: {
+    damping: 30,
+    stiffness: 270,
+    mass: 0.8,
+    overshootClamping: true,
+  },
   // Icon lift / label slide on focus change
   focus: { damping: 22, stiffness: 280, overshootClamping: true },
   // Tab item scale on press-in / press-out
@@ -105,14 +103,7 @@ type TabItemProps = {
   mutedColor: string;
 };
 
-function TabItem({
-  icon,
-  title,
-  isFocused,
-  onPress,
-  primaryColor,
-  mutedColor,
-}: TabItemProps) {
+function TabItem({ icon, title, isFocused, onPress, primaryColor, mutedColor }: TabItemProps) {
   const scale = useSharedValue(1);
   const labelOpacity = useSharedValue(isFocused ? 1 : 0);
   const labelY = useSharedValue(isFocused ? 0 : 5);
@@ -173,13 +164,7 @@ function TabItem({
 
 // ─── PlusButton ───────────────────────────────────────────────────────────────
 
-function PlusButton({
-  onPress,
-  primaryColor,
-}: {
-  onPress: () => void;
-  primaryColor: string;
-}) {
+function PlusButton({ onPress, primaryColor }: { onPress: () => void; primaryColor: string }) {
   const theme = useAppTheme();
   const scale = useSharedValue(1);
 
@@ -198,13 +183,7 @@ function PlusButton({
           scale.value = withSpring(1, ANIM.plusPressOut);
         }}
       >
-        <Animated.View
-          style={[
-            styles.plusButton,
-            { backgroundColor: primaryColor },
-            animStyle,
-          ]}
-        >
+        <Animated.View style={[styles.plusButton, { backgroundColor: primaryColor }, animStyle]}>
           <Feather name="plus" size={22} color={theme.textInverse.val} />
         </Animated.View>
       </Pressable>
@@ -250,17 +229,21 @@ function LiquidGlassTabBar({
     // Squish on launch → stretch on arrival (liquid glass morphing)
     pillScaleX.value = withSequence(
       withTiming(1.28, { duration: 90 }),
-      withSpring(1, { damping: 16, stiffness: 260, overshootClamping: false })
+      withSpring(1, { damping: 16, stiffness: 260, overshootClamping: false }),
     );
     pillScaleY.value = withSequence(
       withTiming(0.78, { duration: 90 }),
-      withSpring(1, { damping: 16, stiffness: 260, overshootClamping: false })
+      withSpring(1, { damping: 16, stiffness: 260, overshootClamping: false }),
     );
     // Container micro-pulse: skip on mount, transform-only so it runs on UI thread
     if (isMounted.current) {
       barScale.value = withSequence(
         withTiming(0.986, { duration: 65 }),
-        withSpring(1, { damping: 14, stiffness: 320, overshootClamping: false })
+        withSpring(1, {
+          damping: 14,
+          stiffness: 320,
+          overshootClamping: false,
+        }),
       );
     }
   }, [displayIndex]);
@@ -292,15 +275,9 @@ function LiquidGlassTabBar({
     opacity: barOpacity.value,
   }));
 
-  const glassColor = isDark
-    ? theme.backgroundStrong.val + "D9"
-    : theme.backgroundStrong.val + "D1";
-  const overlayColor = isDark
-    ? theme.background.val + "47"
-    : theme.background.val + "61";
-  const borderColor = isDark
-    ? theme.borderColor.val + "5C"
-    : theme.borderColor.val + "47";
+  const glassColor = isDark ? theme.backgroundStrong.val + "D9" : theme.backgroundStrong.val + "D1";
+  const overlayColor = isDark ? theme.background.val + "47" : theme.background.val + "61";
+  const borderColor = isDark ? theme.borderColor.val + "5C" : theme.borderColor.val + "47";
   const indicatorBg = primaryColor + "22"; // ~13% opacity tint
 
   const handleTabPress = (routeName: string) => {
@@ -322,25 +299,24 @@ function LiquidGlassTabBar({
   // Transparent wrapper tells React Navigation how much vertical space to reserve,
   // so screen content doesn't hide behind the floating pill.
   // alignItems: center handles horizontal centering — no position:absolute tricks needed.
-  const bottomInset = (Platform.OS === "android" ? Math.max(insets.bottom, 8) : insets.bottom + 8) + BAR_BOTTOM_MARGIN;
+  const bottomInset =
+    (Platform.OS === "android" ? Math.max(insets.bottom, 8) : insets.bottom + 8) +
+    BAR_BOTTOM_MARGIN;
   const containerHeight = BAR_H + bottomInset + FADE_H;
-  const fadeColors = React.useMemo(
-    () => {
-      // Multi-stop ease-in curve to eliminate banding
-      const c = isDark ? "0,0,0" : "255,255,255";
-      return [
-        `rgba(${c},0)`,
-        `rgba(${c},0.05)`,
-        `rgba(${c},0.13)`,
-        `rgba(${c},0.25)`,
-        `rgba(${c},0.42)`,
-        `rgba(${c},0.60)`,
-        `rgba(${c},0.75)`,
-        `rgba(${c},0.85)`,
-      ] as string[];
-    },
-    [isDark]
-  );
+  const fadeColors = React.useMemo(() => {
+    // Multi-stop ease-in curve to eliminate banding
+    const c = isDark ? "0,0,0" : "255,255,255";
+    return [
+      `rgba(${c},0)`,
+      `rgba(${c},0.05)`,
+      `rgba(${c},0.13)`,
+      `rgba(${c},0.25)`,
+      `rgba(${c},0.42)`,
+      `rgba(${c},0.60)`,
+      `rgba(${c},0.75)`,
+      `rgba(${c},0.85)`,
+    ] as string[];
+  }, [isDark]);
 
   return (
     <View
@@ -363,7 +339,9 @@ function LiquidGlassTabBar({
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
-      <Animated.View style={[styles.outerContainer, { shadowColor: theme.shadowColor.val }, barEntranceStyle]}>
+      <Animated.View
+        style={[styles.outerContainer, { shadowColor: theme.shadowColor.val }, barEntranceStyle]}
+      >
         <View style={styles.innerContainer}>
           {/* Glass background */}
           {isWeb ? (
@@ -386,9 +364,7 @@ function LiquidGlassTabBar({
                 intensity={isDark ? 90 : 78}
                 tint={isDark ? "dark" : "light"}
               />
-              <View
-                style={[StyleSheet.absoluteFill, { backgroundColor: overlayColor }]}
-              />
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: overlayColor }]} />
             </>
           ) : (
             // Android: BlurView is unreliable — use high-opacity solid background
@@ -403,21 +379,11 @@ function LiquidGlassTabBar({
           )}
 
           {/* Border highlight */}
-          <View
-            style={[
-              StyleSheet.absoluteFill,
-              styles.border,
-              { borderColor },
-            ]}
-          />
+          <View style={[StyleSheet.absoluteFill, styles.border, { borderColor }]} />
 
           {/* Sliding active indicator pill */}
           <Animated.View
-            style={[
-              styles.indicator,
-              { backgroundColor: indicatorBg, top: IND_Y },
-              indicatorStyle,
-            ]}
+            style={[styles.indicator, { backgroundColor: indicatorBg, top: IND_Y }, indicatorStyle]}
           />
 
           {/* Tab items row */}
@@ -465,7 +431,7 @@ function CustomTabLayout() {
 
   return (
     <>
-        <Tabs
+      <Tabs
         screenOptions={{
           headerShown: false,
           sceneStyle: { backgroundColor: theme.background.val },
@@ -493,11 +459,7 @@ function CustomTabLayout() {
         )}
       >
         {NAV_ITEMS.map((item) => (
-          <Tabs.Screen
-            key={item.name}
-            name={item.name}
-            options={{ title: item.title }}
-          />
+          <Tabs.Screen key={item.name} name={item.name} options={{ title: item.title }} />
         ))}
         {/* __fab.tsx exists for file-system routing but is not a nav tab */}
         <Tabs.Screen name="__fab" options={{ href: null }} />
@@ -525,7 +487,10 @@ function DesktopSidebarLayout() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top", "bottom"]}>
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: theme.background.val }}
+      edges={["top", "bottom"]}
+    >
       <XStack flex={1} backgroundColor="$background">
         <YStack
           width={292}
@@ -536,118 +501,122 @@ function DesktopSidebarLayout() {
           paddingTop={18}
           paddingBottom={20}
         >
-        <YStack
-          borderRadius={28}
-          padding={18}
-          marginBottom={18}
-          backgroundColor="$card"
-          borderWidth={1}
-          borderColor="$borderColor"
-          gap={16}
-        >
-          <XStack alignItems="center" gap={12}>
-            <YStack
-              width={40}
-              height={40}
-              borderRadius={14}
-              backgroundColor={theme.primary.val + "18"}
-              alignItems="center"
-              justifyContent="center"
-            >
-              <Feather name="layers" size={20} color={theme.primary.val} />
-            </YStack>
-            <YStack flex={1}>
-              <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
-                Memora
-              </Text>
-              <Text fontSize={12} color="$colorMuted">
-                Memory studio
-              </Text>
-            </YStack>
-          </XStack>
           <YStack
-            borderRadius={18}
-            padding={14}
-            backgroundColor={theme.primary.val + "10"}
-            gap={8}
+            borderRadius={28}
+            padding={18}
+            marginBottom={18}
+            backgroundColor="$card"
+            borderWidth={1}
+            borderColor="$borderColor"
+            gap={16}
           >
-            <Text fontSize={11} letterSpacing={1} textTransform="uppercase" color="$primary" fontWeight="700">
-              Quick Capture
-            </Text>
-            <Text fontSize={13} lineHeight={19} color="$colorMuted">
-              Capture notes, voice snippets, reminders, and AI chat from one command surface.
-            </Text>
-          </YStack>
-        </YStack>
-
-        <YStack gap={8}>
-          {NAV_ITEMS.map((item) => {
-            const active = isActive(item.name);
-            return (
-              <Pressable
-                key={item.name}
-                onPress={() => navigateTo(item.name)}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 12,
-                  paddingVertical: 14,
-                  paddingHorizontal: 14,
-                  borderRadius: 18,
-                  borderWidth: 1,
-                  borderColor: active ? theme.primary.val + "22" : "transparent",
-                  backgroundColor: active
-                    ? theme.primary.val + "12"
-                    : "transparent",
-                }}
+            <XStack alignItems="center" gap={12}>
+              <YStack
+                width={40}
+                height={40}
+                borderRadius={14}
+                backgroundColor={theme.primary.val + "18"}
+                alignItems="center"
+                justifyContent="center"
               >
-                <YStack
-                  width={36}
-                  height={36}
-                  borderRadius={12}
-                  alignItems="center"
-                  justifyContent="center"
-                  backgroundColor={active ? theme.primary.val + "18" : theme.secondary.val}
+                <Feather name="layers" size={20} color={theme.primary.val} />
+              </YStack>
+              <YStack flex={1}>
+                <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
+                  Memora
+                </Text>
+                <Text fontSize={12} color="$colorMuted">
+                  Memory studio
+                </Text>
+              </YStack>
+            </XStack>
+            <YStack
+              borderRadius={18}
+              padding={14}
+              backgroundColor={theme.primary.val + "10"}
+              gap={8}
+            >
+              <Text
+                fontSize={11}
+                letterSpacing={1}
+                textTransform="uppercase"
+                color="$primary"
+                fontWeight="700"
+              >
+                Quick Capture
+              </Text>
+              <Text fontSize={13} lineHeight={19} color="$colorMuted">
+                Capture notes, voice snippets, reminders, and AI chat from one command surface.
+              </Text>
+            </YStack>
+          </YStack>
+
+          <YStack gap={8}>
+            {NAV_ITEMS.map((item) => {
+              const active = isActive(item.name);
+              return (
+                <Pressable
+                  key={item.name}
+                  onPress={() => navigateTo(item.name)}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 12,
+                    paddingVertical: 14,
+                    paddingHorizontal: 14,
+                    borderRadius: 18,
+                    borderWidth: 1,
+                    borderColor: active ? theme.primary.val + "22" : "transparent",
+                    backgroundColor: active ? theme.primary.val + "12" : "transparent",
+                  }}
                 >
-                  <Feather
-                    name={item.icon}
-                    size={18}
-                    color={active ? theme.primary.val : theme.colorMuted.val}
-                  />
-                </YStack>
-                <YStack flex={1} gap={2}>
-                  <Text
-                    fontSize={15}
-                    fontFamily="$body"
-                    fontWeight={active ? "700" : "500"}
-                    color={active ? "$primary" : "$color"}
+                  <YStack
+                    width={36}
+                    height={36}
+                    borderRadius={12}
+                    alignItems="center"
+                    justifyContent="center"
+                    backgroundColor={active ? theme.primary.val + "18" : theme.secondary.val}
                   >
-                    {item.title}
-                  </Text>
-                  <Text fontSize={12} color="$colorMuted">
-                    {item.title === "Home"
-                      ? "Live memories and reminders"
-                      : item.title === "Diary"
-                        ? "Structured daily reflection"
-                        : item.title === "Review"
-                          ? "Spaced repetition queue"
-                          : "Secondary pages and settings"}
-                  </Text>
-                </YStack>
-              </Pressable>
-            );
-          })}
-        </YStack>
+                    <Feather
+                      name={item.icon}
+                      size={18}
+                      color={active ? theme.primary.val : theme.colorMuted.val}
+                    />
+                  </YStack>
+                  <YStack flex={1} gap={2}>
+                    <Text
+                      fontSize={15}
+                      fontFamily="$body"
+                      fontWeight={active ? "700" : "500"}
+                      color={active ? "$primary" : "$color"}
+                    >
+                      {item.title}
+                    </Text>
+                    <Text fontSize={12} color="$colorMuted">
+                      {item.title === "Home"
+                        ? "Live memories and reminders"
+                        : item.title === "Diary"
+                          ? "Structured daily reflection"
+                          : item.title === "Review"
+                            ? "Spaced repetition queue"
+                            : "Secondary pages and settings"}
+                    </Text>
+                  </YStack>
+                </Pressable>
+              );
+            })}
+          </YStack>
 
-        <YStack flex={1} />
+          <YStack flex={1} />
 
-        <AppButton
-          title="New Memory"
-          onPress={openCommand}
-          icon="plus"
-          variant="gradient"
-          fullWidth
-        />
+          <AppButton
+            title="New Memory"
+            onPress={openCommand}
+            icon="plus"
+            variant="gradient"
+            fullWidth
+          />
         </YStack>
 
         <YStack flex={1} padding={14}>
@@ -662,7 +631,6 @@ function DesktopSidebarLayout() {
             <Slot />
           </YStack>
         </YStack>
-
       </XStack>
     </SafeAreaView>
   );

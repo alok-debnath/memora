@@ -40,10 +40,7 @@ export function isReminder(memory: MemoryLike): boolean {
   return inferEntryKind(memory) === "reminder" && !!getReminderDate(memory);
 }
 
-export function deriveNextDueAt(input: {
-  entryKind?: MemoryEntryKind;
-  schedule?: MemorySchedule;
-}) {
+export function deriveNextDueAt(input: { entryKind?: MemoryEntryKind; schedule?: MemorySchedule }) {
   const entryKind = input.entryKind ?? (input.schedule?.dueAt ? "reminder" : "memory");
   return entryKind === "reminder" ? input.schedule?.dueAt : undefined;
 }
@@ -64,8 +61,7 @@ export function toStoredMemoryFields(input: {
       }
     : undefined;
 
-  const entryKind =
-    input.entryKind ?? (schedule?.dueAt ? "reminder" : "memory");
+  const entryKind = input.entryKind ?? (schedule?.dueAt ? "reminder" : "memory");
 
   return {
     entryKind,

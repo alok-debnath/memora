@@ -43,9 +43,11 @@ export const upsert = mutation({
 
     const updates = {
       dailyReview: args.dailyReview ?? existing?.dailyReview ?? defaults.dailyReview,
-      dailyReviewTime: args.dailyReviewTime ?? existing?.dailyReviewTime ?? defaults.dailyReviewTime,
+      dailyReviewTime:
+        args.dailyReviewTime ?? existing?.dailyReviewTime ?? defaults.dailyReviewTime,
       weeklyDigest: args.weeklyDigest ?? existing?.weeklyDigest ?? defaults.weeklyDigest,
-      weeklyDigestDay: args.weeklyDigestDay ?? existing?.weeklyDigestDay ?? defaults.weeklyDigestDay,
+      weeklyDigestDay:
+        args.weeklyDigestDay ?? existing?.weeklyDigestDay ?? defaults.weeklyDigestDay,
       memoryNudges: args.memoryNudges ?? existing?.memoryNudges ?? defaults.memoryNudges,
       capsuleAlerts: args.capsuleAlerts ?? existing?.capsuleAlerts ?? defaults.capsuleAlerts,
       pushEnabled: args.pushEnabled ?? existing?.pushEnabled ?? defaults.pushEnabled,
@@ -53,7 +55,7 @@ export const upsert = mutation({
 
     if (existing) {
       const unchanged = Object.entries(updates).every(
-        ([key, value]) => existing[key as keyof typeof updates] === value
+        ([key, value]) => existing[key as keyof typeof updates] === value,
       );
       if (unchanged) {
         return existing._id;

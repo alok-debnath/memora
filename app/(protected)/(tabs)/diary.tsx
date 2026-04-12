@@ -1,11 +1,5 @@
 import React, { useState } from "react";
-import {
-  Platform,
-  TextInput,
-  ScrollView,
-  Pressable,
-  ActivityIndicator,
-} from "react-native";
+import { Platform, TextInput, ScrollView, Pressable, ActivityIndicator } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeInUp } from "react-native-reanimated";
@@ -56,7 +50,8 @@ export default function DiaryScreen() {
   const { user, token } = useAuth();
   const tabBarPadding = useTabBarBottomPadding();
 
-  const entries = (useQuery(api.diary.list, token ? { token, limit: 100 } : "skip") ?? []) as DiaryEntryItem[];
+  const entries = (useQuery(api.diary.list, token ? { token, limit: 100 } : "skip") ??
+    []) as DiaryEntryItem[];
   const createEntry = useMutation(api.diary.create);
   const deleteEntry = useMutation(api.diary.remove);
 
@@ -108,7 +103,10 @@ export default function DiaryScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top", "bottom"]}>
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: theme.background.val }}
+      edges={["top", "bottom"]}
+    >
       <YStack flex={1} backgroundColor="$background">
         <ScrollView
           contentContainerStyle={{
@@ -120,184 +118,206 @@ export default function DiaryScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <Animated.View entering={FadeInUp.duration(400)}>
+            <Card
+              style={{
+                marginBottom: 14,
+                padding: 18,
+                borderRadius: 24,
+                backgroundColor: theme.card.val,
+              }}
+            >
+              <XStack alignItems="flex-start" justifyContent="space-between" gap={12}>
+                <YStack flex={1} gap={6}>
+                  <Badge label="Daily capture" color={theme.primary.val} />
+                  <Text
+                    fontSize={28}
+                    lineHeight={32}
+                    fontFamily="$heading"
+                    fontWeight="700"
+                    color="$color"
+                  >
+                    AI Diary
+                  </Text>
+                  <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
+                    Capture voice or typed reflections. Memora turns them into structured entries
+                    and insights.
+                  </Text>
+                </YStack>
+                <Pressable hitSlop={8}>
+                  <Feather name="info" size={20} color={theme.colorMuted.val} />
+                </Pressable>
+              </XStack>
+            </Card>
+          </Animated.View>
+
           <Card
             style={{
-              marginBottom: 14,
-              padding: 18,
+              padding: 16,
               borderRadius: 24,
               backgroundColor: theme.card.val,
             }}
           >
-            <XStack alignItems="flex-start" justifyContent="space-between" gap={12}>
-              <YStack flex={1} gap={6}>
-                <Badge label="Daily capture" color={theme.primary.val} />
-                <Text fontSize={28} lineHeight={32} fontFamily="$heading" fontWeight="700" color="$color">
-                  AI Diary
-                </Text>
-                <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
-                  Capture voice or typed reflections. Memora turns them into structured entries and insights.
-                </Text>
-              </YStack>
-              <Pressable hitSlop={8}>
-                <Feather name="info" size={20} color={theme.colorMuted.val} />
-              </Pressable>
-            </XStack>
-          </Card>
-        </Animated.View>
-
-        <Card style={{ padding: 16, borderRadius: 24, backgroundColor: theme.card.val }}>
-          <XStack gap={8} marginBottom={14}>
+            <XStack gap={8} marginBottom={14}>
               <Pressable
                 onPress={() => setMode("voice")}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 6,
-                paddingHorizontal: 14,
-                paddingVertical: 9,
-                borderRadius: 999,
-                backgroundColor: mode === "voice" ? theme.primary.val : theme.secondary.val,
-              }}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 6,
+                  paddingHorizontal: 14,
+                  paddingVertical: 9,
+                  borderRadius: 999,
+                  backgroundColor: mode === "voice" ? theme.primary.val : theme.secondary.val,
+                }}
               >
-              <Feather name="mic" size={14} color={mode === "voice" ? theme.textInverse.val : theme.colorMuted.val} />
-              <Text
-                fontSize={13}
-                fontFamily="$body"
-                fontWeight="600"
-                color={mode === "voice" ? "$textInverse" : "$colorMuted"}
-              >
-                Voice
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setMode("type")}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 6,
-                paddingHorizontal: 14,
-                paddingVertical: 9,
-                borderRadius: 999,
-                backgroundColor: mode === "type" ? theme.primary.val : theme.secondary.val,
-              }}
-              >
-              <Feather name="edit-3" size={14} color={mode === "type" ? theme.textInverse.val : theme.colorMuted.val} />
-              <Text
-                fontSize={13}
-                fontFamily="$body"
-                fontWeight="600"
-                color={mode === "type" ? "$textInverse" : "$colorMuted"}
-              >
-                Type
-              </Text>
-            </Pressable>
-          </XStack>
-
-          {mode === "voice" ? (
-            isSaving ? (
-              <YStack alignItems="center" justifyContent="center" paddingVertical={28} gap={16}>
-                <ActivityIndicator size="large" color={theme.primary.val} />
-                <Text fontSize={14} fontFamily="$body" color="$colorMuted">
-                  Saving entry...
+                <Feather
+                  name="mic"
+                  size={14}
+                  color={mode === "voice" ? theme.textInverse.val : theme.colorMuted.val}
+                />
+                <Text
+                  fontSize={13}
+                  fontFamily="$body"
+                  fontWeight="600"
+                  color={mode === "voice" ? "$textInverse" : "$colorMuted"}
+                >
+                  Voice
                 </Text>
-              </YStack>
-            ) : (
-              <YStack gap={12} paddingVertical={20}>
-                <VoiceRecorder
-                  onTranscription={setLiveTranscript}
-                  onTranscriptionComplete={handleVoiceComplete}
-                  onPauseChange={setIsVoicePaused}
-                  inputMode="auto"
+              </Pressable>
+              <Pressable
+                onPress={() => setMode("type")}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 6,
+                  paddingHorizontal: 14,
+                  paddingVertical: 9,
+                  borderRadius: 999,
+                  backgroundColor: mode === "type" ? theme.primary.val : theme.secondary.val,
+                }}
+              >
+                <Feather
+                  name="edit-3"
+                  size={14}
+                  color={mode === "type" ? theme.textInverse.val : theme.colorMuted.val}
                 />
-                {/* Hide while paused — VoiceRecorder shows the editable TextInput internally */}
-                {!isVoicePaused && liveTranscript.trim().length > 0 ? (
-                  <YStack
-                    backgroundColor="$card"
-                    borderRadius={14}
-                    borderWidth={1}
-                    borderColor="$borderColor"
-                    padding={14}
-                    marginHorizontal={4}
-                  >
-                    <Text fontSize={14} fontFamily="$body" color="$color" lineHeight={21}>
-                      {liveTranscript}
-                    </Text>
-                  </YStack>
-                ) : !isVoicePaused ? (
-                  <Text fontSize={13} fontFamily="$body" color="$colorMuted" textAlign="center">
-                    Tap to start — speak naturally. Entry is analyzed after you stop.
+                <Text
+                  fontSize={13}
+                  fontFamily="$body"
+                  fontWeight="600"
+                  color={mode === "type" ? "$textInverse" : "$colorMuted"}
+                >
+                  Type
+                </Text>
+              </Pressable>
+            </XStack>
+
+            {mode === "voice" ? (
+              isSaving ? (
+                <YStack alignItems="center" justifyContent="center" paddingVertical={28} gap={16}>
+                  <ActivityIndicator size="large" color={theme.primary.val} />
+                  <Text fontSize={14} fontFamily="$body" color="$colorMuted">
+                    Saving entry...
                   </Text>
-                ) : null}
-              </YStack>
-            )
-          ) : (
-            <>
-              <AppTextField
-                value={diaryText}
-                onChangeText={setDiaryText}
-                label="Journal entry"
-                placeholder="Write about your day, thoughts, feelings, or anything on your mind..."
-                multiline
-                helperText="Memora will structure this into a searchable diary entry."
-                containerStyle={{ marginBottom: 12 }}
-                style={{ minHeight: 156, fontSize: 15, lineHeight: 22 }}
-              />
-              <GradientButton
-                title="Save & Analyze"
-                onPress={handleSubmit}
-                icon="send"
-                loading={isSaving}
-                style={{ marginTop: 12 }}
-              />
-            </>
-          )}
-        </Card>
-
-        <YStack marginTop={16}>
-          <MoodTrendStrip entries={entries} />
-          <Text
-            fontSize={11}
-            fontFamily="$body"
-            color="$colorMuted"
-            letterSpacing={0.8}
-            marginBottom={12}
-            textTransform="uppercase"
-          >
-            Recent entries
-          </Text>
-          {entries.length === 0 ? (
-            <EmptyState
-              icon="book"
-              title="No diary entries yet"
-              description="Start speaking or typing to create your first entry."
-            />
-          ) : (
-            <YStack gap={12}>
-              {entries.map((entry, i: number) => (
-                <DiaryEntryCard
-                  key={entry._id}
-                  entry={{
-                    ...entry,
-                    id: entry._id,
-                    userId: user?._id ?? ("" as never),
-                    mood: entry.mood as DiaryEntry["mood"],
-                    energyLevel: entry.energyLevel as DiaryEntry["energyLevel"],
-                    createdAt: new Date(entry._creationTime).toISOString(),
-                    updatedAt: new Date(entry._creationTime).toISOString(),
-                    habitsDetected: entry.habitsDetected ?? [],
-                    personalityTraits: entry.personalityTraits ?? [],
-                    likes: entry.likes ?? [],
-                    dislikes: entry.dislikes ?? [],
-                    actionItems: entry.actionItems ?? [],
-                  } as DiaryEntry}
-                  onDelete={() => handleDelete(entry._id)}
-                  index={i}
+                </YStack>
+              ) : (
+                <YStack gap={12} paddingVertical={20}>
+                  <VoiceRecorder
+                    onTranscription={setLiveTranscript}
+                    onTranscriptionComplete={handleVoiceComplete}
+                    onPauseChange={setIsVoicePaused}
+                    inputMode="auto"
+                  />
+                  {/* Hide while paused — VoiceRecorder shows the editable TextInput internally */}
+                  {!isVoicePaused && liveTranscript.trim().length > 0 ? (
+                    <YStack
+                      backgroundColor="$card"
+                      borderRadius={14}
+                      borderWidth={1}
+                      borderColor="$borderColor"
+                      padding={14}
+                      marginHorizontal={4}
+                    >
+                      <Text fontSize={14} fontFamily="$body" color="$color" lineHeight={21}>
+                        {liveTranscript}
+                      </Text>
+                    </YStack>
+                  ) : !isVoicePaused ? (
+                    <Text fontSize={13} fontFamily="$body" color="$colorMuted" textAlign="center">
+                      Tap to start — speak naturally. Entry is analyzed after you stop.
+                    </Text>
+                  ) : null}
+                </YStack>
+              )
+            ) : (
+              <>
+                <AppTextField
+                  value={diaryText}
+                  onChangeText={setDiaryText}
+                  label="Journal entry"
+                  placeholder="Write about your day, thoughts, feelings, or anything on your mind..."
+                  multiline
+                  helperText="Memora will structure this into a searchable diary entry."
+                  containerStyle={{ marginBottom: 12 }}
+                  style={{ minHeight: 156, fontSize: 15, lineHeight: 22 }}
                 />
-              ))}
-            </YStack>
-          )}
-        </YStack>
+                <GradientButton
+                  title="Save & Analyze"
+                  onPress={handleSubmit}
+                  icon="send"
+                  loading={isSaving}
+                  style={{ marginTop: 12 }}
+                />
+              </>
+            )}
+          </Card>
 
+          <YStack marginTop={16}>
+            <MoodTrendStrip entries={entries} />
+            <Text
+              fontSize={11}
+              fontFamily="$body"
+              color="$colorMuted"
+              letterSpacing={0.8}
+              marginBottom={12}
+              textTransform="uppercase"
+            >
+              Recent entries
+            </Text>
+            {entries.length === 0 ? (
+              <EmptyState
+                icon="book"
+                title="No diary entries yet"
+                description="Start speaking or typing to create your first entry."
+              />
+            ) : (
+              <YStack gap={12}>
+                {entries.map((entry, i: number) => (
+                  <DiaryEntryCard
+                    key={entry._id}
+                    entry={
+                      {
+                        ...entry,
+                        id: entry._id,
+                        userId: user?._id ?? ("" as never),
+                        mood: entry.mood as DiaryEntry["mood"],
+                        energyLevel: entry.energyLevel as DiaryEntry["energyLevel"],
+                        createdAt: new Date(entry._creationTime).toISOString(),
+                        updatedAt: new Date(entry._creationTime).toISOString(),
+                        habitsDetected: entry.habitsDetected ?? [],
+                        personalityTraits: entry.personalityTraits ?? [],
+                        likes: entry.likes ?? [],
+                        dislikes: entry.dislikes ?? [],
+                        actionItems: entry.actionItems ?? [],
+                      } as DiaryEntry
+                    }
+                    onDelete={() => handleDelete(entry._id)}
+                    index={i}
+                  />
+                ))}
+              </YStack>
+            )}
+          </YStack>
         </ScrollView>
       </YStack>
     </SafeAreaView>

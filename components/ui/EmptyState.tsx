@@ -34,13 +34,7 @@ export function EmptyState({ icon, title, description }: EmptyStateProps) {
       >
         <Feather name={icon} size={32} color={theme.primary.val} />
       </YStack>
-      <Text
-        color="$color"
-        fontSize={20}
-        fontFamily="$heading"
-        fontWeight="700"
-        textAlign="center"
-      >
+      <Text color="$color" fontSize={20} fontFamily="$heading" fontWeight="700" textAlign="center">
         {title}
       </Text>
       <Text

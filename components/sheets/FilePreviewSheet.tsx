@@ -35,7 +35,7 @@ export function FilePreviewSheet() {
   const attachment = payload?.attachment ?? null;
   const previewUrls = useDrivePreviewUrls(attachment ? [attachment] : [], token);
   const previewUri = attachment
-    ? previewUrls[attachment.driveFileId] ?? attachment.driveThumbnailLink
+    ? (previewUrls[attachment.driveFileId] ?? attachment.driveThumbnailLink)
     : undefined;
 
   const handleDelete = useCallback(async () => {
@@ -100,7 +100,10 @@ export function FilePreviewSheet() {
               <YStack
                 style={[
                   styles.previewHero,
-                  { backgroundColor: colors.backgroundSecondary, borderColor: colors.border },
+                  {
+                    backgroundColor: colors.backgroundSecondary,
+                    borderColor: colors.border,
+                  },
                 ]}
               >
                 {previewUri ? (
@@ -123,7 +126,10 @@ export function FilePreviewSheet() {
               <XStack
                 style={[
                   styles.documentHero,
-                  { backgroundColor: colors.backgroundSecondary, borderColor: colors.border },
+                  {
+                    backgroundColor: colors.backgroundSecondary,
+                    borderColor: colors.border,
+                  },
                 ]}
                 alignItems="center"
                 justifyContent="center"
@@ -153,7 +159,9 @@ export function FilePreviewSheet() {
                 <View
                   style={[
                     styles.statusDot,
-                    { backgroundColor: processingColors[attachment.processingStatus] },
+                    {
+                      backgroundColor: processingColors[attachment.processingStatus],
+                    },
                   ]}
                 />
                 <Text fontSize={12} color={colors.textSecondary} textTransform="capitalize">
@@ -182,7 +190,13 @@ export function FilePreviewSheet() {
             <YStack gap="$2">
               <Pressable
                 onPress={handleOpenDrive}
-                style={[styles.actionBtn, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}
+                style={[
+                  styles.actionBtn,
+                  {
+                    backgroundColor: colors.backgroundSecondary,
+                    borderColor: colors.border,
+                  },
+                ]}
               >
                 <Feather name="external-link" size={16} color={colors.text} />
                 <Text fontSize={14} fontWeight="600" color={colors.text}>
@@ -192,7 +206,13 @@ export function FilePreviewSheet() {
 
               <Pressable
                 onPress={handleDelete}
-                style={[styles.actionBtn, { backgroundColor: colors.surfaceDangerSoft, borderColor: colors.textError }]}
+                style={[
+                  styles.actionBtn,
+                  {
+                    backgroundColor: colors.surfaceDangerSoft,
+                    borderColor: colors.textError,
+                  },
+                ]}
               >
                 <Feather name="trash-2" size={16} color={colors.textError} />
                 <Text fontSize={14} fontWeight="600" color={colors.textError}>

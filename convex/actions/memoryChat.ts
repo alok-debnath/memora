@@ -12,10 +12,10 @@ import {
   type AttachmentExtractionResult,
 } from "../lib/attachmentExtraction";
 import {
-  embedText,
   extractTextContent,
   getOpenAIClient,
   OPENAI_CHAT_MODEL,
+  trackedChatCompletion,
 } from "../lib/openai";
 import { runSemanticSearch } from "../lib/semanticSearch";
 import { normalizeSearchQueryHash } from "../lib/search";
@@ -27,7 +27,6 @@ import {
   toStoredMemoryFields,
 } from "../lib/memoryKind";
 import { getReminderTitleWithoutSchedule } from "../lib/reminderTitle";
-
 
 type MemoryDoc = Doc<"memories">;
 
@@ -47,8 +46,7 @@ type ChatAttachmentRecord = {
   driveWebViewLink?: string;
 };
 
-type ChatAttachmentExtraction = ChatAttachmentRecord &
-  AttachmentExtractionResult;
+type ChatAttachmentExtraction = ChatAttachmentRecord & AttachmentExtractionResult;
 
 type StreamingEvent = {
   label: string;
@@ -75,7 +73,6 @@ type MemorySearchResult = {
   isCached?: boolean;
   searchMode: "recent_only" | "semantic_fresh" | "semantic_cached";
 };
-
 
 type GroundingContext = {
   shouldGround: boolean;
@@ -182,12 +179,21 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       parameters: {
         type: "object",
         properties: {
-          title: { type: "string", description: "Concise title, max 8 words, objective note-style (no 'I', 'me', 'my'). For reminders, keep title topic-only and never include date/time." },
-          content: { type: "string", description: "Full memory content in objective note-style language (no 'I', 'me', 'my')" },
+          title: {
+            type: "string",
+            description:
+              "Concise title, max 8 words, objective note-style (no 'I', 'me', 'my'). For reminders, keep title topic-only and never include date/time.",
+          },
+          content: {
+            type: "string",
+            description:
+              "Full memory content in objective note-style language (no 'I', 'me', 'my')",
+          },
           entry_kind: {
             type: "string",
             enum: ["memory", "reminder"],
-            description: "REQUIRED when using schedule.due_at — must be 'reminder'. Default to 'memory' otherwise.",
+            description:
+              "REQUIRED when using schedule.due_at — must be 'reminder'. Default to 'memory' otherwise.",
           },
           schedule: {
             type: "object",
@@ -223,8 +229,16 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
         type: "object",
         properties: {
           memory_id: { type: "string" },
-          title: { type: "string", description: "Concise title, max 8 words, objective note-style (no 'I', 'me', 'my'). For reminders, keep title topic-only and never include date/time." },
-          content: { type: "string", description: "Full memory content in objective note-style language (no 'I', 'me', 'my')" },
+          title: {
+            type: "string",
+            description:
+              "Concise title, max 8 words, objective note-style (no 'I', 'me', 'my'). For reminders, keep title topic-only and never include date/time.",
+          },
+          content: {
+            type: "string",
+            description:
+              "Full memory content in objective note-style language (no 'I', 'me', 'my')",
+          },
           entry_kind: {
             type: "string",
             enum: ["memory", "reminder"],
@@ -233,7 +247,10 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           schedule: {
             type: "object",
             properties: {
-              due_at: { type: "string", description: "ISO 8601 UTC. ALWAYS pair with entry_kind='reminder'." },
+              due_at: {
+                type: "string",
+                description: "ISO 8601 UTC. ALWAYS pair with entry_kind='reminder'.",
+              },
               is_recurring: { type: "boolean" },
               recurrence_type: {
                 type: "string",
@@ -254,8 +271,7 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "sync_reminder",
-      description:
-        "Manually trigger or retry Google Calendar sync for an existing reminder.",
+      description: "Manually trigger or retry Google Calendar sync for an existing reminder.",
       parameters: {
         type: "object",
         properties: {
@@ -265,8 +281,7 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           },
           query: {
             type: "string",
-            description:
-              "Reminder reference text to resolve the target when memory ID is unknown.",
+            description: "Reminder reference text to resolve the target when memory ID is unknown.",
           },
         },
         additionalProperties: false,
@@ -288,8 +303,7 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           },
           query: {
             type: "string",
-            description:
-              "Reminder reference text to resolve the target when memory ID is unknown.",
+            description: "Reminder reference text to resolve the target when memory ID is unknown.",
           },
         },
         additionalProperties: false,
@@ -305,7 +319,10 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       parameters: {
         type: "object",
         properties: {
-          query: { type: "string", description: "Search query to find the matching items." },
+          query: {
+            type: "string",
+            description: "Search query to find the matching items.",
+          },
           entry_kind: {
             type: "string",
             enum: ["memory", "reminder", "any"],
@@ -326,7 +343,10 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       parameters: {
         type: "object",
         properties: {
-          limit: { type: "number", description: "Max items to return (default 20)" },
+          limit: {
+            type: "number",
+            description: "Max items to return (default 20)",
+          },
         },
         additionalProperties: false,
       },
@@ -336,8 +356,7 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "restore_memory",
-      description:
-        "Restore a soft-deleted memory, bringing it back from the trash.",
+      description: "Restore a soft-deleted memory, bringing it back from the trash.",
       parameters: {
         type: "object",
         properties: {
@@ -381,8 +400,7 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "analyze_memories",
-      description:
-        "Retrieve memories for analysis, summaries, trends, and insights.",
+      description: "Retrieve memories for analysis, summaries, trends, and insights.",
       parameters: {
         type: "object",
         properties: {
@@ -396,8 +414,7 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "history",
-      description:
-        "Version control for memories. Actions: list, undo, or restore.",
+      description: "Version control for memories. Actions: list, undo, or restore.",
       parameters: {
         type: "object",
         properties: {
@@ -424,13 +441,35 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
             type: "string",
             enum: ["list", "rename", "merge", "recolor", "trigger_reanalysis", "retag_memory"],
           },
-          topic_slug: { type: "string", description: "Slug of the topic to operate on." },
-          target_slug: { type: "string", description: "For merge: the slug of the topic to merge into topic_slug." },
-          new_name: { type: "string", description: "For rename: the new display name." },
-          new_icon: { type: "string", description: "For recolor: Feather icon name." },
-          new_color: { type: "string", description: "For recolor: hex color string." },
-          memory_id: { type: "string", description: "For retag_memory: actual memory id if already known. If not known, search memories first or refer to the most recent matching memory." },
-          topic_name: { type: "string", description: "For retag_memory: requested topic name to reuse or create." },
+          topic_slug: {
+            type: "string",
+            description: "Slug of the topic to operate on.",
+          },
+          target_slug: {
+            type: "string",
+            description: "For merge: the slug of the topic to merge into topic_slug.",
+          },
+          new_name: {
+            type: "string",
+            description: "For rename: the new display name.",
+          },
+          new_icon: {
+            type: "string",
+            description: "For recolor: Feather icon name.",
+          },
+          new_color: {
+            type: "string",
+            description: "For recolor: hex color string.",
+          },
+          memory_id: {
+            type: "string",
+            description:
+              "For retag_memory: actual memory id if already known. If not known, search memories first or refer to the most recent matching memory.",
+          },
+          topic_name: {
+            type: "string",
+            description: "For retag_memory: requested topic name to reuse or create.",
+          },
         },
         required: ["operation"],
         additionalProperties: false,
@@ -482,9 +521,7 @@ function formatFlowToolLabel(toolName: string) {
 }
 
 function parseAttachments(message: string): ParsedAttachment[] {
-  const matches = message.matchAll(
-    /\[Attached file:\s*(.+?)\s*\((.+?)\)\s*-\s*URL:\s*(.+?)\]/g
-  );
+  const matches = message.matchAll(/\[Attached file:\s*(.+?)\s*\((.+?)\)\s*-\s*URL:\s*(.+?)\]/g);
 
   return Array.from(matches, (match) => ({
     name: match[1]?.trim() || "Attachment",
@@ -661,10 +698,7 @@ function normalizeForMemoryDedupe(value: string | undefined): string {
   return (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-function buildCreateMemoryDedupeKey(args: {
-  title?: string;
-  content: string;
-}): string {
+function buildCreateMemoryDedupeKey(args: { title?: string; content: string }): string {
   const normalizedContent = normalizeForMemoryDedupe(args.content);
   return JSON.stringify({
     content: normalizedContent,
@@ -674,9 +708,7 @@ function buildCreateMemoryDedupeKey(args: {
 
 function hasExplicitSchedulingFields(value: Record<string, unknown>) {
   return (
-    value.entryKind !== undefined ||
-    value.entry_kind !== undefined ||
-    value.schedule !== undefined
+    value.entryKind !== undefined || value.entry_kind !== undefined || value.schedule !== undefined
   );
 }
 
@@ -721,33 +753,29 @@ function truncateStatusText(value: string | undefined, maxLength = 42) {
 }
 
 function toPreviewItems(
-  items: Array<{ title?: string | null; content?: string | null; filename?: string | null }>,
-  fallbackLabel: string
+  items: Array<{
+    title?: string | null;
+    content?: string | null;
+    filename?: string | null;
+  }>,
+  fallbackLabel: string,
 ) {
   return items
     .map((item) =>
       truncateStatusText(
-        item.title?.trim() ||
-          item.filename?.trim() ||
-          item.content?.trim() ||
-          fallbackLabel
-      )
+        item.title?.trim() || item.filename?.trim() || item.content?.trim() || fallbackLabel,
+      ),
     )
     .filter(Boolean)
     .slice(0, 3);
 }
 
-async function listMemoriesForAI(
-  ctx: ActionCtx,
-  userId: Id<"users">,
-  limit = 100
-) {
+async function listMemoriesForAI(ctx: ActionCtx, userId: Id<"users">, limit = 100) {
   return await ctx.runQuery(internal.memories.listForAI, {
     userId,
     limit: Math.min(limit, 100),
   });
 }
-
 
 async function searchMemories(
   ctx: ActionCtx,
@@ -756,10 +784,9 @@ async function searchMemories(
     query: string;
     userId: Id<"users">;
     recentMemories?: MemoryDoc[];
-  }
+  },
 ): Promise<MemorySearchResult> {
-  const recentMemories =
-    args.recentMemories ?? (await listMemoriesForAI(ctx, args.userId, 100));
+  const recentMemories = args.recentMemories ?? (await listMemoriesForAI(ctx, args.userId, 100));
   const normalizedQuery = args.query.trim();
   if (!normalizedQuery) {
     return {
@@ -797,10 +824,9 @@ async function resolveMemoryReference(
     userId: Id<"users">;
     reference?: string;
     recentMemories?: MemoryDoc[];
-  }
+  },
 ): Promise<Id<"memories"> | null> {
-  const recentMemories =
-    args.recentMemories ?? (await listMemoriesForAI(ctx, args.userId, 20));
+  const recentMemories = args.recentMemories ?? (await listMemoriesForAI(ctx, args.userId, 20));
 
   if (!args.reference?.trim()) {
     return recentMemories[0]?._id ?? null;
@@ -831,7 +857,10 @@ async function resolveMemoryReference(
       }
       return { memory, score };
     })
-    .sort((a: { memory: MemoryDoc; score: number }, b: { memory: MemoryDoc; score: number }) => b.score - a.score);
+    .sort(
+      (a: { memory: MemoryDoc; score: number }, b: { memory: MemoryDoc; score: number }) =>
+        b.score - a.score,
+    );
 
   if ((scored[0]?.score ?? 0) > 0) {
     return scored[0].memory._id;
@@ -847,7 +876,7 @@ async function buildGroundingContext(
     message: string;
     userId: Id<"users">;
     recentMemories?: MemoryDoc[];
-  }
+  },
 ): Promise<GroundingContext> {
   const isGenericOnly = isGenericOnlyQuery(args.message);
   const shouldGround = shouldGroundAgainstDb(args.message);
@@ -866,8 +895,7 @@ async function buildGroundingContext(
     };
   }
 
-  const recentMemories =
-    args.recentMemories ?? (await listMemoriesForAI(ctx, args.userId, 40));
+  const recentMemories = args.recentMemories ?? (await listMemoriesForAI(ctx, args.userId, 40));
   const searchRes = await searchMemories(ctx, {
     token: args.token,
     query: args.message,
@@ -1018,8 +1046,7 @@ export const chat = action({
       throw new Error("Unauthorized");
     }
 
-    const effectiveTimezone =
-      args.currentTimezone?.trim() || session.timezone || "UTC";
+    const effectiveTimezone = args.currentTimezone?.trim() || session.timezone || "UTC";
 
     const chatMessageId = await ctx.runMutation(internal.chat.send, {
       userId: session._id,
@@ -1058,7 +1085,10 @@ export const chat = action({
     });
     const recentChat: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
     let latestReferencedMemoryIds: string[] = [];
-    for (const message of chatHistory.slice(-12) as Array<{ role: string; content?: string | null }>) {
+    for (const message of chatHistory.slice(-12) as Array<{
+      role: string;
+      content?: string | null;
+    }>) {
       recentChat.push({
         role: message.role as "user" | "assistant",
         content: stripMarkersFromContent(message.content ?? "").slice(0, 2000),
@@ -1094,14 +1124,12 @@ export const chat = action({
       attachments: chatAttachments,
       setStreamingStatus,
     });
-    const flowAttachments: CardFlowAttachment[] = extractedChatAttachments.map(
-      (attachment) => ({
-        name: attachment.name,
-        type: attachment.type,
-        status: attachment.processingStatus,
-        method: attachment.extractionMethod,
-      })
-    );
+    const flowAttachments: CardFlowAttachment[] = extractedChatAttachments.map((attachment) => ({
+      name: attachment.name,
+      type: attachment.type,
+      status: attachment.processingStatus,
+      method: attachment.extractionMethod,
+    }));
     const buildCardFlowPayload = ({
       turns,
       cardCount,
@@ -1183,8 +1211,7 @@ export const chat = action({
         steps,
       };
     };
-    let aiResponse =
-      "I'm having trouble connecting right now. Please try again in a moment.";
+    let aiResponse = "I'm having trouble connecting right now. Please try again in a moment.";
 
     if (client) {
       try {
@@ -1201,9 +1228,7 @@ export const chat = action({
           toolName: "planner",
           detail: "Understanding request and loading relevant context",
           source: "chat",
-          events: [
-            { label: "Context", value: "recent chat + memories" },
-          ],
+          events: [{ label: "Context", value: "recent chat + memories" }],
           step: 1,
           totalSteps: 4,
         });
@@ -1213,7 +1238,7 @@ export const chat = action({
             role: "system",
             content: buildSystemPrompt(
               effectiveTimezone,
-              args.currentTime ?? new Date().toISOString()
+              args.currentTime ?? new Date().toISOString(),
             ),
           },
           ...recentChat,
@@ -1222,7 +1247,7 @@ export const chat = action({
                 {
                   role: "system" as const,
                   content: `Attachment metadata for the latest user message: ${JSON.stringify(
-                    legacyAttachments
+                    legacyAttachments,
                   )}`,
                 },
               ]
@@ -1261,9 +1286,7 @@ export const chat = action({
             query: args.message,
             resultCount: initialGrounding.searchCount,
             cacheState: initialGrounding.isCached ? "cached" : "fresh",
-            searchMode: initialGrounding.isCached
-              ? "semantic_cached"
-              : "semantic_fresh",
+            searchMode: initialGrounding.isCached ? "semantic_cached" : "semantic_fresh",
           });
           conversation.splice(conversation.length - 1, 0, {
             role: "system",
@@ -1275,7 +1298,7 @@ export const chat = action({
                 : "This request is related to stored personal data. Answer only from DB-backed context or by calling tools again if needed.",
               `Matched memories: ${JSON.stringify(initialGrounding.searchResults)}`,
               `Recent memories: ${JSON.stringify(initialGrounding.recentMemories)}`,
-              "CRITICAL: If you use any of the above memories to answer, you MUST call surface_cards with their IDs. If for some reason you cannot call the tool, you MUST append `<!--MEMORA_USED_IDS:[\"id1\"]-->` as the last line of your response.",
+              'CRITICAL: If you use any of the above memories to answer, you MUST call surface_cards with their IDs. If for some reason you cannot call the tool, you MUST append `<!--MEMORA_USED_IDS:["id1"]-->` as the last line of your response.',
             ].join("\n"),
           });
         }
@@ -1293,9 +1316,7 @@ export const chat = action({
               ? "cached"
               : "fresh"
             : undefined,
-          resultCount: initialGrounding.shouldGround
-            ? initialGrounding.searchCount
-            : undefined,
+          resultCount: initialGrounding.shouldGround ? initialGrounding.searchCount : undefined,
           previewItems: initialGrounding.shouldGround
             ? toPreviewItems(initialGrounding.searchResults, "Stored memory")
             : undefined,
@@ -1310,7 +1331,12 @@ export const chat = action({
         });
 
         let finalText = "";
-        let pendingDeletionItems: Array<{ id: string; title: string; content: string; entry_kind: string }> = [];
+        let pendingDeletionItems: Array<{
+          id: string;
+          title: string;
+          content: string;
+          entry_kind: string;
+        }> = [];
         const pendingCardIds = new Set<string>();
         let pendingSearchIsCached = false;
         let surfaceCardsCalled = false;
@@ -1330,10 +1356,7 @@ export const chat = action({
             }));
           }
         }
-        const createdMemoriesByDedupeKey = new Map<
-          string,
-          { id: Id<"memories">; title: string }
-        >();
+        const createdMemoriesByDedupeKey = new Map<string, { id: Id<"memories">; title: string }>();
 
         let finalIteration = 0;
         for (let iteration = 0; iteration < 4; iteration += 1) {
@@ -1341,18 +1364,25 @@ export const chat = action({
           await setStreamingStatus({
             phase: "thinking",
             toolName: "planner",
-            detail: iteration === 0 ? "Choosing the next backend operation" : "Continuing multi-step reasoning",
+            detail:
+              iteration === 0
+                ? "Choosing the next backend operation"
+                : "Continuing multi-step reasoning",
             source: "chat",
             step: 2,
             totalSteps: 4,
           });
-          const response = await client.chat.completions.create({
-            model: OPENAI_CHAT_MODEL,
-            messages: conversation,
-            tools: TOOLS,
-            tool_choice: "auto",
-            temperature: 0.3,
-            max_completion_tokens: 2048,
+          const response = await trackedChatCompletion(ctx, {
+            userId: session._id,
+            feature: "memory_chat",
+            request: {
+              model: OPENAI_CHAT_MODEL,
+              messages: conversation,
+              tools: TOOLS,
+              tool_choice: "auto",
+              temperature: 0.3,
+              max_completion_tokens: 2048,
+            },
           });
 
           const choice = response.choices[0]?.message;
@@ -1365,15 +1395,18 @@ export const chat = action({
             // Conditional Forced Turn Fallback:
             // If grounding/search was active but the AI forgot the mandatory <!--MEMORA_USED_IDS--> comment,
             // we force one final turn to collect them. This handles broad lists and edge cases.
-            if (content && 
-                (initialGrounding.shouldGround || surfaceCandidates.length > 0) && 
-                !surfaceCardsCalled && 
-                !content.includes("<!--MEMORA_USED_IDS:") && 
-                iteration < 3) {
+            if (
+              content &&
+              (initialGrounding.shouldGround || surfaceCandidates.length > 0) &&
+              !surfaceCardsCalled &&
+              !content.includes("<!--MEMORA_USED_IDS:") &&
+              iteration < 3
+            ) {
               conversation.push({ role: "assistant", content });
               conversation.push({
                 role: "user",
-                content: "You answered the user but forgot to provide the memory IDs you used. You MUST append <!--MEMORA_USED_IDS:[\"id1\", \"id2\"]--> as the final line of your response with the IDs of the memories you drew on.",
+                content:
+                  'You answered the user but forgot to provide the memory IDs you used. You MUST append <!--MEMORA_USED_IDS:["id1", "id2"]--> as the final line of your response with the IDs of the memories you drew on.',
               });
               continue;
             }
@@ -1404,7 +1437,10 @@ export const chat = action({
                 detail: `Searching memories${typeof fnArgs.query === "string" && fnArgs.query.trim() ? ` for "${String(fnArgs.query).trim()}"` : ""}`,
                 source: "memories",
                 events: [
-                  { label: "Scope", value: "title, content, people, locations, topics" },
+                  {
+                    label: "Scope",
+                    value: "title, content, people, locations, topics",
+                  },
                   { label: "Mode", value: "semantic + keyword" },
                 ],
                 query: typeof fnArgs.query === "string" ? String(fnArgs.query) : undefined,
@@ -1414,7 +1450,10 @@ export const chat = action({
                 detail: `Searching documents${typeof fnArgs.query === "string" && fnArgs.query.trim() ? ` for "${String(fnArgs.query).trim()}"` : ""}`,
                 source: "documents",
                 events: [
-                  { label: "Scope", value: "filename, summary, extracted text, key details" },
+                  {
+                    label: "Scope",
+                    value: "filename, summary, extracted text, key details",
+                  },
                   { label: "Mode", value: "vector + keyword" },
                 ],
                 query: typeof fnArgs.query === "string" ? String(fnArgs.query) : undefined,
@@ -1489,7 +1528,12 @@ export const chat = action({
                 phase: "writing",
                 detail: "Updating topic organization",
                 source: "topics",
-                events: [{ label: "Operation", value: String(fnArgs.operation || "update") }],
+                events: [
+                  {
+                    label: "Operation",
+                    value: String(fnArgs.operation || "update"),
+                  },
+                ],
               },
               surface_cards: {
                 phase: "finalizing",
@@ -1529,7 +1573,10 @@ export const chat = action({
                   : "Searching memories",
                 source: "memories",
                 events: [
-                  { label: "Scope", value: "title, content, people, locations, topics" },
+                  {
+                    label: "Scope",
+                    value: "title, content, people, locations, topics",
+                  },
                   { label: "Mode", value: "semantic + keyword" },
                 ],
                 step: 3,
@@ -1569,7 +1616,10 @@ export const chat = action({
                         : undefined,
                   searchMode: searchRes.searchMode,
                 });
-                surfaceCandidates = searchRes.results.map((r: { id: string; title?: string }) => ({ id: String(r.id), title: r.title ?? "" }));
+                surfaceCandidates = searchRes.results.map((r: { id: string; title?: string }) => ({
+                  id: String(r.id),
+                  title: r.title ?? "",
+                }));
                 await setStreamingStatus({
                   query: searchQuery.trim() || undefined,
                   phase: "searching",
@@ -1588,7 +1638,10 @@ export const chat = action({
                   resultCount: searchRes.count,
                   previewItems: toPreviewItems(searchRes.results, "Stored memory"),
                   events: [
-                    { label: "Scope", value: "title, content, people, locations, topics" },
+                    {
+                      label: "Scope",
+                      value: "title, content, people, locations, topics",
+                    },
                     {
                       label: "Ranking",
                       value:
@@ -1666,7 +1719,7 @@ export const chat = action({
                       normalized.title ||
                         (typeof fnArgs.title === "string" ? fnArgs.title : undefined),
                       normalized.content ||
-                        (typeof fnArgs.content === "string" ? fnArgs.content : "")
+                        (typeof fnArgs.content === "string" ? fnArgs.content : ""),
                     )
                   : normalized.title;
               const normalizedForWrite = {
@@ -1690,7 +1743,9 @@ export const chat = action({
               const memoryUpdatePatch = {
                 ...(normalizedForWrite.title ? { title: normalizedForWrite.title } : {}),
                 ...(normalizedForWrite.people ? { people: normalizedForWrite.people } : {}),
-                ...(normalizedForWrite.locations ? { locations: normalizedForWrite.locations } : {}),
+                ...(normalizedForWrite.locations
+                  ? { locations: normalizedForWrite.locations }
+                  : {}),
                 ...(normalizedForWrite.contextTags
                   ? { contextTags: normalizedForWrite.contextTags }
                   : {}),
@@ -1762,7 +1817,12 @@ export const chat = action({
                     { label: "Policy", value: "prefer update over duplicate" },
                     { label: "Target", value: forcedUpdateTargetId },
                     ...(forcedUpdateTargetLabel
-                      ? [{ label: "Resolution", value: forcedUpdateTargetLabel }]
+                      ? [
+                          {
+                            label: "Resolution",
+                            value: forcedUpdateTargetLabel,
+                          },
+                        ]
                       : []),
                   ],
                   step: 3,
@@ -1812,15 +1872,12 @@ export const chat = action({
                   },
                 });
               } else {
-                const created = await ctx.runAction(
-                  api.actions.processMemory.captureMemory,
-                  {
-                    token: args.token,
-                    content: contentToSave,
-                    currentTime: args.currentTime,
-                    currentTimezone: effectiveTimezone,
-                  }
-                );
+                const created = await ctx.runAction(api.actions.processMemory.captureMemory, {
+                  token: args.token,
+                  content: contentToSave,
+                  currentTime: args.currentTime,
+                  currentTimezone: effectiveTimezone,
+                });
 
                 if (Object.keys(memoryUpdatePatch).length > 0) {
                   await ctx.runMutation(api.memories.update, {
@@ -1853,8 +1910,7 @@ export const chat = action({
                   events: [
                     {
                       label: "Kind",
-                      value:
-                        normalizedForWrite.entryKind === "reminder" ? "reminder" : "memory",
+                      value: normalizedForWrite.entryKind === "reminder" ? "reminder" : "memory",
                     },
                     { label: "Target", value: String(created.memoryId) },
                   ],
@@ -1879,7 +1935,7 @@ export const chat = action({
                         normalized.title ||
                           (typeof fnArgs.title === "string" ? fnArgs.title : undefined),
                         normalized.content ||
-                          (typeof fnArgs.content === "string" ? fnArgs.content : "")
+                          (typeof fnArgs.content === "string" ? fnArgs.content : ""),
                       )
                     : normalized.title;
                 const normalizedForWrite = {
@@ -1908,7 +1964,7 @@ export const chat = action({
                 }
                 if (!targetMemoryId) {
                   throw new Error(
-                    "Couldn't determine which memory to update. Please specify the memory or reminder."
+                    "Couldn't determine which memory to update. Please specify the memory or reminder.",
                   );
                 }
                 await ctx.runMutation(api.memories.update, {
@@ -1917,7 +1973,9 @@ export const chat = action({
                   ...(normalizedForWrite.title ? { title: normalizedForWrite.title } : {}),
                   ...(normalizedForWrite.content ? { content: normalizedForWrite.content } : {}),
                   ...(normalizedForWrite.people ? { people: normalizedForWrite.people } : {}),
-                  ...(normalizedForWrite.locations ? { locations: normalizedForWrite.locations } : {}),
+                  ...(normalizedForWrite.locations
+                    ? { locations: normalizedForWrite.locations }
+                    : {}),
                   ...(normalizedForWrite.contextTags
                     ? { contextTags: normalizedForWrite.contextTags }
                     : {}),
@@ -1940,7 +1998,7 @@ export const chat = action({
                     truncateStatusText(
                       normalizedForWrite.title ||
                         (typeof fnArgs.content === "string" ? fnArgs.content : undefined) ||
-                        "Updated memory"
+                        "Updated memory",
                     ),
                   ],
                   events: [
@@ -1948,27 +2006,31 @@ export const chat = action({
                     { label: "Target", value: targetMemoryId },
                     ...(explicitMemoryId
                       ? []
-                      : [{ label: "Resolution", value: "resolved from chat context" }]),
+                      : [
+                          {
+                            label: "Resolution",
+                            value: "resolved from chat context",
+                          },
+                        ]),
                   ],
                   step: 3,
                   totalSteps: 4,
                 });
                 writeToolCalled = true;
-                result = JSON.stringify({ success: true, memory_id: targetMemoryId });
+                result = JSON.stringify({
+                  success: true,
+                  memory_id: targetMemoryId,
+                });
               } catch (error) {
                 result = JSON.stringify({
-                  error:
-                    error instanceof Error ? error.message : "Failed to update memory",
+                  error: error instanceof Error ? error.message : "Failed to update memory",
                 });
               }
             } else if (fnName === "sync_reminder") {
               try {
                 const explicitMemoryId =
-                  typeof fnArgs.memory_id === "string"
-                    ? fnArgs.memory_id.trim()
-                    : "";
-                const requestedQuery =
-                  typeof fnArgs.query === "string" ? fnArgs.query.trim() : "";
+                  typeof fnArgs.memory_id === "string" ? fnArgs.memory_id.trim() : "";
+                const requestedQuery = typeof fnArgs.query === "string" ? fnArgs.query.trim() : "";
                 let targetMemoryId = explicitMemoryId;
 
                 if (!targetMemoryId && latestReferencedMemoryIds.length > 0) {
@@ -1987,17 +2049,14 @@ export const chat = action({
                 }
                 if (!targetMemoryId) {
                   throw new Error(
-                    "Couldn't determine which reminder to sync. Please specify the reminder."
+                    "Couldn't determine which reminder to sync. Please specify the reminder.",
                   );
                 }
 
-                const syncResult = await ctx.runMutation(
-                  api.integrations.triggerReminderSync,
-                  {
-                    token: args.token,
-                    memoryId: targetMemoryId as Id<"memories">,
-                  }
-                );
+                const syncResult = await ctx.runMutation(api.integrations.triggerReminderSync, {
+                  token: args.token,
+                  memoryId: targetMemoryId as Id<"memories">,
+                });
                 pendingCardIds.add(targetMemoryId);
 
                 await setStreamingStatus({
@@ -2030,20 +2089,14 @@ export const chat = action({
                 });
               } catch (error) {
                 result = JSON.stringify({
-                  error:
-                    error instanceof Error
-                      ? error.message
-                      : "Failed to trigger reminder sync",
+                  error: error instanceof Error ? error.message : "Failed to trigger reminder sync",
                 });
               }
             } else if (fnName === "remove_reminder_sync") {
               try {
                 const explicitMemoryId =
-                  typeof fnArgs.memory_id === "string"
-                    ? fnArgs.memory_id.trim()
-                    : "";
-                const requestedQuery =
-                  typeof fnArgs.query === "string" ? fnArgs.query.trim() : "";
+                  typeof fnArgs.memory_id === "string" ? fnArgs.memory_id.trim() : "";
+                const requestedQuery = typeof fnArgs.query === "string" ? fnArgs.query.trim() : "";
                 let targetMemoryId = explicitMemoryId;
 
                 if (!targetMemoryId && latestReferencedMemoryIds.length > 0) {
@@ -2062,17 +2115,14 @@ export const chat = action({
                 }
                 if (!targetMemoryId) {
                   throw new Error(
-                    "Couldn't determine which reminder to unsync. Please specify the reminder."
+                    "Couldn't determine which reminder to unsync. Please specify the reminder.",
                   );
                 }
 
-                const unsyncResult = await ctx.runMutation(
-                  api.integrations.removeReminderSync,
-                  {
-                    token: args.token,
-                    memoryId: targetMemoryId as Id<"memories">,
-                  }
-                );
+                const unsyncResult = await ctx.runMutation(api.integrations.removeReminderSync, {
+                  token: args.token,
+                  memoryId: targetMemoryId as Id<"memories">,
+                });
                 pendingCardIds.add(targetMemoryId);
 
                 await setStreamingStatus({
@@ -2101,10 +2151,7 @@ export const chat = action({
                 });
               } catch (error) {
                 result = JSON.stringify({
-                  error:
-                    error instanceof Error
-                      ? error.message
-                      : "Failed to remove reminder sync",
+                  error: error instanceof Error ? error.message : "Failed to remove reminder sync",
                 });
               }
             } else if (fnName === "propose_deletion") {
@@ -2170,12 +2217,11 @@ export const chat = action({
                       found: pendingDeletionItems.length,
                       message: `Found ${pendingDeletionItems.length} item(s). They are being shown to the user for confirmation. Do NOT delete them yourself — wait for the user to confirm in the app.`,
                     }
-                  : { found: 0, message: "No matching items found." }
+                  : { found: 0, message: "No matching items found." },
               );
             } else if (fnName === "list_deleted_memories") {
               try {
-                const limit =
-                  typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 50) : 20;
+                const limit = typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 50) : 20;
                 const deleted = await ctx.runQuery(api.memories.listDeleted, {
                   token: args.token,
                   limit,
@@ -2197,16 +2243,13 @@ export const chat = action({
                 result = JSON.stringify({
                   deleted_memories: deleted.map((memory: MemoryDoc) => ({
                     ...toMemorySummary(memory),
-                    deletedAt: memory.deletedAt
-                      ? new Date(memory.deletedAt).toISOString()
-                      : null,
+                    deletedAt: memory.deletedAt ? new Date(memory.deletedAt).toISOString() : null,
                   })),
                   count: deleted.length,
                 });
               } catch (error) {
                 result = JSON.stringify({
-                  error:
-                    error instanceof Error ? error.message : "Failed to list deleted memories",
+                  error: error instanceof Error ? error.message : "Failed to list deleted memories",
                 });
               }
             } else if (fnName === "restore_memory") {
@@ -2232,18 +2275,18 @@ export const chat = action({
                 result = JSON.stringify({ success: true });
               } catch (error) {
                 result = JSON.stringify({
-                  error:
-                    error instanceof Error ? error.message : "Failed to restore memory",
+                  error: error instanceof Error ? error.message : "Failed to restore memory",
                 });
               }
             } else if (fnName === "list_memories") {
               const memories = await getRecentMemoriesCache();
-              const limit =
-                typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 50) : 20;
-              const ordered =
-                fnArgs.sort === "oldest" ? [...memories].reverse() : memories;
+              const limit = typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 50) : 20;
+              const ordered = fnArgs.sort === "oldest" ? [...memories].reverse() : memories;
               const listed = ordered.slice(0, limit);
-              surfaceCandidates = listed.map((m: MemoryDoc) => ({ id: String(m._id), title: m.title ?? "" }));
+              surfaceCandidates = listed.map((m: MemoryDoc) => ({
+                id: String(m._id),
+                title: m.title ?? "",
+              }));
               await setStreamingStatus({
                 phase: "loading",
                 toolName: "list_memories",
@@ -2252,7 +2295,10 @@ export const chat = action({
                 resultCount: memories.length,
                 previewItems: toPreviewItems(listed, "Stored memory"),
                 events: [
-                  { label: "Sort", value: fnArgs.sort === "oldest" ? "oldest first" : "newest first" },
+                  {
+                    label: "Sort",
+                    value: fnArgs.sort === "oldest" ? "oldest first" : "newest first",
+                  },
                   { label: "Limit", value: `${limit}` },
                 ],
                 step: 3,
@@ -2274,7 +2320,7 @@ export const chat = action({
 
               const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
               const recentCount = memories.filter(
-                (memory: MemoryDoc) => memory._creationTime >= weekAgo
+                (memory: MemoryDoc) => memory._creationTime >= weekAgo,
               ).length;
               await setStreamingStatus({
                 phase: "analyzing",
@@ -2298,8 +2344,7 @@ export const chat = action({
               });
             } else if (fnName === "analyze_memories") {
               const memories = await getRecentMemoriesCache();
-              const limit =
-                typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 50) : 50;
+              const limit = typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 50) : 50;
               await setStreamingStatus({
                 phase: "analyzing",
                 toolName: "analyze_memories",
@@ -2341,7 +2386,8 @@ export const chat = action({
                     { label: "Action", value: "list" },
                     {
                       label: "Scope",
-                      value: typeof fnArgs.memory_id === "string" ? "single memory" : "recent changes",
+                      value:
+                        typeof fnArgs.memory_id === "string" ? "single memory" : "recent changes",
                     },
                   ],
                   step: 3,
@@ -2366,7 +2412,13 @@ export const chat = action({
                   source: "memory_history",
                   events: [
                     { label: "Action", value: "undo" },
-                    { label: "Target", value: typeof fnArgs.memory_id === "string" ? fnArgs.memory_id : "latest edited memory" },
+                    {
+                      label: "Target",
+                      value:
+                        typeof fnArgs.memory_id === "string"
+                          ? fnArgs.memory_id
+                          : "latest edited memory",
+                    },
                   ],
                   step: 3,
                   totalSteps: 4,
@@ -2404,8 +2456,7 @@ export const chat = action({
                 const resolvedMemoryId = await resolveMemoryReference(ctx, {
                   token: args.token,
                   userId: session._id,
-                  reference:
-                    typeof fnArgs.memory_id === "string" ? fnArgs.memory_id : undefined,
+                  reference: typeof fnArgs.memory_id === "string" ? fnArgs.memory_id : undefined,
                   recentMemories: await getRecentMemoriesCache(),
                 });
 
@@ -2429,7 +2480,7 @@ export const chat = action({
                     memoryId: resolvedMemoryId,
                     topicName:
                       typeof fnArgs.topic_name === "string" ? fnArgs.topic_name : undefined,
-                  })
+                  }),
                 );
                 pendingCardIds.add(String(resolvedMemoryId));
                 await setStreamingStatus({
@@ -2439,7 +2490,13 @@ export const chat = action({
                   source: "topics",
                   events: [
                     { label: "Operation", value: "retag_memory" },
-                    { label: "Topic", value: typeof fnArgs.topic_name === "string" ? fnArgs.topic_name : "selected topic" },
+                    {
+                      label: "Topic",
+                      value:
+                        typeof fnArgs.topic_name === "string"
+                          ? fnArgs.topic_name
+                          : "selected topic",
+                    },
                   ],
                   step: 3,
                   totalSteps: 4,
@@ -2463,15 +2520,17 @@ export const chat = action({
                     | "trigger_reanalysis"
                     | "retag_memory",
                   topicSlug: typeof fnArgs.topic_slug === "string" ? fnArgs.topic_slug : undefined,
-                  targetSlug: typeof fnArgs.target_slug === "string" ? fnArgs.target_slug : undefined,
+                  targetSlug:
+                    typeof fnArgs.target_slug === "string" ? fnArgs.target_slug : undefined,
                   newName: typeof fnArgs.new_name === "string" ? fnArgs.new_name : undefined,
                   newIcon: typeof fnArgs.new_icon === "string" ? fnArgs.new_icon : undefined,
                   newColor: typeof fnArgs.new_color === "string" ? fnArgs.new_color : undefined,
-                  memoryId: typeof fnArgs.memory_id === "string"
-                    ? (fnArgs.memory_id as Id<"memories">)
-                    : undefined,
+                  memoryId:
+                    typeof fnArgs.memory_id === "string"
+                      ? (fnArgs.memory_id as Id<"memories">)
+                      : undefined,
                   topicName: typeof fnArgs.topic_name === "string" ? fnArgs.topic_name : undefined,
-                })
+                }),
               );
               await setStreamingStatus({
                 phase: fnArgs.operation === "list" ? "loading" : "writing",
@@ -2482,7 +2541,10 @@ export const chat = action({
                     : `Completed topic operation: ${String(fnArgs.operation || "update")}`,
                 source: "topics",
                 events: [
-                  { label: "Operation", value: String(fnArgs.operation || "update") },
+                  {
+                    label: "Operation",
+                    value: String(fnArgs.operation || "update"),
+                  },
                 ],
                 step: 3,
                 totalSteps: 4,
@@ -2494,12 +2556,13 @@ export const chat = action({
               await setStreamingStatus({
                 phase: "finalizing",
                 toolName: "surface_cards",
-                detail: ids.length > 0 ? `Preparing ${ids.length} memory card${ids.length === 1 ? "" : "s"}` : "No memory cards needed for this reply",
+                detail:
+                  ids.length > 0
+                    ? `Preparing ${ids.length} memory card${ids.length === 1 ? "" : "s"}`
+                    : "No memory cards needed for this reply",
                 source: "ui",
                 resultCount: ids.length,
-                events: [
-                  { label: "Operation", value: "surface cards" },
-                ],
+                events: [{ label: "Operation", value: "surface cards" }],
                 step: 3,
                 totalSteps: 4,
               });
@@ -2534,12 +2597,18 @@ export const chat = action({
         }
 
         // Precision-Grounded Auto-Surfacing (Final ID Extraction)
-        if (!surfaceCardsCalled && (initialGrounding.shouldGround || surfaceCandidates.length > 0)) {
+        if (
+          !surfaceCardsCalled &&
+          (initialGrounding.shouldGround || surfaceCandidates.length > 0)
+        ) {
           const usedIdsMatch = resolvedText.match(/<!--MEMORA_USED_IDS:\[(.*?)\]-->/);
           if (usedIdsMatch?.[1]) {
             try {
               const idsText = usedIdsMatch[1];
-              const cleanedIds = idsText.replace(/["'\[\]\s]/g, "").split(",").filter(Boolean);
+              const cleanedIds = idsText
+                .replace(/["'\[\]\s]/g, "")
+                .split(",")
+                .filter(Boolean);
               for (const id of cleanedIds) {
                 pendingCardIds.add(id);
               }
@@ -2557,9 +2626,7 @@ export const chat = action({
           detail: "Preparing final answer",
           source: "assistant",
           resultCount: pendingCardIds.size,
-          events: [
-            { label: "Cards", value: `${pendingCardIds.size}` },
-          ],
+          events: [{ label: "Cards", value: `${pendingCardIds.size}` }],
           step: 4,
           totalSteps: 4,
         });
@@ -2569,8 +2636,8 @@ export const chat = action({
           appendedComments += `\n<!--MEMORA_DELETION_PROPOSAL:${JSON.stringify(pendingDeletionItems)}-->`;
         }
         if (pendingCardIds.size > 0) {
-          appendedComments += `\n<!--MEMORA_CARD_IDS:${JSON.stringify({ 
-            ids: Array.from(pendingCardIds), 
+          appendedComments += `\n<!--MEMORA_CARD_IDS:${JSON.stringify({
+            ids: Array.from(pendingCardIds),
             isCached: pendingSearchIsCached,
             turns: finalIteration + 1,
             flow: buildCardFlowPayload({
@@ -2592,8 +2659,7 @@ export const chat = action({
         await ctx.runMutation(internal.chat.clearSearchStatus, {
           userId: session._id,
         });
-        aiResponse =
-          "I'm having trouble connecting right now. Please try again in a moment.";
+        aiResponse = "I'm having trouble connecting right now. Please try again in a moment.";
       }
     } else {
       await ctx.runMutation(internal.chat.clearSearchStatus, {
@@ -2611,14 +2677,18 @@ export const chat = action({
     const cardIdsIdx = aiResponse.indexOf("\n<!--MEMORA_CARD_IDS:");
     const minIdxStr = Math.min(
       deletionIdx !== -1 ? deletionIdx : Infinity,
-      cardIdsIdx !== -1 ? cardIdsIdx : Infinity
+      cardIdsIdx !== -1 ? cardIdsIdx : Infinity,
     );
     const attachmentFailures = extractedChatAttachments
       .filter(
-        (attachment): attachment is ChatAttachmentExtraction & { processingError: string } =>
+        (
+          attachment,
+        ): attachment is ChatAttachmentExtraction & {
+          processingError: string;
+        } =>
           attachment.processingStatus === "failed" &&
           typeof attachment.processingError === "string" &&
-          attachment.processingError.trim().length > 0
+          attachment.processingError.trim().length > 0,
       )
       .map((attachment) => ({
         name: attachment.name,
@@ -2638,7 +2708,7 @@ async function extractChatAttachmentsForConversation(
     userId: Id<"users">;
     attachments: ChatAttachmentRecord[];
     setStreamingStatus: (status: StreamingStatus) => Promise<void>;
-  }
+  },
 ): Promise<ChatAttachmentExtraction[]> {
   if (args.attachments.length === 0) {
     return [];
@@ -2651,16 +2721,18 @@ async function extractChatAttachmentsForConversation(
     source: "attachments",
     events: [
       { label: "Images", value: "Gemini extraction" },
-      { label: "PDFs", value: `direct text up to ${ATTACHMENT_TEXT_LIMIT} chars` },
+      {
+        label: "PDFs",
+        value: `direct text up to ${ATTACHMENT_TEXT_LIMIT} chars`,
+      },
     ],
     step: 1,
     totalSteps: 4,
   });
 
-  const integration = await ctx.runQuery(
-    internal.integrations.getGoogleIntegrationInternal,
-    { userId: args.userId }
-  );
+  const integration = await ctx.runQuery(internal.integrations.getGoogleIntegrationInternal, {
+    userId: args.userId,
+  });
   if (!integration) {
     const errorMessage = "Google integration not connected";
     await Promise.all(
@@ -2671,8 +2743,8 @@ async function extractChatAttachmentsForConversation(
           processingError: errorMessage,
           driveThumbnailLink: attachment.driveThumbnailLink,
           driveWebViewLink: attachment.driveWebViewLink,
-        })
-      )
+        }),
+      ),
     );
     return args.attachments.map((attachment) => ({
       ...attachment,
@@ -2700,8 +2772,8 @@ async function extractChatAttachmentsForConversation(
           processingError: errorMessage,
           driveThumbnailLink: attachment.driveThumbnailLink,
           driveWebViewLink: attachment.driveWebViewLink,
-        })
-      )
+        }),
+      ),
     );
     return args.attachments.map((attachment) => ({
       ...attachment,
@@ -2731,6 +2803,10 @@ async function extractChatAttachmentsForConversation(
         driveWebViewLink: attachment.driveWebViewLink,
       },
       textLimit: ATTACHMENT_TEXT_LIMIT,
+      analytics: {
+        ctx,
+        userId: args.userId,
+      },
     });
 
     await ctx.runMutation(internal.attachments.updateAttachmentStatus, {
@@ -2764,7 +2840,7 @@ function buildAttachmentContextMessage(attachments: ChatAttachmentExtraction[]) 
       "",
       `[Attachment: ${attachment.name}]`,
       `Type: ${attachment.type}`,
-      `Status: ${attachment.processingStatus}`
+      `Status: ${attachment.processingStatus}`,
     );
     if (attachment.extractionMethod) {
       lines.push(`Extraction method: ${attachment.extractionMethod}`);

@@ -15,7 +15,7 @@ export const KeyboardAwareScrollViewCompat = React.forwardRef<
   Props
 >(function KeyboardAwareScrollViewCompat(
   { children, bottomOffset = 20, keyboardShouldPersistTaps = "handled", ...props },
-  ref
+  ref,
 ) {
   useEffect(() => {
     if (Platform.OS === "web") {

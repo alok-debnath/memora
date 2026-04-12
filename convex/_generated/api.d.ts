@@ -17,6 +17,7 @@ import type * as actions_processDiary from "../actions/processDiary.js";
 import type * as actions_processMemory from "../actions/processMemory.js";
 import type * as actions_semanticSearch from "../actions/semanticSearch.js";
 import type * as actions_transcribeAudio from "../actions/transcribeAudio.js";
+import type * as analytics from "../analytics.js";
 import type * as attachments from "../attachments.js";
 import type * as auth from "../auth.js";
 import type * as authSchema from "../authSchema.js";
@@ -65,6 +66,7 @@ declare const fullApi: ApiFromModules<{
   "actions/processMemory": typeof actions_processMemory;
   "actions/semanticSearch": typeof actions_semanticSearch;
   "actions/transcribeAudio": typeof actions_transcribeAudio;
+  analytics: typeof analytics;
   attachments: typeof attachments;
   auth: typeof auth;
   authSchema: typeof authSchema;

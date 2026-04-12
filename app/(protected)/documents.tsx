@@ -1,12 +1,5 @@
 import React, { useState, useCallback } from "react";
-import {
-  FlatList,
-  Pressable,
-  StyleSheet,
-  RefreshControl,
-  View,
-  Dimensions,
-} from "react-native";
+import { FlatList, Pressable, StyleSheet, RefreshControl, View, Dimensions } from "react-native";
 import { Image } from "expo-image";
 import { XStack, YStack, Text } from "tamagui";
 import { Feather } from "@expo/vector-icons";
@@ -64,7 +57,7 @@ export default function FilesScreen() {
 
   const googleIntegration = useQuery(
     api.integrations.getGoogleIntegration,
-    token ? { token } : "skip"
+    token ? { token } : "skip",
   );
 
   const attachmentsResult = useQuery(
@@ -75,20 +68,22 @@ export default function FilesScreen() {
           paginationOpts: { numItems: 60, cursor: null },
           type: filter === "all" ? undefined : filter,
         }
-      : "skip"
+      : "skip",
   );
 
   const attachments = (attachmentsResult?.page ?? []) as AttachmentDoc[];
   const isLoading = attachmentsResult === undefined;
   const previewUrls = useDrivePreviewUrls(attachments, token);
 
-  const driveConnected = !!(googleIntegration?.connected && (googleIntegration as any).hasDriveScope);
+  const driveConnected = !!(
+    googleIntegration?.connected && (googleIntegration as any).hasDriveScope
+  );
 
   const renderItem = useCallback(
     ({ item, index }: { item: AttachmentDoc; index: number }) => {
       const previewUri =
         item.type === "image"
-          ? previewUrls[item.driveFileId] ?? item.driveThumbnailLink
+          ? (previewUrls[item.driveFileId] ?? item.driveThumbnailLink)
           : undefined;
 
       return (
@@ -115,7 +110,9 @@ export default function FilesScreen() {
                 placeholder={{ blurhash: "L6PZfSi_.AyE_3t7t7R**0o#DgR4" }}
               />
             ) : (
-              <View style={[styles.docIconContainer, { backgroundColor: colors.backgroundSecondary }]}>
+              <View
+                style={[styles.docIconContainer, { backgroundColor: colors.backgroundSecondary }]}
+              >
                 <Feather name="file-text" size={36} color={colors.primary} />
               </View>
             )}
@@ -127,19 +124,16 @@ export default function FilesScreen() {
               borderTopWidth={StyleSheet.hairlineWidth}
               borderTopColor={colors.border}
             >
-              <Text
-                fontSize={11}
-                fontWeight="600"
-                color={colors.text}
-                numberOfLines={1}
-              >
+              <Text fontSize={11} fontWeight="600" color={colors.text} numberOfLines={1}>
                 {item.filename}
               </Text>
               <XStack alignItems="center" gap={4}>
                 <View
                   style={[
                     styles.statusDot,
-                    { backgroundColor: processingColors[item.processingStatus] },
+                    {
+                      backgroundColor: processingColors[item.processingStatus],
+                    },
                   ]}
                 />
                 <Text fontSize={10} color={colors.textSecondary}>
@@ -151,15 +145,26 @@ export default function FilesScreen() {
         </Animated.View>
       );
     },
-    [colors, openFilePreview, previewUrls]
+    [colors, openFilePreview, previewUrls],
   );
 
   const listHeader = (
     <View>
       {!driveConnected && (
         <Pressable
-          onPress={() => showToast({ title: "Connect Google in Settings to sync files", tone: "info" })}
-          style={[styles.banner, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}
+          onPress={() =>
+            showToast({
+              title: "Connect Google in Settings to sync files",
+              tone: "info",
+            })
+          }
+          style={[
+            styles.banner,
+            {
+              backgroundColor: colors.backgroundSecondary,
+              borderColor: colors.border,
+            },
+          ]}
         >
           <Feather name="alert-circle" size={14} color={colors.primary} />
           <Text fontSize={12} color={colors.text} flex={1}>
@@ -176,8 +181,7 @@ export default function FilesScreen() {
             style={[
               styles.filterChip,
               {
-                backgroundColor:
-                  filter === f ? colors.primary : colors.backgroundSecondary,
+                backgroundColor: filter === f ? colors.primary : colors.backgroundSecondary,
                 borderColor: filter === f ? colors.primary : colors.border,
               },
             ]}
@@ -207,9 +211,7 @@ export default function FilesScreen() {
         contentContainerStyle={[styles.gridContent, { paddingTop: contentTopPadding }]}
         ListHeaderComponent={listHeader}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={isLoading} tintColor={colors.primary} />
-        }
+        refreshControl={<RefreshControl refreshing={isLoading} tintColor={colors.primary} />}
         ListEmptyComponent={
           !isLoading ? (
             <YStack flex={1} alignItems="center" justifyContent="center" gap={12} paddingTop={80}>

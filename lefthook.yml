@@ -1,0 +1,11 @@
+pre-commit:
+  jobs:
+    - name: prettier
+      glob:
+        - "*.{js,jsx,ts,tsx,json,md,mdx,yml,yaml,css,scss}"
+      exclude:
+        - "convex/_generated/**"
+        - "android/**"
+        - "ios/**"
+      run: bun prettier --write {staged_files}
+      stage_fixed: true

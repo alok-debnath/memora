@@ -32,7 +32,6 @@ import tamaguiConfig from "@/tamagui.config";
 import { AppToastProvider, AppToastRenderer } from "@/components/ui/toast";
 import { AppConfirmProvider } from "@/components/ui/confirm/AppConfirmProvider";
 
-
 SplashScreen.preventAutoHideAsync();
 
 const CONVEX_URL = process.env.EXPO_PUBLIC_CONVEX_URL || "https://placeholder.convex.cloud";
@@ -42,8 +41,7 @@ const convex = new ConvexReactClient(CONVEX_URL, {
 
 function RootLayoutNav() {
   const systemMode = useColorScheme() === "dark" ? "dark" : "light";
-  const { resolvedMode, loadTheme, hasLoaded: themeLoaded, setSystemMode } =
-    useThemeStore();
+  const { resolvedMode, loadTheme, hasLoaded: themeLoaded, setSystemMode } = useThemeStore();
   const auth = useAuthState();
 
   useEffect(() => {
@@ -71,7 +69,7 @@ function RootLayoutNav() {
 
   return (
     <TamaguiProvider config={tamaguiConfig} defaultTheme={resolvedMode}>
-        <AppConfirmProvider>
+      <AppConfirmProvider>
         <AuthContext.Provider value={auth}>
           <StatusBar style={resolvedMode === "dark" ? "light" : "dark"} />
           <Stack

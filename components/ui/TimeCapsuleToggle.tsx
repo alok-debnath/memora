@@ -12,15 +12,28 @@ interface TimeCapsuleToggleProps {
   onDateChange: (date: string) => void;
 }
 
-export function TimeCapsuleToggle({ enabled, date, onToggle, onDateChange }: TimeCapsuleToggleProps) {
+export function TimeCapsuleToggle({
+  enabled,
+  date,
+  onToggle,
+  onDateChange,
+}: TimeCapsuleToggleProps) {
   const theme = useAppTheme();
 
   return (
-    <YStack borderWidth={0.5} borderColor="$borderColor" backgroundColor="$card" borderRadius={14} overflow="hidden">
+    <YStack
+      borderWidth={0.5}
+      borderColor="$borderColor"
+      backgroundColor="$card"
+      borderRadius={14}
+      overflow="hidden"
+    >
       <XStack alignItems="center" gap={12} padding={14}>
         <Feather name="lock" size={18} color={theme.colorMuted.val} />
         <YStack flex={1}>
-          <Text color="$color" fontSize={14} fontFamily="$body" fontWeight="600">Time Capsule</Text>
+          <Text color="$color" fontSize={14} fontFamily="$body" fontWeight="600">
+            Time Capsule
+          </Text>
           <Text color="$colorMuted" fontSize={12} fontFamily="$body" marginTop={1}>
             Lock until a future date
           </Text>
@@ -48,7 +61,12 @@ export function TimeCapsuleToggle({ enabled, date, onToggle, onDateChange }: Tim
             placeholder="yyyy-mm-ddTHH:MM"
             placeholderTextColor={theme.colorMuted.val}
             autoCapitalize="none"
-            style={{ flex: 1, fontSize: 14, fontFamily: FontFamily.regular, color: theme.color.val }}
+            style={{
+              flex: 1,
+              fontSize: 14,
+              fontFamily: FontFamily.regular,
+              color: theme.color.val,
+            }}
           />
         </XStack>
       )}

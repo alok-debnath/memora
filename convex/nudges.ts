@@ -18,9 +18,7 @@ export const list = query({
     if (args.includeAll) return nudges;
 
     const now = Date.now();
-    return nudges.filter(
-      (n) => !n.isDismissed && (!n.expiresAt || n.expiresAt > now)
-    );
+    return nudges.filter((n) => !n.isDismissed && (!n.expiresAt || n.expiresAt > now));
   },
 });
 

@@ -1,12 +1,5 @@
 import React, { useState, useRef, useCallback } from "react";
-import {
-  TextInput,
-  Pressable,
-  ScrollView,
-  Platform,
-  Alert,
-  Switch,
-} from "react-native";
+import { TextInput, Pressable, ScrollView, Platform, Alert, Switch } from "react-native";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { Feather } from "@expo/vector-icons";
@@ -113,12 +106,18 @@ function TipsCard() {
     >
       <XStack alignItems="center" gap={6} marginBottom={4}>
         <Feather name="zap" size={14} color={statusAccentColors.warning} />
-        <Text fontSize={14} fontFamily="$body" fontWeight="600" color="$color">Tips</Text>
+        <Text fontSize={14} fontFamily="$body" fontWeight="600" color="$color">
+          Tips
+        </Text>
       </XStack>
       {TIPS.map((tip, i) => (
         <XStack key={i} gap={8}>
-          <Text fontSize={14} lineHeight={20} color="$colorMuted">{"\u2022"}</Text>
-          <Text fontSize={13} fontFamily="$body" lineHeight={20} flex={1} color="$colorMuted">{tip}</Text>
+          <Text fontSize={14} lineHeight={20} color="$colorMuted">
+            {"\u2022"}
+          </Text>
+          <Text fontSize={13} fontFamily="$body" lineHeight={20} flex={1} color="$colorMuted">
+            {tip}
+          </Text>
         </XStack>
       ))}
     </YStack>
@@ -164,15 +163,15 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
     }
     setIsSaving(true);
     try {
-      const content = timeCapsuleEnabled && capsuleDate
-        ? `${noteText}\n\n[Time Capsule: lock until ${capsuleDate}]`
-        : noteText;
+      const content =
+        timeCapsuleEnabled && capsuleDate
+          ? `${noteText}\n\n[Time Capsule: lock until ${capsuleDate}]`
+          : noteText;
       const result = await captureMemory({
         token,
         content,
         currentTime: new Date().toISOString(),
-        currentTimezone:
-          Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+        currentTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       });
       if (result.conflicts.length > 0) {
         const message = result.conflicts
@@ -230,11 +229,11 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
             <Feather name="cpu" size={18} color={theme.primary.val} />
           </XStack>
           <YStack>
-            <Text fontSize={16} fontFamily="$body" fontWeight="600" color="$color">Memora</Text>
+            <Text fontSize={16} fontFamily="$body" fontWeight="600" color="$color">
+              Memora
+            </Text>
             <Text fontSize={12} fontFamily="$body" marginTop={1} color="$colorMuted">
-              {activeTab === "chat"
-                ? "Ask anything about your memories"
-                : "Create a new memory"}
+              {activeTab === "chat" ? "Ask anything about your memories" : "Create a new memory"}
             </Text>
           </YStack>
         </XStack>
@@ -252,9 +251,7 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
                   borderRadius: 17,
                   alignItems: "center",
                   justifyContent: "center",
-                  backgroundColor: autoVoiceOutput
-                    ? theme.primary.val + "15"
-                    : theme.secondary.val,
+                  backgroundColor: autoVoiceOutput ? theme.primary.val + "15" : theme.secondary.val,
                 }}
               >
                 <Feather
@@ -264,10 +261,14 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
                 />
               </Pressable>
               <Pressable
-                onPress={() =>
-                  setChatInputMode(chatInputMode === "voice" ? "keyboard" : "voice")
-                }
-                style={{ width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" }}
+                onPress={() => setChatInputMode(chatInputMode === "voice" ? "keyboard" : "voice")}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
               >
                 <Feather
                   name={chatInputMode === "voice" ? "type" : "mic"}
@@ -301,12 +302,24 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
             {
               value: "chat" as const,
               label: "AI Chat",
-              icon: <Feather name="cpu" size={14} color={activeTab === "chat" ? theme.color.val : theme.colorMuted.val} />,
+              icon: (
+                <Feather
+                  name="cpu"
+                  size={14}
+                  color={activeTab === "chat" ? theme.color.val : theme.colorMuted.val}
+                />
+              ),
             },
             {
               value: "note" as const,
               label: "New Memory",
-              icon: <Feather name="edit-3" size={14} color={activeTab === "note" ? theme.color.val : theme.colorMuted.val} />,
+              icon: (
+                <Feather
+                  name="edit-3"
+                  size={14}
+                  color={activeTab === "note" ? theme.color.val : theme.colorMuted.val}
+                />
+              ),
             },
           ]}
           value={activeTab}
@@ -332,12 +345,24 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
                 {
                   value: "type" as const,
                   label: "Type",
-                  icon: <Feather name="edit-3" size={14} color={noteSubTab === "type" ? theme.color.val : theme.colorMuted.val} />,
+                  icon: (
+                    <Feather
+                      name="edit-3"
+                      size={14}
+                      color={noteSubTab === "type" ? theme.color.val : theme.colorMuted.val}
+                    />
+                  ),
                 },
                 {
                   value: "template" as const,
                   label: "Template",
-                  icon: <Feather name="grid" size={14} color={noteSubTab === "template" ? theme.color.val : theme.colorMuted.val} />,
+                  icon: (
+                    <Feather
+                      name="grid"
+                      size={14}
+                      color={noteSubTab === "template" ? theme.color.val : theme.colorMuted.val}
+                    />
+                  ),
                 },
               ]}
               value={noteSubTab}
@@ -376,7 +401,10 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
               <Switch
                 value={timeCapsuleEnabled}
                 onValueChange={setTimeCapsuleEnabled}
-                trackColor={{ false: theme.borderColor.val, true: theme.primary.val + "60" }}
+                trackColor={{
+                  false: theme.borderColor.val,
+                  true: theme.primary.val + "60",
+                }}
                 thumbColor={timeCapsuleEnabled ? theme.primary.val : theme.colorMuted.val}
               />
             </XStack>
@@ -416,7 +444,13 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
                       onChangeText={setCapsuleDate}
                       placeholder="mm/dd/yyyy"
                       placeholderTextColor={theme.colorMuted.val}
-                      style={{ flex: 1, fontSize: 14, fontFamily: FontFamily.regular, padding: 0, color: theme.color.val }}
+                      style={{
+                        flex: 1,
+                        fontSize: 14,
+                        fontFamily: FontFamily.regular,
+                        padding: 0,
+                        color: theme.color.val,
+                      }}
                       keyboardType="numbers-and-punctuation"
                     />
                   )}
@@ -447,7 +481,9 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
                     ref={noteInputRef}
                     value={noteText}
                     onChangeText={setNoteText}
-                    placeholder={"Type a memory note... e.g.\n'Remind me to renew my passport\non March 15 every year'"}
+                    placeholder={
+                      "Type a memory note... e.g.\n'Remind me to renew my passport\non March 15 every year'"
+                    }
                     placeholderTextColor={theme.colorMuted.val}
                     multiline
                     style={{
@@ -477,7 +513,9 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
                         name="send"
                         size={16}
                         color={
-                          noteText.trim() && !isSaving ? theme.textInverse.val : theme.colorMuted.val
+                          noteText.trim() && !isSaving
+                            ? theme.textInverse.val
+                            : theme.colorMuted.val
                         }
                       />
                     </XStack>

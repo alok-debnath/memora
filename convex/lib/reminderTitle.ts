@@ -15,21 +15,18 @@ function stripScheduleFromTitle(title: string) {
     .replace(
       new RegExp(
         `\\s*(?:[-,:|]|\\()\\s*(?:on\\s+)?${DATE_PATTERN}(?:\\s+(?:at\\s+)?${TIME_PATTERN})?(?:\\s*[A-Z]{2,4})?\\)?$`,
-        "i"
+        "i",
       ),
-      ""
+      "",
     )
     .replace(
       new RegExp(
         `\\s+(?:on\\s+)?${DATE_PATTERN}(?:\\s+(?:at\\s+)?${TIME_PATTERN})?(?:\\s*[A-Z]{2,4})?$`,
-        "i"
+        "i",
       ),
-      ""
+      "",
     )
-    .replace(
-      new RegExp(`\\s+at\\s+${TIME_PATTERN}(?:\\s*[A-Z]{2,4})?$`, "i"),
-      ""
-    )
+    .replace(new RegExp(`\\s+at\\s+${TIME_PATTERN}(?:\\s*[A-Z]{2,4})?$`, "i"), "")
     .replace(/\s*[-,:|]+\s*$/, "")
     .trim();
 
@@ -37,9 +34,7 @@ function stripScheduleFromTitle(title: string) {
 }
 
 function deriveTopicFromContent(content: string) {
-  let value = normalizeWhitespace(
-    content.replace(/\[[^\]]*time capsule[^\]]*\]/gi, "")
-  );
+  let value = normalizeWhitespace(content.replace(/\[[^\]]*time capsule[^\]]*\]/gi, ""));
   if (!value) return "";
 
   value = value
@@ -52,11 +47,8 @@ function deriveTopicFromContent(content: string) {
 
   value = value
     .replace(
-      new RegExp(
-        `\\s+(?:on\\s+)?${DATE_PATTERN}(?:\\s+(?:at\\s+)?${TIME_PATTERN})?.*$`,
-        "i"
-      ),
-      ""
+      new RegExp(`\\s+(?:on\\s+)?${DATE_PATTERN}(?:\\s+(?:at\\s+)?${TIME_PATTERN})?.*$`, "i"),
+      "",
     )
     .replace(new RegExp(`\\s+at\\s+${TIME_PATTERN}.*$`, "i"), "")
     .trim();
@@ -64,10 +56,7 @@ function deriveTopicFromContent(content: string) {
   return value.slice(0, 70).trim();
 }
 
-export function getReminderTitleWithoutSchedule(
-  title: string | undefined,
-  content: string
-) {
+export function getReminderTitleWithoutSchedule(title: string | undefined, content: string) {
   const trimmedTitle = normalizeWhitespace(title ?? "");
   const stripped = stripScheduleFromTitle(trimmedTitle);
   if (stripped.length >= 3) {
@@ -81,4 +70,3 @@ export function getReminderTitleWithoutSchedule(
 
   return trimmedTitle || "Reminder";
 }
-

@@ -1,7 +1,13 @@
 import React from "react";
 import { ScrollView } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming, Easing } from "react-native-reanimated";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+  Easing,
+} from "react-native-reanimated";
 import { PressableScale } from "./PressableScale";
 import { Text, XStack } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -31,7 +37,7 @@ export function TopicPills({ selected, onSelect, topics, onSync, isSyncing }: To
       rotation.value = withRepeat(
         withTiming(360, { duration: 800, easing: Easing.linear }),
         -1,
-        false
+        false,
       );
     } else {
       rotation.value = 0;
@@ -56,7 +62,11 @@ export function TopicPills({ selected, onSelect, topics, onSync, isSyncing }: To
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ paddingHorizontal: 16, gap: 8, flexDirection: "row" }}
+      contentContainerStyle={{
+        paddingHorizontal: 16,
+        gap: 8,
+        flexDirection: "row",
+      }}
     >
       {/* "All" pill */}
       <PressableScale

@@ -10,10 +10,14 @@ export default function NotFoundScreen() {
     <>
       <Stack.Screen options={{ title: "Oops!" }} />
       <YStack style={styles.container} backgroundColor="$background">
-        <Text style={styles.title} color="$color">This screen doesn&apos;t exist.</Text>
+        <Text style={styles.title} color="$color">
+          This screen doesn&apos;t exist.
+        </Text>
 
         <Link href="/" style={styles.link}>
-          <Text style={styles.linkText} color={theme.primary.val}>Go to home screen!</Text>
+          <Text style={styles.linkText} color={theme.primary.val}>
+            Go to home screen!
+          </Text>
         </Link>
       </YStack>
     </>

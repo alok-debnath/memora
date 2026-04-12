@@ -28,7 +28,6 @@ import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { withAlpha } from "@/components/ui/themeHelpers";
 
-
 const HEADER_HEIGHT = 48;
 const HEADER_TOP_MARGIN = 8;
 const CONTENT_TOP_GAP = 30;
@@ -46,8 +45,7 @@ function GlassPill({
 }) {
   const theme = useAppTheme();
   const flattened = StyleSheet.flatten(style) ?? {};
-  const borderRadius =
-    typeof flattened.borderRadius === "number" ? flattened.borderRadius : 999;
+  const borderRadius = typeof flattened.borderRadius === "number" ? flattened.borderRadius : 999;
 
   return (
     <View
@@ -55,12 +53,12 @@ function GlassPill({
       style={[
         styles.glassShellBase,
         Platform.OS === "web" ? styles.glassShellWeb : styles.glassShellNative,
-        { 
+        {
           backgroundColor: withAlpha(theme.surfaceElevated.val, "E6"),
           borderColor: theme.borderStrong.val,
           borderWidth: 1,
-          borderRadius, 
-          shadowColor: theme.shadowColor.val, 
+          borderRadius,
+          shadowColor: theme.shadowColor.val,
         },
         flattened,
       ]}
@@ -117,12 +115,12 @@ export function MorePageScaffold({
         titlePillWidth.value = measuredWidth;
       }
     },
-    [titlePillWidth]
+    [titlePillWidth],
   );
 
   React.useEffect(() => {
     onContentTopPadding?.(contentTopPadding);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contentTopPadding]);
 
   const onScroll = useAnimatedScrollHandler<{ lastY?: number }>({
@@ -160,9 +158,7 @@ export function MorePageScaffold({
     const offset = headerCollapse.value;
     const scale = interpolate(offset, [0, HEADER_COLLAPSE_RANGE], [1, 0.7], Extrapolation.CLAMP);
     const shrink = 1 - scale;
-    const keepRightEdgeOffset = isLargeScreen
-      ? 0
-      : (titlePillWidth.value * shrink) / 2;
+    const keepRightEdgeOffset = isLargeScreen ? 0 : (titlePillWidth.value * shrink) / 2;
     const keepTopEdgeOffset = (HEADER_HEIGHT * shrink) / 2;
     return {
       transform: [
@@ -181,85 +177,148 @@ export function MorePageScaffold({
     const offset = headerCollapse.value;
     return {
       opacity: interpolate(offset, [0, HEADER_COLLAPSE_RANGE * 0.67], [0.95, 0.5]),
-      transform: [{ scale: interpolate(offset, [0, HEADER_COLLAPSE_RANGE * 0.67], [1, 0.92]) }],
+      transform: [
+        {
+          scale: interpolate(offset, [0, HEADER_COLLAPSE_RANGE * 0.67], [1, 0.92]),
+        },
+      ],
     };
   });
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top", "bottom"]}>
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: theme.background.val }}
+      edges={["top", "bottom"]}
+    >
       <YStack flex={1} backgroundColor="$background">
-      <LinearGradient
-        colors={[theme.surfaceAccent.val, theme.background.val, theme.background.val]}
-        start={{ x: 0.04, y: 0 }}
-        end={{ x: 0.88, y: 0.62 }}
-        style={StyleSheet.absoluteFill}
-      />
+        <LinearGradient
+          colors={[theme.surfaceAccent.val, theme.background.val, theme.background.val]}
+          start={{ x: 0.04, y: 0 }}
+          end={{ x: 0.88, y: 0.62 }}
+          style={StyleSheet.absoluteFill}
+        />
 
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          styles.ambientOrb,
-          {
-            top: headerTop - 14,
-            right: isLargeScreen ? 44 : -6,
-            backgroundColor: theme.primary.val + "14",
-          },
-          ambientStyle,
-        ]}
-      />
-
-      {noScroll ? (
-        <View style={{ flex: 1 }}>
-          {children}
-        </View>
-      ) : (
-        <Animated.ScrollView
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          scrollEventThrottle={16}
-          onScroll={externalOnScroll ?? onScroll}
-          {...scrollProps}
-          contentContainerStyle={[
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.ambientOrb,
             {
-              paddingTop: contentTopPadding,
-              paddingBottom: 144,
-              paddingHorizontal: 16,
+              top: headerTop - 14,
+              right: isLargeScreen ? 44 : -6,
+              backgroundColor: theme.primary.val + "14",
             },
-            scrollProps?.contentContainerStyle,
+            ambientStyle,
+          ]}
+        />
+
+        {noScroll ? (
+          <View style={{ flex: 1 }}>{children}</View>
+        ) : (
+          <Animated.ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            scrollEventThrottle={16}
+            onScroll={externalOnScroll ?? onScroll}
+            {...scrollProps}
+            contentContainerStyle={[
+              {
+                paddingTop: contentTopPadding,
+                paddingBottom: 144,
+                paddingHorizontal: 16,
+              },
+              scrollProps?.contentContainerStyle,
+            ]}
+          >
+            <YStack
+              width="100%"
+              maxWidth={isLargeScreen ? 1040 : undefined}
+              alignSelf="center"
+              gap={14}
+            >
+              {children}
+            </YStack>
+          </Animated.ScrollView>
+        )}
+
+        <Animated.View
+          entering={FadeIn.duration(320)}
+          pointerEvents="box-none"
+          style={[
+            styles.headerLayer,
+            {
+              top: headerTop,
+            },
           ]}
         >
-          <YStack
-            width="100%"
-            maxWidth={isLargeScreen ? 1040 : undefined}
-            alignSelf="center"
-            gap={14}
-          >
-            {children}
-          </YStack>
-        </Animated.ScrollView>
-      )}
+          {isLargeScreen ? (
+            <XStack
+              width="100%"
+              maxWidth={1040}
+              alignSelf="center"
+              alignItems="center"
+              gap={14}
+              paddingHorizontal={16}
+            >
+              <YStack
+                width={HEADER_HEIGHT}
+                height={HEADER_HEIGHT}
+                alignItems="center"
+                justifyContent="center"
+              >
+                <Animated.View style={backPillStyle}>
+                  <PressableScale onPress={handleBackPress} hitSlop={10}>
+                    <View>
+                      <GlassPill
+                        style={{
+                          height: HEADER_HEIGHT,
+                          width: HEADER_HEIGHT,
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Feather name="chevron-left" size={22} color={theme.color.val + "EE"} />
+                      </GlassPill>
+                    </View>
+                  </PressableScale>
+                </Animated.View>
+              </YStack>
 
-      <Animated.View
-        entering={FadeIn.duration(320)}
-        pointerEvents="box-none"
-        style={[
-          styles.headerLayer,
-          {
-            top: headerTop,
-          },
-        ]}
-      >
-        {isLargeScreen ? (
-          <XStack
-            width="100%"
-            maxWidth={1040}
-            alignSelf="center"
-            alignItems="center"
-            gap={14}
-            paddingHorizontal={16}
-          >
-            <YStack width={HEADER_HEIGHT} height={HEADER_HEIGHT} alignItems="center" justifyContent="center">
-              <Animated.View style={backPillStyle}>
+              <YStack flex={1} height={HEADER_HEIGHT} justifyContent="center">
+                <Animated.View
+                  style={[titlePillStyle, styles.titlePillFullWidth]}
+                  pointerEvents="none"
+                >
+                  <View>
+                    <GlassPill
+                      onLayout={handleTitlePillLayout}
+                      style={{
+                        minHeight: HEADER_HEIGHT,
+                        width: "100%",
+                        paddingHorizontal: 14,
+                        paddingVertical: 10,
+                        justifyContent: "center",
+                        alignItems: "center",
+                      }}
+                    >
+                      <Text
+                        color={theme.color.val}
+                        fontFamily="$heading"
+                        fontWeight="700"
+                        fontSize={15}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                        textAlign="center"
+                      >
+                        {title}
+                      </Text>
+                    </GlassPill>
+                  </View>
+                </Animated.View>
+              </YStack>
+            </XStack>
+          ) : (
+            <>
+              <Animated.View style={[styles.backButtonWrap, backPillStyle]}>
                 <PressableScale onPress={handleBackPress} hitSlop={10}>
                   <View>
                     <GlassPill
@@ -275,89 +334,39 @@ export function MorePageScaffold({
                   </View>
                 </PressableScale>
               </Animated.View>
-            </YStack>
 
-            <YStack flex={1} height={HEADER_HEIGHT} justifyContent="center">
-              <Animated.View style={[titlePillStyle, styles.titlePillFullWidth]} pointerEvents="none">
-                <View>
-                  <GlassPill
-                    onLayout={handleTitlePillLayout}
-                    style={{
-                      minHeight: HEADER_HEIGHT,
-                      width: "100%",
-                      paddingHorizontal: 14,
-                      paddingVertical: 10,
-                      justifyContent: "center",
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text
-                      color={theme.color.val}
-                      fontFamily="$heading"
-                      fontWeight="700"
-                      fontSize={15}
-                      numberOfLines={1}
-                      ellipsizeMode="tail"
-                      textAlign="center"
+              <Animated.View style={styles.titleWrap} pointerEvents="none">
+                <Animated.View style={titlePillStyle}>
+                  <View>
+                    <GlassPill
+                      onLayout={handleTitlePillLayout}
+                      style={{
+                        minHeight: HEADER_HEIGHT,
+                        maxWidth: TITLE_PILL_MAX_WIDTH,
+                        paddingHorizontal: 14,
+                        paddingVertical: 10,
+                        justifyContent: "center",
+                        alignItems: "center",
+                      }}
                     >
-                      {title}
-                    </Text>
-                  </GlassPill>
-                </View>
+                      <Text
+                        color={theme.color.val}
+                        fontFamily="$heading"
+                        fontWeight="700"
+                        fontSize={15}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                        textAlign="center"
+                      >
+                        {title}
+                      </Text>
+                    </GlassPill>
+                  </View>
+                </Animated.View>
               </Animated.View>
-            </YStack>
-          </XStack>
-        ) : (
-          <>
-            <Animated.View style={[styles.backButtonWrap, backPillStyle]}>
-              <PressableScale onPress={handleBackPress} hitSlop={10}>
-                <View>
-                  <GlassPill
-                    style={{
-                      height: HEADER_HEIGHT,
-                      width: HEADER_HEIGHT,
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Feather name="chevron-left" size={22} color={theme.color.val + "EE"} />
-                  </GlassPill>
-                </View>
-              </PressableScale>
-            </Animated.View>
-
-            <Animated.View style={styles.titleWrap} pointerEvents="none">
-              <Animated.View style={titlePillStyle}>
-                <View>
-                  <GlassPill
-                    onLayout={handleTitlePillLayout}
-                    style={{
-                      minHeight: HEADER_HEIGHT,
-                      maxWidth: TITLE_PILL_MAX_WIDTH,
-                      paddingHorizontal: 14,
-                      paddingVertical: 10,
-                      justifyContent: "center",
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text
-                      color={theme.color.val}
-                      fontFamily="$heading"
-                      fontWeight="700"
-                      fontSize={15}
-                      numberOfLines={1}
-                      ellipsizeMode="tail"
-                      textAlign="center"
-                    >
-                      {title}
-                    </Text>
-                  </GlassPill>
-                </View>
-              </Animated.View>
-            </Animated.View>
-          </>
-        )}
-      </Animated.View>
+            </>
+          )}
+        </Animated.View>
       </YStack>
     </SafeAreaView>
   );
@@ -386,8 +395,7 @@ const styles = StyleSheet.create({
     position: "relative",
     zIndex: 4,
   },
-  glassShellBase: {
-  },
+  glassShellBase: {},
   glassShellNative: {
     shadowOpacity: 0.22,
     shadowRadius: 20,

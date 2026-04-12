@@ -26,7 +26,7 @@ const moreItems: NavItem[] = [
   { icon: "bell", label: "Reminders", key: "reminders" },
   { icon: "file-text", label: "Documents", key: "documents" },
   { icon: "share-2", label: "Knowledge Graph", key: "knowledge-graph" },
-  { icon: "bar-chart-2", label: "Statistics", key: "statistics" },
+  { icon: "bar-chart-2", label: "Analytics", key: "statistics" },
   { icon: "user", label: "Profile", key: "profile" },
 ];
 
@@ -77,14 +77,7 @@ export function DesktopSidebar({
         >
           {item.label}
         </Text>
-        {isActive && (
-          <YStack
-            width={6}
-            height={6}
-            borderRadius={3}
-            backgroundColor="$primary"
-          />
-        )}
+        {isActive && <YStack width={6} height={6} borderRadius={3} backgroundColor="$primary" />}
       </PressableScale>
     );
   };
@@ -102,11 +95,19 @@ export function DesktopSidebar({
         <XStack alignItems="center" gap={10}>
           <LinearGradient
             colors={[brandGradients.warm[1], brandGradients.warm[0]]}
-            style={{ width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" }}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
             <Feather name="zap" size={20} color={theme.textInverse.val} />
           </LinearGradient>
-          <Text fontSize={20} fontFamily={FontFamily.bold} fontWeight="700" color="$color">Memora</Text>
+          <Text fontSize={20} fontFamily={FontFamily.bold} fontWeight="700" color="$color">
+            Memora
+          </Text>
         </XStack>
       </SurfaceCard>
 

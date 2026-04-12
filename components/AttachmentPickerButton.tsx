@@ -51,33 +51,28 @@ export function AttachmentPickerButton({
     </View>
   );
 
-  return (
-    driveConnected ? (
-      <PopoverMenu
-        items={menuItems}
-        align="start"
-        triggerGap={0}
-        horizontalOffset={-6}
-        verticalOffset={-2}
-      >
-        {trigger}
-      </PopoverMenu>
-    ) : (
-      <Pressable
-        onPress={onRequestDriveAccess}
-        hitSlop={8}
-        style={({ pressed }) => [
-          styles.button,
-          pressed && styles.pressed,
-        ]}
-      >
-        {driveConnected ? (
-          <Feather name="paperclip" size={size} color={colors.textSecondary} />
-        ) : (
-          <Feather name="lock" size={size} color={colors.textTertiary} />
-        )}
-      </Pressable>
-    )
+  return driveConnected ? (
+    <PopoverMenu
+      items={menuItems}
+      align="start"
+      triggerGap={0}
+      horizontalOffset={-6}
+      verticalOffset={-2}
+    >
+      {trigger}
+    </PopoverMenu>
+  ) : (
+    <Pressable
+      onPress={onRequestDriveAccess}
+      hitSlop={8}
+      style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+    >
+      {driveConnected ? (
+        <Feather name="paperclip" size={size} color={colors.textSecondary} />
+      ) : (
+        <Feather name="lock" size={size} color={colors.textTertiary} />
+      )}
+    </Pressable>
   );
 }
 

@@ -1,10 +1,5 @@
 import React from "react";
-import {
-  TextInput,
-  type TextInputProps,
-  type StyleProp,
-  type ViewStyle,
-} from "react-native";
+import { TextInput, type TextInputProps, type StyleProp, type ViewStyle } from "react-native";
 import { XStack, YStack, Text } from "tamagui";
 
 import { FontFamily } from "@/constants/fonts";

@@ -52,7 +52,11 @@ export function MoodTrendStrip({ entries }: MoodTrendStripProps) {
         ref={scrollRef}
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 2, gap: 12, flexDirection: "row" }}
+        contentContainerStyle={{
+          paddingHorizontal: 2,
+          gap: 12,
+          flexDirection: "row",
+        }}
       >
         {visible.map((entry) => {
           const mood = entry.mood as Mood | undefined;
@@ -71,11 +75,7 @@ export function MoodTrendStrip({ entries }: MoodTrendStripProps) {
                 borderWidth={1.5}
                 borderColor={color + (mood ? "60" : "30")}
               >
-                <Feather
-                  name={icon as any}
-                  size={15}
-                  color={mood ? color : theme.colorMuted.val}
-                />
+                <Feather name={icon as any} size={15} color={mood ? color : theme.colorMuted.val} />
               </YStack>
               <Text
                 fontSize={9}

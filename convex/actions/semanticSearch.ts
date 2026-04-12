@@ -13,10 +13,7 @@ export const search = action({
     limit: v.optional(v.float64()),
     forceDeepSearch: v.optional(v.boolean()),
   },
-  handler: async (
-    ctx,
-    args
-  ): Promise<Awaited<ReturnType<typeof runSemanticSearch>>> => {
+  handler: async (ctx, args): Promise<Awaited<ReturnType<typeof runSemanticSearch>>> => {
     const session: { _id: Id<"users"> } | null = await ctx.runQuery(api.auth.me, {
       token: args.token,
     });

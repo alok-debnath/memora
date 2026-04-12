@@ -43,7 +43,14 @@ export function NudgeCard({ title, message, onDismiss, index = 0 }: NudgeCardPro
           >
             <Feather name="star" size={16} color={theme.primary.val} />
           </YStack>
-          <Text flex={1} fontSize={14} fontFamily="$heading" fontWeight="600" color="$color" numberOfLines={1}>
+          <Text
+            flex={1}
+            fontSize={14}
+            fontFamily="$heading"
+            fontWeight="600"
+            color="$color"
+            numberOfLines={1}
+          >
             {title}
           </Text>
           <PressableScale
@@ -60,7 +67,13 @@ export function NudgeCard({ title, message, onDismiss, index = 0 }: NudgeCardPro
             <Feather name="x" size={16} color={theme.colorMuted.val} />
           </PressableScale>
         </XStack>
-        <Text fontSize={13} fontFamily="$body" lineHeight={19} color="$colorMuted" numberOfLines={3}>
+        <Text
+          fontSize={13}
+          fontFamily="$body"
+          lineHeight={19}
+          color="$colorMuted"
+          numberOfLines={3}
+        >
           {message}
         </Text>
       </PressableScale>

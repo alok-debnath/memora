@@ -1,10 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { LayoutChangeEvent, Pressable } from "react-native";
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 
@@ -35,18 +31,14 @@ export function SegmentedControl<T extends string = string>({
   const [containerWidth, setContainerWidth] = useState(0);
   const [fallbackSegmentWidth, setFallbackSegmentWidth] = useState(0);
   const activeIndex = options.findIndex((o) => o.value === value);
-  const segmentWidth =
-    containerWidth > 0 ? (containerWidth - PADDING * 2) / options.length : 0;
+  const segmentWidth = containerWidth > 0 ? (containerWidth - PADDING * 2) / options.length : 0;
   const effectiveSegmentWidth = segmentWidth > 0 ? segmentWidth : fallbackSegmentWidth;
 
   const indicatorX = useSharedValue(0);
 
   useEffect(() => {
     if (effectiveSegmentWidth > 0 && activeIndex >= 0) {
-      indicatorX.value = withTiming(
-        activeIndex * effectiveSegmentWidth,
-        INDICATOR_TIMING,
-      );
+      indicatorX.value = withTiming(activeIndex * effectiveSegmentWidth, INDICATOR_TIMING);
     }
   }, [activeIndex, effectiveSegmentWidth, indicatorX]);
 
@@ -124,9 +116,7 @@ export function SegmentedControl<T extends string = string>({
               gap={5}
               borderRadius={11}
               backgroundColor={
-                effectiveSegmentWidth === 0 && isActive
-                  ? theme.card.val
-                  : "transparent"
+                effectiveSegmentWidth === 0 && isActive ? theme.card.val : "transparent"
               }
             >
               {icon}

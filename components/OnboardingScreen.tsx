@@ -22,7 +22,12 @@ import { useAppTheme } from "@/hooks/useAppTheme";
 import { useThemeStore } from "@/store/theme";
 import { useAuth } from "@/hooks/useAuth";
 import { FontFamily } from "@/constants/fonts";
-import { brandGradients, integrationAccentColors, statAccentColors, statusAccentColors } from "@/constants/colors";
+import {
+  brandGradients,
+  integrationAccentColors,
+  statAccentColors,
+  statusAccentColors,
+} from "@/constants/colors";
 import { withAlpha } from "@/components/ui/themeHelpers";
 
 interface OnboardingStep {
@@ -149,13 +154,7 @@ function CardContent({
       >
         {item.title}
       </Text>
-      <Text
-        fontSize={15}
-        lineHeight={23}
-        textAlign="center"
-        color="$colorMuted"
-        marginTop={12}
-      >
+      <Text fontSize={15} lineHeight={23} textAlign="center" color="$colorMuted" marginTop={12}>
         {item.description}
       </Text>
     </YStack>
@@ -214,11 +213,7 @@ function FanCard({
         transform: [
           { translateX: dragX.value },
           {
-            rotate: `${interpolate(
-              dragX.value,
-              [-screenWidth, 0, screenWidth],
-              [-15, 0, 15],
-            )}deg`,
+            rotate: `${interpolate(dragX.value, [-screenWidth, 0, screenWidth], [-15, 0, 15])}deg`,
           },
         ],
       };
@@ -249,11 +244,7 @@ function FanCard({
         transform: [
           { translateX: dragX.value },
           {
-            rotate: `${interpolate(
-              dragX.value,
-              [-screenWidth, 0, screenWidth],
-              [-15, 0, 15],
-            )}deg`,
+            rotate: `${interpolate(dragX.value, [-screenWidth, 0, screenWidth], [-15, 0, 15])}deg`,
           },
         ],
       };
@@ -269,12 +260,7 @@ function FanCard({
       return {
         opacity: 1,
         zIndex: -depth,
-        transform: [
-          { translateX },
-          { translateY },
-          { rotate: `${rotate}deg` },
-          { scale },
-        ],
+        transform: [{ translateX }, { translateY }, { rotate: `${rotate}deg` }, { scale }],
       };
     }
 
@@ -287,23 +273,19 @@ function FanCard({
       };
     }
 
-    const revealProgress = direction === 1
-      ? 1 + depth
-      : direction === 0 && dragX.value > 0
-        ? Math.min(dragX.value / (screenWidth * 0.75), 1)
-        : 0;
+    const revealProgress =
+      direction === 1
+        ? 1 + depth
+        : direction === 0 && dragX.value > 0
+          ? Math.min(dragX.value / (screenWidth * 0.75), 1)
+          : 0;
     const previousSlotProgress = 1 - revealProgress;
     const { translateX, translateY, rotate, scale } = getSlotTransform(previousSlotProgress);
 
     return {
       opacity: revealProgress > 0 ? 1 : 0,
       zIndex: 0,
-      transform: [
-        { translateX },
-        { translateY },
-        { rotate: `${rotate}deg` },
-        { scale },
-      ],
+      transform: [{ translateX }, { translateY }, { rotate: `${rotate}deg` }, { scale }],
     };
   });
 
@@ -374,16 +356,19 @@ export function OnboardingScreen() {
     [activeIndex],
   );
 
-  const animateToIndex = useCallback((nextIndex: number, direction: -1 | 1) => {
-    swipeOrigin.value = Math.round(activeIndex.value);
-    swipeDirection.value = direction;
-    activeIndex.value = withTiming(nextIndex, TIMING_CONFIG, (finished) => {
-      if (!finished) return;
-      dragX.value = 0;
-      swipeOrigin.value = nextIndex;
-      swipeDirection.value = 0;
-    });
-  }, [activeIndex, dragX, swipeDirection, swipeOrigin]);
+  const animateToIndex = useCallback(
+    (nextIndex: number, direction: -1 | 1) => {
+      swipeOrigin.value = Math.round(activeIndex.value);
+      swipeDirection.value = direction;
+      activeIndex.value = withTiming(nextIndex, TIMING_CONFIG, (finished) => {
+        if (!finished) return;
+        dragX.value = 0;
+        swipeOrigin.value = nextIndex;
+        swipeDirection.value = 0;
+      });
+    },
+    [activeIndex, dragX, swipeDirection, swipeOrigin],
+  );
 
   const pan = Gesture.Pan()
     .onUpdate((e) => {
@@ -436,7 +421,10 @@ export function OnboardingScreen() {
   const accentGlow = withAlpha(theme.primary.val, isDark ? "0F" : "1A");
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top", "bottom"]}>
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: theme.background.val }}
+      edges={["top", "bottom"]}
+    >
       <YStack flex={1} backgroundColor="$background">
         <LinearGradient
           colors={

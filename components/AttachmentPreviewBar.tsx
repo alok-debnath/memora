@@ -1,11 +1,5 @@
 import React from "react";
-import {
-  View,
-  ScrollView,
-  Pressable,
-  StyleSheet,
-  Animated,
-} from "react-native";
+import { View, ScrollView, Pressable, StyleSheet, Animated } from "react-native";
 import { Image } from "expo-image";
 import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
@@ -60,23 +54,13 @@ type AttachmentSquareProps = {
   onPress?: (attachment: PendingAttachment) => void;
 };
 
-function AttachmentSquare({
-  attachment,
-  colors,
-  onRemove,
-  onPress,
-}: AttachmentSquareProps) {
+function AttachmentSquare({ attachment, colors, onRemove, onPress }: AttachmentSquareProps) {
   const isUploading =
-    attachment.uploadStatus === "uploading" ||
-    attachment.uploadStatus === "compressing";
+    attachment.uploadStatus === "uploading" || attachment.uploadStatus === "compressing";
   const isError = attachment.uploadStatus === "error";
   const isDone = attachment.uploadStatus === "uploaded";
 
-  const borderColor = isError
-    ? colors.error
-    : isDone
-      ? colors.primary
-      : colors.border;
+  const borderColor = isError ? colors.error : isDone ? colors.primary : colors.border;
 
   return (
     <Pressable
@@ -133,7 +117,10 @@ function AttachmentSquare({
       <Pressable
         onPress={() => onRemove(attachment.id)}
         hitSlop={8}
-        style={[styles.removeButton, { backgroundColor: colors.surface, shadowColor: colors.shadow }]}
+        style={[
+          styles.removeButton,
+          { backgroundColor: colors.surface, shadowColor: colors.shadow },
+        ]}
       >
         <Feather name="x" size={10} color={colors.text} />
       </Pressable>
@@ -157,7 +144,7 @@ function UploadingIndicator({ color }: { color: string }) {
           duration: 700,
           useNativeDriver: true,
         }),
-      ])
+      ]),
     );
     anim.start();
     return () => anim.stop();

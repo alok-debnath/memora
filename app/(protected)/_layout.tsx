@@ -35,7 +35,9 @@ const NAV_ITEMS = [
 ] as const;
 
 function isTabPath(pathname: string) {
-  return pathname === "/" || pathname === "/diary" || pathname === "/review" || pathname === "/more";
+  return (
+    pathname === "/" || pathname === "/diary" || pathname === "/review" || pathname === "/more"
+  );
 }
 
 function DesktopProtectedShell() {
@@ -56,7 +58,10 @@ function DesktopProtectedShell() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top", "bottom"]}>
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: theme.background.val }}
+      edges={["top", "bottom"]}
+    >
       <XStack flex={1} backgroundColor="$background">
         <YStack
           width={292}
@@ -96,8 +101,19 @@ function DesktopProtectedShell() {
                 </Text>
               </YStack>
             </XStack>
-            <YStack borderRadius={18} padding={14} backgroundColor={theme.primary.val + "10"} gap={8}>
-              <Text fontSize={11} letterSpacing={1} textTransform="uppercase" color="$primary" fontWeight="700">
+            <YStack
+              borderRadius={18}
+              padding={14}
+              backgroundColor={theme.primary.val + "10"}
+              gap={8}
+            >
+              <Text
+                fontSize={11}
+                letterSpacing={1}
+                textTransform="uppercase"
+                color="$primary"
+                fontWeight="700"
+              >
                 Quick Capture
               </Text>
               <Text fontSize={13} lineHeight={19} color="$colorMuted">
@@ -183,7 +199,12 @@ function DesktopProtectedShell() {
             borderColor="$borderColor"
             backgroundColor="$background"
           >
-            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.background?.val } }} />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: theme.background?.val },
+              }}
+            />
           </YStack>
         </YStack>
       </XStack>
@@ -224,7 +245,12 @@ export default function ProtectedLayout() {
 
   return (
     <>
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.background?.val } }} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: theme.background?.val },
+        }}
+      />
       <ProtectedSheetHost />
     </>
   );

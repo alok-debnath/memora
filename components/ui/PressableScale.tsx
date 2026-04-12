@@ -1,10 +1,6 @@
 import React from "react";
 import { Pressable, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-} from "react-native-reanimated";
+import Animated, { useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 const PRESS_ANIMATION = { duration: 120 } as const;
@@ -15,12 +11,7 @@ interface PressableScaleProps extends PressableProps {
   children: React.ReactNode;
 }
 
-export function PressableScale({
-  scale = 0.96,
-  style,
-  children,
-  ...props
-}: PressableScaleProps) {
+export function PressableScale({ scale = 0.96, style, children, ...props }: PressableScaleProps) {
   const scaleValue = useSharedValue(1);
   const isDisabled = props.disabled;
 

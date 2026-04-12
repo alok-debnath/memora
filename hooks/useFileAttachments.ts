@@ -56,36 +56,36 @@ export function useFileAttachments({ token }: UseFileAttachmentsOptions = {}) {
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   // Keep a ref in sync so uploadAll can poll live state without stale closures
   const attachmentsRef = React.useRef(attachments);
-  React.useEffect(() => { attachmentsRef.current = attachments; }, [attachments]);
+  React.useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
 
   const getDriveCredentials = useAction(api.integrations.getDriveUploadCredentials);
 
-  const updateAttachment = useCallback(
-    (id: string, patch: Partial<PendingAttachment>) => {
-      setAttachments((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, ...patch } : a))
-      );
-    },
-    []
-  );
-
-  const compressImage = useCallback(async (uri: string): Promise<{ uri: string; sizeBytes: number }> => {
-    const result = await ImageManipulator.manipulateAsync(
-      uri,
-      [{ resize: { width: MAX_IMAGE_DIMENSION } }],
-      {
-        compress: IMAGE_QUALITY,
-        format: ImageManipulator.SaveFormat.JPEG,
-      }
-    );
-    let sizeBytes = 0;
-    try {
-      const response = await fetch(result.uri);
-      const blob = await response.blob();
-      sizeBytes = blob.size;
-    } catch {}
-    return { uri: result.uri, sizeBytes };
+  const updateAttachment = useCallback((id: string, patch: Partial<PendingAttachment>) => {
+    setAttachments((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)));
   }, []);
+
+  const compressImage = useCallback(
+    async (uri: string): Promise<{ uri: string; sizeBytes: number }> => {
+      const result = await ImageManipulator.manipulateAsync(
+        uri,
+        [{ resize: { width: MAX_IMAGE_DIMENSION } }],
+        {
+          compress: IMAGE_QUALITY,
+          format: ImageManipulator.SaveFormat.JPEG,
+        },
+      );
+      let sizeBytes = 0;
+      try {
+        const response = await fetch(result.uri);
+        const blob = await response.blob();
+        sizeBytes = blob.size;
+      } catch {}
+      return { uri: result.uri, sizeBytes };
+    },
+    [],
+  );
 
   const pickImages = useCallback(async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -123,7 +123,11 @@ export function useFileAttachments({ token }: UseFileAttachmentsOptions = {}) {
     for (const attachment of newAttachments) {
       compressImage(attachment.originalUri)
         .then(({ uri, sizeBytes }) => {
-          updateAttachment(attachment.id, { uri, sizeBytes, uploadStatus: "idle" });
+          updateAttachment(attachment.id, {
+            uri,
+            sizeBytes,
+            uploadStatus: "idle",
+          });
         })
         .catch(() => {
           updateAttachment(attachment.id, { uploadStatus: "idle" });
@@ -204,15 +208,13 @@ export function useFileAttachments({ token }: UseFileAttachmentsOptions = {}) {
    * Returns the list of successfully uploaded attachments.
    */
   const uploadAll = useCallback(async (): Promise<UploadedAttachment[]> => {
-    const hasCompressing = attachmentsRef.current.some(
-      (a) => a.uploadStatus === "compressing"
-    );
+    const hasCompressing = attachmentsRef.current.some((a) => a.uploadStatus === "compressing");
     if (hasCompressing) {
       await new Promise<void>((resolve) => {
         const deadline = Date.now() + 15_000;
         const check = setInterval(() => {
           const stillCompressing = attachmentsRef.current.some(
-            (a) => a.uploadStatus === "compressing"
+            (a) => a.uploadStatus === "compressing",
           );
           if (!stillCompressing || Date.now() > deadline) {
             clearInterval(check);
@@ -253,7 +255,7 @@ export function useFileAttachments({ token }: UseFileAttachmentsOptions = {}) {
             sizeBytes: attachment.sizeBytes,
           },
           accessToken,
-          folderId
+          folderId,
         );
 
         updateAttachment(attachment.id, {
@@ -277,7 +279,7 @@ export function useFileAttachments({ token }: UseFileAttachmentsOptions = {}) {
             driveThumbnailLink: driveResult.thumbnailLink,
           } satisfies UploadedAttachment,
         };
-      })
+      }),
     );
 
     const uploaded: UploadedAttachment[] = [];
@@ -288,8 +290,7 @@ export function useFileAttachments({ token }: UseFileAttachmentsOptions = {}) {
         uploaded.push(result.value.uploaded);
       } else {
         const a = toUpload[i];
-        const msg =
-          result.reason instanceof Error ? result.reason.message : "Upload failed";
+        const msg = result.reason instanceof Error ? result.reason.message : "Upload failed";
         console.error("[useFileAttachments] upload error for", a.name, ":", msg);
         if (!firstError) firstError = msg;
         updateAttachment(a.id, { uploadStatus: "error", errorMessage: msg });
@@ -310,7 +311,7 @@ export function useFileAttachments({ token }: UseFileAttachmentsOptions = {}) {
   const hasCompressing = attachments.some((a) => a.uploadStatus === "compressing");
   const hasUploading = attachments.some((a) => a.uploadStatus === "uploading");
   const hasPending = attachments.some(
-    (a) => a.uploadStatus === "idle" || a.uploadStatus === "compressing"
+    (a) => a.uploadStatus === "idle" || a.uploadStatus === "compressing",
   );
 
   return {

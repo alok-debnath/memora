@@ -112,33 +112,36 @@ export function PopoverMenu({
 
   const menuHeight = items.length * ITEM_HEIGHT + MENU_PADDING;
 
-  const positionMenu = useCallback((rect: TriggerRect) => {
-    lastTriggerRect.current = rect;
-    setMenuPos(
-      getMenuPosition({
-        rect,
-        menuHeight,
-        menuWidth: width,
-        windowWidth: winW,
-        windowHeight: winH,
-        keyboardHeight,
-        align,
-        triggerGap,
-        horizontalOffset,
-        verticalOffset,
-      }),
-    );
-  }, [
-    align,
-    horizontalOffset,
-    keyboardHeight,
-    menuHeight,
-    triggerGap,
-    verticalOffset,
-    winH,
-    winW,
-    width,
-  ]);
+  const positionMenu = useCallback(
+    (rect: TriggerRect) => {
+      lastTriggerRect.current = rect;
+      setMenuPos(
+        getMenuPosition({
+          rect,
+          menuHeight,
+          menuWidth: width,
+          windowWidth: winW,
+          windowHeight: winH,
+          keyboardHeight,
+          align,
+          triggerGap,
+          horizontalOffset,
+          verticalOffset,
+        }),
+      );
+    },
+    [
+      align,
+      horizontalOffset,
+      keyboardHeight,
+      menuHeight,
+      triggerGap,
+      verticalOffset,
+      winH,
+      winW,
+      width,
+    ],
+  );
 
   const measureAndOpen = useCallback(() => {
     triggerRef.current?.measureInWindow((x, y, triggerWidth, height) => {
@@ -216,10 +219,18 @@ export function PopoverMenu({
                     <View style={[styles.divider, { backgroundColor: theme.borderColor.val }]} />
                   )}
                   <Pressable
-                    onPress={() => { close(); item.onPress(); }}
+                    onPress={() => {
+                      close();
+                      item.onPress();
+                    }}
                     style={({ pressed }) => [styles.item, { opacity: pressed ? 0.7 : 1 }]}
                   >
-                    <XStack alignItems="center" gap={12} paddingHorizontal={14} paddingVertical={13}>
+                    <XStack
+                      alignItems="center"
+                      gap={12}
+                      paddingHorizontal={14}
+                      paddingVertical={13}
+                    >
                       <Feather
                         name={item.icon}
                         size={16}

@@ -3,13 +3,14 @@
 import { v } from "convex/values";
 import { action } from "../_generated/server";
 import { api } from "../_generated/api";
-import { hasOpenAI, transcribeBase64Audio } from "../lib/openai";
+import { hasOpenAI, trackedTranscribeBase64Audio } from "../lib/openai";
 
 export const transcribe = action({
   args: {
     token: v.string(),
     audioBase64: v.string(),
     format: v.string(),
+    durationMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const user = await ctx.runQuery(api.auth.me, { token: args.token });
@@ -26,9 +27,11 @@ export const transcribe = action({
     }
 
     try {
-      const response = await transcribeBase64Audio({
+      const response = await trackedTranscribeBase64Audio(ctx, {
+        userId: user._id,
         audioBase64: args.audioBase64,
         format: args.format,
+        durationMs: args.durationMs,
       });
       return { text: response.text || "" };
     } catch {

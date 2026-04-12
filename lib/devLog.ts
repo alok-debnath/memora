@@ -1,8 +1,4 @@
-export function logDevError(
-  scope: string,
-  error: unknown,
-  extra?: Record<string, unknown>,
-) {
+export function logDevError(scope: string, error: unknown, extra?: Record<string, unknown>) {
   if (!__DEV__) return;
 
   const details = extra ? ` ${JSON.stringify(extra)}` : "";

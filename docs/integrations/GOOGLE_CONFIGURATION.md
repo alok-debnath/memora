@@ -216,7 +216,7 @@ The client implementation is in the profile screen.
 
 Relevant file:
 
-- [profile.tsx](/home/alok/Documents/PersonalProjects/memora/app/(protected)/profile.tsx)
+- [profile.tsx](</home/alok/Documents/PersonalProjects/memora/app/(protected)/profile.tsx>)
 
 ### Step 1
 

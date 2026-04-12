@@ -3,15 +3,8 @@
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import {
-  embedText,
-  hasOpenAI,
-} from "./openai";
-import {
-  cleanSearchQuery,
-  extractSearchTerms,
-  normalizeSearchQueryHash,
-} from "./search";
+import { hasOpenAI, trackedEmbedText } from "./openai";
+import { cleanSearchQuery, extractSearchTerms, normalizeSearchQueryHash } from "./search";
 
 type SearchableMemory = Doc<"memories"> & { _score?: number };
 
@@ -27,15 +20,13 @@ function rrfScore(rank: number) {
 function keywordMatchScore(
   memory: Doc<"memories">,
   queryTerms: string[],
-  topicMap: Map<Id<"userTopics">, string>
+  topicMap: Map<Id<"userTopics">, string>,
 ): number {
   if (queryTerms.length === 0) {
     return 0;
   }
 
-  const topicNames = (memory.topicIds ?? [])
-    .map((id) => topicMap.get(id))
-    .filter(Boolean);
+  const topicNames = (memory.topicIds ?? []).map((id) => topicMap.get(id)).filter(Boolean);
   const primaryTopic = memory.primaryTopicId ? topicMap.get(memory.primaryTopicId) : "";
   if (primaryTopic) {
     topicNames.push(primaryTopic);
@@ -78,7 +69,7 @@ export async function runSemanticSearch(
     query: string;
     limit?: number;
     forceDeepSearch?: boolean;
-  }
+  },
 ): Promise<{ results: SearchableMemory[]; isCached: boolean }> {
   const maxResults = args.limit ? Math.min(args.limit, 20) : 10;
   const rawQuery = args.query.trim();
@@ -117,7 +108,12 @@ export async function runSemanticSearch(
           });
         } else {
           const expandedQuery = cleanSearchQuery(rawQuery);
-          queryEmbedding = await embedText(expandedQuery);
+          queryEmbedding = await trackedEmbedText(ctx, {
+            userId: args.userId,
+            feature: "memory_chat",
+            input: expandedQuery,
+            metadata: { stage: "semantic_search" },
+          });
           await ctx.runMutation(internal.memories.setQueryCache, {
             userId: args.userId,
             queryHash,
@@ -144,10 +140,11 @@ export async function runSemanticSearch(
     (async () => {
       try {
         const cleanQuery = cleanSearchQuery(rawQuery);
-        const results: Doc<"memories">[] = await ctx.runQuery(
-          internal.memories.searchByContent,
-          { userId: args.userId, query: cleanQuery, limit: 20 }
-        );
+        const results: Doc<"memories">[] = await ctx.runQuery(internal.memories.searchByContent, {
+          userId: args.userId,
+          query: cleanQuery,
+          limit: 20,
+        });
         for (const memory of results) {
           fulltextRanked.push(memory._id);
         }
@@ -165,12 +162,16 @@ export async function runSemanticSearch(
           userId: args.userId,
         });
         const topicMap = new Map<Id<"userTopics">, string>(
-          userTopics.map((topic: { _id: Id<"userTopics">; name: string }) => [topic._id, topic.name.toLowerCase()] as const)
+          userTopics.map(
+            (topic: { _id: Id<"userTopics">; name: string }) =>
+              [topic._id, topic.name.toLowerCase()] as const,
+          ),
         );
-        const results: Doc<"memories">[] = await ctx.runQuery(
-          internal.memories.searchByKeyword,
-          { userId: args.userId, query: rawQuery, limit: 30 }
-        );
+        const results: Doc<"memories">[] = await ctx.runQuery(internal.memories.searchByKeyword, {
+          userId: args.userId,
+          query: rawQuery,
+          limit: 30,
+        });
         for (const memory of results) {
           const kwScore = keywordMatchScore(memory, contentTerms, topicMap);
           if (kwScore > 0) {
@@ -221,9 +222,7 @@ export async function runSemanticSearch(
     }
   }
 
-  const rankedEntries = Array.from(rrfScores.entries()).sort(
-    (a, b) => b[1].score - a[1].score
-  );
+  const rankedEntries = Array.from(rrfScores.entries()).sort((a, b) => b[1].score - a[1].score);
 
   const bestScore = rankedEntries[0]?.[1].score ?? 0;
   const scoreFloor = Math.max(MIN_RRF_SCORE, bestScore * RELATIVE_SCORE_FLOOR);
@@ -236,10 +235,10 @@ export async function runSemanticSearch(
     return { results: [], isCached };
   }
 
-  const memories: Doc<"memories">[] = await ctx.runQuery(
-    internal.memories.listByIdsInternal,
-    { userId: args.userId, ids: rankedIds }
-  );
+  const memories: Doc<"memories">[] = await ctx.runQuery(internal.memories.listByIdsInternal, {
+    userId: args.userId,
+    ids: rankedIds,
+  });
 
   const byId = new Map(memories.map((memory) => [memory._id, memory] as const));
   const results: SearchableMemory[] = [];

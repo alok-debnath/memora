@@ -11,10 +11,7 @@ interface ResolvedUser {
   userId: Id<"users">;
 }
 
-export async function resolveUser(
-  ctx: DbCtx,
-  _token?: string
-): Promise<ResolvedUser> {
+export async function resolveUser(ctx: DbCtx, _token?: string): Promise<ResolvedUser> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
     throw new Error("Not authenticated");

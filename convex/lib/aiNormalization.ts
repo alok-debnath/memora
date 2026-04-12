@@ -11,12 +11,7 @@ const MEMORY_MOODS = new Set([
   "motivated",
 ] as const);
 
-const MEMORY_IMPORTANCE = new Set([
-  "critical",
-  "high",
-  "normal",
-  "low",
-] as const);
+const MEMORY_IMPORTANCE = new Set(["critical", "high", "normal", "low"] as const);
 
 const MEMORY_LIFE_AREAS = new Set([
   "career",
@@ -82,9 +77,7 @@ function asNumber(value: unknown) {
 }
 
 function asEnumValue<T extends string>(value: unknown, valid: Set<T>) {
-  return typeof value === "string" && valid.has(value as T)
-    ? (value as T)
-    : undefined;
+  return typeof value === "string" && valid.has(value as T) ? (value as T) : undefined;
 }
 
 function asBoolean(value: unknown) {
@@ -92,8 +85,7 @@ function asBoolean(value: unknown) {
 }
 
 function asActionType(value: unknown) {
-  return typeof value === "string" &&
-    ["task", "reminder", "fact", "decision"].includes(value)
+  return typeof value === "string" && ["task", "reminder", "fact", "decision"].includes(value)
     ? (value as "task" | "reminder" | "fact" | "decision")
     : undefined;
 }
@@ -107,7 +99,7 @@ function asStringRecord(value: unknown) {
     Object.entries(value).flatMap(([key, item]) => {
       const normalized = asTrimmedString(item);
       return normalized ? [[key, normalized]] : [];
-    })
+    }),
   );
 
   return Object.keys(result).length > 0 ? result : undefined;
@@ -143,9 +135,7 @@ export function normalizeMemoryFields(value: Record<string, unknown>) {
       ? {
           who: asStringArray((contextTags as Record<string, unknown>).who),
           what: asTrimmedString((contextTags as Record<string, unknown>).what),
-          where: asTrimmedString(
-            (contextTags as Record<string, unknown>).where
-          ),
+          where: asTrimmedString((contextTags as Record<string, unknown>).where),
           why: asTrimmedString((contextTags as Record<string, unknown>).why),
         }
       : undefined;
@@ -157,7 +147,7 @@ export function normalizeMemoryFields(value: Record<string, unknown>) {
     }
     const dueAt = asTrimmedString(
       (scheduleValue as Record<string, unknown>).dueAt ??
-        (scheduleValue as Record<string, unknown>).due_at
+        (scheduleValue as Record<string, unknown>).due_at,
     );
     if (!dueAt) {
       return undefined;
@@ -167,12 +157,12 @@ export function normalizeMemoryFields(value: Record<string, unknown>) {
       isRecurring:
         asBoolean(
           (scheduleValue as Record<string, unknown>).isRecurring ??
-            (scheduleValue as Record<string, unknown>).is_recurring
+            (scheduleValue as Record<string, unknown>).is_recurring,
         ) ?? false,
       recurrenceType: asEnumValue(
         (scheduleValue as Record<string, unknown>).recurrenceType ??
           (scheduleValue as Record<string, unknown>).recurrence_type,
-        new Set(["yearly", "monthly", "weekly", "daily"] as const)
+        new Set(["yearly", "monthly", "weekly", "daily"] as const),
       ),
     };
   })();
@@ -180,21 +170,20 @@ export function normalizeMemoryFields(value: Record<string, unknown>) {
   const reminderDate = asTrimmedString(value.reminderDate ?? value.reminder_date);
   const explicitEntryKind = asEnumValue<MemoryEntryKind>(
     value.entryKind ?? value.entry_kind,
-    MEMORY_ENTRY_KINDS
+    MEMORY_ENTRY_KINDS,
   );
-  const schedule =
-    normalizedSchedule?.dueAt
-      ? normalizedSchedule
-      : reminderDate
-        ? {
-            dueAt: reminderDate,
-            isRecurring: asBoolean(value.isRecurring ?? value.is_recurring) ?? false,
-            recurrenceType: asEnumValue(
-              value.recurrenceType ?? value.recurrence_type,
-              new Set(["yearly", "monthly", "weekly", "daily"] as const)
-            ),
-          }
-        : undefined;
+  const schedule = normalizedSchedule?.dueAt
+    ? normalizedSchedule
+    : reminderDate
+      ? {
+          dueAt: reminderDate,
+          isRecurring: asBoolean(value.isRecurring ?? value.is_recurring) ?? false,
+          recurrenceType: asEnumValue(
+            value.recurrenceType ?? value.recurrence_type,
+            new Set(["yearly", "monthly", "weekly", "daily"] as const),
+          ),
+        }
+      : undefined;
   const entryKind = explicitEntryKind ?? (schedule?.dueAt ? "reminder" : "memory");
 
   return {
@@ -203,10 +192,7 @@ export function normalizeMemoryFields(value: Record<string, unknown>) {
     people: asStringArray(value.people),
     locations: asStringArray(value.locations),
     importance: asEnumValue<MemoryImportance>(value.importance, MEMORY_IMPORTANCE),
-    lifeArea: asEnumValue<MemoryLifeArea>(
-      value.lifeArea ?? value.life_area,
-      MEMORY_LIFE_AREAS
-    ),
+    lifeArea: asEnumValue<MemoryLifeArea>(value.lifeArea ?? value.life_area, MEMORY_LIFE_AREAS),
     contextTags:
       normalizedContext &&
       (normalizedContext.who?.length ||
@@ -222,9 +208,7 @@ export function normalizeMemoryFields(value: Record<string, unknown>) {
     isRecurring: schedule?.isRecurring ?? false,
     recurrenceType: schedule?.recurrenceType,
     sentimentScore: asNumber(value.sentimentScore ?? value.sentiment_score),
-    extractedActions: normalizeExtractedActions(
-      value.extractedActions ?? value.extracted_actions
-    ),
+    extractedActions: normalizeExtractedActions(value.extractedActions ?? value.extracted_actions),
   };
 }
 
@@ -258,21 +242,11 @@ export function normalizeDiaryFields(value: Record<string, unknown>) {
           }
 
           const habit = asTrimmedString((item as { habit?: unknown }).habit);
-          const sentiment = asTrimmedString(
-            (item as { sentiment?: unknown }).sentiment
-          );
+          const sentiment = asTrimmedString((item as { sentiment?: unknown }).sentiment);
           const frequencyHint =
-            asTrimmedString(
-              (item as { frequencyHint?: unknown }).frequencyHint
-            ) ||
-            asTrimmedString(
-              (item as { frequency_hint?: unknown }).frequency_hint
-            );
-          if (
-            !habit ||
-            !sentiment ||
-            !["positive", "negative", "neutral"].includes(sentiment)
-          ) {
+            asTrimmedString((item as { frequencyHint?: unknown }).frequencyHint) ||
+            asTrimmedString((item as { frequency_hint?: unknown }).frequency_hint);
+          if (!habit || !sentiment || !["positive", "negative", "neutral"].includes(sentiment)) {
             return [];
           }
 
@@ -285,24 +259,18 @@ export function normalizeDiaryFields(value: Record<string, unknown>) {
           ];
         })
       : [],
-    personalityTraits: Array.isArray(
-      value.personalityTraits ?? value.personality_traits
-    )
-      ? ((value.personalityTraits ?? value.personality_traits) as unknown[]).flatMap(
-          (item) => {
-            if (!item || typeof item !== "object") {
-              return [];
-            }
-            const trait = asTrimmedString((item as { trait?: unknown }).trait);
-            const evidence = asTrimmedString(
-              (item as { evidence?: unknown }).evidence
-            );
-            if (!trait || !evidence) {
-              return [];
-            }
-            return [{ trait, evidence }];
+    personalityTraits: Array.isArray(value.personalityTraits ?? value.personality_traits)
+      ? ((value.personalityTraits ?? value.personality_traits) as unknown[]).flatMap((item) => {
+          if (!item || typeof item !== "object") {
+            return [];
           }
-        )
+          const trait = asTrimmedString((item as { trait?: unknown }).trait);
+          const evidence = asTrimmedString((item as { evidence?: unknown }).evidence);
+          if (!trait || !evidence) {
+            return [];
+          }
+          return [{ trait, evidence }];
+        })
       : [],
     likes: asStringArray(value.likes) ?? [],
     dislikes: asStringArray(value.dislikes) ?? [],
@@ -314,8 +282,7 @@ export function normalizeDocumentMemory(value: Record<string, unknown>) {
   return {
     title: asTrimmedString(value.title),
     content: asTrimmedString(value.content),
-    importance:
-      asEnumValue<MemoryImportance>(value.importance, MEMORY_IMPORTANCE) ?? "normal",
+    importance: asEnumValue<MemoryImportance>(value.importance, MEMORY_IMPORTANCE) ?? "normal",
     people: asStringArray(value.people) ?? [],
     locations: asStringArray(value.locations) ?? [],
   };

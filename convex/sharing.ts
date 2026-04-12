@@ -17,10 +17,10 @@ export const createShareLink = mutation({
 
     const bytes = new Uint8Array(32);
     crypto.getRandomValues(bytes);
-    const shareToken = Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
-    const expiresAt = args.expiresInDays
-      ? Date.now() + args.expiresInDays * 86400000
-      : undefined;
+    const shareToken = Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    const expiresAt = args.expiresInDays ? Date.now() + args.expiresInDays * 86400000 : undefined;
 
     await ctx.db.insert("sharedMemories", {
       memoryId: args.memoryId,
@@ -55,7 +55,10 @@ export const revokeShareLink = mutation({
       }
     }
 
-    await ctx.db.patch(args.memoryId, { isPublic: false, shareToken: undefined });
+    await ctx.db.patch(args.memoryId, {
+      isPublic: false,
+      shareToken: undefined,
+    });
   },
 });
 

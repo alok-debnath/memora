@@ -1,15 +1,5 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import {
-  Alert,
-  Platform,
-  Share,
-} from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Platform, Share } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -52,10 +42,7 @@ function PulsingDot({ color }: { color: string }) {
   const opacity = useSharedValue(1);
   useEffect(() => {
     opacity.value = withRepeat(
-      withSequence(
-        withTiming(0.25, { duration: 550 }),
-        withTiming(1, { duration: 550 }),
-      ),
+      withSequence(withTiming(0.25, { duration: 550 }), withTiming(1, { duration: 550 })),
       -1,
       false,
     );
@@ -173,7 +160,7 @@ export default function HomeScreen() {
       nowIso: new Date().toISOString(),
       nowMs: Date.now(),
     }),
-    []
+    [],
   );
   // Drives network calls (debounced — waits 400 ms after typing stops)
   const trimmedSearchQuery = debouncedSearchQuery.trim().toLowerCase();
@@ -196,7 +183,7 @@ export default function HomeScreen() {
     api.memories.listByTopic,
     token && selectedTopic && !searchMode
       ? { token, topicId: selectedTopic as Id<"userTopics">, limit: 500 }
-      : "skip"
+      : "skip",
   );
   const topicById = useMemo(() => {
     const map: Record<string, { name: string; color?: string | null; icon?: string | null }> = {};
@@ -208,11 +195,15 @@ export default function HomeScreen() {
   const allMemories = (allMemoryResult ?? []) as MemoryItem[];
   const feedMemories = allMemories;
 
-  const reminderMemoriesRaw =
-    useQuery(api.memories.reminders, token ? { token, asOf: querySnapshot.nowIso } : "skip");
+  const reminderMemoriesRaw = useQuery(
+    api.memories.reminders,
+    token ? { token, asOf: querySnapshot.nowIso } : "skip",
+  );
   const reminderMemories = reminderMemoriesRaw ?? [];
-  const upcomingRemindersRaw =
-    useQuery(api.memories.upcomingReminders, token ? { token, asOf: querySnapshot.nowIso, range: "week" } : "skip");
+  const upcomingRemindersRaw = useQuery(
+    api.memories.upcomingReminders,
+    token ? { token, asOf: querySnapshot.nowIso, range: "week" } : "skip",
+  );
   const upcomingReminders = upcomingRemindersRaw ?? [];
   const stats =
     useQuery(api.memories.stats, token ? { token, asOf: querySnapshot.nowMs } : "skip") ?? null;
@@ -232,12 +223,13 @@ export default function HomeScreen() {
   const visibleMemoryIds = useMemo(
     () => (allMemoryResult ?? []).map((m) => m._id as Id<"memories">),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [allMemoryResult?.length]
+    [allMemoryResult?.length],
   ) as Id<"memories">[];
-  const attachmentCounts = useQuery(
-    api.attachments.getAttachmentCountsForMemories,
-    token && visibleMemoryIds.length > 0 ? { token, memoryIds: visibleMemoryIds } : "skip"
-  ) ?? {};
+  const attachmentCounts =
+    useQuery(
+      api.attachments.getAttachmentCountsForMemories,
+      token && visibleMemoryIds.length > 0 ? { token, memoryIds: visibleMemoryIds } : "skip",
+    ) ?? {};
 
   const openEditMemory = useUIStore((state) => state.openEditMemory);
   const openHomeOverview = useUIStore((state) => state.openHomeOverview);
@@ -280,10 +272,7 @@ export default function HomeScreen() {
   }, [searchMode]);
 
   useEffect(() => {
-    if (
-      selectedTopic &&
-      !activeTopicSummaries.some((topic) => topic._id === selectedTopic)
-    ) {
+    if (selectedTopic && !activeTopicSummaries.some((topic) => topic._id === selectedTopic)) {
       setSelectedTopic(null);
     }
   }, [activeTopicSummaries, selectedTopic]);
@@ -333,7 +322,7 @@ export default function HomeScreen() {
     } catch (error) {
       showSyncAlert(
         "Google sync failed",
-        error instanceof Error ? error.message : "Unable to trigger Google sync."
+        error instanceof Error ? error.message : "Unable to trigger Google sync.",
       );
     }
   };
@@ -354,9 +343,7 @@ export default function HomeScreen() {
     } catch (error) {
       showSyncAlert(
         "Couldn't remove sync",
-        error instanceof Error
-          ? error.message
-          : "Unable to remove Google sync for this reminder."
+        error instanceof Error ? error.message : "Unable to remove Google sync for this reminder.",
       );
     }
   };
@@ -367,9 +354,7 @@ export default function HomeScreen() {
     try {
       const shareToken = await createShareLink({ token, memoryId: id });
       const base =
-        typeof window !== "undefined" && window.location?.origin
-          ? window.location.origin
-          : "";
+        typeof window !== "undefined" && window.location?.origin ? window.location.origin : "";
       const shareUrl = base ? `${base}/shared/${shareToken}` : `/shared/${shareToken}`;
 
       if (Platform.OS === "web") {
@@ -383,8 +368,7 @@ export default function HomeScreen() {
         url: shareUrl,
       });
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Unable to create share link.";
+      const message = error instanceof Error ? error.message : "Unable to create share link.";
       if (Platform.OS === "web") {
         window.alert(message);
       } else {
@@ -395,7 +379,7 @@ export default function HomeScreen() {
 
   const exactMatches = useMemo(
     () => getExactSearchMatches(allMemories, localSearchQuery),
-    [allMemories, localSearchQuery]
+    [allMemories, localSearchQuery],
   );
 
   const filteredMemories = useMemo(() => {
@@ -407,7 +391,7 @@ export default function HomeScreen() {
     }
 
     const merged = new Map<Id<"memories">, MemoryItem>();
-    
+
     // Stage 1: Exact matches (Keyword hits + Substring)
     for (const memory of exactMatches) {
       merged.set(memory._id, memory);
@@ -419,13 +403,13 @@ export default function HomeScreen() {
         merged.set(memory._id, memory);
       }
     }
- 
+
     const searchPool = Array.from(merged.values());
     const byTopic = selectedTopic
       ? searchPool.filter(
           (memory) =>
             memory.primaryTopicId === selectedTopic ||
-            (memory.topicIds ?? []).includes(selectedTopic)
+            (memory.topicIds ?? []).includes(selectedTopic),
         )
       : searchPool;
 
@@ -440,20 +424,24 @@ export default function HomeScreen() {
   ]);
 
   const transformedMemories = useMemo(
-    () => filteredMemories.map((memory) => ({ raw: memory, note: toMemoryNote(memory) })),
-    [filteredMemories]
+    () =>
+      filteredMemories.map((memory) => ({
+        raw: memory,
+        note: toMemoryNote(memory),
+      })),
+    [filteredMemories],
   );
 
   const topReminders = useMemo(
     () => reminderMemories.filter((memory) => !!getReminderDate(memory)).slice(0, 2),
-    [reminderMemories]
+    [reminderMemories],
   );
   const visibleFeed = useMemo(
     () =>
       searchMode || showFullFeed
         ? transformedMemories
         : transformedMemories.slice(0, INITIAL_FEED_SIZE),
-    [searchMode, showFullFeed, transformedMemories]
+    [searchMode, showFullFeed, transformedMemories],
   );
 
   const firstName = user?.name?.split(" ")[0] || "there";
@@ -506,7 +494,11 @@ export default function HomeScreen() {
             action={
               searchMode ? (
                 <XStack gap={8}>
-                  <Badge label={`${filteredMemories.length} results`} color={theme.primary.val} small />
+                  <Badge
+                    label={`${filteredMemories.length} results`}
+                    color={theme.primary.val}
+                    small
+                  />
                   {exactCount > 0 ? (
                     <Badge label={`${exactCount} exact`} color={theme.success.val} small />
                   ) : null}
@@ -543,23 +535,30 @@ export default function HomeScreen() {
                   <Animated.View entering={FadeIn.duration(300)}>
                     <XStack gap={6} alignItems="center">
                       <PulsingDot color={theme.primary.val} />
-                      <Text fontSize={12} color="$colorMuted">Finding deeper matches…</Text>
+                      <Text fontSize={12} color="$colorMuted">
+                        Finding deeper matches…
+                      </Text>
                     </XStack>
                   </Animated.View>
                 ) : (
                   <Animated.View entering={FadeIn.duration(300)}>
                     <XStack gap={8} alignItems="center">
-                        <Badge
-                          label={isSemanticCached ? "⚡ Fast" : "✓ Full scan"}
-                          color={isSemanticCached ? statusAccentColors.warning : theme.primary.val}
-                          small
-                        />
+                      <Badge
+                        label={isSemanticCached ? "⚡ Fast" : "✓ Full scan"}
+                        color={isSemanticCached ? statusAccentColors.warning : theme.primary.val}
+                        small
+                      />
                       {isSemanticCached && (
                         <PressableScale
                           onPress={() => {
                             setIsSearching(true);
                             setIsSemanticCached(false);
-                            semanticSearch({ token: token!, query: trimmedSearchQuery, limit: 12, forceDeepSearch: true })
+                            semanticSearch({
+                              token: token!,
+                              query: trimmedSearchQuery,
+                              limit: 12,
+                              forceDeepSearch: true,
+                            })
                               .then((r) => {
                                 setSemanticResults(r.results as MemoryItem[]);
                                 setIsSemanticCached(false);
@@ -578,7 +577,11 @@ export default function HomeScreen() {
                             alignItems="center"
                           >
                             <Feather name="refresh-cw" size={10} color={theme.primary.val} />
-                            <Text fontSize={12} fontFamily={FontFamily.semiBold} color={theme.primary.val}>
+                            <Text
+                              fontSize={12}
+                              fontFamily={FontFamily.semiBold}
+                              color={theme.primary.val}
+                            >
                               Deep scan
                             </Text>
                           </XStack>
@@ -670,23 +673,27 @@ export default function HomeScreen() {
                           onPress: () => token && completeMemory({ token, id: memory._id }),
                         },
                         ...(showTriggerSyncAction
-                          ? [{
-                              label:
-                                memory.googleSyncStatus === "failed"
-                                  ? "Retry Google Sync"
-                                  : "Trigger Google Sync",
-                              icon: "refresh-cw",
-                              iconColor: theme.primary.val,
-                              onPress: () => handleTriggerReminderSync(memory._id),
-                            }]
+                          ? [
+                              {
+                                label:
+                                  memory.googleSyncStatus === "failed"
+                                    ? "Retry Google Sync"
+                                    : "Trigger Google Sync",
+                                icon: "refresh-cw",
+                                iconColor: theme.primary.val,
+                                onPress: () => handleTriggerReminderSync(memory._id),
+                              },
+                            ]
                           : []),
                         ...(showRemoveSyncAction
-                          ? [{
-                              label: "Remove Google Sync",
-                              icon: "link-2",
-                              destructive: true,
-                              onPress: () => handleRemoveReminderSync(memory._id),
-                            }]
+                          ? [
+                              {
+                                label: "Remove Google Sync",
+                                icon: "link-2",
+                                destructive: true,
+                                onPress: () => handleRemoveReminderSync(memory._id),
+                              },
+                            ]
                           : []),
                         {
                           label: "Edit Memory",
@@ -741,11 +748,7 @@ export default function HomeScreen() {
                               })}
                             </Text>
                             {syncBadge ? (
-                              <Badge
-                                label={syncBadge.label}
-                                color={syncBadge.color}
-                                small
-                              />
+                              <Badge label={syncBadge.label} color={syncBadge.color} small />
                             ) : null}
                           </XStack>
                         </YStack>
@@ -806,7 +809,9 @@ export default function HomeScreen() {
             ) : (
               <YStack gap={12}>
                 {visibleFeed.map(({ raw, note }, index) => {
-                  const primaryTopic = note.primaryTopicId ? topicById[note.primaryTopicId] : undefined;
+                  const primaryTopic = note.primaryTopicId
+                    ? topicById[note.primaryTopicId]
+                    : undefined;
                   const secondaryTopics = (note.topicIds ?? [])
                     .filter((id) => id !== note.primaryTopicId && topicById[id])
                     .map((id) => topicById[id]);
@@ -838,11 +843,9 @@ export default function HomeScreen() {
                 })}
               </YStack>
             )}
-
           </SectionCard>
         </Animated.View>
       </AppScreen>
-
     </>
   );
 }

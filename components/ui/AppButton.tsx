@@ -26,7 +26,16 @@ type AppButtonProps = {
   tone?: StatusTone;
 };
 
-const BUTTON_SIZES: Record<AppButtonSize, { minHeight: number; paddingX: number; icon: number; fontSize: number; radius: number }> = {
+const BUTTON_SIZES: Record<
+  AppButtonSize,
+  {
+    minHeight: number;
+    paddingX: number;
+    icon: number;
+    fontSize: number;
+    radius: number;
+  }
+> = {
   sm: { minHeight: 40, paddingX: 14, icon: 15, fontSize: 13, radius: 14 },
   md: { minHeight: 54, paddingX: 22, icon: 17, fontSize: 15, radius: 16 },
   lg: { minHeight: 60, paddingX: 26, icon: 18, fontSize: 16, radius: 18 },
@@ -59,7 +68,12 @@ export function AppButton({
       gap={8}
     >
       {loading ? (
-        <ActivityIndicator size="small" color={variant === "secondary" || variant === "ghost" ? theme.color.val : theme.textInverse.val} />
+        <ActivityIndicator
+          size="small"
+          color={
+            variant === "secondary" || variant === "ghost" ? theme.color.val : theme.textInverse.val
+          }
+        />
       ) : (
         <>
           {icon ? (

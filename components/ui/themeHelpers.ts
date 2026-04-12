@@ -9,12 +9,7 @@ export type StatusTone =
   | "info"
   | "accent";
 
-export type SurfaceTone =
-  | "default"
-  | "elevated"
-  | "accent"
-  | "dangerSoft"
-  | "successSoft";
+export type SurfaceTone = "default" | "elevated" | "accent" | "dangerSoft" | "successSoft";
 
 export function withAlpha(color: string, alphaHex: string) {
   if (color.startsWith("#") && color.length === 7) {

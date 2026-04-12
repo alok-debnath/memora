@@ -5,7 +5,12 @@ import { action, internalAction } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import { embedText, getOpenAIClient, OPENAI_CHAT_MODEL } from "../lib/openai";
+import {
+  getOpenAIClient,
+  OPENAI_CHAT_MODEL,
+  trackedChatCompletion,
+  trackedEmbedText,
+} from "../lib/openai";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -28,7 +33,7 @@ async function reconcileUserTopicUsage(
     runQuery: ActionCtx["runQuery"];
     runMutation: ActionCtx["runMutation"];
   },
-  userId: Id<"users">
+  userId: Id<"users">,
 ) {
   const memoryTopicRefs: Array<{
     _id: Id<"memories">;
@@ -158,11 +163,7 @@ function normalizeTopicSlug(value: string): string {
       if (segment.length > 3 && segment.endsWith("ies")) {
         return `${segment.slice(0, -3)}y`;
       }
-      if (
-        segment.length > 3 &&
-        segment.endsWith("s") &&
-        !segment.endsWith("ss")
-      ) {
+      if (segment.length > 3 && segment.endsWith("s") && !segment.endsWith("ss")) {
         return segment.slice(0, -1);
       }
       return segment;
@@ -172,14 +173,13 @@ function normalizeTopicSlug(value: string): string {
 
 function findNormalizedTopicMatch(
   topics: TopicRecord[],
-  candidate: { name: string; slug: string }
+  candidate: { name: string; slug: string },
 ): TopicRecord | null {
   const target = normalizeTopicSlug(candidate.slug || candidate.name);
   return (
     topics.find(
       (topic) =>
-        normalizeTopicSlug(topic.slug) === target ||
-        normalizeTopicSlug(topic.name) === target
+        normalizeTopicSlug(topic.slug) === target || normalizeTopicSlug(topic.name) === target,
     ) ?? null
   );
 }
@@ -204,10 +204,7 @@ function topicDataFromRequestedName(name: string): TopicData {
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
       .join(" ") || "General";
   const slug = normalizeTopicSlug(titled);
-  const colorSeed = Array.from(slug).reduce(
-    (sum, char) => sum + char.charCodeAt(0),
-    0
-  );
+  const colorSeed = Array.from(slug).reduce((sum, char) => sum + char.charCodeAt(0), 0);
   return {
     name: titled,
     slug,
@@ -218,9 +215,11 @@ function topicDataFromRequestedName(name: string): TopicData {
 }
 
 async function aiCreateTopic(
+  ctx: Pick<ActionCtx, "runMutation">,
+  userId: Id<"users">,
   title: string,
   content: string,
-  existingTopics: Array<{ name: string; description: string }>
+  existingTopics: Array<{ name: string; description: string }>,
 ): Promise<TopicData> {
   const client = getOpenAIClient();
   if (!client) return fallbackTopicData(title);
@@ -241,24 +240,30 @@ Rules:
 Return ONLY valid JSON: { "name": "Title Case", "slug": "kebab-case", "description": "one sentence", "icon": "feather-icon-name", "color": "#hexcolor" }`;
 
   try {
-    const resp = await client.chat.completions.create({
-      model: OPENAI_CHAT_MODEL,
-      messages: [
-        { role: "system", content: prompt },
-        { role: "user", content: `Title: ${title}\nContent: ${content.slice(0, 400)}` },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 150,
-      temperature: 0,
+    const resp = await trackedChatCompletion(ctx, {
+      userId,
+      feature: "topic_management",
+      metadata: { stage: "topic_create" },
+      request: {
+        model: OPENAI_CHAT_MODEL,
+        messages: [
+          { role: "system", content: prompt },
+          {
+            role: "user",
+            content: `Title: ${title}\nContent: ${content.slice(0, 400)}`,
+          },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 150,
+        temperature: 0,
+      },
     });
 
     const parsed = JSON.parse(resp.choices[0]?.message?.content ?? "{}");
     const parsedName = typeof parsed.name === "string" ? parsed.name : title;
     return {
       name: parsedName,
-      slug: normalizeTopicSlug(
-        typeof parsed.slug === "string" ? parsed.slug : parsedName
-      ),
+      slug: normalizeTopicSlug(typeof parsed.slug === "string" ? parsed.slug : parsedName),
       description: typeof parsed.description === "string" ? parsed.description : "",
       icon: TOPIC_ICONS.includes(parsed.icon) ? parsed.icon : "tag",
       color: TOPIC_COLORS.includes(parsed.color) ? parsed.color : TOPIC_COLORS[0],
@@ -274,16 +279,23 @@ Return ONLY valid JSON: { "name": "Title Case", "slug": "kebab-case", "descripti
  * Only called when cosine similarity doesn't give a clear answer (< AUTO_ASSIGN_THRESHOLD).
  */
 async function aiSelectOrCreateTopic(
+  ctx: Pick<ActionCtx, "runMutation">,
+  userId: Id<"users">,
   title: string,
   content: string,
-  candidates: Array<{ _id: string; name: string; description: string; similarity: number }>,
-  allExistingTopics: Array<{ name: string; description: string }>
+  candidates: Array<{
+    _id: string;
+    name: string;
+    description: string;
+    similarity: number;
+  }>,
+  allExistingTopics: Array<{ name: string; description: string }>,
 ): Promise<{ action: "existing"; topicId: string } | { action: "new"; topicData: TopicData }> {
   const client = getOpenAIClient();
 
   if (!client) {
     // No LLM: use best candidate if similarity is decent, else create new
-    if (candidates.length > 0 && candidates[0].similarity >= 0.60) {
+    if (candidates.length > 0 && candidates[0].similarity >= 0.6) {
       return { action: "existing", topicId: candidates[0]._id };
     }
     return { action: "new", topicData: fallbackTopicData(title) };
@@ -311,12 +323,17 @@ Rules:
 Return ONLY valid JSON: {"choice": 0} to create new, or {"choice": 2} to use candidate #2`;
 
   try {
-    const resp = await client.chat.completions.create({
-      model: OPENAI_CHAT_MODEL,
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      max_tokens: 30,
-      temperature: 0,
+    const resp = await trackedChatCompletion(ctx, {
+      userId,
+      feature: "topic_management",
+      metadata: { stage: "topic_select" },
+      request: {
+        model: OPENAI_CHAT_MODEL,
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        max_tokens: 30,
+        temperature: 0,
+      },
     });
 
     const raw = JSON.parse(resp.choices[0]?.message?.content ?? "{}");
@@ -329,15 +346,17 @@ Return ONLY valid JSON: {"choice": 0} to create new, or {"choice": 2} to use can
     // Fall through to create new
   }
 
-  const topicData = await aiCreateTopic(title, content, allExistingTopics);
+  const topicData = await aiCreateTopic(ctx, userId, title, content, allExistingTopics);
   return { action: "new", topicData };
 }
 
 async function aiReconcileTopicProposal(
+  ctx: Pick<ActionCtx, "runMutation">,
+  userId: Id<"users">,
   title: string,
   content: string,
   proposedTopic: TopicData,
-  existingTopics: TopicRecord[]
+  existingTopics: TopicRecord[],
 ): Promise<{ action: "existing"; topicId: Id<"userTopics"> } | { action: "new" }> {
   const client = getOpenAIClient();
   if (!client) {
@@ -349,8 +368,7 @@ async function aiReconcileTopicProposal(
 
   const taxonomy = existingTopics
     .map(
-      (topic, index) =>
-        `${index + 1}. "${topic.name}" — ${topic.description || "no description"}`
+      (topic, index) => `${index + 1}. "${topic.name}" — ${topic.description || "no description"}`,
     )
     .join("\n");
 
@@ -375,12 +393,17 @@ Rules:
 Return ONLY valid JSON: {"choice": 0} for a truly new topic, or {"choice": 3} to reuse topic #3.`;
 
   try {
-    const response = await client.chat.completions.create({
-      model: OPENAI_CHAT_MODEL,
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      max_tokens: 30,
-      temperature: 0,
+    const response = await trackedChatCompletion(ctx, {
+      userId,
+      feature: "topic_management",
+      metadata: { stage: "topic_reconcile" },
+      request: {
+        model: OPENAI_CHAT_MODEL,
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        max_tokens: 30,
+        temperature: 0,
+      },
     });
     const parsed = JSON.parse(response.choices[0]?.message?.content ?? "{}");
     const choice = typeof parsed.choice === "number" ? parsed.choice : 0;
@@ -395,9 +418,7 @@ Return ONLY valid JSON: {"choice": 0} for a truly new topic, or {"choice": 3} to
   }
 
   const normalizedMatch = findNormalizedTopicMatch(existingTopics, proposedTopic);
-  return normalizedMatch
-    ? { action: "existing", topicId: normalizedMatch._id }
-    : { action: "new" };
+  return normalizedMatch ? { action: "existing", topicId: normalizedMatch._id } : { action: "new" };
 }
 
 // ─── Main actions ─────────────────────────────────────────────────────────────
@@ -412,12 +433,9 @@ export const assignTopicsToMemory = internalAction({
     embedding: v.array(v.float64()),
   },
   handler: async (ctx, args) => {
-    const topics: TopicRecord[] = await ctx.runQuery(
-      internal.userTopics.listWithCentroids,
-      {
+    const topics: TopicRecord[] = await ctx.runQuery(internal.userTopics.listWithCentroids, {
       userId: args.userId,
-      }
-    );
+    });
 
     // Cosine score all existing topics
     const scored: Array<TopicRecord & { similarity: number }> = topics
@@ -426,10 +444,8 @@ export const assignTopicsToMemory = internalAction({
         similarity: cosineSimilarity(args.embedding, t.centroid),
       }))
       .sort(
-        (
-          a: TopicRecord & { similarity: number },
-          b: TopicRecord & { similarity: number }
-        ) => b.similarity - a.similarity
+        (a: TopicRecord & { similarity: number }, b: TopicRecord & { similarity: number }) =>
+          b.similarity - a.similarity,
       );
 
     // Thresholds:
@@ -444,7 +460,7 @@ export const assignTopicsToMemory = internalAction({
 
     if (topics.length === 0) {
       // No existing topics — create the first one
-      const topicData = await aiCreateTopic(args.title, args.content, []);
+      const topicData = await aiCreateTopic(ctx, args.userId, args.title, args.content, []);
       primaryTopicId = await ctx.runMutation(internal.userTopics.createTopic, {
         userId: args.userId,
         ...topicData,
@@ -458,10 +474,10 @@ export const assignTopicsToMemory = internalAction({
       // Ambiguous — let the LLM review only the strongest ranked candidates.
       const curatedTopics = scored.slice(0, MAX_LLM_CANDIDATES);
       const candidates = curatedTopics.map((t: TopicRecord & { similarity: number }) => ({
-          _id: t._id,
-          name: t.name,
-          description: t.description ?? "",
-          similarity: t.similarity,
+        _id: t._id,
+        name: t.name,
+        description: t.description ?? "",
+        similarity: t.similarity,
       }));
 
       const allExisting = curatedTopics.map((t: TopicRecord & { similarity: number }) => ({
@@ -470,29 +486,31 @@ export const assignTopicsToMemory = internalAction({
       }));
 
       const result = await aiSelectOrCreateTopic(
+        ctx,
+        args.userId,
         args.title,
         args.content,
         candidates,
-        allExisting
+        allExisting,
       );
 
       if (result.action === "existing") {
         const matched = scored.find(
-          (t: TopicRecord & { similarity: number }) => t._id === result.topicId
+          (t: TopicRecord & { similarity: number }) => t._id === result.topicId,
         )!;
         primaryTopicId = matched._id;
       } else {
         const reconciled = await aiReconcileTopicProposal(
+          ctx,
+          args.userId,
           args.title,
           args.content,
           result.topicData,
-          curatedTopics
+          curatedTopics,
         );
 
         if (reconciled.action === "existing") {
-          const matched = topics.find(
-            (topic: TopicRecord) => topic._id === reconciled.topicId
-          );
+          const matched = topics.find((topic: TopicRecord) => topic._id === reconciled.topicId);
           if (!matched) {
             throw new Error("Reconciled topic no longer exists");
           }
@@ -539,14 +557,14 @@ export const assignTopicsToMemory = internalAction({
     const secondaryMatches = scored
       .filter(
         (t: TopicRecord & { similarity: number }) =>
-          t._id !== primaryTopicId && t.similarity >= SECONDARY_THRESHOLD
+          t._id !== primaryTopicId && t.similarity >= SECONDARY_THRESHOLD,
       )
       .slice(0, 2);
 
     const nextTopicIds = [
       primaryTopicId,
       ...secondaryMatches.map(
-        (t: TopicRecord & { similarity: number }) => t._id as Id<"userTopics">
+        (t: TopicRecord & { similarity: number }) => t._id as Id<"userTopics">,
       ),
     ];
 
@@ -557,13 +575,17 @@ export const assignTopicsToMemory = internalAction({
     });
 
     // Trigger re-analysis every 15 memories
-    const updatedTopics = await ctx.runQuery(internal.userTopics.listWithCentroids, { userId: args.userId });
+    const updatedTopics = await ctx.runQuery(internal.userTopics.listWithCentroids, {
+      userId: args.userId,
+    });
     const totalMemories = updatedTopics.reduce(
       (sum: number, t: TopicRecord) => sum + t.memoryCount,
-      0
+      0,
     );
     if (totalMemories > 0 && totalMemories % 15 === 0) {
-      await ctx.scheduler.runAfter(3000, internal.actions.manageTopics.reanalyzeUserTopics, { userId: args.userId });
+      await ctx.scheduler.runAfter(3000, internal.actions.manageTopics.reanalyzeUserTopics, {
+        userId: args.userId,
+      });
     }
   },
 });
@@ -580,12 +602,9 @@ export const reanalyzeUserTopics = internalAction({
       });
     }
 
-    const topics: TopicRecord[] = await ctx.runQuery(
-      internal.userTopics.listWithCentroids,
-      {
+    const topics: TopicRecord[] = await ctx.runQuery(internal.userTopics.listWithCentroids, {
       userId: args.userId,
-      }
-    );
+    });
     if (topics.length < 2) return;
 
     const MERGE_THRESHOLD = 0.92;
@@ -604,13 +623,11 @@ export const reanalyzeUserTopics = internalAction({
 
     for (let i = 0; i < topics.length; i++) {
       for (let j = i + 1; j < topics.length; j++) {
-        if (mergedIds.has(topics[i]._id) || mergedIds.has(topics[j]._id))
-          continue;
+        if (mergedIds.has(topics[i]._id) || mergedIds.has(topics[j]._id)) continue;
         const sim = cosineSimilarity(topics[i].centroid, topics[j].centroid);
 
         if (sim >= MERGE_THRESHOLD) {
-          const keepIdx =
-            topics[i].memoryCount >= topics[j].memoryCount ? i : j;
+          const keepIdx = topics[i].memoryCount >= topics[j].memoryCount ? i : j;
           const mergeIdx = keepIdx === i ? j : i;
           merges.push({
             keepId: topics[keepIdx]._id,
@@ -647,7 +664,7 @@ export const handleManageTopic = internalAction({
       v.literal("recolor"),
       v.literal("trigger_reanalysis"),
       v.literal("list"),
-      v.literal("retag_memory")
+      v.literal("retag_memory"),
     ),
     topicSlug: v.optional(v.string()),
     targetSlug: v.optional(v.string()),
@@ -658,12 +675,9 @@ export const handleManageTopic = internalAction({
     topicName: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<unknown> => {
-    const topics: TopicRecord[] = await ctx.runQuery(
-      internal.userTopics.listWithCentroids,
-      {
+    const topics: TopicRecord[] = await ctx.runQuery(internal.userTopics.listWithCentroids, {
       userId: args.userId,
-      }
-    );
+    });
 
     if (args.operation === "list") {
       return topics.map((t: TopicRecord) => ({
@@ -674,11 +688,9 @@ export const handleManageTopic = internalAction({
     }
 
     if (args.operation === "trigger_reanalysis") {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.actions.manageTopics.reanalyzeUserTopics,
-        { userId: args.userId }
-      );
+      await ctx.scheduler.runAfter(0, internal.actions.manageTopics.reanalyzeUserTopics, {
+        userId: args.userId,
+      });
       return { success: true, message: "Re-analysis scheduled" };
     }
 
@@ -690,18 +702,15 @@ export const handleManageTopic = internalAction({
         };
       }
 
-      const memory: Doc<"memories"> | null = await ctx.runQuery(
-        internal.memories.getInternal,
-        { memoryId: args.memoryId }
-      );
+      const memory: Doc<"memories"> | null = await ctx.runQuery(internal.memories.getInternal, {
+        memoryId: args.memoryId,
+      });
       if (!memory || memory.userId !== args.userId) {
         return { success: false, message: "Memory not found" };
       }
 
       const requestedTopic = topicDataFromRequestedName(args.topicName);
-      const matchedTopic =
-        findNormalizedTopicMatch(topics, requestedTopic) ??
-        null;
+      const matchedTopic = findNormalizedTopicMatch(topics, requestedTopic) ?? null;
 
       let targetTopicId: Id<"userTopics">;
       if (matchedTopic) {
@@ -709,9 +718,12 @@ export const handleManageTopic = internalAction({
       } else {
         const embedding =
           memory.embedding ??
-          (await embedText(
-            [memory.title ?? "", memory.content ?? ""].filter(Boolean).join("\n\n")
-          ));
+          (await trackedEmbedText(ctx, {
+            userId: args.userId,
+            feature: "topic_management",
+            input: [memory.title ?? "", memory.content ?? ""].filter(Boolean).join("\n\n"),
+            metadata: { stage: "retag_memory" },
+          }));
         targetTopicId = await ctx.runMutation(internal.userTopics.createTopic, {
           userId: args.userId,
           ...requestedTopic,
@@ -721,7 +733,7 @@ export const handleManageTopic = internalAction({
       }
 
       const retainedSecondaryTopics = (memory.topicIds ?? []).filter(
-        (topicId) => topicId !== memory.primaryTopicId && topicId !== targetTopicId
+        (topicId) => topicId !== memory.primaryTopicId && topicId !== targetTopicId,
       );
       const nextTopicIds = [targetTopicId, ...retainedSecondaryTopics].slice(0, 3);
 
@@ -740,8 +752,7 @@ export const handleManageTopic = internalAction({
     }
 
     const topic = topics.find((t: TopicRecord) => t.slug === args.topicSlug);
-    if (!topic)
-      return { success: false, message: `Topic '${args.topicSlug}' not found` };
+    if (!topic) return { success: false, message: `Topic '${args.topicSlug}' not found` };
 
     if (args.operation === "rename" && args.newName) {
       const newSlug = args.newName.toLowerCase().replace(/\s+/g, "-");
@@ -749,18 +760,22 @@ export const handleManageTopic = internalAction({
       let description = topic.description;
       if (client) {
         try {
-          const resp = await client.chat.completions.create({
-            model: OPENAI_CHAT_MODEL,
-            messages: [
-              {
-                role: "user",
-                content: `Write a one-sentence description for a personal memory topic called "${args.newName}". Be concise.`,
-              },
-            ],
-            max_tokens: 60,
+          const resp = await trackedChatCompletion(ctx, {
+            userId: args.userId,
+            feature: "topic_management",
+            metadata: { stage: "rename_topic" },
+            request: {
+              model: OPENAI_CHAT_MODEL,
+              messages: [
+                {
+                  role: "user",
+                  content: `Write a one-sentence description for a personal memory topic called "${args.newName}". Be concise.`,
+                },
+              ],
+              max_tokens: 60,
+            },
           });
-          description =
-            resp.choices[0]?.message?.content?.trim() ?? description;
+          description = resp.choices[0]?.message?.content?.trim() ?? description;
         } catch {
           /* use existing */
         }
@@ -781,10 +796,12 @@ export const handleManageTopic = internalAction({
           success: false,
           message: `Target topic '${args.targetSlug}' not found`,
         };
-      const keepId =
-        topic.memoryCount >= target.memoryCount ? topic._id : target._id;
+      const keepId = topic.memoryCount >= target.memoryCount ? topic._id : target._id;
       const mergeId = keepId === topic._id ? target._id : topic._id;
-      await ctx.runMutation(internal.userTopics.mergeTopic, { keepId, mergeId });
+      await ctx.runMutation(internal.userTopics.mergeTopic, {
+        keepId,
+        mergeId,
+      });
       return {
         success: true,
         message: `Merged '${args.topicSlug}' into '${args.targetSlug}'`,
@@ -800,7 +817,10 @@ export const handleManageTopic = internalAction({
       return { success: true, message: "Topic appearance updated" };
     }
 
-    return { success: false, message: "Invalid operation or missing arguments" };
+    return {
+      success: false,
+      message: "Invalid operation or missing arguments",
+    };
   },
 });
 

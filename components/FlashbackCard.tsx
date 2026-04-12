@@ -25,8 +25,14 @@ export function FlashbackCard({ memory, onPress }: FlashbackCardProps) {
       <LinearGradient
         colors={
           resolvedMode === "dark"
-            ? ([withAlpha(theme.primary.val, "38"), withAlpha(theme.backgroundStrong.val, "EB")] as const)
-            : ([withAlpha(theme.primary.val, "52"), withAlpha(theme.backgroundStrong.val, "F0")] as const)
+            ? ([
+                withAlpha(theme.primary.val, "38"),
+                withAlpha(theme.backgroundStrong.val, "EB"),
+              ] as const)
+            : ([
+                withAlpha(theme.primary.val, "52"),
+                withAlpha(theme.backgroundStrong.val, "F0"),
+              ] as const)
         }
         style={{
           width: 236,
@@ -67,7 +73,13 @@ export function FlashbackCard({ memory, onPress }: FlashbackCardProps) {
         >
           {memory.title}
         </Text>
-        <Text fontSize={12} fontFamily="$body" lineHeight={18} color="$colorMuted" numberOfLines={3}>
+        <Text
+          fontSize={12}
+          fontFamily="$body"
+          lineHeight={18}
+          color="$colorMuted"
+          numberOfLines={3}
+        >
           {memory.content}
         </Text>
       </LinearGradient>

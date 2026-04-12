@@ -18,7 +18,7 @@ export const list = query({
       return await ctx.db
         .query("chatMessages")
         .withIndex("by_user_conversation", (q) =>
-          q.eq("userId", userId).eq("conversationId", args.conversationId)
+          q.eq("userId", userId).eq("conversationId", args.conversationId),
         )
         .order("asc")
         .take(limit);
@@ -40,12 +40,17 @@ export const send = internalMutation({
     content: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("chatMessages", {
+    const messageId = await ctx.db.insert("chatMessages", {
       userId: args.userId,
       role: args.role,
       content: args.content,
       conversationId: args.conversationId,
     });
+    await ctx.runMutation(internal.analytics.recordProductEvent, {
+      userId: args.userId,
+      event: "chat_message",
+    });
+    return messageId;
   },
 });
 
@@ -68,8 +73,8 @@ export const setSearchStatus = internalMutation({
         v.object({
           label: v.string(),
           value: v.optional(v.string()),
-        })
-      )
+        }),
+      ),
     ),
     step: v.optional(v.number()),
     totalSteps: v.optional(v.number()),
@@ -148,10 +153,7 @@ export const deepSearch = action({
     query: v.string(),
     messageId: v.id("chatMessages"),
   },
-  handler: async (
-    ctx,
-    args
-  ): Promise<{ count: number }> => {
+  handler: async (ctx, args): Promise<{ count: number }> => {
     // Actions don't have db access — resolve user via a query
     const session = await ctx.runQuery(api.auth.me, { token: args.token });
     if (!session) throw new Error("Unauthorized");
@@ -208,19 +210,20 @@ export const deepSearch = action({
       });
 
       // Fetch the original message
-      const original = await ctx.runQuery(internal.chat.getMessage, { id: args.messageId });
+      const original = await ctx.runQuery(internal.chat.getMessage, {
+        id: args.messageId,
+      });
       if (!original?.content) return { count: fresh.results.length };
 
       // Replace or append the hidden MEMORA_CARD_IDS block with fresh data
       const marker = "<!--MEMORA_CARD_IDS:";
       const endMarker = "-->";
       const startIdx = original.content.indexOf(marker);
-      const endIdx = startIdx !== -1
-        ? original.content.indexOf(endMarker, startIdx + marker.length)
-        : -1;
+      const endIdx =
+        startIdx !== -1 ? original.content.indexOf(endMarker, startIdx + marker.length) : -1;
 
-      const cardMetadata = { 
-        ids: fresh.results.map(r => r._id), 
+      const cardMetadata = {
+        ids: fresh.results.map((r) => r._id),
         isCached: false,
         turns: 1, // Deep scan is an explicit single-purpose turn
         flow: {
@@ -273,16 +276,11 @@ export const deepSearch = action({
       if (startIdx !== -1 && endIdx !== -1) {
         const before = original.content.slice(0, startIdx);
         const after = original.content.slice(endIdx + endMarker.length);
-        newContent = before
-          + marker
-          + JSON.stringify(cardMetadata)
-          + endMarker
-          + after;
+        newContent = before + marker + JSON.stringify(cardMetadata) + endMarker + after;
       } else {
         // No existing block — append one
         newContent =
-          original.content.trimEnd() +
-          `\n${marker}${JSON.stringify(cardMetadata)}${endMarker}`;
+          original.content.trimEnd() + `\n${marker}${JSON.stringify(cardMetadata)}${endMarker}`;
       }
 
       await ctx.runMutation(internal.chat.patchMessageContent, {
@@ -323,7 +321,7 @@ export const clear = mutation({
       ? await ctx.db
           .query("chatMessages")
           .withIndex("by_user_conversation", (q) =>
-            q.eq("userId", userId).eq("conversationId", args.conversationId)
+            q.eq("userId", userId).eq("conversationId", args.conversationId),
           )
           .take(500)
       : await ctx.db

@@ -1,11 +1,7 @@
 import { create } from "zustand";
 import type { MemoryNote } from "@/types/memory";
 
-export type SheetId =
-  | "unifiedCommand"
-  | "editMemory"
-  | "homeOverview"
-  | "filePreview";
+export type SheetId = "unifiedCommand" | "editMemory" | "homeOverview" | "filePreview";
 
 export type FilePreviewPayload = {
   _id: string;
@@ -138,100 +134,110 @@ export const useUIStore = create<UIStore>()((set) => ({
       sheetStack: [],
     }),
 
-  openAIChat: () => set((state) => ({
-    sheets: {
-      ...state.sheets,
-      unifiedCommand: {
-        open: true,
-        payload: null,
-        enteredAt: Date.now(),
+  openAIChat: () =>
+    set((state) => ({
+      sheets: {
+        ...state.sheets,
+        unifiedCommand: {
+          open: true,
+          payload: null,
+          enteredAt: Date.now(),
+        },
       },
-    },
-    sheetStack: registerSheetId(state.sheetStack, "unifiedCommand"),
-  })),
-  closeAIChat: () => set((state) => ({
-    sheets: {
-      ...state.sheets,
-      unifiedCommand: resetSheetEntry("unifiedCommand"),
-    },
-    sheetStack: unregisterSheetId(state.sheetStack, "unifiedCommand"),
-  })),
+      sheetStack: registerSheetId(state.sheetStack, "unifiedCommand"),
+    })),
+  closeAIChat: () =>
+    set((state) => ({
+      sheets: {
+        ...state.sheets,
+        unifiedCommand: resetSheetEntry("unifiedCommand"),
+      },
+      sheetStack: unregisterSheetId(state.sheetStack, "unifiedCommand"),
+    })),
 
-  openEditMemory: (memory) => set((state) => ({
-    sheets: {
-      ...state.sheets,
-      editMemory: {
-        open: true,
-        payload: { memory },
-        enteredAt: Date.now(),
+  openEditMemory: (memory) =>
+    set((state) => ({
+      sheets: {
+        ...state.sheets,
+        editMemory: {
+          open: true,
+          payload: { memory },
+          enteredAt: Date.now(),
+        },
       },
-    },
-    sheetStack: registerSheetId(state.sheetStack, "editMemory"),
-  })),
-  closeEditMemory: () => set((state) => ({
-    sheets: {
-      ...state.sheets,
-      editMemory: resetSheetEntry("editMemory"),
-    },
-    sheetStack: unregisterSheetId(state.sheetStack, "editMemory"),
-  })),
+      sheetStack: registerSheetId(state.sheetStack, "editMemory"),
+    })),
+  closeEditMemory: () =>
+    set((state) => ({
+      sheets: {
+        ...state.sheets,
+        editMemory: resetSheetEntry("editMemory"),
+      },
+      sheetStack: unregisterSheetId(state.sheetStack, "editMemory"),
+    })),
 
-  openCommand: () => set((state) => ({
-    sheets: {
-      ...state.sheets,
-      unifiedCommand: {
-        open: true,
-        payload: null,
-        enteredAt: Date.now(),
+  openCommand: () =>
+    set((state) => ({
+      sheets: {
+        ...state.sheets,
+        unifiedCommand: {
+          open: true,
+          payload: null,
+          enteredAt: Date.now(),
+        },
       },
-    },
-    sheetStack: registerSheetId(state.sheetStack, "unifiedCommand"),
-  })),
-  closeCommand: () => set((state) => ({
-    sheets: {
-      ...state.sheets,
-      unifiedCommand: resetSheetEntry("unifiedCommand"),
-    },
-    sheetStack: unregisterSheetId(state.sheetStack, "unifiedCommand"),
-  })),
+      sheetStack: registerSheetId(state.sheetStack, "unifiedCommand"),
+    })),
+  closeCommand: () =>
+    set((state) => ({
+      sheets: {
+        ...state.sheets,
+        unifiedCommand: resetSheetEntry("unifiedCommand"),
+      },
+      sheetStack: unregisterSheetId(state.sheetStack, "unifiedCommand"),
+    })),
 
-  openHomeOverview: () => set((state) => ({
-    sheets: {
-      ...state.sheets,
-      homeOverview: {
-        open: true,
-        payload: null,
-        enteredAt: Date.now(),
+  openHomeOverview: () =>
+    set((state) => ({
+      sheets: {
+        ...state.sheets,
+        homeOverview: {
+          open: true,
+          payload: null,
+          enteredAt: Date.now(),
+        },
       },
-    },
-    sheetStack: registerSheetId(state.sheetStack, "homeOverview"),
-  })),
-  closeHomeOverview: () => set((state) => ({
-    sheets: {
-      ...state.sheets,
-      homeOverview: resetSheetEntry("homeOverview"),
-    },
-    sheetStack: unregisterSheetId(state.sheetStack, "homeOverview"),
-  })),
+      sheetStack: registerSheetId(state.sheetStack, "homeOverview"),
+    })),
+  closeHomeOverview: () =>
+    set((state) => ({
+      sheets: {
+        ...state.sheets,
+        homeOverview: resetSheetEntry("homeOverview"),
+      },
+      sheetStack: unregisterSheetId(state.sheetStack, "homeOverview"),
+    })),
 
-  openFilePreview: (attachment) => set((state) => ({
-    sheets: {
-      ...state.sheets,
-      filePreview: {
-        open: true,
-        payload: { attachment },
-        enteredAt: Date.now(),
+  openFilePreview: (attachment) =>
+    set((state) => ({
+      sheets: {
+        ...state.sheets,
+        filePreview: {
+          open: true,
+          payload: { attachment },
+          enteredAt: Date.now(),
+        },
       },
-    },
-    sheetStack: registerSheetId(state.sheetStack, "filePreview"),
-  })),
-  closeFilePreview: () => set((state) => ({
-    sheets: {
-      ...state.sheets,
-      filePreview: resetSheetEntry("filePreview"),
-    },
-    sheetStack: unregisterSheetId(state.sheetStack, "filePreview"),
-  })),
+      sheetStack: registerSheetId(state.sheetStack, "filePreview"),
+    })),
+  closeFilePreview: () =>
+    set((state) => ({
+      sheets: {
+        ...state.sheets,
+        filePreview: resetSheetEntry("filePreview"),
+      },
+      sheetStack: unregisterSheetId(state.sheetStack, "filePreview"),
+    })),
 
   resetSheets: () =>
     set({
@@ -245,8 +251,10 @@ export const selectIsAIChatOpen = (state: UIStore) => state.sheets.unifiedComman
 export const selectIsEditMemoryOpen = (state: UIStore) => state.sheets.editMemory.open;
 export const selectIsCommandOpen = (state: UIStore) => state.sheets.unifiedCommand.open;
 export const selectSheetOpen = (id: SheetId) => (state: UIStore) => state.sheets[id].open;
-export const selectSheetPayload = <K extends SheetId>(id: K) => (state: UIStore) =>
-  state.sheets[id].payload as SheetPayloadMap[K] | null;
+export const selectSheetPayload =
+  <K extends SheetId>(id: K) =>
+  (state: UIStore) =>
+    state.sheets[id].payload as SheetPayloadMap[K] | null;
 export const selectSheetPosition = (sheetId: SheetId) => (state: UIStore) => {
   const index = state.sheetStack.indexOf(sheetId);
   if (index === -1) return { depth: 0, total: state.sheetStack.length };

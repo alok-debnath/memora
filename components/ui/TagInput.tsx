@@ -62,7 +62,9 @@ export function TagInput({ value, onChange, placeholder = "Add tag...", label }:
               alignItems="center"
               gap={4}
             >
-              <Text color="$color" fontSize={13} fontFamily="$body" fontWeight="500">{tag}</Text>
+              <Text color="$color" fontSize={13} fontFamily="$body" fontWeight="500">
+                {tag}
+              </Text>
               <Pressable onPress={() => removeTag(tag)} hitSlop={6}>
                 <Feather name="x" size={12} color={theme.colorMuted.val} />
               </Pressable>
@@ -75,7 +77,13 @@ export function TagInput({ value, onChange, placeholder = "Add tag...", label }:
               onSubmitEditing={addTag}
               placeholder={placeholder}
               placeholderTextColor={theme.colorMuted.val}
-              style={{ flex: 1, fontSize: 13, fontFamily: FontFamily.regular, minHeight: 24, color: theme.color.val }}
+              style={{
+                flex: 1,
+                fontSize: 13,
+                fontFamily: FontFamily.regular,
+                minHeight: 24,
+                color: theme.color.val,
+              }}
               returnKeyType="done"
               blurOnSubmit={false}
             />

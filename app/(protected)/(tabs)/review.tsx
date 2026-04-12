@@ -59,9 +59,9 @@ function previewInterval(card: ReviewCard, quality: number): number {
 
 const RATINGS = [
   { label: "Again", emoji: "🔴", quality: 1, color: reviewQualityColors.again },
-  { label: "Hard",  emoji: "🟡", quality: 2, color: reviewQualityColors.hard },
-  { label: "Good",  emoji: "🔵", quality: 3, color: reviewQualityColors.good },
-  { label: "Easy",  emoji: "🟢", quality: 5, color: reviewQualityColors.easy },
+  { label: "Hard", emoji: "🟡", quality: 2, color: reviewQualityColors.hard },
+  { label: "Good", emoji: "🔵", quality: 3, color: reviewQualityColors.good },
+  { label: "Easy", emoji: "🟢", quality: 5, color: reviewQualityColors.easy },
 ] as const;
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -80,9 +80,24 @@ function StatsStrip({
 }) {
   const theme = useAppTheme();
   const stats = [
-    { label: "Due now",  value: String(dueCount),   icon: "clock" as const,      color: statusAccentColors.error },
-    { label: "In queue", value: String(totalCount),  icon: "layers" as const,     color: theme.primary.val },
-    { label: "Reviewed", value: `${sessionDone}/${sessionTotal}`, icon: "check-circle" as const, color: statusAccentColors.success },
+    {
+      label: "Due now",
+      value: String(dueCount),
+      icon: "clock" as const,
+      color: statusAccentColors.error,
+    },
+    {
+      label: "In queue",
+      value: String(totalCount),
+      icon: "layers" as const,
+      color: theme.primary.val,
+    },
+    {
+      label: "Reviewed",
+      value: `${sessionDone}/${sessionTotal}`,
+      icon: "check-circle" as const,
+      color: statusAccentColors.success,
+    },
   ];
   return (
     <XStack gap={8} marginTop={14}>
@@ -141,7 +156,15 @@ function ProgressBar({ progress }: { progress: number }) {
 }
 
 /** Front face of the flashcard */
-function CardFront({ card, cardCount, cardIndex }: { card: ReviewCard; cardCount: number; cardIndex: number }) {
+function CardFront({
+  card,
+  cardCount,
+  cardIndex,
+}: {
+  card: ReviewCard;
+  cardCount: number;
+  cardIndex: number;
+}) {
   const theme = useAppTheme();
   return (
     <YStack flex={1} justifyContent="space-between" padding={22}>
@@ -164,7 +187,14 @@ function CardFront({ card, cardCount, cardIndex }: { card: ReviewCard; cardCount
         >
           {card.memory.title}
         </Text>
-        <XStack alignItems="center" gap={6} paddingHorizontal={18} paddingVertical={8} borderRadius={999} backgroundColor={theme.primary.val + "14"}>
+        <XStack
+          alignItems="center"
+          gap={6}
+          paddingHorizontal={18}
+          paddingVertical={8}
+          borderRadius={999}
+          backgroundColor={theme.primary.val + "14"}
+        >
           <Feather name="eye" size={14} color={theme.primary.val} />
           <Text fontSize={13} fontFamily="$body" color="$primary" fontWeight="600">
             Tap to reveal answer
@@ -174,8 +204,15 @@ function CardFront({ card, cardCount, cardIndex }: { card: ReviewCard; cardCount
 
       <XStack gap={8} justifyContent="center">
         {card.memory.lifeArea && (
-          <XStack paddingHorizontal={10} paddingVertical={4} borderRadius={999} backgroundColor={theme.primary.val + "15"}>
-            <Text fontSize={11} fontFamily="$body" color="$primary">{card.memory.lifeArea}</Text>
+          <XStack
+            paddingHorizontal={10}
+            paddingVertical={4}
+            borderRadius={999}
+            backgroundColor={theme.primary.val + "15"}
+          >
+            <Text fontSize={11} fontFamily="$body" color="$primary">
+              {card.memory.lifeArea}
+            </Text>
           </XStack>
         )}
       </XStack>
@@ -215,17 +252,17 @@ function CardBack({ card }: { card: ReviewCard }) {
           {card.memory.title}
         </Text>
         {card.memory.content ? (
-          <Text
-            fontSize={14}
-            fontFamily="$body"
-            textAlign="center"
-            lineHeight={22}
-            color="$color"
-          >
+          <Text fontSize={14} fontFamily="$body" textAlign="center" lineHeight={22} color="$color">
             {card.memory.content}
           </Text>
         ) : (
-          <Text fontSize={13} fontFamily="$body" textAlign="center" color="$colorMuted" fontStyle="italic">
+          <Text
+            fontSize={13}
+            fontFamily="$body"
+            textAlign="center"
+            color="$colorMuted"
+            fontStyle="italic"
+          >
             No additional content stored.
           </Text>
         )}
@@ -233,13 +270,27 @@ function CardBack({ card }: { card: ReviewCard }) {
 
       <XStack gap={6} justifyContent="center" flexWrap="wrap">
         {card.memory.lifeArea && (
-          <XStack paddingHorizontal={10} paddingVertical={4} borderRadius={999} backgroundColor={theme.primary.val + "15"}>
-            <Text fontSize={11} fontFamily="$body" color="$primary">{card.memory.lifeArea}</Text>
+          <XStack
+            paddingHorizontal={10}
+            paddingVertical={4}
+            borderRadius={999}
+            backgroundColor={theme.primary.val + "15"}
+          >
+            <Text fontSize={11} fontFamily="$body" color="$primary">
+              {card.memory.lifeArea}
+            </Text>
           </XStack>
         )}
         {card.memory.importance && (
-          <XStack paddingHorizontal={10} paddingVertical={4} borderRadius={999} backgroundColor={theme.secondary.val}>
-            <Text fontSize={11} fontFamily="$body" color="$colorMuted">importance: {card.memory.importance}</Text>
+          <XStack
+            paddingHorizontal={10}
+            paddingVertical={4}
+            borderRadius={999}
+            backgroundColor={theme.secondary.val}
+          >
+            <Text fontSize={11} fontFamily="$body" color="$colorMuted">
+              importance: {card.memory.importance}
+            </Text>
           </XStack>
         )}
       </XStack>
@@ -264,10 +315,15 @@ function RatingButton({
       onPress={onPress}
       style={[
         styles.ratingButton,
-        { backgroundColor: rating.color + "18", borderColor: rating.color + "35" },
+        {
+          backgroundColor: rating.color + "18",
+          borderColor: rating.color + "35",
+        },
       ]}
     >
-      <Text fontSize={18} marginBottom={2}>{rating.emoji}</Text>
+      <Text fontSize={18} marginBottom={2}>
+        {rating.emoji}
+      </Text>
       <Text fontSize={13} fontFamily="$heading" fontWeight="700" style={{ color: rating.color }}>
         {rating.label}
       </Text>
@@ -288,7 +344,15 @@ function SessionComplete({
 }) {
   const theme = useAppTheme();
   return (
-    <Animated.View entering={FadeInUp.duration(500)} style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24 }}>
+    <Animated.View
+      entering={FadeInUp.duration(500)}
+      style={{
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+        padding: 24,
+      }}
+    >
       <YStack alignItems="center" gap={12} width="100%">
         <YStack
           width={80}
@@ -301,23 +365,44 @@ function SessionComplete({
         >
           <Text fontSize={36}>🎉</Text>
         </YStack>
-        <Text fontSize={28} fontFamily="$heading" fontWeight="700" color="$color" textAlign="center">
+        <Text
+          fontSize={28}
+          fontFamily="$heading"
+          fontWeight="700"
+          color="$color"
+          textAlign="center"
+        >
           Session complete!
         </Text>
-        <Text fontSize={15} fontFamily="$body" color="$colorMuted" textAlign="center" lineHeight={22}>
-          You reviewed {totalReviewed} {totalReviewed === 1 ? "card" : "cards"} this session.{"\n"}Great work keeping your memories sharp.
+        <Text
+          fontSize={15}
+          fontFamily="$body"
+          color="$colorMuted"
+          textAlign="center"
+          lineHeight={22}
+        >
+          You reviewed {totalReviewed} {totalReviewed === 1 ? "card" : "cards"} this session.{"\n"}
+          Great work keeping your memories sharp.
         </Text>
 
         <Card style={{ width: "100%", marginTop: 16 }}>
           <XStack justifyContent="space-around">
             <YStack alignItems="center" gap={4}>
-              <Text fontSize={28} fontFamily="$heading" fontWeight="800" color="$primary">{totalReviewed}</Text>
-              <Text fontSize={12} fontFamily="$body" color="$colorMuted">Reviewed</Text>
+              <Text fontSize={28} fontFamily="$heading" fontWeight="800" color="$primary">
+                {totalReviewed}
+              </Text>
+              <Text fontSize={12} fontFamily="$body" color="$colorMuted">
+                Reviewed
+              </Text>
             </YStack>
             <YStack width={1} backgroundColor="$borderColor" />
             <YStack alignItems="center" gap={4}>
-              <Text fontSize={28} fontFamily="$heading" fontWeight="800" color={theme.success.val}>✓</Text>
-              <Text fontSize={12} fontFamily="$body" color="$colorMuted">All done</Text>
+              <Text fontSize={28} fontFamily="$heading" fontWeight="800" color={theme.success.val}>
+                ✓
+              </Text>
+              <Text fontSize={12} fontFamily="$body" color="$colorMuted">
+                All done
+              </Text>
             </YStack>
           </XStack>
         </Card>
@@ -327,7 +412,13 @@ function SessionComplete({
           style={[styles.resetButton, { backgroundColor: theme.primary.val }]}
         >
           <Feather name="refresh-cw" size={16} color={theme.textInverse.val} />
-          <Text fontSize={15} fontFamily="$body" fontWeight="700" color="$textInverse" marginLeft={8}>
+          <Text
+            fontSize={15}
+            fontFamily="$body"
+            fontWeight="700"
+            color="$textInverse"
+            marginLeft={8}
+          >
             Check for more
           </Text>
         </PressableScale>
@@ -349,8 +440,15 @@ function UpcomingRow({ card }: { card: ReviewCard }) {
           </Text>
           <XStack gap={6} alignItems="center">
             {card.memory.lifeArea && (
-              <XStack paddingHorizontal={8} paddingVertical={3} borderRadius={999} backgroundColor={theme.primary.val + "14"}>
-                <Text fontSize={10} fontFamily="$body" color="$primary">{card.memory.lifeArea}</Text>
+              <XStack
+                paddingHorizontal={8}
+                paddingVertical={3}
+                borderRadius={999}
+                backgroundColor={theme.primary.val + "14"}
+              >
+                <Text fontSize={10} fontFamily="$body" color="$primary">
+                  {card.memory.lifeArea}
+                </Text>
               </XStack>
             )}
             <Text fontSize={11} fontFamily="$body" color="$colorMuted">
@@ -385,10 +483,10 @@ export default function ReviewScreen() {
   const { token } = useAuth();
   const tabBarPadding = useTabBarBottomPadding();
 
-  const dueCards  = useQuery(api.review.getDue,  token ? { token, limit: 50 }  : "skip") ?? [];
-  const allCards  = useQuery(api.review.list,    token ? { token, limit: 100 } : "skip") ?? [];
-  const reviewCard        = useMutation(api.review.review);
-  const removeFromReview  = useMutation(api.review.removeFromReview);
+  const dueCards = useQuery(api.review.getDue, token ? { token, limit: 50 } : "skip") ?? [];
+  const allCards = useQuery(api.review.list, token ? { token, limit: 100 } : "skip") ?? [];
+  const reviewCard = useMutation(api.review.review);
+  const removeFromReview = useMutation(api.review.removeFromReview);
 
   // Stable session queue — built once when dueCards first loads (non-empty)
   const [sessionQueue, setSessionQueue] = useState<ReviewCard[]>([]);
@@ -400,10 +498,10 @@ export default function ReviewScreen() {
 
   // Reveal animation (opacity crossfade — works on all platforms)
   const frontOpacity = useSharedValue(1);
-  const backOpacity  = useSharedValue(0);
+  const backOpacity = useSharedValue(0);
 
   const frontStyle = useAnimatedStyle(() => ({ opacity: frontOpacity.value }));
-  const backStyle  = useAnimatedStyle(() => ({ opacity: backOpacity.value  }));
+  const backStyle = useAnimatedStyle(() => ({ opacity: backOpacity.value }));
 
   // Lock session queue in once dueCards is available and the queue is empty
   const queueLocked = useRef(false);
@@ -415,7 +513,7 @@ export default function ReviewScreen() {
       setSessionDone(false);
       setIsRevealed(false);
       frontOpacity.value = 1;
-      backOpacity.value  = 0;
+      backOpacity.value = 0;
       queueLocked.current = true;
     }
   }, [dueCards]);
@@ -435,7 +533,7 @@ export default function ReviewScreen() {
     if (isRevealed || !currentCard) return;
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     frontOpacity.value = withTiming(0, { duration: 220 });
-    backOpacity.value  = withTiming(1, { duration: 280 });
+    backOpacity.value = withTiming(1, { duration: 280 });
     setIsRevealed(true);
   }, [isRevealed, currentCard]);
 
@@ -461,11 +559,11 @@ export default function ReviewScreen() {
         setSessionIndex(nextIndex);
         setIsRevealed(false);
         frontOpacity.value = withTiming(1, { duration: 200 });
-        backOpacity.value  = withTiming(0, { duration: 160 });
+        backOpacity.value = withTiming(0, { duration: 160 });
       }
       setIsSubmitting(false);
     },
-    [currentCard, isSubmitting, sessionRatings, sessionIndex, sessionQueue, token, reviewCard]
+    [currentCard, isSubmitting, sessionRatings, sessionIndex, sessionQueue, token, reviewCard],
   );
 
   const handleRemove = useCallback(() => {
@@ -480,7 +578,7 @@ export default function ReviewScreen() {
       setSessionIndex(next);
       setIsRevealed(false);
       frontOpacity.value = withTiming(1, { duration: 200 });
-      backOpacity.value  = withTiming(0, { duration: 160 });
+      backOpacity.value = withTiming(0, { duration: 160 });
     }
   }, [currentCard, sessionIndex, sessionQueue, token, removeFromReview]);
 
@@ -493,19 +591,20 @@ export default function ReviewScreen() {
     setSessionRatings([]);
     setIsRevealed(false);
     frontOpacity.value = 1;
-    backOpacity.value  = 0;
+    backOpacity.value = 0;
     // useEffect will pick up fresh dueCards
   }, []);
 
   const progress =
-    sessionQueue.length > 0
-      ? (sessionIndex + (isRevealed ? 1 : 0)) / sessionQueue.length
-      : 0;
+    sessionQueue.length > 0 ? (sessionIndex + (isRevealed ? 1 : 0)) / sessionQueue.length : 0;
 
   const isLoading = dueCards === undefined || allCards === undefined;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top", "bottom"]}>
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: theme.background.val }}
+      edges={["top", "bottom"]}
+    >
       <YStack flex={1} backgroundColor="$background">
         {/* ── Header ─────────────────────────────────────────── */}
         <Animated.View entering={FadeInDown.duration(400)}>
@@ -514,7 +613,13 @@ export default function ReviewScreen() {
               <XStack alignItems="flex-start" justifyContent="space-between" gap={12}>
                 <YStack flex={1} gap={4}>
                   <Badge label="Spaced repetition" color={theme.primary.val} />
-                  <Text fontSize={26} lineHeight={32} fontFamily="$heading" fontWeight="700" color="$color">
+                  <Text
+                    fontSize={26}
+                    lineHeight={32}
+                    fontFamily="$heading"
+                    fontWeight="700"
+                    color="$color"
+                  >
                     Review queue
                   </Text>
                   <Text fontSize={13} lineHeight={19} fontFamily="$body" color="$colorMuted">
@@ -541,23 +646,22 @@ export default function ReviewScreen() {
             </Card>
 
             {/* Progress bar — only show when session is active */}
-            {sessionQueue.length > 0 && !sessionDone && (
-              <ProgressBar progress={progress} />
-            )}
+            {sessionQueue.length > 0 && !sessionDone && <ProgressBar progress={progress} />}
           </YStack>
         </Animated.View>
 
         {/* ── Body ───────────────────────────────────────────── */}
         {sessionDone ? (
           /* ── Session complete ── */
-          <SessionComplete
-            totalReviewed={sessionRatings.length}
-            onReset={handleStartNewSession}
-          />
+          <SessionComplete totalReviewed={sessionRatings.length} onReset={handleStartNewSession} />
         ) : sessionQueue.length === 0 || !currentCard ? (
           /* ── Nothing due / empty ── */
           <ScrollView
-            contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 16, paddingBottom: tabBarPadding }}
+            contentContainerStyle={{
+              flexGrow: 1,
+              paddingHorizontal: 16,
+              paddingBottom: tabBarPadding,
+            }}
             showsVerticalScrollIndicator={false}
           >
             <EmptyState
@@ -571,7 +675,13 @@ export default function ReviewScreen() {
             />
             {upcomingCards.length > 0 && (
               <YStack gap={10} marginTop={8}>
-                <Text fontSize={16} fontFamily="$heading" fontWeight="700" color="$color" marginBottom={4}>
+                <Text
+                  fontSize={16}
+                  fontFamily="$heading"
+                  fontWeight="700"
+                  color="$color"
+                  marginBottom={4}
+                >
                   Upcoming
                 </Text>
                 {upcomingCards.map((card) => (
@@ -586,7 +696,11 @@ export default function ReviewScreen() {
           /* ── Active session ── */
           <YStack flex={1} alignItems="center" paddingHorizontal={16} paddingBottom={tabBarPadding}>
             {/* Flashcard */}
-            <YStack width="100%" style={{ flex: 1, maxHeight: 380, position: "relative" }} marginBottom={16}>
+            <YStack
+              width="100%"
+              style={{ flex: 1, maxHeight: 380, position: "relative" }}
+              marginBottom={16}
+            >
               {/* Front */}
               <Animated.View
                 pointerEvents={isRevealed ? "none" : "auto"}
@@ -617,7 +731,13 @@ export default function ReviewScreen() {
             {/* Rating buttons */}
             {isRevealed && (
               <Animated.View entering={FadeInUp.delay(100).duration(280)} style={{ width: "100%" }}>
-                <Text fontSize={12} fontFamily="$body" color="$colorMuted" textAlign="center" marginBottom={10}>
+                <Text
+                  fontSize={12}
+                  fontFamily="$body"
+                  color="$colorMuted"
+                  textAlign="center"
+                  marginBottom={10}
+                >
                   How well did you remember this?
                 </Text>
                 <XStack gap={8} width="100%">
@@ -637,7 +757,13 @@ export default function ReviewScreen() {
             <Animated.View entering={FadeIn.delay(200).duration(300)} style={{ marginTop: 14 }}>
               <PressableScale
                 onPress={handleRemove}
-                style={[styles.removeButton, { borderColor: theme.borderColor.val, backgroundColor: theme.card.val }]}
+                style={[
+                  styles.removeButton,
+                  {
+                    borderColor: theme.borderColor.val,
+                    backgroundColor: theme.card.val,
+                  },
+                ]}
               >
                 <Feather name="x-circle" size={15} color={theme.colorMuted.val} />
                 <Text fontSize={13} fontFamily="$body" color="$colorMuted" marginLeft={6}>

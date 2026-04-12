@@ -61,7 +61,7 @@ export default function LoginScreen() {
           autoComplete="password"
           textContentType="password"
           returnKeyType="go"
-          accessory={(
+          accessory={
             <PressableScale
               onPress={() => setShowPassword((value) => !value)}
               style={{ paddingHorizontal: 10, paddingVertical: 8 }}
@@ -70,7 +70,7 @@ export default function LoginScreen() {
                 {showPassword ? "Hide" : "Show"}
               </Text>
             </PressableScale>
-          )}
+          }
         />
 
         <AppButton

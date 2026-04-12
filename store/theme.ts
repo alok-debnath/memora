@@ -14,10 +14,7 @@ interface ThemeStore {
   loadTheme: () => Promise<void>;
 }
 
-function resolveMode(
-  mode: ThemeMode,
-  systemMode: ResolvedThemeMode
-): ResolvedThemeMode {
+function resolveMode(mode: ThemeMode, systemMode: ResolvedThemeMode): ResolvedThemeMode {
   return mode === "system" ? systemMode : mode;
 }
 

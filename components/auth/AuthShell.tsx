@@ -1,11 +1,5 @@
 import React from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  View,
-} from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInUp } from "react-native-reanimated";
@@ -24,12 +18,7 @@ type AuthShellProps = {
   accentIcon?: keyof typeof Feather.glyphMap;
 };
 
-export function AuthShell({
-  title,
-  subtitle,
-  children,
-  accentIcon = "zap",
-}: AuthShellProps) {
+export function AuthShell({ title, subtitle, children, accentIcon = "zap" }: AuthShellProps) {
   const theme = useAppTheme();
   const isLargeScreen = useIsLargeScreen();
 
@@ -48,10 +37,15 @@ export function AuthShell({
         style={[styles.glowBottom, { backgroundColor: withAlpha(theme.warning.val, "10") }]}
       />
 
-      <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top", "bottom"]}>
+      <SafeAreaView
+        style={{ flex: 1, backgroundColor: theme.background.val }}
+        edges={["top", "bottom"]}
+      >
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior={Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined}
+          behavior={
+            Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined
+          }
           keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
         >
           <ScrollView
@@ -78,11 +72,7 @@ export function AuthShell({
                   }}
                 >
                   <LinearGradient
-                    colors={[
-                      theme.surfaceAccent.val,
-                      theme.surfaceElevated.val,
-                      theme.surface.val,
-                    ]}
+                    colors={[theme.surfaceAccent.val, theme.surfaceElevated.val, theme.surface.val]}
                     style={{ padding: isLargeScreen ? 26 : 20 }}
                   >
                     <YStack gap={18}>

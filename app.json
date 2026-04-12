@@ -23,9 +23,7 @@
     "android": {
       "package": "com.alokdebnath.memora",
       "scheme": "com.alokdebnath.memora",
-      "permissions": [
-        "android.permission.RECORD_AUDIO"
-      ]
+      "permissions": ["android.permission.RECORD_AUDIO"]
     },
     "web": {
       "favicon": "./assets/images/icon.png"
@@ -47,7 +45,8 @@
           ]
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true

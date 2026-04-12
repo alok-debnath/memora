@@ -5,13 +5,17 @@ import { AppToastContext, type AppToastOptions } from "./AppToastProvider";
 function triggerHaptic(tone: AppToastOptions["tone"]) {
   switch (tone) {
     case "success":
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
+        () => undefined,
+      );
       return;
     case "error":
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => undefined);
       return;
     case "warning":
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(
+        () => undefined,
+      );
       return;
     default:
       void Haptics.selectionAsync().catch(() => undefined);
@@ -33,10 +37,7 @@ export function useAppToast() {
     [context],
   );
 
-  const hideToast = useCallback(
-    (id?: string) => context.hideToast(id),
-    [context],
-  );
+  const hideToast = useCallback((id?: string) => context.hideToast(id), [context]);
 
   return { showToast, hideToast };
 }

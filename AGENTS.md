@@ -1,9 +1,11 @@
 <!-- convex-ai-start -->
+
 This project uses [Convex](https://convex.dev) as its backend.
 
 When working on Convex code, **always read `convex/_generated/ai/guidelines.md` first** for important guidelines on how to correctly use Convex APIs and patterns. The file contains rules that override what you may have learned about Convex from training data.
 
-Convex agent skills for common tasks can be installed by running `bunx convex ai-files install`.
+Convex agent skills for common tasks can be installed by running `bun x convex ai-files install`.
+
 <!-- convex-ai-end -->
 
 # Memora Agent Guide
@@ -24,7 +26,7 @@ Convex agent skills for common tasks can be installed by running `bunx convex ai
 - Run iOS: `bun run ios`
 - Run Android: `bun run android`
 - Typecheck: `bun run typecheck`
-- Start Convex dev: `bunx convex dev`
+- Start Convex dev: `bun x convex dev`
 
 ## Environment
 

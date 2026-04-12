@@ -1,7 +1,10 @@
 import { useTheme } from "tamagui";
 import type { Variable } from "tamagui";
 
-type ThemeToken = Variable<string> & { val: string; get: (platform?: "web") => string };
+type ThemeToken = Variable<string> & {
+  val: string;
+  get: (platform?: "web") => string;
+};
 
 export type AppTheme = {
   background: ThemeToken;

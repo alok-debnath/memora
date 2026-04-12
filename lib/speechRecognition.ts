@@ -60,7 +60,10 @@ export function buildContinuousSpeechOptions(): ExpoSpeechRecognitionOptions {
   };
 }
 
-export async function startSpeechRecognition(): Promise<{ ok: boolean; reason?: string }> {
+export async function startSpeechRecognition(): Promise<{
+  ok: boolean;
+  reason?: string;
+}> {
   try {
     ExpoSpeechRecognitionModule.start(buildSpeechRecognitionOptions());
     return { ok: true };
@@ -94,8 +97,6 @@ export function getBestTranscript(
 ): string {
   if (!results.length) return "";
   // With maxAlternatives: 1 this is always results[0], but handle multiple just in case
-  const best = results.reduce((a, b) =>
-    (b.confidence ?? 0) > (a.confidence ?? 0) ? b : a,
-  );
+  const best = results.reduce((a, b) => ((b.confidence ?? 0) > (a.confidence ?? 0) ? b : a));
   return best.transcript.replace(/\s+/g, " ").trim();
 }

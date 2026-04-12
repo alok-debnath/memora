@@ -1,12 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { createContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  PanResponder,
-  Platform,
-  Pressable,
-  StyleSheet,
-  useWindowDimensions,
-} from "react-native";
+import { PanResponder, Platform, Pressable, StyleSheet, useWindowDimensions } from "react-native";
 import { createPortal } from "react-dom";
 import Animated, {
   LinearTransition,
@@ -89,11 +83,8 @@ function getToasts() {
   return currentToasts;
 }
 
-function setToasts(
-  updater: AppToastItem[] | ((prev: AppToastItem[]) => AppToastItem[]),
-) {
-  currentToasts =
-    typeof updater === "function" ? updater(currentToasts) : updater;
+function setToasts(updater: AppToastItem[] | ((prev: AppToastItem[]) => AppToastItem[])) {
+  currentToasts = typeof updater === "function" ? updater(currentToasts) : updater;
   listeners.forEach((l) => l(currentToasts));
 }
 
@@ -157,7 +148,7 @@ export function hideToastImperative(id: string): void {
 // ─── Individual animated toast ────────────────────────────────────────────────
 
 const ENTER = SlideInUp.springify().damping(20).mass(0.9).stiffness(200);
-const EXIT  = SlideOutUp.springify().damping(22).mass(0.8).stiffness(240);
+const EXIT = SlideOutUp.springify().damping(22).mass(0.8).stiffness(240);
 
 function AnimatedToast({
   toast,
@@ -176,7 +167,9 @@ function AnimatedToast({
   useEffect(() => {
     if (toast.closeMode === "manual") return;
     timerRef.current = setTimeout(() => onDismiss(toast.id), toast.duration);
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
   }, [toast.id, toast.duration, toast.closeMode, onDismiss]);
 
   const dismiss = useCallback(() => {
@@ -188,8 +181,7 @@ function AnimatedToast({
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onMoveShouldSetPanResponder: (_, g) =>
-          Math.abs(g.dy) > 5 && g.dy < 0,
+        onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 5 && g.dy < 0,
         onPanResponderMove: (_, g) => {
           translateY.value = Math.min(0, g.dy);
         },
@@ -215,11 +207,7 @@ function AnimatedToast({
   const toneColor = TONE_COLORS[toast.tone];
 
   return (
-    <Animated.View
-      entering={ENTER}
-      exiting={EXIT}
-      layout={LinearTransition.duration(250)}
-    >
+    <Animated.View entering={ENTER} exiting={EXIT} layout={LinearTransition.duration(250)}>
       <Animated.View
         style={[
           styles.toast,
@@ -235,12 +223,7 @@ function AnimatedToast({
       >
         <XStack gap={10} alignItems="flex-start" width="100%">
           {/* Tone accent bar */}
-          <View
-            width={4}
-            alignSelf="stretch"
-            borderRadius={4}
-            backgroundColor={toneColor}
-          />
+          <View width={4} alignSelf="stretch" borderRadius={4} backgroundColor={toneColor} />
 
           {/* Content */}
           <YStack flex={1} minWidth={0} gap={2}>
@@ -254,12 +237,7 @@ function AnimatedToast({
               {toast.title}
             </Text>
             {toast.message ? (
-              <Text
-                fontSize={12}
-                fontFamily="$body"
-                color="$colorMuted"
-                numberOfLines={3}
-              >
+              <Text fontSize={12} fontFamily="$body" color="$colorMuted" numberOfLines={3}>
                 {toast.message}
               </Text>
             ) : null}
@@ -372,9 +350,7 @@ export function AppToastProvider({ children }: { children: React.ReactNode }) {
     [showToast, hideToast],
   );
 
-  return (
-    <AppToastContext.Provider value={value}>{children}</AppToastContext.Provider>
-  );
+  return <AppToastContext.Provider value={value}>{children}</AppToastContext.Provider>;
 }
 
 // ─── Renderer — place AFTER all providers in root layout ─────────────────────
@@ -406,12 +382,7 @@ export function AppToastRenderer() {
       ]}
     >
       {toasts.map((toast) => (
-        <AnimatedToast
-          key={toast.id}
-          toast={toast}
-          onDismiss={dismissToast}
-          maxWidth={maxWidth}
-        />
+        <AnimatedToast key={toast.id} toast={toast} onDismiss={dismissToast} maxWidth={maxWidth} />
       ))}
     </Animated.View>
   );

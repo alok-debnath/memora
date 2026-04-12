@@ -17,9 +17,7 @@ export const list = query({
       .take(limit);
 
     // Batch-fetch all memories in parallel to eliminate N+1
-    const memoryResults = await Promise.all(
-      cards.map((card) => ctx.db.get(card.memoryId))
-    );
+    const memoryResults = await Promise.all(cards.map((card) => ctx.db.get(card.memoryId)));
 
     const result: Array<Doc<"reviewCards"> & { memory: Doc<"memories"> }> = [];
     for (let i = 0; i < cards.length; i++) {
@@ -44,15 +42,11 @@ export const getDue = query({
 
     const cards = await ctx.db
       .query("reviewCards")
-      .withIndex("by_user_nextReviewAt", (q) =>
-        q.eq("userId", userId).lte("nextReviewAt", now)
-      )
+      .withIndex("by_user_nextReviewAt", (q) => q.eq("userId", userId).lte("nextReviewAt", now))
       .take(limit);
 
     // Batch-fetch all memories in parallel to eliminate N+1
-    const memoryResults = await Promise.all(
-      cards.map((card) => ctx.db.get(card.memoryId))
-    );
+    const memoryResults = await Promise.all(cards.map((card) => ctx.db.get(card.memoryId)));
 
     const result: Array<Doc<"reviewCards"> & { memory: Doc<"memories"> }> = [];
     for (let i = 0; i < cards.length; i++) {
@@ -118,9 +112,7 @@ export const review = mutation({
     const card = await ctx.db.get(args.cardId);
     if (!card || card.userId !== userId) return;
 
-    let newEF =
-      card.easeFactor +
-      (0.1 - (5 - args.quality) * (0.08 + (5 - args.quality) * 0.02));
+    let newEF = card.easeFactor + (0.1 - (5 - args.quality) * (0.08 + (5 - args.quality) * 0.02));
     if (newEF < 1.3) newEF = 1.3;
 
     let newInterval: number;

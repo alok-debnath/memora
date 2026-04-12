@@ -109,7 +109,7 @@ export default function ResetPasswordScreen() {
               autoComplete="new-password"
               textContentType="newPassword"
               returnKeyType="next"
-              accessory={(
+              accessory={
                 <PressableScale
                   onPress={() => setShowNewPassword((value) => !value)}
                   style={{ paddingHorizontal: 10, paddingVertical: 8 }}
@@ -118,7 +118,7 @@ export default function ResetPasswordScreen() {
                     {showNewPassword ? "Hide" : "Show"}
                   </Text>
                 </PressableScale>
-              )}
+              }
             />
 
             <AppTextField
@@ -130,7 +130,7 @@ export default function ResetPasswordScreen() {
               autoComplete="new-password"
               textContentType="newPassword"
               returnKeyType="done"
-              accessory={(
+              accessory={
                 <PressableScale
                   onPress={() => setShowConfirmPassword((value) => !value)}
                   style={{ paddingHorizontal: 10, paddingVertical: 8 }}
@@ -139,7 +139,7 @@ export default function ResetPasswordScreen() {
                     {showConfirmPassword ? "Hide" : "Show"}
                   </Text>
                 </PressableScale>
-              )}
+              }
             />
 
             <AppButton

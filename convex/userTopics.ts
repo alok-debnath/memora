@@ -15,11 +15,7 @@ function normalizeTopicSlug(value: string): string {
       if (segment.length > 3 && segment.endsWith("ies")) {
         return `${segment.slice(0, -3)}y`;
       }
-      if (
-        segment.length > 3 &&
-        segment.endsWith("s") &&
-        !segment.endsWith("ss")
-      ) {
+      if (segment.length > 3 && segment.endsWith("s") && !segment.endsWith("ss")) {
         return segment.slice(0, -1);
       }
       return segment;
@@ -35,9 +31,7 @@ export const list = query({
     const { userId } = await resolveUser(ctx, args.token);
     const topics = await ctx.db
       .query("userTopics")
-      .withIndex("by_user_and_isArchived", (q) =>
-        q.eq("userId", userId).eq("isArchived", false)
-      )
+      .withIndex("by_user_and_isArchived", (q) => q.eq("userId", userId).eq("isArchived", false))
       .take(100);
     return topics.filter((topic) => topic.memoryCount > 0);
   },
@@ -49,9 +43,7 @@ export const activeSummaries = query({
     const { userId } = await resolveUser(ctx, args.token);
     const hasAnyMemory = await ctx.db
       .query("memories")
-      .withIndex("by_user_status", (q) =>
-        q.eq("userId", userId).eq("status", "active")
-      )
+      .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", "active"))
       .take(1);
     if (hasAnyMemory.length === 0) {
       return [];
@@ -59,9 +51,7 @@ export const activeSummaries = query({
 
     const topics = await ctx.db
       .query("userTopics")
-      .withIndex("by_user_and_isArchived", (q) =>
-        q.eq("userId", userId).eq("isArchived", false)
-      )
+      .withIndex("by_user_and_isArchived", (q) => q.eq("userId", userId).eq("isArchived", false))
       .take(100);
     return topics
       .filter((topic) => topic.memoryCount > 0)
@@ -94,7 +84,7 @@ export const listWithCentroids = internalQuery({
     return ctx.db
       .query("userTopics")
       .withIndex("by_user_and_isArchived", (q) =>
-        q.eq("userId", args.userId).eq("isArchived", false)
+        q.eq("userId", args.userId).eq("isArchived", false),
       )
       .take(100);
   },
@@ -106,7 +96,7 @@ export const listActiveNames = internalQuery({
     const topics = await ctx.db
       .query("userTopics")
       .withIndex("by_user_and_isArchived", (q) =>
-        q.eq("userId", args.userId).eq("isArchived", false)
+        q.eq("userId", args.userId).eq("isArchived", false),
       )
       .take(100);
     return topics
@@ -120,9 +110,7 @@ export const getBySlug = internalQuery({
   handler: async (ctx, args) => {
     return ctx.db
       .query("userTopics")
-      .withIndex("by_user_slug", (q) =>
-        q.eq("userId", args.userId).eq("slug", args.slug)
-      )
+      .withIndex("by_user_slug", (q) => q.eq("userId", args.userId).eq("slug", args.slug))
       .first();
   },
 });
@@ -133,7 +121,7 @@ export const countActiveTopics = internalQuery({
     const topics = await ctx.db
       .query("userTopics")
       .withIndex("by_user_and_isArchived", (q) =>
-        q.eq("userId", args.userId).eq("isArchived", false)
+        q.eq("userId", args.userId).eq("isArchived", false),
       )
       .take(100);
     return topics.length;
@@ -163,7 +151,7 @@ export const createTopic = internalMutation({
       (topic) =>
         !topic.isArchived &&
         (normalizeTopicSlug(topic.slug) === normalizedSlug ||
-          normalizeTopicSlug(topic.name) === normalizedSlug)
+          normalizeTopicSlug(topic.name) === normalizedSlug),
     );
 
     if (normalizedMatch) {
@@ -171,8 +159,7 @@ export const createTopic = internalMutation({
         const nextCount = normalizedMatch.memoryCount + 1;
         const nextCentroid = normalizedMatch.centroid.map(
           (value, index) =>
-            (value * normalizedMatch.memoryCount + args.centroid[index]) /
-            nextCount
+            (value * normalizedMatch.memoryCount + args.centroid[index]) / nextCount,
         );
         await ctx.db.patch(normalizedMatch._id, {
           centroid: nextCentroid,
@@ -185,9 +172,7 @@ export const createTopic = internalMutation({
 
     const exactSlugMatch = await ctx.db
       .query("userTopics")
-      .withIndex("by_user_slug", (q) =>
-        q.eq("userId", args.userId).eq("slug", normalizedSlug)
-      )
+      .withIndex("by_user_slug", (q) => q.eq("userId", args.userId).eq("slug", normalizedSlug))
       .first();
     const slug = exactSlugMatch ? `${normalizedSlug}-${Date.now()}` : normalizedSlug;
 
@@ -232,7 +217,7 @@ export const updateRelations = internalMutation({
         a: v.id("userTopics"),
         b: v.id("userTopics"),
         similarity: v.float64(),
-      })
+      }),
     ),
   },
   handler: async (ctx, args) => {
@@ -244,13 +229,10 @@ export const updateRelations = internalMutation({
       const upsertEdge = (
         existing: typeof topicA.relatedTopics,
         targetId: Id<"userTopics">,
-        similarity: number
+        similarity: number,
       ) => {
         const filtered = existing.filter((e) => e.topicId !== targetId);
-        return [
-          ...filtered,
-          { topicId: targetId, similarity, edgeType: "related" as const },
-        ];
+        return [...filtered, { topicId: targetId, similarity, edgeType: "related" as const }];
       };
 
       await ctx.db.patch(rel.a, {
@@ -301,13 +283,10 @@ export const decrementOrArchiveTopics = internalMutation({
       for (const sibling of siblingTopics) {
         if (sibling._id === topicId) continue;
         const filteredRelations = sibling.relatedTopics.filter(
-          (relation) => relation.topicId !== topicId
+          (relation) => relation.topicId !== topicId,
         );
         const shouldClearParent = sibling.parentTopicId === topicId;
-        if (
-          filteredRelations.length !== sibling.relatedTopics.length ||
-          shouldClearParent
-        ) {
+        if (filteredRelations.length !== sibling.relatedTopics.length || shouldClearParent) {
           await ctx.db.patch(sibling._id, {
             relatedTopics: filteredRelations,
             ...(shouldClearParent ? { parentTopicId: undefined } : {}),
@@ -344,12 +323,12 @@ export const reconcileTopicUsage = internalMutation({
       v.object({
         topicId: v.id("userTopics"),
         memoryCount: v.number(),
-      })
+      }),
     ),
   },
   handler: async (ctx, args) => {
     const usageByTopic = new Map(
-      args.usage.map((entry) => [entry.topicId, entry.memoryCount] as const)
+      args.usage.map((entry) => [entry.topicId, entry.memoryCount] as const),
     );
     const topics = await ctx.db
       .query("userTopics")
@@ -389,14 +368,10 @@ export const reconcileTopicUsage = internalMutation({
     for (const topic of topics) {
       if (archivedTopicIds.has(topic._id)) continue;
       const filteredRelations = topic.relatedTopics.filter(
-        (relation) => !archivedTopicIds.has(relation.topicId)
+        (relation) => !archivedTopicIds.has(relation.topicId),
       );
-      const shouldClearParent =
-        !!topic.parentTopicId && archivedTopicIds.has(topic.parentTopicId);
-      if (
-        filteredRelations.length !== topic.relatedTopics.length ||
-        shouldClearParent
-      ) {
+      const shouldClearParent = !!topic.parentTopicId && archivedTopicIds.has(topic.parentTopicId);
+      if (filteredRelations.length !== topic.relatedTopics.length || shouldClearParent) {
         await ctx.db.patch(topic._id, {
           relatedTopics: filteredRelations,
           ...(shouldClearParent ? { parentTopicId: undefined } : {}),
@@ -416,9 +391,7 @@ export const mergeTopic = internalMutation({
 
     const allMemories = ctx.db
       .query("memories")
-      .withIndex("by_user_status", (q) =>
-        q.eq("userId", merge.userId).eq("status", "active")
-      );
+      .withIndex("by_user_status", (q) => q.eq("userId", merge.userId).eq("status", "active"));
 
     for await (const m of allMemories) {
       const hasTopicIds = m.topicIds?.includes(args.mergeId);
@@ -428,8 +401,7 @@ export const mergeTopic = internalMutation({
       const newTopicIds = (m.topicIds ?? [])
         .map((id: Id<"userTopics">) => (id === args.mergeId ? args.keepId : id))
         .filter(
-          (id: Id<"userTopics">, idx: number, arr: Id<"userTopics">[]) =>
-            arr.indexOf(id) === idx
+          (id: Id<"userTopics">, idx: number, arr: Id<"userTopics">[]) => arr.indexOf(id) === idx,
         );
 
       await ctx.db.patch(m._id, {
@@ -449,9 +421,7 @@ export const mergeTopic = internalMutation({
     const newCentroid =
       totalCount > 0
         ? keep.centroid.map(
-            (v, i) =>
-              (v * keep.memoryCount + merge.centroid[i] * merge.memoryCount) /
-              totalCount
+            (v, i) => (v * keep.memoryCount + merge.centroid[i] * merge.memoryCount) / totalCount,
           )
         : keep.centroid;
 

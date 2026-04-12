@@ -1,0 +1,9 @@
+node_modules
+.expo
+.expo-shared
+dist
+web-build
+android
+ios
+convex/_generated
+bun.lock

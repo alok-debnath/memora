@@ -2,13 +2,46 @@
 
 import OpenAI from "openai";
 import { toFile } from "openai/uploads";
+import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
+import type { ActionCtx } from "../_generated/server";
 
-export const OPENAI_CHAT_MODEL =
-  process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini";
+export const OPENAI_CHAT_MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini";
 export const OPENAI_EMBEDDING_MODEL =
   process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small";
 export const OPENAI_TRANSCRIPTION_MODEL =
   process.env.OPENAI_TRANSCRIPTION_MODEL ?? "gpt-4o-mini-transcribe";
+
+type UsageRecorderCtx = Pick<ActionCtx, "runMutation">;
+
+type OpenAIFeature =
+  | "memory_chat"
+  | "memory_processing"
+  | "memory_capture"
+  | "diary_processing"
+  | "topic_management"
+  | "conflict_detection"
+  | "attachment_extraction"
+  | "audio_transcription";
+
+type ChatUsage = {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+};
+
+type PriceConfig = {
+  inputUsdPer1M?: number;
+  outputUsdPer1M?: number;
+  audioUsdPerMinute?: number;
+};
+
+const OPENAI_PRICING: Record<string, PriceConfig> = {
+  "gpt-4o": { inputUsdPer1M: 5, outputUsdPer1M: 15 },
+  "gpt-4o-mini": { inputUsdPer1M: 0.15, outputUsdPer1M: 0.6 },
+  "gpt-4o-mini-transcribe": { audioUsdPerMinute: 0.006 },
+  "text-embedding-3-small": { inputUsdPer1M: 0.02 },
+};
 
 let cachedClient: OpenAI | null | undefined;
 
@@ -50,8 +83,54 @@ export function requireOpenAI() {
   return client;
 }
 
+function getChatPricing(model: string) {
+  return OPENAI_PRICING[model] ?? null;
+}
+
+function tokensToMicros(tokens: number, pricePerMillion: number) {
+  return Math.round((tokens / 1_000_000) * pricePerMillion * 1_000_000);
+}
+
+function minutesToMicros(minutes: number, pricePerMinute: number) {
+  return Math.round(minutes * pricePerMinute * 1_000_000);
+}
+
+async function recordOpenAiUsage(
+  ctx: UsageRecorderCtx,
+  args: {
+    userId: Id<"users">;
+    feature: OpenAIFeature;
+    operation: string;
+    model: string;
+    status: "success" | "error";
+    latencyMs: number;
+    usage?: ChatUsage;
+    audioSeconds?: number;
+    costUsdMicros?: number;
+    costAvailability: "estimated" | "exact" | "unavailable";
+    metadata?: Record<string, string>;
+  },
+) {
+  await ctx.runMutation(internal.analytics.recordAiUsage, {
+    userId: args.userId,
+    provider: "openai",
+    model: args.model,
+    operation: args.operation,
+    feature: args.feature,
+    status: args.status,
+    latencyMs: args.latencyMs,
+    inputTokens: args.usage?.prompt_tokens,
+    outputTokens: args.usage?.completion_tokens,
+    totalTokens: args.usage?.total_tokens,
+    audioSeconds: args.audioSeconds,
+    costUsdMicros: args.costUsdMicros,
+    costAvailability: args.costAvailability,
+    metadata: args.metadata,
+  });
+}
+
 export function extractTextContent(
-  content: string | Array<{ type?: string; text?: string }> | null | undefined
+  content: string | Array<{ type?: string; text?: string }> | null | undefined,
 ) {
   if (typeof content === "string") {
     return content;
@@ -63,7 +142,7 @@ export function extractTextContent(
     .map((part) =>
       typeof part === "object" && part?.type === "text" && typeof part.text === "string"
         ? part.text
-        : ""
+        : "",
     )
     .join("")
     .trim();
@@ -73,7 +152,10 @@ export function safeJsonParse<T>(raw: string): T | null {
   try {
     const trimmed = raw.trim();
     const json = trimmed.startsWith("```")
-      ? trimmed.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim()
+      ? trimmed
+          .replace(/^```(?:json)?/i, "")
+          .replace(/```$/, "")
+          .trim()
       : trimmed;
     return JSON.parse(json) as T;
   } catch {
@@ -109,4 +191,182 @@ export async function transcribeBase64Audio(args: {
     model: OPENAI_TRANSCRIPTION_MODEL,
     ...(args.language ? { language: args.language } : {}),
   });
+}
+
+export async function trackedChatCompletion(
+  ctx: UsageRecorderCtx,
+  args: {
+    userId: Id<"users">;
+    feature: OpenAIFeature;
+    model?: string;
+    metadata?: Record<string, string>;
+    request: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming;
+  },
+) {
+  const client = requireOpenAI();
+  const model =
+    args.model ?? (typeof args.request.model === "string" ? args.request.model : OPENAI_CHAT_MODEL);
+  const startedAt = Date.now();
+  try {
+    const response = await client.chat.completions.create(args.request);
+    const usage = response.usage as ChatUsage | undefined;
+    const pricing = getChatPricing(model);
+    const costUsdMicros =
+      pricing && usage
+        ? tokensToMicros(usage.prompt_tokens ?? 0, pricing.inputUsdPer1M ?? 0) +
+          tokensToMicros(usage.completion_tokens ?? 0, pricing.outputUsdPer1M ?? 0)
+        : undefined;
+    await recordOpenAiUsage(ctx, {
+      userId: args.userId,
+      feature: args.feature,
+      operation: "chat_completion",
+      model,
+      status: "success",
+      latencyMs: Date.now() - startedAt,
+      usage,
+      costUsdMicros,
+      costAvailability: usage ? "estimated" : "unavailable",
+      metadata: args.metadata,
+    });
+    return response;
+  } catch (error) {
+    await recordOpenAiUsage(ctx, {
+      userId: args.userId,
+      feature: args.feature,
+      operation: "chat_completion",
+      model,
+      status: "error",
+      latencyMs: Date.now() - startedAt,
+      costAvailability: "unavailable",
+      metadata: args.metadata,
+    });
+    throw error;
+  }
+}
+
+export async function trackedEmbedText(
+  ctx: UsageRecorderCtx,
+  args: {
+    userId: Id<"users">;
+    feature: OpenAIFeature;
+    input: string;
+    metadata?: Record<string, string>;
+  },
+) {
+  return (
+    await trackedEmbedTexts(ctx, {
+      userId: args.userId,
+      feature: args.feature,
+      input: args.input,
+      metadata: args.metadata,
+    })
+  )[0];
+}
+
+export async function trackedEmbedTexts(
+  ctx: UsageRecorderCtx,
+  args: {
+    userId: Id<"users">;
+    feature: OpenAIFeature;
+    input: string | string[];
+    metadata?: Record<string, string>;
+  },
+) {
+  const client = requireOpenAI();
+  const startedAt = Date.now();
+  try {
+    const response = await client.embeddings.create({
+      model: OPENAI_EMBEDDING_MODEL,
+      input: args.input,
+    });
+    const usage = {
+      prompt_tokens: response.usage?.prompt_tokens,
+      total_tokens: response.usage?.total_tokens,
+    };
+    const pricing = getChatPricing(OPENAI_EMBEDDING_MODEL);
+    const costUsdMicros =
+      pricing && usage.prompt_tokens
+        ? tokensToMicros(usage.prompt_tokens, pricing.inputUsdPer1M ?? 0)
+        : undefined;
+    await recordOpenAiUsage(ctx, {
+      userId: args.userId,
+      feature: args.feature,
+      operation: "embedding",
+      model: OPENAI_EMBEDDING_MODEL,
+      status: "success",
+      latencyMs: Date.now() - startedAt,
+      usage,
+      costUsdMicros,
+      costAvailability: usage.prompt_tokens ? "estimated" : "unavailable",
+      metadata: args.metadata,
+    });
+    return response.data.map((item) => item.embedding);
+  } catch (error) {
+    await recordOpenAiUsage(ctx, {
+      userId: args.userId,
+      feature: args.feature,
+      operation: "embedding",
+      model: OPENAI_EMBEDDING_MODEL,
+      status: "error",
+      latencyMs: Date.now() - startedAt,
+      costAvailability: "unavailable",
+      metadata: args.metadata,
+    });
+    throw error;
+  }
+}
+
+export async function trackedTranscribeBase64Audio(
+  ctx: UsageRecorderCtx,
+  args: {
+    userId: Id<"users">;
+    audioBase64: string;
+    format: string;
+    language?: string;
+    durationMs?: number;
+  },
+) {
+  const client = requireOpenAI();
+  const startedAt = Date.now();
+  const audio = Buffer.from(args.audioBase64, "base64");
+  const file = await toFile(audio, `recording.${args.format}`);
+  try {
+    const response = await client.audio.transcriptions.create({
+      file,
+      model: OPENAI_TRANSCRIPTION_MODEL,
+      ...(args.language ? { language: args.language } : {}),
+    });
+    const audioSeconds =
+      typeof args.durationMs === "number" && args.durationMs > 0
+        ? args.durationMs / 1000
+        : undefined;
+    const pricing = getChatPricing(OPENAI_TRANSCRIPTION_MODEL);
+    const costUsdMicros =
+      pricing?.audioUsdPerMinute && audioSeconds
+        ? minutesToMicros(audioSeconds / 60, pricing.audioUsdPerMinute)
+        : undefined;
+    await recordOpenAiUsage(ctx, {
+      userId: args.userId,
+      feature: "audio_transcription",
+      operation: "transcription",
+      model: OPENAI_TRANSCRIPTION_MODEL,
+      status: "success",
+      latencyMs: Date.now() - startedAt,
+      audioSeconds,
+      costUsdMicros,
+      costAvailability: audioSeconds ? "estimated" : "unavailable",
+    });
+    return response;
+  } catch (error) {
+    await recordOpenAiUsage(ctx, {
+      userId: args.userId,
+      feature: "audio_transcription",
+      operation: "transcription",
+      model: OPENAI_TRANSCRIPTION_MODEL,
+      status: "error",
+      latencyMs: Date.now() - startedAt,
+      costAvailability: "unavailable",
+    });
+    throw error;
+  }
 }

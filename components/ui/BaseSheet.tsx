@@ -40,7 +40,7 @@ function resolveSheetPresentation(args: {
   const baseSnapPoint = SHEET_CONFIG.snapPoints[0] ?? 90;
   const stackedSnapPoint = Math.min(
     SHEET_CONFIG.maxStackedSnapPoint,
-    baseSnapPoint + args.depth * SHEET_CONFIG.stackHeightStep
+    baseSnapPoint + args.depth * SHEET_CONFIG.stackHeightStep,
   );
 
   return {
@@ -49,8 +49,7 @@ function resolveSheetPresentation(args: {
   };
 }
 
-interface BaseSheetProps
-  extends Omit<SheetProps, "children"> {
+interface BaseSheetProps extends Omit<SheetProps, "children"> {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   backgroundColor?: string;

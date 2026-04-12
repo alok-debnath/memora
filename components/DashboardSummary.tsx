@@ -56,12 +56,34 @@ interface DashboardSummaryProps {
   categories: number;
 }
 
-export function DashboardSummary({ totalMemories, totalReminders, categories }: DashboardSummaryProps) {
+export function DashboardSummary({
+  totalMemories,
+  totalReminders,
+  categories,
+}: DashboardSummaryProps) {
   return (
     <XStack gap={10} paddingHorizontal={16}>
-      <StatCard icon="layers" label="Memories" value={totalMemories} color={statAccentColors.memories} index={0} />
-      <StatCard icon="bell" label="Reminders" value={totalReminders} color={statAccentColors.reminders} index={1} />
-      <StatCard icon="folder" label="Categories" value={categories} color={statAccentColors.categories} index={2} />
+      <StatCard
+        icon="layers"
+        label="Memories"
+        value={totalMemories}
+        color={statAccentColors.memories}
+        index={0}
+      />
+      <StatCard
+        icon="bell"
+        label="Reminders"
+        value={totalReminders}
+        color={statAccentColors.reminders}
+        index={1}
+      />
+      <StatCard
+        icon="folder"
+        label="Categories"
+        value={categories}
+        color={statAccentColors.categories}
+        index={2}
+      />
     </XStack>
   );
 }

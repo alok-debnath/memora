@@ -77,14 +77,17 @@ export const CardBody = React.memo(function CardBody({
   framed = true,
 }: CardBodyProps) {
   const theme = useAppTheme();
-  const hasGoogleSyncInfo = !!(memory.googleSyncStatus || memory.googleEventId || memory.googleSyncMessage);
-  const reminderSyncTone = isReminder(memory) && hasGoogleSyncInfo ? getReminderSyncTone(theme, memory) : null;
+  const hasGoogleSyncInfo = !!(
+    memory.googleSyncStatus ||
+    memory.googleEventId ||
+    memory.googleSyncMessage
+  );
+  const reminderSyncTone =
+    isReminder(memory) && hasGoogleSyncInfo ? getReminderSyncTone(theme, memory) : null;
   // Determine whether to reserve the bottom row space — only when there's a reminder date or sync info
   const hasBottomRow = !!((isReminder(memory) && getReminderDate(memory)) || reminderSyncTone);
 
-  const isLocked =
-    memory.capsuleUnlockDate &&
-    new Date(memory.capsuleUnlockDate) > new Date();
+  const isLocked = memory.capsuleUnlockDate && new Date(memory.capsuleUnlockDate) > new Date();
 
   return (
     <YStack
@@ -118,7 +121,14 @@ export const CardBody = React.memo(function CardBody({
       )}
 
       <XStack alignItems="baseline" justifyContent="space-between" gap={8} marginBottom={8}>
-        <Text flex={1} fontSize={15} fontFamily="$body" fontWeight="600" color="$color" numberOfLines={1}>
+        <Text
+          flex={1}
+          fontSize={15}
+          fontFamily="$body"
+          fontWeight="600"
+          color="$color"
+          numberOfLines={1}
+        >
           {memory.title}
         </Text>
         <Text fontSize={11} fontFamily="$body" color="$colorMuted">
@@ -142,7 +152,7 @@ export const CardBody = React.memo(function CardBody({
             {memory.content}
           </Text>
 
-          {(resolvedTopics && resolvedTopics.length > 0) && (
+          {resolvedTopics && resolvedTopics.length > 0 && (
             <XStack flexWrap="wrap" alignItems="center" gap={6} marginBottom={10}>
               {resolvedTopics?.slice(0, 2).map((topic, i) => (
                 <XStack
@@ -179,7 +189,11 @@ export const CardBody = React.memo(function CardBody({
             </XStack>
           )}
 
-          <XStack alignItems="center" justifyContent="space-between" minHeight={hasBottomRow ? 24 : undefined}>
+          <XStack
+            alignItems="center"
+            justifyContent="space-between"
+            minHeight={hasBottomRow ? 24 : undefined}
+          >
             <XStack alignItems="center" gap={8}>
               {isReminder(memory) && getReminderDate(memory) && (
                 <XStack alignItems="center" gap={3}>
@@ -202,16 +216,26 @@ export const CardBody = React.memo(function CardBody({
               <XStack gap={2}>
                 {onComplete && isReminder(memory) && (
                   <Pressable
-                    onPress={(e) => { e.stopPropagation(); onComplete(); }}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      onComplete();
+                    }}
                     hitSlop={12}
                     style={styles.actionBtn}
                   >
-                    <Feather name="check-circle" size={14} color={statusAccentColors.successStrong} />
+                    <Feather
+                      name="check-circle"
+                      size={14}
+                      color={statusAccentColors.successStrong}
+                    />
                   </Pressable>
                 )}
                 {onShare && (
                   <Pressable
-                    onPress={(e) => { e.stopPropagation(); onShare(); }}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      onShare();
+                    }}
                     hitSlop={12}
                     style={styles.actionBtn}
                   >
@@ -220,7 +244,10 @@ export const CardBody = React.memo(function CardBody({
                 )}
                 {onAddToReview && (
                   <Pressable
-                    onPress={(e) => { e.stopPropagation(); onAddToReview(); }}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      onAddToReview();
+                    }}
                     hitSlop={12}
                     style={styles.actionBtn}
                   >
@@ -229,7 +256,10 @@ export const CardBody = React.memo(function CardBody({
                 )}
                 {onDelete && (
                   <Pressable
-                    onPress={(e) => { e.stopPropagation(); onDelete(); }}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      onDelete();
+                    }}
                     hitSlop={12}
                     style={styles.actionBtn}
                   >
@@ -240,7 +270,7 @@ export const CardBody = React.memo(function CardBody({
             )}
           </XStack>
 
-          {(reminderSyncTone || hasFiles) ? (
+          {reminderSyncTone || hasFiles ? (
             <XStack marginTop={8} gap={6} alignItems="center" flexWrap="wrap">
               {reminderSyncTone ? (
                 <XStack
@@ -254,7 +284,12 @@ export const CardBody = React.memo(function CardBody({
                   backgroundColor={reminderSyncTone.bg}
                 >
                   <FontAwesome5 name="calendar-alt" size={11} color={reminderSyncTone.labelColor} />
-                  <Text fontSize={10} fontFamily="$body" fontWeight="600" color={reminderSyncTone.labelColor}>
+                  <Text
+                    fontSize={10}
+                    fontFamily="$body"
+                    fontWeight="600"
+                    color={reminderSyncTone.labelColor}
+                  >
                     {reminderSyncTone.label}
                   </Text>
                 </XStack>
@@ -270,8 +305,17 @@ export const CardBody = React.memo(function CardBody({
                   borderColor={withAlpha(integrationAccentColors.googleDrive, "40")}
                   backgroundColor={withAlpha(integrationAccentColors.googleDrive, "12")}
                 >
-                  <FontAwesome5 name="google-drive" size={11} color={integrationAccentColors.googleDrive} />
-                  <Text fontSize={10} fontFamily="$body" fontWeight="600" color={integrationAccentColors.googleDrive}>
+                  <FontAwesome5
+                    name="google-drive"
+                    size={11}
+                    color={integrationAccentColors.googleDrive}
+                  />
+                  <Text
+                    fontSize={10}
+                    fontFamily="$body"
+                    fontWeight="600"
+                    color={integrationAccentColors.googleDrive}
+                  >
                     in Drive
                   </Text>
                 </XStack>
@@ -305,59 +349,69 @@ export const MemoryCard = React.memo(function MemoryCard({
     isReminder(memory) &&
     !!onTriggerSync &&
     (!reminderHasSyncInfo || memory.googleSyncStatus === "failed");
-  const canRemoveSync =
-    isReminder(memory) &&
-    !!onRemoveSync &&
-    reminderHasSyncInfo;
+  const canRemoveSync = isReminder(memory) && !!onRemoveSync && reminderHasSyncInfo;
 
   const menuItems: ContextMenuItemDef[] = [
     ...(onComplete && isReminder(memory)
-      ? [{
-      label: "Mark as Completed",
-      icon: "check-circle",
-      iconColor: statusAccentColors.successStrong,
-      onPress: onComplete!,
-    }]
+      ? [
+          {
+            label: "Mark as Completed",
+            icon: "check-circle",
+            iconColor: statusAccentColors.successStrong,
+            onPress: onComplete!,
+          },
+        ]
       : []),
     ...(canTriggerSync
-      ? [{
-          label: memory.googleSyncStatus === "failed" ? "Retry Calendar Sync" : "Sync to Calendar",
-          icon: "refresh-cw",
-          iconColor: theme.primary.val,
-          onPress: onTriggerSync!,
-        }]
+      ? [
+          {
+            label:
+              memory.googleSyncStatus === "failed" ? "Retry Calendar Sync" : "Sync to Calendar",
+            icon: "refresh-cw",
+            iconColor: theme.primary.val,
+            onPress: onTriggerSync!,
+          },
+        ]
       : []),
     ...(canRemoveSync
-      ? [{
-          label: "Remove Calendar Sync",
-          icon: "link-2",
-          destructive: true,
-          onPress: onRemoveSync!,
-        }]
+      ? [
+          {
+            label: "Remove Calendar Sync",
+            icon: "link-2",
+            destructive: true,
+            onPress: onRemoveSync!,
+          },
+        ]
       : []),
     ...(onShare
-      ? [{
-      label: "Share Memory",
-      icon: "share-2",
-      iconColor: theme.color.val,
-      onPress: onShare,
-    }]
+      ? [
+          {
+            label: "Share Memory",
+            icon: "share-2",
+            iconColor: theme.color.val,
+            onPress: onShare,
+          },
+        ]
       : []),
     ...(onAddToReview
-      ? [{
-      label: "Add to Review",
-      icon: "repeat",
-      iconColor: theme.color.val,
-      onPress: onAddToReview,
-    }]
+      ? [
+          {
+            label: "Add to Review",
+            icon: "repeat",
+            iconColor: theme.color.val,
+            onPress: onAddToReview,
+          },
+        ]
       : []),
     ...(onDelete
-      ? [{
-      label: "Delete Memory",
-      icon: "trash-2",
-      destructive: true,
-      onPress: onDelete,
-    }]
+      ? [
+          {
+            label: "Delete Memory",
+            icon: "trash-2",
+            destructive: true,
+            onPress: onDelete,
+          },
+        ]
       : []),
   ];
 

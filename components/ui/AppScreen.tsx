@@ -31,17 +31,22 @@ export function AppScreen({
   const tabBarPadding = useTabBarBottomPadding();
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top", "bottom"]}>
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: theme.background.val }}
+      edges={["top", "bottom"]}
+    >
       <YStack flex={1} backgroundColor="$background">
         <LinearGradient
-          colors={[
-            theme.surfaceAccent.val,
-            theme.background.val,
-            theme.background.val,
-          ]}
+          colors={[theme.surfaceAccent.val, theme.background.val, theme.background.val]}
           start={{ x: 0, y: 0 }}
           end={{ x: 0.9, y: 0.55 }}
-          style={{ position: "absolute", top: 0, left: 0, right: 0, height: 260 }}
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 260,
+          }}
         />
         <View
           pointerEvents="none"
@@ -114,13 +119,7 @@ type SectionCardProps = {
   padded?: boolean;
 };
 
-export function SectionCard({
-  children,
-  title,
-  eyebrow,
-  action,
-  padded = true,
-}: SectionCardProps) {
+export function SectionCard({ children, title, eyebrow, action, padded = true }: SectionCardProps) {
   return (
     <SurfaceCard padding={padded ? 18 : 0}>
       <YStack gap={16}>

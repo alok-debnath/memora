@@ -3,7 +3,7 @@ import { convex, crossDomain } from "@convex-dev/better-auth/plugins";
 import { expo } from "@better-auth/expo";
 import { betterAuth } from "better-auth";
 import { v } from "convex/values";
-import { api, components } from "./_generated/api";
+import { api, components, internal } from "./_generated/api";
 import { DataModel } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import authConfig from "./auth.config";
@@ -63,11 +63,7 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
         },
       },
     },
-    plugins: [
-      expo(),
-      convex({ authConfig }),
-      crossDomain({ siteUrl }),
-    ],
+    plugins: [expo(), convex({ authConfig }), crossDomain({ siteUrl })],
   });
 };
 
@@ -139,6 +135,9 @@ export const syncSessionUser = mutation({
         recurringCount: 0,
         updatedAt: Date.now(),
       });
+      await ctx.runMutation(internal.analytics.ensureUserSummary, {
+        userId,
+      });
 
       user = await ctx.db.get(userId);
     } else if (user.email !== email || user.name !== name || user.authUserId !== identity.subject) {
@@ -181,6 +180,10 @@ export const deleteAccount = mutation({
       "chatMessages",
       "userMemoryStats",
       "userMemoryDailyCounts",
+      "userAnalyticsSummary",
+      "userAnalyticsDaily",
+      "userAnalyticsModelDaily",
+      "userAiUsageEvents",
     ] as const;
 
     for (const table of tables) {

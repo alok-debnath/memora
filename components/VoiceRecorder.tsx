@@ -2,10 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Pressable, TextInput } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import {
-  ExpoSpeechRecognitionModule,
-  useSpeechRecognitionEvent,
-} from "expo-speech-recognition";
+import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from "expo-speech-recognition";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -68,7 +65,7 @@ export function VoiceRecorder({
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasInitiatedByMeRef = useRef(false);
   const shouldRestartRef = useRef(false); // continuous mode: restart on natural end
-  const isRestartingRef = useRef(false);  // true between end→start during a restart cycle
+  const isRestartingRef = useRef(false); // true between end→start during a restart cycle
   const walkieTalkieActiveRef = useRef(false); // walkie-talkie: true while held
   const lastResultWasFinalRef = useRef(false); // tracks phrase boundary for iOS continuous mode
   const isPausingRef = useRef(false); // true while a pause-stop is in flight
@@ -134,10 +131,16 @@ export function VoiceRecorder({
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
   const clearTimer = () => {
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
   };
   const clearSilenceTimer = () => {
-    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
   };
 
   const broadcastTranscript = (text: string) => {
@@ -271,14 +274,23 @@ export function VoiceRecorder({
     });
 
     const title =
-      event.error === "not-allowed" ? "Microphone access denied" :
-      event.error === "no-speech" ? "No speech detected" : "Dictation failed";
+      event.error === "not-allowed"
+        ? "Microphone access denied"
+        : event.error === "no-speech"
+          ? "No speech detected"
+          : "Dictation failed";
     const message =
-      event.error === "not-allowed" ? "Allow microphone access in your device settings." :
-      event.error === "no-speech" ? "Try speaking louder or closer to the mic." :
-      "Speech recognition could not complete. Please try again.";
+      event.error === "not-allowed"
+        ? "Allow microphone access in your device settings."
+        : event.error === "no-speech"
+          ? "Try speaking louder or closer to the mic."
+          : "Speech recognition could not complete. Please try again.";
 
-    showToastImperative({ title, message, tone: event.error === "no-speech" ? "warning" : "error" });
+    showToastImperative({
+      title,
+      message,
+      tone: event.error === "no-speech" ? "warning" : "error",
+    });
   });
 
   // ── Controls ─────────────────────────────────────────────────────────────────
@@ -287,14 +299,22 @@ export function VoiceRecorder({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     if (!isSpeechRecognitionAvailable()) {
-      showToastImperative({ title: "Dictation unavailable", message: "Speech recognition is not supported on this device.", tone: "error" });
+      showToastImperative({
+        title: "Dictation unavailable",
+        message: "Speech recognition is not supported on this device.",
+        tone: "error",
+      });
       return;
     }
 
     const granted = await requestSpeechPermission();
     setPermissionGranted(granted);
     if (!granted) {
-      showToastImperative({ title: "Microphone access denied", message: "Allow microphone access in your device settings to use dictation.", tone: "error" });
+      showToastImperative({
+        title: "Microphone access denied",
+        message: "Allow microphone access in your device settings to use dictation.",
+        tone: "error",
+      });
       return;
     }
 
@@ -312,9 +332,10 @@ export function VoiceRecorder({
     const isTapAutoMode = inputMode === "auto" && !walkieTalkieActiveRef.current;
     shouldRestartRef.current = opts?.continuous ?? (inputMode === "continuous" || isTapAutoMode);
 
-    const options = opts?.continuous || inputMode === "continuous" || isTapAutoMode
-      ? buildContinuousSpeechOptions()
-      : undefined; // undefined = startSpeechRecognition() uses its own defaults
+    const options =
+      opts?.continuous || inputMode === "continuous" || isTapAutoMode
+        ? buildContinuousSpeechOptions()
+        : undefined; // undefined = startSpeechRecognition() uses its own defaults
 
     let result: { ok: boolean; reason?: string };
     if (options) {
@@ -323,7 +344,10 @@ export function VoiceRecorder({
         result = { ok: true };
       } catch (error) {
         logDevError("VoiceRecorder.start", error);
-        result = { ok: false, reason: "Speech recognition could not be started." };
+        result = {
+          ok: false,
+          reason: "Speech recognition could not be started.",
+        };
       }
     } else {
       result = await startSpeechRecognition();
@@ -332,7 +356,11 @@ export function VoiceRecorder({
     if (!result.ok) {
       wasInitiatedByMeRef.current = false;
       shouldRestartRef.current = false;
-      showToastImperative({ title: "Could not start dictation", message: result.reason ?? "", tone: "error" });
+      showToastImperative({
+        title: "Could not start dictation",
+        message: result.reason ?? "",
+        tone: "error",
+      });
     }
   };
 
@@ -370,7 +398,9 @@ export function VoiceRecorder({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
       ExpoSpeechRecognitionModule.stop();
-    } catch { /* already stopped */ }
+    } catch {
+      /* already stopped */
+    }
   };
 
   const pauseRecording = () => {
@@ -467,10 +497,17 @@ export function VoiceRecorder({
   // ── Render ───────────────────────────────────────────────────────────────────
   if (!permissionGranted && statusMessage && !isRecording) {
     return (
-      <YStack alignItems="center" justifyContent="center" gap={compact ? 0 : 12} paddingVertical={compact ? 0 : 16}>
+      <YStack
+        alignItems="center"
+        justifyContent="center"
+        gap={compact ? 0 : 12}
+        paddingVertical={compact ? 0 : 16}
+      >
         <Feather name="mic-off" size={compact ? 20 : 32} color={theme.colorMuted.val} />
         {!compact && (
-          <Text fontSize={14} fontFamily="$body" textAlign="center" color="$colorMuted">{statusMessage}</Text>
+          <Text fontSize={14} fontFamily="$body" textAlign="center" color="$colorMuted">
+            {statusMessage}
+          </Text>
         )}
       </YStack>
     );
@@ -485,34 +522,38 @@ export function VoiceRecorder({
 
   // Determine main button icon
   const mainIcon = isRecording
-    ? (inputMode === "walkie-talkie" || (inputMode === "auto" && walkieTalkieActiveRef.current))
+    ? inputMode === "walkie-talkie" || (inputMode === "auto" && walkieTalkieActiveRef.current)
       ? "mic"
       : "square"
     : isPaused
-    ? "check"
-    : "mic";
+      ? "check"
+      : "mic";
 
   // Status label
   const statusLabel = isRecording
     ? walkieTalkieActiveRef.current || inputMode === "walkie-talkie"
       ? "Release to send"
       : inputMode === "continuous" || inputMode === "auto"
-      ? "Listening — tap to stop"
-      : "Listening..."
+        ? "Listening — tap to stop"
+        : "Listening..."
     : isPaused
-    ? "Paused — tap ▶ to resume"
-    : statusMessage ?? (
-        inputMode === "walkie-talkie" ? "Hold to talk" :
-        inputMode === "auto" ? "Tap or hold to talk" :
-        "Tap to dictate"
-      );
+      ? "Paused — tap ▶ to resume"
+      : (statusMessage ??
+        (inputMode === "walkie-talkie"
+          ? "Hold to talk"
+          : inputMode === "auto"
+            ? "Tap or hold to talk"
+            : "Tap to dictate"));
 
   return (
-    <YStack alignItems="center" justifyContent="center" gap={compact ? (wtHint ? 4 : 0) : 12} paddingVertical={compact ? 0 : 16}>
-
+    <YStack
+      alignItems="center"
+      justifyContent="center"
+      gap={compact ? (wtHint ? 4 : 0) : 12}
+      paddingVertical={compact ? 0 : 16}
+    >
       {/* Button row: side buttons appear when active */}
       <XStack alignItems="center" justifyContent="center" gap={compact ? 10 : 16}>
-
         {/* Cancel button */}
         {active && (
           <Pressable
@@ -537,7 +578,13 @@ export function VoiceRecorder({
           {isRecording && (
             <Animated.View
               style={[
-                { position: "absolute", width: size, height: size, borderRadius: size / 2, backgroundColor: theme.destructive.val },
+                {
+                  position: "absolute",
+                  width: size,
+                  height: size,
+                  borderRadius: size / 2,
+                  backgroundColor: theme.destructive.val,
+                },
                 pulseStyle,
               ]}
             />
@@ -552,7 +599,11 @@ export function VoiceRecorder({
               width: innerSize,
               height: innerSize,
               borderRadius: innerSize / 2,
-              backgroundColor: isRecording ? theme.destructive.val : isPaused ? theme.primary.val + "CC" : theme.primary.val,
+              backgroundColor: isRecording
+                ? theme.destructive.val
+                : isPaused
+                  ? theme.primary.val + "CC"
+                  : theme.primary.val,
               alignItems: "center",
               justifyContent: "center",
               shadowColor: theme.primary.val,

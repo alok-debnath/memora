@@ -36,10 +36,7 @@ function isActiveMemory(m: { status: string }): boolean {
   return m.status === "active";
 }
 
-async function replaceTopicLinksForMemory(
-  ctx: MutationCtx,
-  memory: Doc<"memories">
-) {
+async function replaceTopicLinksForMemory(ctx: MutationCtx, memory: Doc<"memories">) {
   const existingLinks = await ctx.db
     .query("memoryTopicLinks")
     .withIndex("by_memory", (q) => q.eq("memoryId", memory._id))
@@ -51,9 +48,9 @@ async function replaceTopicLinksForMemory(
   const uniqueTopicIds = Array.from(
     new Set(
       [memory.primaryTopicId, ...(memory.topicIds ?? [])].filter(
-        (topicId): topicId is Id<"userTopics"> => topicId !== undefined
-      )
-    )
+        (topicId): topicId is Id<"userTopics"> => topicId !== undefined,
+      ),
+    ),
   );
 
   for (const topicId of uniqueTopicIds) {
@@ -67,10 +64,7 @@ async function replaceTopicLinksForMemory(
   }
 }
 
-async function deleteTopicLinksForMemory(
-  ctx: MutationCtx,
-  memoryId: Id<"memories">
-) {
+async function deleteTopicLinksForMemory(ctx: MutationCtx, memoryId: Id<"memories">) {
   const batchSize = 50;
   while (true) {
     const existingLinks = await ctx.db
@@ -86,10 +80,7 @@ async function deleteTopicLinksForMemory(
 
 const RELATED_DELETE_BATCH = 200;
 
-async function deleteMemoryRelatedData(
-  ctx: MutationCtx,
-  memoryId: Id<"memories">
-) {
+async function deleteMemoryRelatedData(ctx: MutationCtx, memoryId: Id<"memories">) {
   while (true) {
     const attachments = await ctx.db
       .query("memoryAttachments")
@@ -141,10 +132,7 @@ async function deleteMemoryRelatedData(
   await deleteTopicLinksForMemory(ctx, memoryId);
 }
 
-async function permanentlyDeleteMemory(
-  ctx: MutationCtx,
-  memory: Doc<"memories">
-) {
+async function permanentlyDeleteMemory(ctx: MutationCtx, memory: Doc<"memories">) {
   await deleteMemoryRelatedData(ctx, memory._id);
   await ctx.db.delete(memory._id);
 }
@@ -155,7 +143,7 @@ async function softDeleteMemory(
     memoryId: Id<"memories">;
     memory: Doc<"memories">;
     userId: Id<"users">;
-  }
+  },
 ) {
   const { memoryId, memory, userId } = args;
   await ctx.db.insert("memoryHistory", {
@@ -179,9 +167,9 @@ async function softDeleteMemory(
   const topicIds = Array.from(
     new Set(
       [memory.primaryTopicId, ...(memory.topicIds ?? [])].filter(
-        (topicId): topicId is Id<"userTopics"> => topicId !== undefined
-      )
-    )
+        (topicId): topicId is Id<"userTopics"> => topicId !== undefined,
+      ),
+    ),
   );
   if (topicIds.length > 0) {
     await ctx.runMutation(internal.userTopics.decrementOrArchiveTopics, {
@@ -190,7 +178,11 @@ async function softDeleteMemory(
   }
 
   const googleEventIdToDelete = memory.googleEventId;
-  const nextMemory = { ...memory, status: "deleted" as const, deletedAt: Date.now() };
+  const nextMemory = {
+    ...memory,
+    status: "deleted" as const,
+    deletedAt: Date.now(),
+  };
   await ctx.db.patch(memoryId, {
     status: nextMemory.status,
     deletedAt: nextMemory.deletedAt,
@@ -218,16 +210,27 @@ async function softDeleteMemory(
     .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
     .collect();
   await Promise.all(attachmentsToHide.map((a) => ctx.db.patch(a._id, { isDeleted: true })));
+  const visibleAttachments = attachmentsToHide.filter(
+    (attachment) => attachment.isDeleted !== true,
+  );
+  if (visibleAttachments.length > 0) {
+    await ctx.runMutation(internal.analytics.recordStorageDelta, {
+      userId,
+      bytesDelta: -visibleAttachments.reduce((sum, attachment) => sum + attachment.sizeBytes, 0),
+      fileCountDelta: -visibleAttachments.length,
+      imageCountDelta: -visibleAttachments.filter((attachment) => attachment.type === "image")
+        .length,
+      documentCountDelta: -visibleAttachments.filter((attachment) => attachment.type === "document")
+        .length,
+    });
+  }
 }
 
 function hasSchedulingInput(value: {
   entryKind?: "memory" | "reminder" | null;
   schedule?: unknown;
 }) {
-  return (
-    value.entryKind !== undefined ||
-    value.schedule !== undefined
-  );
+  return value.entryKind !== undefined || value.schedule !== undefined;
 }
 
 function isSameValue(left: unknown, right: unknown) {
@@ -251,11 +254,12 @@ export const list = query({
     const pageSize = args.limit ? Math.min(args.limit, 50) : 20;
     const result = await ctx.db
       .query("memories")
-      .withIndex("by_user_status", (q) =>
-        q.eq("userId", userId).eq("status", "active")
-      )
+      .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", "active"))
       .order("desc")
-      .paginate({ numItems: pageSize, cursor: (args.cursor ?? null) as string | null });
+      .paginate({
+        numItems: pageSize,
+        cursor: (args.cursor ?? null) as string | null,
+      });
     return {
       memories: result.page,
       nextCursor: result.continueCursor,
@@ -274,9 +278,7 @@ export const listAll = query({
     const take = args.limit ? Math.min(args.limit, 500) : 300;
     const rows = await ctx.db
       .query("memories")
-      .withIndex("by_user_status", (q) =>
-        q.eq("userId", userId).eq("status", "active")
-      )
+      .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", "active"))
       .order("desc")
       .take(take);
     return rows.filter(isActiveMemory);
@@ -295,20 +297,21 @@ export const flashbacks = query({
     const cutoff = Date.now() - oneYearMs;
     const memories = await ctx.db
       .query("memories")
-      .withIndex("by_user_status", (q) =>
-        q.eq("userId", userId).eq("status", "active")
-      )
+      .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", "active"))
       .order("desc")
       .take(500);
 
-    return memories.filter(isActiveMemory).filter((m) => {
-      if (m._creationTime > cutoff) return false;
-      const created = new Date(m._creationTime);
-      const diffDays = Math.abs(
-        (created.getMonth() - todayMonth) * 30 + (created.getDate() - todayDay)
-      );
-      return diffDays <= 3 || diffDays >= 362;
-    }).slice(0, 5);
+    return memories
+      .filter(isActiveMemory)
+      .filter((m) => {
+        if (m._creationTime > cutoff) return false;
+        const created = new Date(m._creationTime);
+        const diffDays = Math.abs(
+          (created.getMonth() - todayMonth) * 30 + (created.getDate() - todayDay),
+        );
+        return diffDays <= 3 || diffDays >= 362;
+      })
+      .slice(0, 5);
   },
 });
 
@@ -323,7 +326,7 @@ export const reminders = query({
     return await ctx.db
       .query("memories")
       .withIndex("by_user_status_nextDueAt", (q) =>
-        q.eq("userId", userId).eq("status", "active").lte("nextDueAt", now)
+        q.eq("userId", userId).eq("status", "active").lte("nextDueAt", now),
       )
       .order("desc")
       .take(20);
@@ -334,7 +337,9 @@ export const upcomingReminders = query({
   args: {
     token: v.string(),
     asOf: v.optional(v.string()),
-    range: v.optional(v.union(v.literal("week"), v.literal("month"), v.literal("year"), v.literal("all"))),
+    range: v.optional(
+      v.union(v.literal("week"), v.literal("month"), v.literal("year"), v.literal("all")),
+    ),
   },
   handler: async (ctx, args) => {
     const { userId } = await resolveUser(ctx, args.token);
@@ -352,7 +357,7 @@ export const upcomingReminders = query({
       return await ctx.db
         .query("memories")
         .withIndex("by_user_status_nextDueAt", (q) =>
-          q.eq("userId", userId).eq("status", "active").gte("nextDueAt", nowIso)
+          q.eq("userId", userId).eq("status", "active").gte("nextDueAt", nowIso),
         )
         .order("asc")
         .take(50);
@@ -363,7 +368,11 @@ export const upcomingReminders = query({
     return await ctx.db
       .query("memories")
       .withIndex("by_user_status_nextDueAt", (q) =>
-        q.eq("userId", userId).eq("status", "active").gte("nextDueAt", nowIso).lte("nextDueAt", endIso)
+        q
+          .eq("userId", userId)
+          .eq("status", "active")
+          .gte("nextDueAt", nowIso)
+          .lte("nextDueAt", endIso),
       )
       .order("asc")
       .take(50);
@@ -391,9 +400,7 @@ export const listByTopic = query({
     const take = args.limit ? Math.min(args.limit, 50) : 20;
     const links = await ctx.db
       .query("memoryTopicLinks")
-      .withIndex("by_user_and_topic", (q) =>
-        q.eq("userId", userId).eq("topicId", args.topicId)
-      )
+      .withIndex("by_user_and_topic", (q) => q.eq("userId", userId).eq("topicId", args.topicId))
       .order("desc")
       .take(Math.max(take * 3, 30));
 
@@ -407,9 +414,7 @@ export const listByTopic = query({
       memories.push(memory);
     }
 
-    return memories
-      .sort((a, b) => b._creationTime - a._creationTime)
-      .slice(0, take);
+    return memories.sort((a, b) => b._creationTime - a._creationTime).slice(0, take);
   },
 });
 
@@ -422,7 +427,7 @@ export const listByIds = query({
     const { userId } = await resolveUser(ctx, args.token);
     const results = await Promise.all(args.ids.map((id) => ctx.db.get(id)));
     return results.filter(
-      (m): m is Doc<"memories"> => m !== null && m.userId === userId && isActiveMemory(m)
+      (m): m is Doc<"memories"> => m !== null && m.userId === userId && isActiveMemory(m),
     );
   },
 });
@@ -443,13 +448,13 @@ export const searchByContent = internalQuery({
       ctx.db
         .query("memories")
         .withSearchIndex("search_content", (q) =>
-          q.search("content", cleanedQuery).eq("userId", args.userId)
+          q.search("content", cleanedQuery).eq("userId", args.userId),
         )
         .take(maxResults),
       ctx.db
         .query("memories")
         .withSearchIndex("search_title", (q) =>
-          q.search("title", cleanedQuery).eq("userId", args.userId)
+          q.search("title", cleanedQuery).eq("userId", args.userId),
         )
         .take(maxResults),
     ]);
@@ -469,21 +474,17 @@ export const searchByContent = internalQuery({
 async function executeKeywordSearch(
   ctx: QueryCtx,
   userId: Id<"users">,
-  queryTerms: string[]
+  queryTerms: string[],
 ): Promise<{ memory: Doc<"memories">; proportion: number; matched: number }[]> {
   const memories = await ctx.db
     .query("memories")
-    .withIndex("by_user_status", (q) =>
-      q.eq("userId", userId).eq("status", "active")
-    )
+    .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", "active"))
     .order("desc")
     .take(200);
 
   const userTopics = await ctx.db
     .query("userTopics")
-    .withIndex("by_user_and_isArchived", (q) =>
-      q.eq("userId", userId).eq("isArchived", false)
-    )
+    .withIndex("by_user_and_isArchived", (q) => q.eq("userId", userId).eq("isArchived", false))
     .take(100);
   const topicMap = new Map<Id<"userTopics">, string>();
   for (const t of userTopics) {
@@ -493,9 +494,7 @@ async function executeKeywordSearch(
   return memories
     .filter(isActiveMemory)
     .map((m) => {
-      const topicNames = (m.topicIds ?? [])
-        .map((id) => topicMap.get(id))
-        .filter(Boolean);
+      const topicNames = (m.topicIds ?? []).map((id) => topicMap.get(id)).filter(Boolean);
       const primaryTopic = m.primaryTopicId ? topicMap.get(m.primaryTopicId) : "";
       if (primaryTopic) topicNames.push(primaryTopic);
 
@@ -520,7 +519,7 @@ async function executeKeywordSearch(
         } else if (term.endsWith("s") && term.length > 3) {
           singular = term.substring(0, term.length - 1);
         }
-        
+
         if (haystack.includes(term) || (singular !== term && haystack.includes(singular))) {
           matched++;
         }
@@ -568,19 +567,25 @@ export const searchInstant = query({
     const queryTerms = extractSearchTerms(args.query);
 
     const [contentResults, titleResults, keywordResults] = await Promise.all([
-      cleanedQuery.length > 0 ? ctx.db
-        .query("memories")
-        .withSearchIndex("search_content", (q) =>
-          q.search("content", cleanedQuery).eq("userId", session._id)
-        )
-        .take(maxResults) : Promise.resolve([] as Doc<"memories">[]),
-      cleanedQuery.length > 0 ? ctx.db
-        .query("memories")
-        .withSearchIndex("search_title", (q) =>
-          q.search("title", cleanedQuery).eq("userId", session._id)
-        )
-        .take(maxResults) : Promise.resolve([] as Doc<"memories">[]),
-      queryTerms.length > 0 ? executeKeywordSearch(ctx, session._id, queryTerms) : Promise.resolve([])
+      cleanedQuery.length > 0
+        ? ctx.db
+            .query("memories")
+            .withSearchIndex("search_content", (q) =>
+              q.search("content", cleanedQuery).eq("userId", session._id),
+            )
+            .take(maxResults)
+        : Promise.resolve([] as Doc<"memories">[]),
+      cleanedQuery.length > 0
+        ? ctx.db
+            .query("memories")
+            .withSearchIndex("search_title", (q) =>
+              q.search("title", cleanedQuery).eq("userId", session._id),
+            )
+            .take(maxResults)
+        : Promise.resolve([] as Doc<"memories">[]),
+      queryTerms.length > 0
+        ? executeKeywordSearch(ctx, session._id, queryTerms)
+        : Promise.resolve([]),
     ]);
 
     // RRF Merge — title hits get highest boost (1.4x) since titles are the
@@ -601,16 +606,17 @@ export const searchInstant = query({
     const memoryMap = new Map<string, Doc<"memories">>();
     for (const m of contentResults) if (isActiveMemory(m)) memoryMap.set(m._id, m);
     for (const m of titleResults) if (isActiveMemory(m)) memoryMap.set(m._id, m);
-    for (const kr of keywordResults) if (isActiveMemory(kr.memory)) memoryMap.set(kr.memory._id, kr.memory);
+    for (const kr of keywordResults)
+      if (isActiveMemory(kr.memory)) memoryMap.set(kr.memory._id, kr.memory);
 
     const merged = Array.from(rrfScores.entries())
       .map(([id, score]) => ({ memory: memoryMap.get(id), score }))
       .filter((item) => item.memory !== undefined)
       .sort((a, b) => b.score - a.score)
-      .map(item => item.memory!);
+      .map((item) => item.memory!);
 
     return merged.slice(0, maxResults);
-  }
+  },
 });
 
 export const listForAI = internalQuery({
@@ -628,7 +634,7 @@ export const listForAI = internalQuery({
         rows = await ctx.db
           .query("memories")
           .withIndex("by_user_primaryTopic", (q) =>
-            q.eq("userId", args.userId).eq("primaryTopicId", args.primaryTopicId!)
+            q.eq("userId", args.userId).eq("primaryTopicId", args.primaryTopicId!),
           )
           .order("desc")
           .take(take);
@@ -646,7 +652,7 @@ export const listForAI = internalQuery({
       const rows = await ctx.db
         .query("memories")
         .withIndex("by_user_primaryTopic", (q) =>
-          q.eq("userId", args.userId).eq("primaryTopicId", args.primaryTopicId!)
+          q.eq("userId", args.userId).eq("primaryTopicId", args.primaryTopicId!),
         )
         .order("desc")
         .take(Math.min(take * 2, 200));
@@ -655,9 +661,7 @@ export const listForAI = internalQuery({
 
     return await ctx.db
       .query("memories")
-      .withIndex("by_user_status", (q) =>
-        q.eq("userId", args.userId).eq("status", "active")
-      )
+      .withIndex("by_user_status", (q) => q.eq("userId", args.userId).eq("status", "active"))
       .order("desc")
       .take(take);
   },
@@ -679,7 +683,7 @@ export const listByIdsInternal = internalQuery({
     const rows = await Promise.all(args.ids.map((id) => ctx.db.get(id)));
     return rows.filter(
       (memory): memory is Doc<"memories"> =>
-        memory !== null && memory.userId === args.userId && isActiveMemory(memory)
+        memory !== null && memory.userId === args.userId && isActiveMemory(memory),
     );
   },
 });
@@ -743,6 +747,10 @@ export const create = mutation({
     const createdMemory = await ctx.db.get(memoryId);
     if (createdMemory) {
       await applyUserMemoryStatsTransition(ctx, null, createdMemory);
+      await ctx.runMutation(internal.analytics.recordProductEvent, {
+        userId,
+        event: "memory_created",
+      });
 
       // Sync to Google Calendar if it's a reminder
       if (createdMemory.entryKind === "reminder") {
@@ -789,7 +797,8 @@ export const update = mutation({
     const user = await resolveUser(ctx, args.token);
     const userId = user.userId;
     const memory = await ctx.db.get(args.id);
-    if (!memory || memory.userId !== userId || !isActiveMemory(memory)) throw new Error("Not found");
+    if (!memory || memory.userId !== userId || !isActiveMemory(memory))
+      throw new Error("Not found");
 
     // Build patch object — only include defined, non-null fields
     const { id, token, ...updates } = args;
@@ -838,6 +847,10 @@ export const update = mutation({
     await applyUserMemoryStatsTransition(ctx, memory, {
       ...memory,
       ...finalPatch,
+    });
+    await ctx.runMutation(internal.analytics.recordProductEvent, {
+      userId,
+      event: "memory_updated",
     });
 
     // Sync to Google Calendar if it's a reminder
@@ -897,6 +910,10 @@ export const remove = mutation({
     if (!memory || memory.userId !== userId) throw new Error("Not found");
     if (memory.status === "deleted" || memory.status === "completed") return; // already inactive
     await softDeleteMemory(ctx, { memoryId: args.id, memory, userId });
+    await ctx.runMutation(internal.analytics.recordProductEvent, {
+      userId,
+      event: "memory_deleted",
+    });
   },
 });
 
@@ -925,6 +942,10 @@ export const removeMany = mutation({
       }
       await softDeleteMemory(ctx, { memoryId: id, memory, userId });
       deleted += 1;
+      await ctx.runMutation(internal.analytics.recordProductEvent, {
+        userId,
+        event: "memory_deleted",
+      });
     }
 
     if (remaining.length > 0) {
@@ -952,9 +973,7 @@ export const listDeleted = query({
     const take = args.limit ? Math.min(args.limit, 200) : 50;
     return await ctx.db
       .query("memories")
-      .withIndex("by_user_status", (q) =>
-        q.eq("userId", userId).eq("status", "deleted")
-      )
+      .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", "deleted"))
       .order("desc")
       .take(take);
   },
@@ -969,7 +988,11 @@ export const restore = mutation({
     if (memory.status !== "deleted") return; // not deleted
 
     // Restore flag
-    const nextMemory = { ...memory, status: "active" as const, deletedAt: undefined };
+    const nextMemory = {
+      ...memory,
+      status: "active" as const,
+      deletedAt: undefined,
+    };
     await ctx.db.patch(args.id, { status: "active", deletedAt: undefined });
     await applyUserMemoryStatsTransition(ctx, memory, nextMemory);
 
@@ -977,9 +1000,9 @@ export const restore = mutation({
     const topicIds = Array.from(
       new Set(
         [memory.primaryTopicId, ...(memory.topicIds ?? [])].filter(
-          (id): id is Id<"userTopics"> => id !== undefined
-        )
-      )
+          (id): id is Id<"userTopics"> => id !== undefined,
+        ),
+      ),
     );
     if (topicIds.length > 0) {
       await ctx.runMutation(internal.userTopics.incrementTopicCounts, {
@@ -994,6 +1017,18 @@ export const restore = mutation({
       .filter((q) => q.eq(q.field("isDeleted"), true))
       .collect();
     await Promise.all(deletedAttachments.map((a) => ctx.db.patch(a._id, { isDeleted: undefined })));
+    if (deletedAttachments.length > 0) {
+      await ctx.runMutation(internal.analytics.recordStorageDelta, {
+        userId,
+        bytesDelta: deletedAttachments.reduce((sum, attachment) => sum + attachment.sizeBytes, 0),
+        fileCountDelta: deletedAttachments.length,
+        imageCountDelta: deletedAttachments.filter((attachment) => attachment.type === "image")
+          .length,
+        documentCountDelta: deletedAttachments.filter(
+          (attachment) => attachment.type === "document",
+        ).length,
+      });
+    }
 
     if (nextMemory.entryKind === "reminder") {
       await ctx.runMutation(internal.integrations.queueReminderSync, {
@@ -1027,9 +1062,7 @@ export const permanentlyRemoveAllDeleted = mutation({
 
     const deletedMemories = await ctx.db
       .query("memories")
-      .withIndex("by_user_status", (q) =>
-        q.eq("userId", userId).eq("status", "deleted")
-      )
+      .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", "deleted"))
       .take(BATCH);
 
     for (const memory of deletedMemories) {
@@ -1166,7 +1199,6 @@ export const clearAllUserMemoryData = mutation({
   },
 });
 
-
 export const getByShareToken = query({
   args: { shareToken: v.string() },
   handler: async (ctx, args) => {
@@ -1185,10 +1217,13 @@ export const generateShareToken = mutation({
   handler: async (ctx, args) => {
     const { userId } = await resolveUser(ctx, args.token);
     const memory = await ctx.db.get(args.id);
-    if (!memory || memory.userId !== userId || !isActiveMemory(memory)) throw new Error("Not found");
+    if (!memory || memory.userId !== userId || !isActiveMemory(memory))
+      throw new Error("Not found");
     const bytes = new Uint8Array(32);
     crypto.getRandomValues(bytes);
-    const shareToken = Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+    const shareToken = Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
     await ctx.db.patch(args.id, { shareToken, isPublic: true });
     return shareToken;
   },
@@ -1200,9 +1235,7 @@ export const exportMemories = query({
     const { userId } = await resolveUser(ctx, args.token);
     const memories = await ctx.db
       .query("memories")
-      .withIndex("by_user_status", (q) =>
-        q.eq("userId", userId).eq("status", "active")
-      )
+      .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", "active"))
       .take(5000);
     return memories.filter(isActiveMemory).map((m) => ({
       title: m.title,
@@ -1275,17 +1308,13 @@ export const advanceRecurringReminders = internalMutation({
 
     const batch = await ctx.db
       .query("memories")
-      .withIndex("by_status_nextDueAt", (q) =>
-        q.eq("status", "active").lte("nextDueAt", nowIso)
-      )
+      .withIndex("by_status_nextDueAt", (q) => q.eq("status", "active").lte("nextDueAt", nowIso))
       .take(500);
 
     let advanced = 0;
     for (const memory of batch) {
       if (!isActiveMemory(memory)) continue;
-      if (
-        inferEntryKind(memory) !== "reminder"
-      ) {
+      if (inferEntryKind(memory) !== "reminder") {
         continue;
       }
 
@@ -1313,7 +1342,7 @@ export const advanceRecurringReminders = internalMutation({
             isRecurring: true,
             recurrenceType: schedule.recurrenceType,
           },
-        })
+        }),
       );
       advanced++;
     }
@@ -1322,10 +1351,7 @@ export const advanceRecurringReminders = internalMutation({
   },
 });
 
-function advanceDate(
-  date: Date,
-  recurrenceType: "daily" | "weekly" | "monthly" | "yearly"
-): Date {
+function advanceDate(date: Date, recurrenceType: "daily" | "weekly" | "monthly" | "yearly"): Date {
   const next = new Date(date);
   switch (recurrenceType) {
     case "daily":
@@ -1360,9 +1386,7 @@ export const listTopicRefsForUser = internalQuery({
   handler: async (ctx, args) => {
     const memories = await ctx.db
       .query("memories")
-      .withIndex("by_user_status", (q) =>
-        q.eq("userId", args.userId).eq("status", "active")
-      )
+      .withIndex("by_user_status", (q) => q.eq("userId", args.userId).eq("status", "active"))
       .collect();
 
     return memories.filter(isActiveMemory).map((memory) => ({
@@ -1385,13 +1409,11 @@ export const setTopics = internalMutation({
     const previousTopicIds = Array.from(
       new Set(
         [memory.primaryTopicId, ...(memory.topicIds ?? [])].filter(
-          (topicId): topicId is Id<"userTopics"> => topicId !== undefined
-        )
-      )
+          (topicId): topicId is Id<"userTopics"> => topicId !== undefined,
+        ),
+      ),
     );
-    const nextTopicIds = Array.from(
-      new Set([args.primaryTopicId, ...args.topicIds])
-    );
+    const nextTopicIds = Array.from(new Set([args.primaryTopicId, ...args.topicIds]));
     const samePrimary = memory.primaryTopicId === args.primaryTopicId;
     const sameTopics =
       previousTopicIds.length === nextTopicIds.length &&
@@ -1444,20 +1466,19 @@ export const listWithoutEmbeddings = internalQuery({
     const memories = await ctx.db
       .query("memories")
       .withIndex("by_status_embeddingState", (q) =>
-        q.eq("status", "active").eq("embeddingState", "missing")
+        q.eq("status", "active").eq("embeddingState", "missing"),
       )
       .take(limit);
 
-    return memories
-      .map((m) => ({
-        _id: m._id,
-        title: m.title,
-        content: m.content,
-        people: m.people,
-        locations: m.locations,
-        lifeArea: m.lifeArea,
-        entryKind: m.entryKind,
-      }));
+    return memories.map((m) => ({
+      _id: m._id,
+      title: m.title,
+      content: m.content,
+      people: m.people,
+      locations: m.locations,
+      lifeArea: m.lifeArea,
+      entryKind: m.entryKind,
+    }));
   },
 });
 
@@ -1480,17 +1501,15 @@ export const listForReembedding = internalQuery({
         cursor: (args.cursor ?? null) as string | null,
       });
 
-    const batch = result.page
-      .filter(isActiveMemory)
-      .map((m) => ({
-        _id: m._id,
-        title: m.title,
-        content: m.content,
-        people: m.people,
-        locations: m.locations,
-        lifeArea: m.lifeArea,
-        entryKind: m.entryKind,
-      }));
+    const batch = result.page.filter(isActiveMemory).map((m) => ({
+      _id: m._id,
+      title: m.title,
+      content: m.content,
+      people: m.people,
+      locations: m.locations,
+      lifeArea: m.lifeArea,
+      entryKind: m.entryKind,
+    }));
 
     return {
       batch,
@@ -1538,9 +1557,9 @@ export const complete = mutation({
     const topicIds = Array.from(
       new Set(
         [memory.primaryTopicId, ...(memory.topicIds ?? [])].filter(
-          (id): id is Id<"userTopics"> => id !== undefined
-        )
-      )
+          (id): id is Id<"userTopics"> => id !== undefined,
+        ),
+      ),
     );
     if (topicIds.length > 0) {
       await ctx.runMutation(internal.userTopics.decrementOrArchiveTopics, {
@@ -1549,7 +1568,11 @@ export const complete = mutation({
     }
 
     const googleEventIdToDelete = memory.googleEventId;
-    const nextMemory = { ...memory, status: "completed" as const, completedAt: Date.now() };
+    const nextMemory = {
+      ...memory,
+      status: "completed" as const,
+      completedAt: Date.now(),
+    };
     await ctx.db.patch(args.id, {
       status: nextMemory.status,
       completedAt: nextMemory.completedAt,
@@ -1566,9 +1589,9 @@ export const complete = mutation({
 
     // Remove from Google Calendar if it was a reminder
     if (googleEventIdToDelete) {
-      await ctx.scheduler.runAfter(0, internal.integrations.deleteGoogleEvent, { 
-        userId, 
-        googleEventId: googleEventIdToDelete 
+      await ctx.scheduler.runAfter(0, internal.integrations.deleteGoogleEvent, {
+        userId,
+        googleEventId: googleEventIdToDelete,
       });
     }
   },
@@ -1587,9 +1610,9 @@ export const uncomplete = mutation({
     const topicIds = Array.from(
       new Set(
         [memory.primaryTopicId, ...(memory.topicIds ?? [])].filter(
-          (id): id is Id<"userTopics"> => id !== undefined
-        )
-      )
+          (id): id is Id<"userTopics"> => id !== undefined,
+        ),
+      ),
     );
     if (topicIds.length > 0) {
       await ctx.runMutation(internal.userTopics.incrementTopicCounts, {
@@ -1597,7 +1620,11 @@ export const uncomplete = mutation({
       });
     }
 
-    const nextMemory = { ...memory, status: "active" as const, completedAt: undefined };
+    const nextMemory = {
+      ...memory,
+      status: "active" as const,
+      completedAt: undefined,
+    };
     await ctx.db.patch(args.id, { status: "active", completedAt: undefined });
     await applyUserMemoryStatsTransition(ctx, memory, nextMemory);
 
@@ -1619,9 +1646,7 @@ export const listCompleted = query({
     const take = args.limit ? Math.min(args.limit, 200) : 100;
     return await ctx.db
       .query("memories")
-      .withIndex("by_user_status", (q) =>
-        q.eq("userId", userId).eq("status", "completed")
-      )
+      .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", "completed"))
       .order("desc")
       .take(take);
   },
@@ -1636,9 +1661,7 @@ export const permanentlyRemoveAllCompleted = mutation({
 
     const completed = await ctx.db
       .query("memories")
-      .withIndex("by_user_status", (q) =>
-        q.eq("userId", userId).eq("status", "completed")
-      )
+      .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", "completed"))
       .take(BATCH);
 
     for (const memory of completed) {
@@ -1652,7 +1675,10 @@ export const permanentlyRemoveAllCompleted = mutation({
       });
     }
 
-    return { deletedThisBatch: completed.length, scheduledContinuation: hasMore };
+    return {
+      deletedThisBatch: completed.length,
+      scheduledContinuation: hasMore,
+    };
   },
 });
 

@@ -66,13 +66,7 @@ export function DiaryEntryCard({ entry, onDelete, index = 0 }: DiaryEntryCardPro
                 />
               )}
             </XStack>
-            <Text
-              fontSize={15}
-              fontFamily="$body"
-              lineHeight={22}
-              color="$color"
-              numberOfLines={4}
-            >
+            <Text fontSize={15} fontFamily="$body" lineHeight={22} color="$color" numberOfLines={4}>
               {entry.correctedText || entry.rawText}
             </Text>
           </YStack>

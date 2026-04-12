@@ -85,8 +85,7 @@ export function AppConfirmProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   const contextValue = useMemo(() => ({ confirm }), [confirm]);
-  const toneColor =
-    request?.tone === "destructive" ? theme.destructive.val : theme.primary.val;
+  const toneColor = request?.tone === "destructive" ? theme.destructive.val : theme.primary.val;
   const iconName = request?.icon ?? DEFAULT_OPTIONS.icon;
   const useStackedActions = windowWidth < 480;
   const confirmTextColor = theme.textInverse.val;
@@ -94,7 +93,10 @@ export function AppConfirmProvider({ children }: { children: React.ReactNode }) 
   const cancelAction = (
     <Pressable
       onPress={() => close(false)}
-      style={({ pressed }) => [useStackedActions ? styles.actionStacked : styles.actionInline, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        useStackedActions ? styles.actionStacked : styles.actionInline,
+        pressed && styles.pressed,
+      ]}
     >
       <View
         style={[
@@ -106,9 +108,7 @@ export function AppConfirmProvider({ children }: { children: React.ReactNode }) 
           },
         ]}
       >
-        <Text style={[styles.buttonLabel, { color: theme.color.val }]}>
-          {request?.cancelLabel}
-        </Text>
+        <Text style={[styles.buttonLabel, { color: theme.color.val }]}>{request?.cancelLabel}</Text>
       </View>
     </Pressable>
   );
@@ -116,15 +116,12 @@ export function AppConfirmProvider({ children }: { children: React.ReactNode }) 
   const confirmAction = (
     <Pressable
       onPress={() => close(true)}
-      style={({ pressed }) => [useStackedActions ? styles.actionStacked : styles.actionInline, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        useStackedActions ? styles.actionStacked : styles.actionInline,
+        pressed && styles.pressed,
+      ]}
     >
-      <View
-        style={[
-          styles.button,
-          styles.buttonPrimary,
-          { backgroundColor: toneColor },
-        ]}
-      >
+      <View style={[styles.button, styles.buttonPrimary, { backgroundColor: toneColor }]}>
         <Text style={[styles.buttonLabel, { color: confirmTextColor }]}>
           {request?.confirmLabel}
         </Text>
@@ -186,9 +183,7 @@ export function AppConfirmProvider({ children }: { children: React.ReactNode }) 
                   </View>
 
                   <View style={styles.copyCol}>
-                    <Text style={[styles.title, { color: theme.color.val }]}>
-                      {request.title}
-                    </Text>
+                    <Text style={[styles.title, { color: theme.color.val }]}>{request.title}</Text>
                     {request.message ? (
                       <Text style={[styles.message, { color: theme.colorMuted.val }]}>
                         {request.message}
@@ -197,7 +192,12 @@ export function AppConfirmProvider({ children }: { children: React.ReactNode }) 
                   </View>
                 </View>
 
-                <View style={[styles.actions, useStackedActions ? styles.actionsColumn : styles.actionsRow]}>
+                <View
+                  style={[
+                    styles.actions,
+                    useStackedActions ? styles.actionsColumn : styles.actionsRow,
+                  ]}
+                >
                   {useStackedActions ? (
                     <>
                       {confirmAction}

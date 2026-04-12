@@ -23,37 +23,34 @@ export async function uploadFileToDrive(
     sizeBytes: number;
   },
   accessToken: string,
-  folderId: string
+  folderId: string,
 ): Promise<DriveUploadResult> {
   // ── Step 1: Create metadata record ─────────────────────────────────────────
-  const metaRes = await fetch(
-    "https://www.googleapis.com/drive/v3/files?fields=id",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name: file.name,
-        mimeType: file.mimeType,
-        parents: [folderId],
-      }),
-    }
-  );
+  const metaRes = await fetch("https://www.googleapis.com/drive/v3/files?fields=id", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: file.name,
+      mimeType: file.mimeType,
+      parents: [folderId],
+    }),
+  });
 
   if (metaRes.status === 401) throw new Error("TOKEN_EXPIRED");
   if (!metaRes.ok) {
     let msg = `Metadata creation failed (${metaRes.status})`;
     try {
-      const d = await metaRes.json() as { error?: { message?: string } };
+      const d = (await metaRes.json()) as { error?: { message?: string } };
       msg = d?.error?.message ?? msg;
     } catch {}
     console.error("[driveUpload] Step 1 failed:", msg);
     throw new Error(msg);
   }
 
-  const meta = await metaRes.json() as { id: string };
+  const meta = (await metaRes.json()) as { id: string };
   const fileId = meta.id;
   if (!fileId) throw new Error("Drive did not return a file ID");
   console.log("[driveUpload] Step 1 OK, fileId:", fileId);
@@ -69,15 +66,22 @@ export async function uploadFileToDrive(
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": file.mimeType,
       },
-    }
+    },
   );
 
-  console.log("[driveUpload] Step 2 status:", uploadResult.status, "body:", uploadResult.body?.slice(0, 200));
+  console.log(
+    "[driveUpload] Step 2 status:",
+    uploadResult.status,
+    "body:",
+    uploadResult.body?.slice(0, 200),
+  );
   if (uploadResult.status === 401) throw new Error("TOKEN_EXPIRED");
   if (uploadResult.status < 200 || uploadResult.status >= 300) {
     let msg = `Upload failed (${uploadResult.status})`;
     try {
-      const d = JSON.parse(uploadResult.body) as { error?: { message?: string } };
+      const d = JSON.parse(uploadResult.body) as {
+        error?: { message?: string };
+      };
       msg = d?.error?.message ?? msg;
     } catch {}
     console.error("[driveUpload] Step 2 failed:", msg, "full body:", uploadResult.body);
@@ -87,9 +91,9 @@ export async function uploadFileToDrive(
   // ── Step 3: Fetch webViewLink + thumbnailLink ───────────────────────────────
   const infoRes = await fetch(
     `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,webViewLink,thumbnailLink`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    { headers: { Authorization: `Bearer ${accessToken}` } },
   );
-  const info = await infoRes.json() as {
+  const info = (await infoRes.json()) as {
     id: string;
     webViewLink?: string;
     thumbnailLink?: string;

@@ -12,14 +12,8 @@ import {
 } from "./lib/validators";
 import { deriveEmbeddingState, toStoredMemoryFields } from "./lib/memoryKind";
 
-function hasSchedulingInput(value: {
-  entryKind?: "memory" | "reminder";
-  schedule?: unknown;
-}) {
-  return (
-    value.entryKind !== undefined ||
-    value.schedule !== undefined
-  );
+function hasSchedulingInput(value: { entryKind?: "memory" | "reminder"; schedule?: unknown }) {
+  return value.entryKind !== undefined || value.schedule !== undefined;
 }
 
 function isSameValue(left: unknown, right: unknown) {
@@ -104,7 +98,7 @@ export const updateAIFields = internalMutation({
         toStoredMemoryFields({
           entryKind: args.entryKind,
           schedule: args.schedule,
-        })
+        }),
       );
     }
     if (args.embedding !== undefined) {

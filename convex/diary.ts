@@ -1,12 +1,8 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { resolveUser } from "./lib/withAuth";
-import { 
-  moodValidator, 
-  energyLevelValidator, 
-  priorityValidator
-} from "./lib/validators";
+import { moodValidator, energyLevelValidator, priorityValidator } from "./lib/validators";
 
 export const list = query({
   args: {
@@ -48,7 +44,7 @@ export const create = mutation({
     mood: v.optional(moodValidator),
     energyLevel: v.optional(energyLevelValidator),
     structuredInsights: v.optional(
-      v.array(v.object({ insight: v.string(), category: v.string() }))
+      v.array(v.object({ insight: v.string(), category: v.string() })),
     ),
   },
   handler: async (ctx, args) => {
@@ -61,6 +57,10 @@ export const create = mutation({
       mood: args.mood,
       energyLevel: args.energyLevel,
       structuredInsights: args.structuredInsights,
+    });
+    await ctx.runMutation(internal.analytics.recordProductEvent, {
+      userId,
+      event: "diary_created",
     });
 
     await ctx.scheduler.runAfter(0, api.actions.processDiary.processDiary, {
@@ -100,6 +100,15 @@ export const listRecentForNudges = internalQuery({
   },
 });
 
+export const getEntryInternal = internalQuery({
+  args: {
+    entryId: v.id("diaryEntries"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.entryId);
+  },
+});
+
 export const replaceNudgesFromDiary = internalMutation({
   args: {
     entryId: v.id("diaryEntries"),
@@ -109,7 +118,7 @@ export const replaceNudgesFromDiary = internalMutation({
         message: v.string(),
         nudgeType: v.string(),
         priority: priorityValidator,
-      })
+      }),
     ),
   },
   handler: async (ctx, args) => {

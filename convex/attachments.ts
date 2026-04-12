@@ -43,12 +43,11 @@ export const getAttachmentCountsForMemories = query({
           .filter((q) => q.eq(q.field("userId"), user._id))
           .take(1);
         if (rows.length > 0) counts[memoryId] = rows.length;
-      })
+      }),
     );
     return counts as Record<string, number>;
   },
 });
-
 
 export const getAttachmentsForMessage = query({
   args: {
@@ -80,9 +79,7 @@ export const listAttachmentsForUser = query({
 
     const active = base.filter((q) => q.neq(q.field("isDeleted"), true));
     if (args.type) {
-      return active
-        .filter((q) => q.eq(q.field("type"), args.type!))
-        .paginate(args.paginationOpts);
+      return active.filter((q) => q.eq(q.field("type"), args.type!)).paginate(args.paginationOpts);
     }
     return active.paginate(args.paginationOpts);
   },
@@ -178,6 +175,19 @@ export const recordAttachmentsForMessage = mutation({
         mimeType: file.mimeType,
       });
 
+      await ctx.runMutation(internal.analytics.recordProductEvent, {
+        userId: user._id,
+        event: "attachment_uploaded",
+        bytes: file.sizeBytes,
+      });
+      await ctx.runMutation(internal.analytics.recordStorageDelta, {
+        userId: user._id,
+        bytesDelta: file.sizeBytes,
+        fileCountDelta: 1,
+        imageCountDelta: file.type === "image" ? 1 : 0,
+        documentCountDelta: file.type === "document" ? 1 : 0,
+      });
+
       await ctx.scheduler.runAfter(0, internal.actions.processAttachment.processAttachment, {
         attachmentId,
         userId: user._id,
@@ -240,6 +250,19 @@ export const recordAttachmentsForMemory = mutation({
 
       ids.push(attachmentId);
 
+      await ctx.runMutation(internal.analytics.recordProductEvent, {
+        userId: user._id,
+        event: "attachment_uploaded",
+        bytes: file.sizeBytes,
+      });
+      await ctx.runMutation(internal.analytics.recordStorageDelta, {
+        userId: user._id,
+        bytesDelta: file.sizeBytes,
+        fileCountDelta: 1,
+        imageCountDelta: file.type === "image" ? 1 : 0,
+        documentCountDelta: file.type === "document" ? 1 : 0,
+      });
+
       await ctx.scheduler.runAfter(0, internal.actions.processAttachment.processAttachment, {
         attachmentId,
         userId: user._id,
@@ -290,13 +313,24 @@ export const deleteAttachment = mutation({
       const msg = await ctx.db.get(attachment.chatMessageId);
       if (msg) {
         const filtered = (msg.attachments ?? []).filter(
-          (a) => a.attachmentId !== args.attachmentId
+          (a) => a.attachmentId !== args.attachmentId,
         );
         await ctx.db.patch(attachment.chatMessageId, { attachments: filtered });
       }
     }
 
     await ctx.db.delete(args.attachmentId);
+    await ctx.runMutation(internal.analytics.recordProductEvent, {
+      userId: user._id,
+      event: "attachment_deleted",
+    });
+    await ctx.runMutation(internal.analytics.recordStorageDelta, {
+      userId: user._id,
+      bytesDelta: -attachment.sizeBytes,
+      fileCountDelta: -1,
+      imageCountDelta: attachment.type === "image" ? -1 : 0,
+      documentCountDelta: attachment.type === "document" ? -1 : 0,
+    });
 
     // Schedule Drive deletion
     await ctx.scheduler.runAfter(0, internal.integrations.deleteDriveFile, {
@@ -358,6 +392,19 @@ export const recordAttachmentsInternal = internalMutation({
         driveWebViewLink: file.driveWebViewLink,
       });
 
+      await ctx.runMutation(internal.analytics.recordProductEvent, {
+        userId: args.userId,
+        event: "attachment_uploaded",
+        bytes: file.sizeBytes,
+      });
+      await ctx.runMutation(internal.analytics.recordStorageDelta, {
+        userId: args.userId,
+        bytesDelta: file.sizeBytes,
+        fileCountDelta: 1,
+        imageCountDelta: file.type === "image" ? 1 : 0,
+        documentCountDelta: file.type === "document" ? 1 : 0,
+      });
+
       if (args.scheduleProcessing ?? true) {
         await ctx.scheduler.runAfter(0, internal.actions.processAttachment.processAttachment, {
           attachmentId,
@@ -407,7 +454,7 @@ export const linkChatAttachmentsToMemory = internalMutation({
     await Promise.all(
       attachments
         .filter((a) => !a.memoryId)
-        .map((a) => ctx.db.patch(a._id, { memoryId: args.memoryId }))
+        .map((a) => ctx.db.patch(a._id, { memoryId: args.memoryId })),
     );
   },
 });
@@ -419,26 +466,31 @@ export const updateAttachmentStatus = internalMutation({
       v.literal("pending"),
       v.literal("processing"),
       v.literal("completed"),
-      v.literal("failed")
+      v.literal("failed"),
     ),
     extractedContent: v.optional(v.string()),
     processingError: v.optional(v.string()),
     driveThumbnailLink: v.optional(v.string()),
     driveWebViewLink: v.optional(v.string()),
-    extractionMethod: v.optional(v.union(
-      v.literal("mlkit"),
-      v.literal("gemini"),
-      v.literal("openai"),
-      v.literal("pdf-extract"),
-    )),
+    extractionMethod: v.optional(
+      v.union(
+        v.literal("mlkit"),
+        v.literal("gemini"),
+        v.literal("openai"),
+        v.literal("pdf-extract"),
+      ),
+    ),
   },
   handler: async (ctx, args) => {
     const { attachmentId, ...patch } = args;
     // Only patch defined fields
-    const update: Record<string, unknown> = { processingStatus: patch.processingStatus };
+    const update: Record<string, unknown> = {
+      processingStatus: patch.processingStatus,
+    };
     if (patch.extractedContent !== undefined) update.extractedContent = patch.extractedContent;
     if (patch.processingError !== undefined) update.processingError = patch.processingError;
-    if (patch.driveThumbnailLink !== undefined) update.driveThumbnailLink = patch.driveThumbnailLink;
+    if (patch.driveThumbnailLink !== undefined)
+      update.driveThumbnailLink = patch.driveThumbnailLink;
     if (patch.driveWebViewLink !== undefined) update.driveWebViewLink = patch.driveWebViewLink;
     if (patch.extractionMethod !== undefined) update.extractionMethod = patch.extractionMethod;
     await ctx.db.patch(attachmentId, update);

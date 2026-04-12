@@ -1,15 +1,18 @@
 import { v } from "convex/values";
-import { action, mutation, query, internalAction, internalMutation, internalQuery } from "./_generated/server";
+import {
+  action,
+  mutation,
+  query,
+  internalAction,
+  internalMutation,
+  internalQuery,
+} from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { resolveUser } from "./lib/withAuth";
 import { buildReminderSyncFingerprint, isSyncableReminder } from "./lib/reminderSync";
 
-const googlePlatformValidator = v.union(
-  v.literal("android"),
-  v.literal("ios"),
-  v.literal("web")
-);
+const googlePlatformValidator = v.union(v.literal("android"), v.literal("ios"), v.literal("web"));
 
 type GooglePlatform = "android" | "ios" | "web";
 const GOOGLE_SYNC_LOCK_TTL_MS = 2 * 60 * 1000;
@@ -115,7 +118,7 @@ export const triggerReminderSync = mutation({
   },
   handler: async (
     ctx,
-    args
+    args,
   ): Promise<{
     queued: boolean;
     reason:
@@ -136,8 +139,7 @@ export const triggerReminderSync = mutation({
     }
 
     if (!isSyncableReminder(memory)) {
-      const reason =
-        memory.entryKind === "reminder" ? "missing_due_at" : "not_reminder";
+      const reason = memory.entryKind === "reminder" ? "missing_due_at" : "not_reminder";
       const message =
         reason === "missing_due_at"
           ? "Reminder needs a due date before it can sync to Google Calendar."
@@ -164,7 +166,11 @@ export const triggerReminderSync = mutation({
         googleSyncMessage: message,
         googleSyncUpdatedAt: Date.now(),
       });
-      return { queued: false as const, reason: "not_connected" as const, message };
+      return {
+        queued: false as const,
+        reason: "not_connected" as const,
+        message,
+      };
     }
 
     await ctx.db.patch(memory._id, {
@@ -173,8 +179,7 @@ export const triggerReminderSync = mutation({
       googleSyncLockToken: undefined,
       googleSyncLockAt: undefined,
       googleSyncStatus: "pending",
-      googleSyncMessage:
-        "Manual sync requested. Syncing reminder to Google Calendar...",
+      googleSyncMessage: "Manual sync requested. Syncing reminder to Google Calendar...",
       googleSyncUpdatedAt: Date.now(),
     });
 
@@ -204,7 +209,11 @@ export const triggerReminderSync = mutation({
         googleSyncMessage: message,
         googleSyncUpdatedAt: Date.now(),
       });
-      return { queued: false as const, reason: "already_synced" as const, message };
+      return {
+        queued: false as const,
+        reason: "already_synced" as const,
+        message,
+      };
     }
 
     return {
@@ -225,7 +234,7 @@ export const removeReminderSync = mutation({
   },
   handler: async (
     ctx,
-    args
+    args,
   ): Promise<{
     removed: boolean;
     reason: "removed" | "not_reminder";
@@ -380,14 +389,15 @@ export const connectGoogle = action({
     }
 
     // Parse granted scopes from token response
-    const grantedScopes: string[] | undefined = typeof data.scope === "string"
-      ? data.scope.split(" ").filter(Boolean)
-      : undefined;
+    const grantedScopes: string[] | undefined =
+      typeof data.scope === "string" ? data.scope.split(" ").filter(Boolean) : undefined;
 
     // refresh_token is only returned on the first time or if prompt=consent was used
     if (!data.refresh_token) {
       // Check if we already have one
-      const existing = await ctx.runQuery(api.integrations.getGoogleIntegration, { token: args.token });
+      const existing = await ctx.runQuery(api.integrations.getGoogleIntegration, {
+        token: args.token,
+      });
       if (!existing.connected) {
         throw new Error("No refresh token returned. Try disconnecting and reconnecting.");
       }
@@ -425,10 +435,7 @@ async function getAccessToken({
   clientId?: string;
   platform?: GooglePlatform;
 }) {
-  const { clientId, clientSecret } = getGoogleOAuthConfig(
-    platform ?? "web",
-    storedClientId
-  );
+  const { clientId, clientSecret } = getGoogleOAuthConfig(platform ?? "web", storedClientId);
 
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -446,20 +453,17 @@ async function getAccessToken({
   return data.access_token as string;
 }
 
-async function deleteGoogleCalendarEventById(args: {
-  accessToken: string;
-  googleEventId: string;
-}) {
-  await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${args.googleEventId}`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${args.accessToken}` },
-  });
+async function deleteGoogleCalendarEventById(args: { accessToken: string; googleEventId: string }) {
+  await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${args.googleEventId}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${args.accessToken}` },
+    },
+  );
 }
 
-async function findGoogleEventsByMemoryId(args: {
-  accessToken: string;
-  memoryId: string;
-}) {
+async function findGoogleEventsByMemoryId(args: { accessToken: string; memoryId: string }) {
   const params = new URLSearchParams({
     singleEvents: "true",
     maxResults: "10",
@@ -469,7 +473,7 @@ async function findGoogleEventsByMemoryId(args: {
     `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params.toString()}`,
     {
       headers: { Authorization: `Bearer ${args.accessToken}` },
-    }
+    },
   );
   if (!response.ok) {
     return [] as string[];
@@ -488,7 +492,7 @@ async function fetchDrivePreviewUrl(args: {
     `https://www.googleapis.com/drive/v3/files/${args.fileId}?fields=thumbnailLink`,
     {
       headers: { Authorization: `Bearer ${args.accessToken}` },
-    }
+    },
   );
 
   if (!response.ok) {
@@ -687,10 +691,8 @@ export const finalizeReminderSyncLock = internalMutation({
       return { finalized: true, cleanupGoogleEvent: true };
     }
 
-    const syncedFingerprint =
-      args.syncedFingerprint ?? buildReminderSyncFingerprint(memory);
-    const desiredFingerprint =
-      memory.googleSyncDesiredFingerprint ?? syncedFingerprint;
+    const syncedFingerprint = args.syncedFingerprint ?? buildReminderSyncFingerprint(memory);
+    const desiredFingerprint = memory.googleSyncDesiredFingerprint ?? syncedFingerprint;
     const needsResync = desiredFingerprint !== syncedFingerprint;
 
     await ctx.db.patch(args.memoryId, {
@@ -726,21 +728,17 @@ export const syncReminderToGoogle = internalAction({
   handler: async (ctx, args) => {
     let lockToken: string | null = null;
     try {
-      const acquisition = await ctx.runMutation(
-        internal.integrations.acquireReminderSyncLock,
-        {
-          memoryId: args.memoryId,
-        }
-      );
+      const acquisition = await ctx.runMutation(internal.integrations.acquireReminderSyncLock, {
+        memoryId: args.memoryId,
+      });
       if (acquisition.state !== "ready") {
         return;
       }
       lockToken = acquisition.lockToken;
 
-      const integration = await ctx.runQuery(
-        internal.integrations.getGoogleIntegrationInternal,
-        { userId: acquisition.userId }
-      );
+      const integration = await ctx.runQuery(internal.integrations.getGoogleIntegrationInternal, {
+        userId: acquisition.userId,
+      });
       if (!integration) {
         await ctx.runMutation(internal.integrations.finalizeReminderSyncLock, {
           memoryId: args.memoryId,
@@ -783,9 +781,7 @@ export const syncReminderToGoogle = internalAction({
         description: acquisition.content,
         start: { dateTime: new Date(acquisition.dueAt).toISOString() },
         end: {
-          dateTime: new Date(
-            new Date(acquisition.dueAt).getTime() + 30 * 60 * 1000
-          ).toISOString(),
+          dateTime: new Date(new Date(acquisition.dueAt).getTime() + 30 * 60 * 1000).toISOString(),
         },
         reminders: { useDefault: true },
         extendedProperties: {
@@ -806,20 +802,17 @@ export const syncReminderToGoogle = internalAction({
               "Content-Type": "application/json",
             },
             body: JSON.stringify(eventBody),
-          }
+          },
         );
       } else {
-        response = await fetch(
-          `https://www.googleapis.com/calendar/v3/calendars/primary/events`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(eventBody),
-          }
-        );
+        response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(eventBody),
+        });
       }
 
       let data: any = null;
@@ -830,24 +823,19 @@ export const syncReminderToGoogle = internalAction({
       }
 
       const resolvedGoogleEventId =
-        typeof data?.id === "string" && data.id.length > 0
-          ? data.id
-          : existingGoogleEventId;
+        typeof data?.id === "string" && data.id.length > 0 ? data.id : existingGoogleEventId;
 
       if (response.ok && resolvedGoogleEventId) {
-        const finalized = await ctx.runMutation(
-          internal.integrations.finalizeReminderSyncLock,
-          {
-            memoryId: args.memoryId,
-            lockToken,
-            result: "synced",
-            message: existingGoogleEventId
-              ? "Google Calendar event updated."
-              : "Google Calendar event created.",
-            googleEventId: resolvedGoogleEventId,
-            syncedFingerprint: acquisition.desiredFingerprint,
-          }
-        );
+        const finalized = await ctx.runMutation(internal.integrations.finalizeReminderSyncLock, {
+          memoryId: args.memoryId,
+          lockToken,
+          result: "synced",
+          message: existingGoogleEventId
+            ? "Google Calendar event updated."
+            : "Google Calendar event created.",
+          googleEventId: resolvedGoogleEventId,
+          syncedFingerprint: acquisition.desiredFingerprint,
+        });
 
         if (finalized.cleanupGoogleEvent && !existingGoogleEventId) {
           try {
@@ -898,7 +886,9 @@ export const deleteGoogleEvent = internalAction({
     googleEventId: v.string(),
   },
   handler: async (ctx, args) => {
-    const integration = await ctx.runQuery(internal.integrations.getGoogleIntegrationInternal, { userId: args.userId });
+    const integration = await ctx.runQuery(internal.integrations.getGoogleIntegrationInternal, {
+      userId: args.userId,
+    });
     if (!integration) return;
 
     const accessToken = await getAccessToken({
@@ -1024,10 +1014,9 @@ export const ensureMemoraFolder = internalAction({
     accessToken: v.string(),
   },
   handler: async (ctx, args): Promise<{ rootFolderId: string; monthFolderId: string }> => {
-    const integration = await ctx.runQuery(
-      internal.integrations.getGoogleIntegrationInternal,
-      { userId: args.userId }
-    );
+    const integration = await ctx.runQuery(internal.integrations.getGoogleIntegrationInternal, {
+      userId: args.userId,
+    });
 
     const now = new Date();
     const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -1051,38 +1040,37 @@ export const ensureMemoraFolder = internalAction({
       // Search for existing Memora folder
       const searchRes = await fetch(
         `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(
-          "name='Memora' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+          "name='Memora' and mimeType='application/vnd.google-apps.folder' and trashed=false",
         )}&fields=files(id,name)`,
-        { headers: { Authorization: `Bearer ${args.accessToken}` } }
+        { headers: { Authorization: `Bearer ${args.accessToken}` } },
       );
       if (!searchRes.ok) {
         const body = await searchRes.text();
         throw new Error(`Drive folder search failed (${searchRes.status}): ${body}`);
       }
-      const searchData = await searchRes.json() as { files?: Array<{ id: string }> };
+      const searchData = (await searchRes.json()) as {
+        files?: Array<{ id: string }>;
+      };
       if (searchData.files && searchData.files.length > 0) {
         rootFolderId = searchData.files[0].id;
       } else {
         // Create it
-        const createRes = await fetch(
-          "https://www.googleapis.com/drive/v3/files?fields=id",
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${args.accessToken}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              name: "Memora",
-              mimeType: "application/vnd.google-apps.folder",
-            }),
-          }
-        );
+        const createRes = await fetch("https://www.googleapis.com/drive/v3/files?fields=id", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${args.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name: "Memora",
+            mimeType: "application/vnd.google-apps.folder",
+          }),
+        });
         if (!createRes.ok) {
           const body = await createRes.text();
           throw new Error(`Drive folder creation failed (${createRes.status}): ${body}`);
         }
-        const createData = await createRes.json() as { id?: string };
+        const createData = (await createRes.json()) as { id?: string };
         if (!createData.id) throw new Error("Drive folder creation returned no ID");
         rootFolderId = createData.id;
       }
@@ -1093,40 +1081,39 @@ export const ensureMemoraFolder = internalAction({
     // Find or create the month subfolder
     const monthSearchRes = await fetch(
       `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(
-        `name='${monthKey}' and mimeType='application/vnd.google-apps.folder' and '${rootFolderId}' in parents and trashed=false`
+        `name='${monthKey}' and mimeType='application/vnd.google-apps.folder' and '${rootFolderId}' in parents and trashed=false`,
       )}&fields=files(id,name)`,
-      { headers: { Authorization: `Bearer ${args.accessToken}` } }
+      { headers: { Authorization: `Bearer ${args.accessToken}` } },
     );
     if (!monthSearchRes.ok) {
       const body = await monthSearchRes.text();
       throw new Error(`Drive month-folder search failed (${monthSearchRes.status}): ${body}`);
     }
-    const monthSearchData = await monthSearchRes.json() as { files?: Array<{ id: string }> };
+    const monthSearchData = (await monthSearchRes.json()) as {
+      files?: Array<{ id: string }>;
+    };
 
     let monthFolderId: string;
     if (monthSearchData.files && monthSearchData.files.length > 0) {
       monthFolderId = monthSearchData.files[0].id;
     } else {
-      const createMonthRes = await fetch(
-        "https://www.googleapis.com/drive/v3/files?fields=id",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${args.accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name: monthKey,
-            mimeType: "application/vnd.google-apps.folder",
-            parents: [rootFolderId],
-          }),
-        }
-      );
+      const createMonthRes = await fetch("https://www.googleapis.com/drive/v3/files?fields=id", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${args.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: monthKey,
+          mimeType: "application/vnd.google-apps.folder",
+          parents: [rootFolderId],
+        }),
+      });
       if (!createMonthRes.ok) {
         const body = await createMonthRes.text();
         throw new Error(`Drive month-folder creation failed (${createMonthRes.status}): ${body}`);
       }
-      const createMonthData = await createMonthRes.json() as { id?: string };
+      const createMonthData = (await createMonthRes.json()) as { id?: string };
       if (!createMonthData.id) throw new Error("Drive month-folder creation returned no ID");
       monthFolderId = createMonthData.id;
     }
@@ -1153,10 +1140,9 @@ export const getDriveUploadCredentials = action({
     const user = await ctx.runQuery(api.auth.me, { token: args.token });
     if (!user) throw new Error("Not authenticated");
 
-    const integration = await ctx.runQuery(
-      internal.integrations.getGoogleIntegrationInternal,
-      { userId: user._id }
-    );
+    const integration = await ctx.runQuery(internal.integrations.getGoogleIntegrationInternal, {
+      userId: user._id,
+    });
     if (!integration) throw new Error("GOOGLE_NOT_CONNECTED");
     if (!hasDriveScope(integration.grantedScopes)) throw new Error("DRIVE_SCOPE_MISSING");
 
@@ -1166,10 +1152,10 @@ export const getDriveUploadCredentials = action({
       platform: integration.platform,
     });
 
-    const { monthFolderId } = await ctx.runAction(
-      internal.integrations.ensureMemoraFolder,
-      { userId: user._id, accessToken }
-    );
+    const { monthFolderId } = await ctx.runAction(internal.integrations.ensureMemoraFolder, {
+      userId: user._id,
+      accessToken,
+    });
 
     return { accessToken, folderId: monthFolderId };
   },
@@ -1194,10 +1180,9 @@ export const getDrivePreviewUrls = action({
     const user = await ctx.runQuery(api.auth.me, { token: args.token });
     if (!user) throw new Error("Not authenticated");
 
-    const integration = await ctx.runQuery(
-      internal.integrations.getGoogleIntegrationInternal,
-      { userId: user._id }
-    );
+    const integration = await ctx.runQuery(internal.integrations.getGoogleIntegrationInternal, {
+      userId: user._id,
+    });
     if (!integration) throw new Error("GOOGLE_NOT_CONNECTED");
     if (!hasDriveScope(integration.grantedScopes)) throw new Error("DRIVE_SCOPE_MISSING");
 
@@ -1211,7 +1196,7 @@ export const getDrivePreviewUrls = action({
       dedupedFileIds.map(async (fileId) => ({
         fileId,
         previewUrl: await fetchDrivePreviewUrl({ accessToken, fileId }),
-      }))
+      })),
     );
 
     const previews: Record<string, string> = {};
@@ -1234,10 +1219,9 @@ export const deleteDriveFile = internalAction({
     driveFileId: v.string(),
   },
   handler: async (ctx, args) => {
-    const integration = await ctx.runQuery(
-      internal.integrations.getGoogleIntegrationInternal,
-      { userId: args.userId }
-    );
+    const integration = await ctx.runQuery(internal.integrations.getGoogleIntegrationInternal, {
+      userId: args.userId,
+    });
     if (!integration) return;
 
     const accessToken = await getAccessToken({

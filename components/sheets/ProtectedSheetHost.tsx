@@ -21,23 +21,26 @@ export function ProtectedSheetHost() {
   const closeCommand = useUIStore((state) => state.closeCommand);
   const closeEditMemory = useUIStore((state) => state.closeEditMemory);
 
-  const handleSaveEdit = useCallback(async (data: Record<string, unknown>) => {
-    const memory = editMemoryPayload?.memory;
-    if (!memory?.id || !token) return;
+  const handleSaveEdit = useCallback(
+    async (data: Record<string, unknown>) => {
+      const memory = editMemoryPayload?.memory;
+      if (!memory?.id || !token) return;
 
-    try {
-      if (data._delete) {
-        await deleteMemory({ token, id: memory.id as any });
-        showToast({ title: "Memory deleted", tone: "success" });
-      } else {
-        await updateMemory({ token, id: memory.id as any, ...data });
-        showToast({ title: "Memory updated", tone: "success" });
+      try {
+        if (data._delete) {
+          await deleteMemory({ token, id: memory.id as any });
+          showToast({ title: "Memory deleted", tone: "success" });
+        } else {
+          await updateMemory({ token, id: memory.id as any, ...data });
+          showToast({ title: "Memory updated", tone: "success" });
+        }
+        closeEditMemory();
+      } catch {
+        showToast({ title: "Couldn't save — try again", tone: "error" });
       }
-      closeEditMemory();
-    } catch {
-      showToast({ title: "Couldn't save — try again", tone: "error" });
-    }
-  }, [closeEditMemory, deleteMemory, editMemoryPayload?.memory, showToast, token, updateMemory]);
+    },
+    [closeEditMemory, deleteMemory, editMemoryPayload?.memory, showToast, token, updateMemory],
+  );
 
   return (
     <>

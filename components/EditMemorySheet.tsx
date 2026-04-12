@@ -71,17 +71,12 @@ function createInitialState(memory?: MemoryNote) {
     entryKind: inferMemoryEntryKind(memory ?? {}),
     reminderDate: schedule?.dueAt ?? getReminderDate(memory ?? {}) ?? "",
     isRecurring: schedule?.isRecurring ?? false,
-    capsuleEnabled: !!(memory?.capsuleUnlockDate),
+    capsuleEnabled: !!memory?.capsuleUnlockDate,
     capsuleDate: memory?.capsuleUnlockDate ?? "",
   };
 }
 
-export function EditMemorySheet({
-  memory,
-  visible,
-  onClose,
-  onSave,
-}: EditMemorySheetProps) {
+export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemorySheetProps) {
   const theme = useAppTheme();
   const { confirm } = useAppConfirm();
   const colors = useColors();
@@ -103,14 +98,17 @@ export function EditMemorySheet({
 
   const googleIntegration = useQuery(
     api.integrations.getGoogleIntegration,
-    token ? { token } : "skip"
+    token ? { token } : "skip",
   );
-  const driveConnected = !!(googleIntegration?.connected && (googleIntegration as any).hasDriveScope);
+  const driveConnected = !!(
+    googleIntegration?.connected && (googleIntegration as any).hasDriveScope
+  );
 
-  const existingAttachments = useQuery(
-    api.attachments.getAttachmentsForMemory,
-    token && memory?.id ? { token, memoryId: memory.id as any } : "skip"
-  ) ?? [];
+  const existingAttachments =
+    useQuery(
+      api.attachments.getAttachmentsForMemory,
+      token && memory?.id ? { token, memoryId: memory.id as any } : "skip",
+    ) ?? [];
   const drivePreviewUrls = useDrivePreviewUrls(existingAttachments as any[], token);
 
   const recordAttachmentsForMemory = useMutation(api.attachments.recordAttachmentsForMemory);
@@ -139,7 +137,7 @@ export function EditMemorySheet({
     Alert.alert(
       "Google Drive Required",
       "Connect Google Drive in Profile → Integrations to attach files.",
-      [{ text: "OK" }]
+      [{ text: "OK" }],
     );
   };
 
@@ -179,7 +177,7 @@ export function EditMemorySheet({
 
     // Upload pending attachments, then link to memory after save
     const pendingUploads = fileAttachments.attachments.filter(
-      (a) => a.uploadStatus === "idle" || a.uploadStatus === "compressing"
+      (a) => a.uploadStatus === "idle" || a.uploadStatus === "compressing",
     );
 
     onSave({
@@ -232,7 +230,6 @@ export function EditMemorySheet({
     Speech.speak(`${form.title}. ${form.content}`, { language: "en" });
   };
 
-
   const handleDelete = async () => {
     if (!memory) return;
     const confirmed = await confirm({
@@ -253,8 +250,7 @@ export function EditMemorySheet({
         token,
         message: `Update the existing memory with ID "${memory.id}" titled "${memory.title}". This is an edit to the current item, not a request to create a new one. Apply the instruction to this exact memory and convert between memory/reminder if requested. Instruction: ${text}`,
         currentTime: new Date().toISOString(),
-        currentTimezone:
-          Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+        currentTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       });
       setVoiceTranscript("");
       onClose();
@@ -271,7 +267,9 @@ export function EditMemorySheet({
 
   return (
     <BaseSheet
-      onOpenChange={(open) => { if (!open) onClose(); }}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
       open={visible}
       sheetId="editMemory"
       backgroundColor={theme.background.val}
@@ -280,7 +278,9 @@ export function EditMemorySheet({
       <XStack alignItems="center" paddingHorizontal={20} paddingTop={6} paddingBottom={12}>
         <XStack flex={1} alignItems="center" gap={8}>
           <Text fontSize={18}>✏️</Text>
-          <Text fontSize={18} fontFamily="$body" fontWeight="600" color="$color">Edit Memory</Text>
+          <Text fontSize={18} fontFamily="$body" fontWeight="600" color="$color">
+            Edit Memory
+          </Text>
         </XStack>
         <PressableScale onPress={onClose}>
           <YStack
@@ -301,7 +301,13 @@ export function EditMemorySheet({
       {/* Memory subtitle */}
       {memory && (
         <XStack alignItems="center" justifyContent="center" gap={6} marginBottom={6}>
-          <Text fontSize={13} fontFamily="$body" color="$colorMuted" numberOfLines={1} maxWidth="80%">
+          <Text
+            fontSize={13}
+            fontFamily="$body"
+            color="$colorMuted"
+            numberOfLines={1}
+            maxWidth="80%"
+          >
             {memory.title}
           </Text>
         </XStack>
@@ -309,11 +315,7 @@ export function EditMemorySheet({
 
       {/* Mode switcher */}
       <YStack paddingHorizontal={20} marginBottom={4}>
-        <SegmentedControl
-          options={MANUAL_OPTIONS}
-          value={mode}
-          onChange={setMode}
-        />
+        <SegmentedControl options={MANUAL_OPTIONS} value={mode} onChange={setMode} />
       </YStack>
 
       <KeyboardAwareScrollViewCompat
@@ -450,141 +452,196 @@ export function EditMemorySheet({
             {form.entryKind === "reminder" ? (
               <>
                 <YStack gap={6}>
-              <Text
-                fontSize={11}
-                fontFamily="$body"
-                fontWeight="600"
-                letterSpacing={0.8}
-                marginLeft={4}
-                textTransform="uppercase"
-                color="$colorMuted"
-              >
-                REMINDER
-              </Text>
-              {Platform.OS === "web" ? (
-                <XStack
-                  alignItems="center"
-                  gap={8}
-                  borderWidth={0.5}
-                  borderRadius={12}
-                  paddingHorizontal={12}
-                  paddingVertical={10}
-                  borderColor="$borderColor"
-                  backgroundColor="$card"
-                >
-                  <Feather name="calendar" size={14} color={theme.colorMuted.val} />
-                  <input
-                    type="datetime-local"
-                    value={form.reminderDate ? form.reminderDate.slice(0, 16) : ""}
-                    onChange={(e: any) => setField("reminderDate", e.target.value ? new Date(e.target.value).toISOString() : "")}
-                    style={{
-                      flex: 1,
-                      border: "none",
-                      background: "transparent",
-                      color: theme.color.val,
-                      fontSize: 14,
-                      fontFamily: "Inter, sans-serif",
-                      outline: "none",
-                    }}
-                  />
-                </XStack>
-              ) : (
-                <YStack gap={8}>
-                  <Pressable
-                    onPress={() => setShowPicker(!showPicker)}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 8,
-                      borderWidth: 0.5,
-                      borderRadius: 12,
-                      paddingHorizontal: 12,
-                      paddingVertical: 10,
-                      borderColor: theme.borderColor.val,
-                      backgroundColor: theme.card.val,
-                    }}
+                  <Text
+                    fontSize={11}
+                    fontFamily="$body"
+                    fontWeight="600"
+                    letterSpacing={0.8}
+                    marginLeft={4}
+                    textTransform="uppercase"
+                    color="$colorMuted"
                   >
-                    <Feather name="calendar" size={14} color={theme.colorMuted.val} />
-                    <Text style={{ flex: 1, fontSize: 14, fontFamily: FontFamily.regular, color: form.reminderDate ? theme.color.val : theme.colorMuted.val }}>
-                      {form.reminderDate ? dayjs(form.reminderDate).format("MMM D, YYYY - h:mm A") : "Select Date & Time"}
-                    </Text>
-                  </Pressable>
-
-                  <Modal
-                    visible={showPicker}
-                    transparent
-                    animationType="fade"
-                    onRequestClose={() => setShowPicker(false)}
-                  >
-                    <View
-                      style={{
-                        flex: 1,
-                        backgroundColor: withAlpha(theme.shadowColor.val, "80"),
-                        justifyContent: "center",
-                        alignItems: "center",
-                        padding: 20,
-                      }}
+                    REMINDER
+                  </Text>
+                  {Platform.OS === "web" ? (
+                    <XStack
+                      alignItems="center"
+                      gap={8}
+                      borderWidth={0.5}
+                      borderRadius={12}
+                      paddingHorizontal={12}
+                      paddingVertical={10}
+                      borderColor="$borderColor"
+                      backgroundColor="$card"
                     >
-                      <Pressable
-                        style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
-                        onPress={() => setShowPicker(false)}
+                      <Feather name="calendar" size={14} color={theme.colorMuted.val} />
+                      <input
+                        type="datetime-local"
+                        value={form.reminderDate ? form.reminderDate.slice(0, 16) : ""}
+                        onChange={(e: any) =>
+                          setField(
+                            "reminderDate",
+                            e.target.value ? new Date(e.target.value).toISOString() : "",
+                          )
+                        }
+                        style={{
+                          flex: 1,
+                          border: "none",
+                          background: "transparent",
+                          color: theme.color.val,
+                          fontSize: 14,
+                          fontFamily: "Inter, sans-serif",
+                          outline: "none",
+                        }}
                       />
-                      <YStack
-                        backgroundColor="$card"
-                        borderRadius={16}
-                        borderWidth={1}
-                        borderColor="$borderColor"
-                        padding={16}
-                        width="100%"
-                        maxWidth={400}
-                        shadowColor={theme.shadowColor.val}
-                        shadowOffset={{ width: 0, height: 4 }}
-                        shadowOpacity={0.2}
-                        shadowRadius={12}
-                        elevation={10}
+                    </XStack>
+                  ) : (
+                    <YStack gap={8}>
+                      <Pressable
+                        onPress={() => setShowPicker(!showPicker)}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 8,
+                          borderWidth: 0.5,
+                          borderRadius: 12,
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                          borderColor: theme.borderColor.val,
+                          backgroundColor: theme.card.val,
+                        }}
                       >
-                        <XStack justifyContent="space-between" alignItems="center" marginBottom={16}>
-                          <Text fontSize={16} fontFamily="$heading" fontWeight="600" color="$color">
-                            Set Reminder
-                          </Text>
-                          <Pressable onPress={() => setShowPicker(false)} hitSlop={10}>
-                            <Feather name="x" size={20} color={theme.colorMuted.val} />
-                          </Pressable>
-                        </XStack>
-
-                        <DateTimePicker
-                          mode="single"
-                          timePicker={true}
-                          date={form.reminderDate ? dayjs(form.reminderDate).toDate() : new Date()}
-                          onChange={(params: any) => {
-                            if (params.date) {
-                              setField("reminderDate", dayjs(params.date).toISOString());
-                            }
+                        <Feather name="calendar" size={14} color={theme.colorMuted.val} />
+                        <Text
+                          style={{
+                            flex: 1,
+                            fontSize: 14,
+                            fontFamily: FontFamily.regular,
+                            color: form.reminderDate ? theme.color.val : theme.colorMuted.val,
                           }}
-                          styles={{
-                            day_label: { color: theme.color.val, fontFamily: FontFamily.regular },
-                            selected: { backgroundColor: theme.primary.val, borderRadius: 8 },
-                            selected_label: { color: theme.textInverse.val, fontFamily: FontFamily.bold },
-                            month_selector_label: { color: theme.color.val, fontFamily: FontFamily.bold },
-                            year_selector_label: { color: theme.color.val, fontFamily: FontFamily.bold },
-                            time_selector_label: { color: theme.color.val, fontFamily: FontFamily.bold },
-                            weekday_label: { color: theme.colorMuted.val, fontFamily: FontFamily.regular },
-                            today_label: { color: theme.primary.val, fontFamily: FontFamily.bold },
-                            button_prev: { backgroundColor: "transparent" },
-                            button_next: { backgroundColor: "transparent" },
-                          }}
-                        />
+                        >
+                          {form.reminderDate
+                            ? dayjs(form.reminderDate).format("MMM D, YYYY - h:mm A")
+                            : "Select Date & Time"}
+                        </Text>
+                      </Pressable>
 
-                        <GradientButton
-                          title="Done"
-                          onPress={() => setShowPicker(false)}
-                          style={{ marginTop: 16 }}
-                        />
-                      </YStack>
-                    </View>
-                  </Modal>
-                </YStack>
-              )}
+                      <Modal
+                        visible={showPicker}
+                        transparent
+                        animationType="fade"
+                        onRequestClose={() => setShowPicker(false)}
+                      >
+                        <View
+                          style={{
+                            flex: 1,
+                            backgroundColor: withAlpha(theme.shadowColor.val, "80"),
+                            justifyContent: "center",
+                            alignItems: "center",
+                            padding: 20,
+                          }}
+                        >
+                          <Pressable
+                            style={{
+                              position: "absolute",
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                            }}
+                            onPress={() => setShowPicker(false)}
+                          />
+                          <YStack
+                            backgroundColor="$card"
+                            borderRadius={16}
+                            borderWidth={1}
+                            borderColor="$borderColor"
+                            padding={16}
+                            width="100%"
+                            maxWidth={400}
+                            shadowColor={theme.shadowColor.val}
+                            shadowOffset={{ width: 0, height: 4 }}
+                            shadowOpacity={0.2}
+                            shadowRadius={12}
+                            elevation={10}
+                          >
+                            <XStack
+                              justifyContent="space-between"
+                              alignItems="center"
+                              marginBottom={16}
+                            >
+                              <Text
+                                fontSize={16}
+                                fontFamily="$heading"
+                                fontWeight="600"
+                                color="$color"
+                              >
+                                Set Reminder
+                              </Text>
+                              <Pressable onPress={() => setShowPicker(false)} hitSlop={10}>
+                                <Feather name="x" size={20} color={theme.colorMuted.val} />
+                              </Pressable>
+                            </XStack>
+
+                            <DateTimePicker
+                              mode="single"
+                              timePicker={true}
+                              date={
+                                form.reminderDate ? dayjs(form.reminderDate).toDate() : new Date()
+                              }
+                              onChange={(params: any) => {
+                                if (params.date) {
+                                  setField("reminderDate", dayjs(params.date).toISOString());
+                                }
+                              }}
+                              styles={{
+                                day_label: {
+                                  color: theme.color.val,
+                                  fontFamily: FontFamily.regular,
+                                },
+                                selected: {
+                                  backgroundColor: theme.primary.val,
+                                  borderRadius: 8,
+                                },
+                                selected_label: {
+                                  color: theme.textInverse.val,
+                                  fontFamily: FontFamily.bold,
+                                },
+                                month_selector_label: {
+                                  color: theme.color.val,
+                                  fontFamily: FontFamily.bold,
+                                },
+                                year_selector_label: {
+                                  color: theme.color.val,
+                                  fontFamily: FontFamily.bold,
+                                },
+                                time_selector_label: {
+                                  color: theme.color.val,
+                                  fontFamily: FontFamily.bold,
+                                },
+                                weekday_label: {
+                                  color: theme.colorMuted.val,
+                                  fontFamily: FontFamily.regular,
+                                },
+                                today_label: {
+                                  color: theme.primary.val,
+                                  fontFamily: FontFamily.bold,
+                                },
+                                button_prev: { backgroundColor: "transparent" },
+                                button_next: { backgroundColor: "transparent" },
+                              }}
+                            />
+
+                            <GradientButton
+                              title="Done"
+                              onPress={() => setShowPicker(false)}
+                              style={{ marginTop: 16 }}
+                            />
+                          </YStack>
+                        </View>
+                      </Modal>
+                    </YStack>
+                  )}
                 </YStack>
 
                 {/* Recurring */}
@@ -599,13 +656,20 @@ export function EditMemorySheet({
                 >
                   <Feather name="refresh-cw" size={16} color={theme.colorMuted.val} />
                   <YStack flex={1}>
-                    <Text fontSize={14} fontFamily="$body" fontWeight="600" color="$color">Recurring</Text>
-                    <Text fontSize={12} fontFamily="$body" marginTop={1} color="$colorMuted">Repeat this reminder</Text>
+                    <Text fontSize={14} fontFamily="$body" fontWeight="600" color="$color">
+                      Recurring
+                    </Text>
+                    <Text fontSize={12} fontFamily="$body" marginTop={1} color="$colorMuted">
+                      Repeat this reminder
+                    </Text>
                   </YStack>
                   <Switch
                     value={form.isRecurring}
                     onValueChange={(v) => setField("isRecurring", v)}
-                    trackColor={{ true: theme.primary.val, false: theme.borderColor.val }}
+                    trackColor={{
+                      true: theme.primary.val,
+                      false: theme.borderColor.val,
+                    }}
                     thumbColor={theme.textInverse.val}
                   />
                 </XStack>
@@ -613,34 +677,58 @@ export function EditMemorySheet({
             ) : null}
 
             {/* Google Calendar sync badge — reminders with google sync only */}
-            {memory && form.entryKind === "reminder" && (memory.googleSyncStatus || memory.googleEventId) ? (() => {
-              const status = memory.googleSyncStatus;
-              const syncBadge =
-                status === "synced"
-                  ? { border: withAlpha(theme.success.val, "47"), bg: theme.surfaceSuccessSoft.val, label: "synced", labelColor: theme.textSuccess.val }
-                  : status === "failed"
-                  ? { border: withAlpha(theme.destructive.val, "3D"), bg: theme.surfaceDangerSoft.val, label: "sync failed", labelColor: theme.textError.val }
-                  : { border: withAlpha(theme.warning.val, "3D"), bg: withAlpha(theme.warning.val, "14"), label: "syncing\u2026", labelColor: theme.textWarning.val };
-              return (
-                <XStack gap={6} alignItems="center" flexWrap="wrap" paddingHorizontal={2}>
-                  <XStack
-                    alignItems="center"
-                    gap={4}
-                    paddingHorizontal={8}
-                    paddingVertical={5}
-                    borderRadius={20}
-                    borderWidth={1}
-                    borderColor={syncBadge.border}
-                    backgroundColor={syncBadge.bg}
-                  >
-                    <FontAwesome5 name="calendar-alt" size={12} color={syncBadge.labelColor} />
-                    <Text fontSize={11} fontFamily="$body" fontWeight="600" color={syncBadge.labelColor}>
-                      {syncBadge.label}
-                    </Text>
-                  </XStack>
-                </XStack>
-              );
-            })() : null}
+            {memory &&
+            form.entryKind === "reminder" &&
+            (memory.googleSyncStatus || memory.googleEventId)
+              ? (() => {
+                  const status = memory.googleSyncStatus;
+                  const syncBadge =
+                    status === "synced"
+                      ? {
+                          border: withAlpha(theme.success.val, "47"),
+                          bg: theme.surfaceSuccessSoft.val,
+                          label: "synced",
+                          labelColor: theme.textSuccess.val,
+                        }
+                      : status === "failed"
+                        ? {
+                            border: withAlpha(theme.destructive.val, "3D"),
+                            bg: theme.surfaceDangerSoft.val,
+                            label: "sync failed",
+                            labelColor: theme.textError.val,
+                          }
+                        : {
+                            border: withAlpha(theme.warning.val, "3D"),
+                            bg: withAlpha(theme.warning.val, "14"),
+                            label: "syncing\u2026",
+                            labelColor: theme.textWarning.val,
+                          };
+                  return (
+                    <XStack gap={6} alignItems="center" flexWrap="wrap" paddingHorizontal={2}>
+                      <XStack
+                        alignItems="center"
+                        gap={4}
+                        paddingHorizontal={8}
+                        paddingVertical={5}
+                        borderRadius={20}
+                        borderWidth={1}
+                        borderColor={syncBadge.border}
+                        backgroundColor={syncBadge.bg}
+                      >
+                        <FontAwesome5 name="calendar-alt" size={12} color={syncBadge.labelColor} />
+                        <Text
+                          fontSize={11}
+                          fontFamily="$body"
+                          fontWeight="600"
+                          color={syncBadge.labelColor}
+                        >
+                          {syncBadge.label}
+                        </Text>
+                      </XStack>
+                    </XStack>
+                  );
+                })()
+              : null}
 
             {/* Drive badge — any memory/reminder that has attached Drive files */}
             {existingAttachments.length > 0 ? (
@@ -655,8 +743,17 @@ export function EditMemorySheet({
                   borderColor={withAlpha(integrationAccentColors.googleDrive, "40")}
                   backgroundColor={withAlpha(integrationAccentColors.googleDrive, "12")}
                 >
-                  <FontAwesome5 name="google-drive" size={12} color={integrationAccentColors.googleDrive} />
-                  <Text fontSize={11} fontFamily="$body" fontWeight="600" color={integrationAccentColors.googleDrive}>
+                  <FontAwesome5
+                    name="google-drive"
+                    size={12}
+                    color={integrationAccentColors.googleDrive}
+                  />
+                  <Text
+                    fontSize={11}
+                    fontFamily="$body"
+                    fontWeight="600"
+                    color={integrationAccentColors.googleDrive}
+                  >
                     in Drive
                   </Text>
                 </XStack>
@@ -809,7 +906,12 @@ export function EditMemorySheet({
                           transition={200}
                         />
                       ) : (
-                        <View style={[attStyles.docThumb, { backgroundColor: colors.backgroundSecondary }]}>
+                        <View
+                          style={[
+                            attStyles.docThumb,
+                            { backgroundColor: colors.backgroundSecondary },
+                          ]}
+                        >
                           <Feather name="file-text" size={18} color={colors.primary} />
                         </View>
                       )}
@@ -818,39 +920,81 @@ export function EditMemorySheet({
                           {att.filename}
                         </Text>
                         <XStack alignItems="center" gap={6}>
-                          <Text fontSize={11} color={colors.textSecondary} textTransform="capitalize">
+                          <Text
+                            fontSize={11}
+                            color={colors.textSecondary}
+                            textTransform="capitalize"
+                          >
                             {att.processingStatus}
                           </Text>
-                          {att.processingStatus === "completed" && att.extractionMethod && (() => {
-                            const methodMap: Record<string, { label: string; icon: string; color: string; bg: string }> = {
-                              mlkit:        { label: "device", icon: "smartphone", color: statusAccentColors.successStrong, bg: withAlpha(statusAccentColors.success, "1A") },
-                              gemini:       { label: "AI",     icon: "zap",        color: integrationAccentColors.reasoning, bg: withAlpha(integrationAccentColors.reasoning, "1A") },
-                              openai:       { label: "AI",     icon: "cpu",        color: integrationAccentColors.openai, bg: withAlpha(integrationAccentColors.openai, "1A") },
-                              "pdf-extract":{ label: "text",   icon: "file-text",  color: statusAccentColors.neutral, bg: withAlpha(statusAccentColors.neutral, "1A") },
-                            };
-                            const m = methodMap[att.extractionMethod];
-                            if (!m) return null;
-                            return (
-                              <XStack
-                                alignItems="center"
-                                gap={3}
-                                paddingHorizontal={6}
-                                paddingVertical={2}
-                                borderRadius={6}
-                                backgroundColor={m.bg}
-                              >
-                                <Feather name={m.icon as any} size={9} color={m.color} />
-                                <Text fontSize={10} fontFamily="$body" fontWeight="600" color={m.color}>
-                                  {m.label}
-                                </Text>
-                              </XStack>
-                            );
-                          })()}
+                          {att.processingStatus === "completed" &&
+                            att.extractionMethod &&
+                            (() => {
+                              const methodMap: Record<
+                                string,
+                                {
+                                  label: string;
+                                  icon: string;
+                                  color: string;
+                                  bg: string;
+                                }
+                              > = {
+                                mlkit: {
+                                  label: "device",
+                                  icon: "smartphone",
+                                  color: statusAccentColors.successStrong,
+                                  bg: withAlpha(statusAccentColors.success, "1A"),
+                                },
+                                gemini: {
+                                  label: "AI",
+                                  icon: "zap",
+                                  color: integrationAccentColors.reasoning,
+                                  bg: withAlpha(integrationAccentColors.reasoning, "1A"),
+                                },
+                                openai: {
+                                  label: "AI",
+                                  icon: "cpu",
+                                  color: integrationAccentColors.openai,
+                                  bg: withAlpha(integrationAccentColors.openai, "1A"),
+                                },
+                                "pdf-extract": {
+                                  label: "text",
+                                  icon: "file-text",
+                                  color: statusAccentColors.neutral,
+                                  bg: withAlpha(statusAccentColors.neutral, "1A"),
+                                },
+                              };
+                              const m = methodMap[att.extractionMethod];
+                              if (!m) return null;
+                              return (
+                                <XStack
+                                  alignItems="center"
+                                  gap={3}
+                                  paddingHorizontal={6}
+                                  paddingVertical={2}
+                                  borderRadius={6}
+                                  backgroundColor={m.bg}
+                                >
+                                  <Feather name={m.icon as any} size={9} color={m.color} />
+                                  <Text
+                                    fontSize={10}
+                                    fontFamily="$body"
+                                    fontWeight="600"
+                                    color={m.color}
+                                  >
+                                    {m.label}
+                                  </Text>
+                                </XStack>
+                              );
+                            })()}
                         </XStack>
                       </YStack>
                       <XStack gap={8} alignItems="center">
                         {att.driveWebViewLink && (
-                          <Pressable onPress={() => Linking.openURL(att.driveWebViewLink)} hitSlop={8}>
+                          <Pressable
+                            onPress={() => Linking.openURL(att.driveWebViewLink)}
+                            hitSlop={8}
+                          >
                             <Feather name="external-link" size={15} color={colors.textSecondary} />
                           </Pressable>
                         )}
@@ -898,13 +1042,35 @@ export function EditMemorySheet({
 
             {/* Read Aloud + Delete */}
             <XStack justifyContent="center" gap={24} paddingTop={4}>
-              <Pressable onPress={handleReadAloud} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={handleReadAloud}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 6,
+                  paddingVertical: 8,
+                  paddingHorizontal: 4,
+                }}
+              >
                 <Feather name="volume-2" size={14} color={theme.colorMuted.val} />
-                <Text fontSize={13} fontFamily="$body" color="$colorMuted">Read Aloud</Text>
+                <Text fontSize={13} fontFamily="$body" color="$colorMuted">
+                  Read Aloud
+                </Text>
               </Pressable>
-              <Pressable onPress={handleDelete} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={handleDelete}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 6,
+                  paddingVertical: 8,
+                  paddingHorizontal: 4,
+                }}
+              >
                 <Feather name="trash-2" size={14} color={theme.destructive.val} />
-                <Text fontSize={13} fontFamily="$body" color="$destructive">Delete</Text>
+                <Text fontSize={13} fontFamily="$body" color="$destructive">
+                  Delete
+                </Text>
               </Pressable>
             </XStack>
 
@@ -999,12 +1165,18 @@ function TipsCard() {
     >
       <XStack alignItems="center" gap={6}>
         <Text fontSize={16}>💡</Text>
-        <Text fontSize={13} fontFamily="$body" fontWeight="600" color="$color">Tips</Text>
+        <Text fontSize={13} fontFamily="$body" fontWeight="600" color="$color">
+          Tips
+        </Text>
       </XStack>
       {tips.map((tip) => (
         <XStack key={tip} alignItems="flex-start" gap={6}>
-          <Text fontSize={12} marginTop={1} color="$colorMuted">•</Text>
-          <Text flex={1} fontSize={12} fontFamily="$body" lineHeight={17} color="$colorMuted">{tip}</Text>
+          <Text fontSize={12} marginTop={1} color="$colorMuted">
+            •
+          </Text>
+          <Text flex={1} fontSize={12} fontFamily="$body" lineHeight={17} color="$colorMuted">
+            {tip}
+          </Text>
         </XStack>
       ))}
     </YStack>

@@ -29,7 +29,7 @@ export default defineSchema({
         dailyReviewTime: v.optional(v.string()),
         weeklyDigestDay: v.optional(v.string()),
         aiPersonality: v.optional(v.string()),
-      })
+      }),
     ),
   })
     .index("by_email", ["email"])
@@ -65,11 +65,7 @@ export default defineSchema({
      * - "deleted"   — soft-deleted, recoverable from Data page
      * - "completed" — completed reminder, hidden from all active APIs
      */
-    status: v.union(
-      v.literal("active"),
-      v.literal("deleted"),
-      v.literal("completed")
-    ),
+    status: v.union(v.literal("active"), v.literal("deleted"), v.literal("completed")),
     /** When the memory was completed (ms timestamp) */
     completedAt: v.optional(v.float64()),
     /** Timestamp of soft-delete (ms) */
@@ -77,7 +73,7 @@ export default defineSchema({
     /** The corresponding event ID in an external provider (e.g. Google Calendar) */
     googleEventId: v.optional(v.string()),
     googleSyncStatus: v.optional(
-      v.union(v.literal("pending"), v.literal("synced"), v.literal("failed"))
+      v.union(v.literal("pending"), v.literal("synced"), v.literal("failed")),
     ),
     googleSyncMessage: v.optional(v.string()),
     googleSyncUpdatedAt: v.optional(v.number()),
@@ -124,6 +120,95 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_user_and_day", ["userId", "dayKey"]),
 
+  userAnalyticsSummary: defineTable({
+    userId: v.id("users"),
+    trackingStartedAt: v.number(),
+    lastActivityAt: v.optional(v.number()),
+    totalMemoryCreates: v.number(),
+    totalMemoryUpdates: v.number(),
+    totalMemoryDeletes: v.number(),
+    totalDiaryEntries: v.number(),
+    totalChatMessages: v.number(),
+    totalAttachmentUploads: v.number(),
+    totalAttachmentDeletes: v.number(),
+    totalAttachmentBytesUploaded: v.number(),
+    liveStorageBytes: v.number(),
+    liveStorageCount: v.number(),
+    liveImageCount: v.number(),
+    liveDocumentCount: v.number(),
+    totalAiRequests: v.number(),
+    totalAiErrors: v.number(),
+    totalAiInputTokens: v.number(),
+    totalAiOutputTokens: v.number(),
+    totalAiAudioSeconds: v.number(),
+    totalAiCostUsdMicros: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user", ["userId"]),
+
+  userAnalyticsDaily: defineTable({
+    userId: v.id("users"),
+    dayKey: v.string(),
+    memoryCreates: v.number(),
+    memoryUpdates: v.number(),
+    memoryDeletes: v.number(),
+    diaryEntries: v.number(),
+    chatMessages: v.number(),
+    attachmentUploads: v.number(),
+    attachmentDeletes: v.number(),
+    attachmentBytesUploaded: v.number(),
+    aiRequests: v.number(),
+    aiErrors: v.number(),
+    aiInputTokens: v.number(),
+    aiOutputTokens: v.number(),
+    aiAudioSeconds: v.number(),
+    aiCostUsdMicros: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_and_day", ["userId", "dayKey"]),
+
+  userAnalyticsModelDaily: defineTable({
+    userId: v.id("users"),
+    dayKey: v.string(),
+    provider: v.string(),
+    model: v.string(),
+    operation: v.string(),
+    feature: v.string(),
+    requests: v.number(),
+    errors: v.number(),
+    inputTokens: v.number(),
+    outputTokens: v.number(),
+    totalTokens: v.number(),
+    audioSeconds: v.number(),
+    costUsdMicros: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_day", ["userId", "dayKey"])
+    .index("by_user_day_model", ["userId", "dayKey", "provider", "model"]),
+
+  userAiUsageEvents: defineTable({
+    userId: v.id("users"),
+    occurredAt: v.number(),
+    dayKey: v.string(),
+    provider: v.string(),
+    model: v.string(),
+    operation: v.string(),
+    feature: v.string(),
+    status: v.union(v.literal("success"), v.literal("error")),
+    latencyMs: v.optional(v.number()),
+    inputTokens: v.optional(v.number()),
+    outputTokens: v.optional(v.number()),
+    totalTokens: v.optional(v.number()),
+    audioSeconds: v.optional(v.number()),
+    costUsdMicros: v.optional(v.number()),
+    costAvailability: v.union(v.literal("estimated"), v.literal("exact"), v.literal("unavailable")),
+    metadata: v.optional(v.record(v.string(), v.string())),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_occurred_at", ["userId", "occurredAt"])
+    .index("by_occurred_at", ["occurredAt"]),
+
   userTopics: defineTable({
     userId: v.id("users"),
     name: v.string(),
@@ -133,11 +218,13 @@ export default defineSchema({
     color: v.string(),
     centroid: v.array(v.float64()),
     memoryCount: v.number(),
-    relatedTopics: v.array(v.object({
-      topicId: v.id("userTopics"),
-      similarity: v.float64(),
-      edgeType: v.union(v.literal("related"), v.literal("parent"), v.literal("child")),
-    })),
+    relatedTopics: v.array(
+      v.object({
+        topicId: v.id("userTopics"),
+        similarity: v.float64(),
+        edgeType: v.union(v.literal("related"), v.literal("parent"), v.literal("child")),
+      }),
+    ),
     parentTopicId: v.optional(v.id("userTopics")),
     isArchived: v.boolean(),
     createdAt: v.number(),
@@ -178,15 +265,17 @@ export default defineSchema({
       v.literal("pending"),
       v.literal("processing"),
       v.literal("completed"),
-      v.literal("failed")
+      v.literal("failed"),
     ),
     processingError: v.optional(v.string()),
-    extractionMethod: v.optional(v.union(
-      v.literal("mlkit"),
-      v.literal("gemini"),
-      v.literal("openai"),
-      v.literal("pdf-extract"),
-    )),
+    extractionMethod: v.optional(
+      v.union(
+        v.literal("mlkit"),
+        v.literal("gemini"),
+        v.literal("openai"),
+        v.literal("pdf-extract"),
+      ),
+    ),
     createdAt: v.number(),
     isDeleted: v.optional(v.boolean()),
   })
@@ -208,7 +297,6 @@ export default defineSchema({
   })
     .index("by_memory", ["memoryId"])
     .index("by_user", ["userId"]),
-
 
   sharedMemories: defineTable({
     memoryId: v.id("memories"),
@@ -242,24 +330,18 @@ export default defineSchema({
     topics: v.optional(v.array(v.string())),
     summary: v.optional(v.string()),
     structuredInsights: v.optional(
-      v.array(v.object({ insight: v.string(), category: v.string() }))
+      v.array(v.object({ insight: v.string(), category: v.string() })),
     ),
     habitsDetected: v.optional(
       v.array(
         v.object({
           habit: v.string(),
-          sentiment: v.union(
-            v.literal("positive"),
-            v.literal("negative"),
-            v.literal("neutral")
-          ),
+          sentiment: v.union(v.literal("positive"), v.literal("negative"), v.literal("neutral")),
           frequencyHint: v.optional(v.string()),
-        })
-      )
+        }),
+      ),
     ),
-    personalityTraits: v.optional(
-      v.array(v.object({ trait: v.string(), evidence: v.string() }))
-    ),
+    personalityTraits: v.optional(v.array(v.object({ trait: v.string(), evidence: v.string() }))),
     likes: v.optional(v.array(v.string())),
     dislikes: v.optional(v.array(v.string())),
     actionItems: v.optional(v.array(v.string())),
@@ -306,8 +388,8 @@ export default defineSchema({
           name: v.string(),
           type: v.union(v.literal("image"), v.literal("document")),
           mimeType: v.string(),
-        })
-      )
+        }),
+      ),
     ),
     /** Encryption version used */
     encryptionVersion: v.optional(v.number()),
@@ -381,8 +463,8 @@ export default defineSchema({
         v.object({
           label: v.string(),
           value: v.optional(v.string()),
-        })
-      )
+        }),
+      ),
     ),
     step: v.optional(v.number()),
     totalSteps: v.optional(v.number()),

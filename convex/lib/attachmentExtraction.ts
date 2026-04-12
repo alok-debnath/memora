@@ -1,12 +1,14 @@
 "use node";
 
-import { extractTextContent, getOpenAIClient } from "./openai";
+import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
+import type { ActionCtx } from "../_generated/server";
+import { extractTextContent, getOpenAIClient, trackedChatCompletion } from "./openai";
 
 export const ATTACHMENT_TEXT_LIMIT = 3000;
 
 const GEMINI_MODEL = "gemini-2.0-flash";
-const GEMINI_API_BASE =
-  "https://generativelanguage.googleapis.com/v1beta/models";
+const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
 type AttachmentLike = {
   type: "image" | "document";
@@ -31,7 +33,7 @@ export type AttachmentExtractionResult = {
 };
 
 export async function getGoogleDriveAccessToken(
-  integration: GoogleIntegrationLike
+  integration: GoogleIntegrationLike,
 ): Promise<string> {
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -55,6 +57,10 @@ export async function extractAttachmentFromDrive(args: {
   accessToken: string;
   attachment: AttachmentLike;
   textLimit?: number;
+  analytics?: {
+    ctx: Pick<ActionCtx, "runMutation">;
+    userId: Id<"users">;
+  };
 }): Promise<AttachmentExtractionResult> {
   const { accessToken, attachment, textLimit = ATTACHMENT_TEXT_LIMIT } = args;
   let driveThumbnailLink = attachment.driveThumbnailLink;
@@ -69,7 +75,8 @@ export async function extractAttachmentFromDrive(args: {
       const imageResult = await extractImageWithFallback(
         accessToken,
         attachment.driveFileId,
-        attachment.filename
+        attachment.filename,
+        args.analytics,
       );
       return {
         ...imageResult,
@@ -81,7 +88,8 @@ export async function extractAttachmentFromDrive(args: {
     const pdfResult = await extractPdfContent(
       accessToken,
       attachment.driveFileId,
-      textLimit
+      textLimit,
+      args.analytics,
     );
     if (!pdfResult) {
       return {
@@ -101,8 +109,7 @@ export async function extractAttachmentFromDrive(args: {
   } catch (error) {
     return {
       processingStatus: "failed",
-      processingError:
-        error instanceof Error ? error.message : "Unknown error during extraction",
+      processingError: error instanceof Error ? error.message : "Unknown error during extraction",
       driveThumbnailLink,
       driveWebViewLink,
     };
@@ -112,7 +119,7 @@ export async function extractAttachmentFromDrive(args: {
 async function fetchDriveMetadata(accessToken: string, driveFileId: string) {
   const response = await fetch(
     `https://www.googleapis.com/drive/v3/files/${driveFileId}?fields=id,name,thumbnailLink,webViewLink`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    { headers: { Authorization: `Bearer ${accessToken}` } },
   );
 
   if (!response.ok) {
@@ -135,19 +142,16 @@ async function callGemini(body: object): Promise<string | undefined> {
     throw new Error("GEMINI_API_KEY is not configured in Convex.");
   }
 
-  const response = await fetch(
-    `${GEMINI_API_BASE}/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }
-  );
+  const response = await fetch(`${GEMINI_API_BASE}/${GEMINI_MODEL}:generateContent?key=${apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 
   if (!response.ok) {
     const bodyText = await response.text();
     throw new Error(
-      `Gemini request failed with status ${response.status}${bodyText ? `: ${bodyText.slice(0, 200)}` : ""}`
+      `Gemini request failed with status ${response.status}${bodyText ? `: ${bodyText.slice(0, 200)}` : ""}`,
     );
   }
 
@@ -160,14 +164,45 @@ async function callGemini(body: object): Promise<string | undefined> {
   return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || undefined;
 }
 
+async function recordGeminiUsage(args: {
+  analytics?: {
+    ctx: Pick<ActionCtx, "runMutation">;
+    userId: Id<"users">;
+  };
+  model: string;
+  operation: string;
+  status: "success" | "error";
+  latencyMs: number;
+  metadata?: Record<string, string>;
+}) {
+  if (!args.analytics) {
+    return;
+  }
+  await args.analytics.ctx.runMutation(internal.analytics.recordAiUsage, {
+    userId: args.analytics.userId,
+    provider: "google",
+    model: args.model,
+    operation: args.operation,
+    feature: "attachment_extraction",
+    status: args.status,
+    latencyMs: args.latencyMs,
+    costAvailability: "unavailable",
+    metadata: args.metadata,
+  });
+}
+
 async function extractImageWithGemini(
   accessToken: string,
   driveFileId: string,
-  filename: string
+  filename: string,
+  analytics?: {
+    ctx: Pick<ActionCtx, "runMutation">;
+    userId: Id<"users">;
+  },
 ): Promise<string | undefined> {
   const response = await fetch(
     `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    { headers: { Authorization: `Bearer ${accessToken}` } },
   );
   if (!response.ok) {
     throw new Error("Could not download image attachment from Google Drive");
@@ -177,34 +212,56 @@ async function extractImageWithGemini(
   const base64 = arrayBufferToBase64(buffer);
   const mimeType = response.headers.get("content-type") ?? "image/jpeg";
 
-  return callGemini({
-    contents: [
-      {
-        parts: [
-          {
-            text: `Describe this image concisely for personal memory context. Focus on readable text, dates, names, places, objects, and what is happening. Be specific and factual. File: ${filename}`,
-          },
-          {
-            inline_data: { mime_type: mimeType, data: base64 },
-          },
-        ],
-      },
-    ],
-    generationConfig: { maxOutputTokens: 500 },
-  });
+  const startedAt = Date.now();
+  try {
+    const result = await callGemini({
+      contents: [
+        {
+          parts: [
+            {
+              text: `Describe this image concisely for personal memory context. Focus on readable text, dates, names, places, objects, and what is happening. Be specific and factual. File: ${filename}`,
+            },
+            {
+              inline_data: { mime_type: mimeType, data: base64 },
+            },
+          ],
+        },
+      ],
+      generationConfig: { maxOutputTokens: 500 },
+    });
+    await recordGeminiUsage({
+      analytics,
+      model: GEMINI_MODEL,
+      operation: "vision_extract",
+      status: "success",
+      latencyMs: Date.now() - startedAt,
+      metadata: { attachmentType: "image" },
+    });
+    return result;
+  } catch (error) {
+    await recordGeminiUsage({
+      analytics,
+      model: GEMINI_MODEL,
+      operation: "vision_extract",
+      status: "error",
+      latencyMs: Date.now() - startedAt,
+      metadata: { attachmentType: "image" },
+    });
+    throw error;
+  }
 }
 
 async function extractImageWithFallback(
   accessToken: string,
   driveFileId: string,
-  filename: string
+  filename: string,
+  analytics?: {
+    ctx: Pick<ActionCtx, "runMutation">;
+    userId: Id<"users">;
+  },
 ): Promise<AttachmentExtractionResult> {
   try {
-    const geminiText = await extractImageWithGemini(
-      accessToken,
-      driveFileId,
-      filename
-    );
+    const geminiText = await extractImageWithGemini(accessToken, driveFileId, filename, analytics);
     if (geminiText?.trim()) {
       return {
         processingStatus: "completed",
@@ -216,7 +273,8 @@ async function extractImageWithFallback(
     const openAiFallback = await extractImageWithOpenAI(
       accessToken,
       driveFileId,
-      filename
+      filename,
+      analytics,
     );
     if (openAiFallback) {
       return {
@@ -229,16 +287,15 @@ async function extractImageWithFallback(
     return {
       processingStatus: "failed",
       processingError:
-        geminiError instanceof Error
-          ? geminiError.message
-          : "Image extraction failed",
+        geminiError instanceof Error ? geminiError.message : "Image extraction failed",
     };
   }
 
   const openAiFallback = await extractImageWithOpenAI(
     accessToken,
     driveFileId,
-    filename
+    filename,
+    analytics,
   );
   if (openAiFallback) {
     return {
@@ -257,7 +314,11 @@ async function extractImageWithFallback(
 async function extractImageWithOpenAI(
   accessToken: string,
   driveFileId: string,
-  filename: string
+  filename: string,
+  analytics?: {
+    ctx: Pick<ActionCtx, "runMutation">;
+    userId: Id<"users">;
+  },
 ): Promise<string | undefined> {
   const client = getOpenAIClient();
   if (!client) {
@@ -266,7 +327,7 @@ async function extractImageWithOpenAI(
 
   const response = await fetch(
     `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    { headers: { Authorization: `Bearer ${accessToken}` } },
   );
   if (!response.ok) {
     return undefined;
@@ -277,28 +338,37 @@ async function extractImageWithOpenAI(
   const mimeType = response.headers.get("content-type") ?? "image/jpeg";
 
   try {
-    const visionResponse = await client.chat.completions.create({
+    const request = {
       model: "gpt-4o",
       max_tokens: 500,
       messages: [
         {
-          role: "user",
+          role: "user" as const,
           content: [
             {
-              type: "text",
+              type: "text" as const,
               text: `Describe this image concisely for personal memory context. Focus on readable text, dates, names, places, objects, and what is happening. Be specific and factual. File: ${filename}`,
             },
             {
-              type: "image_url",
+              type: "image_url" as const,
               image_url: {
                 url: `data:${mimeType};base64,${base64}`,
-                detail: "low",
+                detail: "low" as const,
               },
             },
           ],
         },
       ],
-    });
+    };
+    const visionResponse = analytics
+      ? await trackedChatCompletion(analytics.ctx, {
+          userId: analytics.userId,
+          feature: "attachment_extraction",
+          model: "gpt-4o",
+          metadata: { attachmentType: "image", fallback: "openai" },
+          request,
+        })
+      : await client.chat.completions.create(request);
 
     const extracted = extractTextContent(visionResponse.choices[0]?.message?.content);
     return extracted.trim() || undefined;
@@ -310,11 +380,15 @@ async function extractImageWithOpenAI(
 async function extractPdfContent(
   accessToken: string,
   driveFileId: string,
-  textLimit: number
+  textLimit: number,
+  analytics?: {
+    ctx: Pick<ActionCtx, "runMutation">;
+    userId: Id<"users">;
+  },
 ): Promise<{ text: string; method: "gemini" | "pdf-extract" } | undefined> {
   const response = await fetch(
     `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    { headers: { Authorization: `Bearer ${accessToken}` } },
   );
   if (!response.ok) {
     throw new Error("Could not download document attachment from Google Drive");
@@ -332,21 +406,43 @@ async function extractPdfContent(
   }
 
   const base64 = arrayBufferToBase64(buffer);
-  const description = await callGemini({
-    contents: [
-      {
-        parts: [
-          {
-            text: "Extract all readable text and key factual details from this PDF document. Return plain text only.",
-          },
-          {
-            inline_data: { mime_type: "application/pdf", data: base64 },
-          },
-        ],
-      },
-    ],
-    generationConfig: { maxOutputTokens: 800 },
-  });
+  const startedAt = Date.now();
+  let description: string | undefined;
+  try {
+    description = await callGemini({
+      contents: [
+        {
+          parts: [
+            {
+              text: "Extract all readable text and key factual details from this PDF document. Return plain text only.",
+            },
+            {
+              inline_data: { mime_type: "application/pdf", data: base64 },
+            },
+          ],
+        },
+      ],
+      generationConfig: { maxOutputTokens: 800 },
+    });
+    await recordGeminiUsage({
+      analytics,
+      model: GEMINI_MODEL,
+      operation: "pdf_extract",
+      status: "success",
+      latencyMs: Date.now() - startedAt,
+      metadata: { attachmentType: "document" },
+    });
+  } catch (error) {
+    await recordGeminiUsage({
+      analytics,
+      model: GEMINI_MODEL,
+      operation: "pdf_extract",
+      status: "error",
+      latencyMs: Date.now() - startedAt,
+      metadata: { attachmentType: "document" },
+    });
+    throw error;
+  }
 
   if (!description) {
     return undefined;
@@ -389,9 +485,7 @@ function extractTextFromPdfBytes(bytes: Uint8Array): string {
         .replace(/\\\\/g, "\\")
         .replace(/\\\(/g, "(")
         .replace(/\\\)/g, ")")
-        .replace(/\\([\d]{3})/g, (_, oct) =>
-          String.fromCharCode(parseInt(oct, 8))
-        );
+        .replace(/\\([\d]{3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)));
       const cleaned = decoded
         .replace(/[^\x20-\x7E\n\r\t]/g, " ")
         .replace(/\s+/g, " ")

@@ -60,7 +60,8 @@ const toMemoryNote = (m: Record<string, unknown>): MemoryNote => ({
   schedule: m.schedule as MemoryNote["schedule"] | undefined,
   reminderDate: getReminderDate(m as Parameters<typeof getReminderDate>[0]),
   isRecurring: (m.schedule as { isRecurring?: boolean } | undefined)?.isRecurring ?? false,
-  recurrenceType: (m.schedule as { recurrenceType?: MemoryNote["recurrenceType"] } | undefined)?.recurrenceType,
+  recurrenceType: (m.schedule as { recurrenceType?: MemoryNote["recurrenceType"] } | undefined)
+    ?.recurrenceType,
   capsuleUnlockDate: m.capsuleUnlockDate as string | undefined,
   isPublic: m.isPublic as boolean | undefined,
   googleEventId: m.googleEventId as string | undefined,
@@ -105,23 +106,21 @@ export function HomeOverviewSheet() {
       nowIso: new Date().toISOString(),
       nowMs: Date.now(),
     }),
-    []
+    [],
   );
 
   const flashbacks = useQuery(api.memories.flashbacks, token ? { token } : "skip") ?? [];
-  const reminderMemories = useQuery(
-    api.memories.reminders,
-    token ? { token, asOf: querySnapshot.nowIso } : "skip"
-  ) ?? [];
-  const upcomingReminders = useQuery(
-    api.memories.upcomingReminders,
-    token ? { token, asOf: querySnapshot.nowIso, range: upcomingRange } : "skip"
-  ) ?? [];
-  const stats = useQuery(
-    api.memories.stats,
-    token ? { token, asOf: querySnapshot.nowMs } : "skip"
-  ) ?? null;
-  const activeTopicSummaries = useQuery(api.userTopics.activeSummaries, token ? { token } : "skip") ?? [];
+  const reminderMemories =
+    useQuery(api.memories.reminders, token ? { token, asOf: querySnapshot.nowIso } : "skip") ?? [];
+  const upcomingReminders =
+    useQuery(
+      api.memories.upcomingReminders,
+      token ? { token, asOf: querySnapshot.nowIso, range: upcomingRange } : "skip",
+    ) ?? [];
+  const stats =
+    useQuery(api.memories.stats, token ? { token, asOf: querySnapshot.nowMs } : "skip") ?? null;
+  const activeTopicSummaries =
+    useQuery(api.userTopics.activeSummaries, token ? { token } : "skip") ?? [];
 
   const topReminders = useMemo(
     () =>
@@ -133,7 +132,7 @@ export function HomeOverviewSheet() {
           return aTime - bTime;
         })
         .slice(0, 4),
-    [reminderMemories]
+    [reminderMemories],
   );
 
   const totalMemories = stats?.totalMemories ?? 0;
@@ -150,7 +149,12 @@ export function HomeOverviewSheet() {
     >
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 40, gap: 18 }}
+        contentContainerStyle={{
+          paddingHorizontal: 20,
+          paddingTop: 8,
+          paddingBottom: 40,
+          gap: 18,
+        }}
       >
         <YStack gap={18}>
           <XStack alignItems="center" justifyContent="space-between" gap={12}>
@@ -202,7 +206,12 @@ export function HomeOverviewSheet() {
             {topReminders.length > 0 ? (
               <YStack gap={10}>
                 {topReminders.map((memory) => (
-                  <XStack key={memory._id} alignItems="center" justifyContent="space-between" gap={12}>
+                  <XStack
+                    key={memory._id}
+                    alignItems="center"
+                    justifyContent="space-between"
+                    gap={12}
+                  >
                     <YStack flex={1} gap={2}>
                       <Text fontSize={14} fontWeight="700" color="$color" numberOfLines={1}>
                         {memory.title || "Untitled memory"}
@@ -254,7 +263,9 @@ export function HomeOverviewSheet() {
                     paddingHorizontal={12}
                     paddingVertical={6}
                     borderRadius={999}
-                    backgroundColor={upcomingRange === range ? theme.primary.val + "22" : "$secondary"}
+                    backgroundColor={
+                      upcomingRange === range ? theme.primary.val + "22" : "$secondary"
+                    }
                     borderWidth={1}
                     borderColor={upcomingRange === range ? theme.primary.val : "$borderColor"}
                   >
@@ -273,7 +284,12 @@ export function HomeOverviewSheet() {
             {upcomingReminders.length > 0 ? (
               <YStack gap={10}>
                 {(upcomingReminders as MemoryItem[]).map((memory) => (
-                  <XStack key={memory._id} alignItems="center" justifyContent="space-between" gap={12}>
+                  <XStack
+                    key={memory._id}
+                    alignItems="center"
+                    justifyContent="space-between"
+                    gap={12}
+                  >
                     <YStack flex={1} gap={2}>
                       <Text fontSize={14} fontWeight="700" color="$color" numberOfLines={1}>
                         {memory.title || "Untitled memory"}
