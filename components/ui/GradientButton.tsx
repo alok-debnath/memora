@@ -10,6 +10,7 @@ interface GradientButtonProps {
   style?: ViewStyle;
   loading?: boolean;
   disabled?: boolean;
+  fullWidth?: boolean;
   variant?: "warm" | "golden";
 }
 
@@ -20,6 +21,7 @@ export function GradientButton({
   style,
   loading,
   disabled,
+  fullWidth = true,
   variant: _variant = "warm",
 }: GradientButtonProps) {
   return (
@@ -32,7 +34,7 @@ export function GradientButton({
       variant="gradient"
       style={style}
       size="md"
-      fullWidth={false}
+      fullWidth={fullWidth}
     />
   );
 }

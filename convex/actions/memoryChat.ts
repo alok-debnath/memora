@@ -145,6 +145,7 @@ type CardFlowStep =
     };
 
 type CardFlowPayload = {
+  chatTurnId?: string;
   assistantProvider: "openai";
   toolSequence: string[];
   searches: CardFlowSearch[];
@@ -795,6 +796,7 @@ async function searchMemories(
     query: string;
     userId: Id<"users">;
     recentMemories?: MemoryDoc[];
+    chatTurnId?: Id<"chatMessages">;
   },
 ): Promise<MemorySearchResult> {
   const recentMemories = args.recentMemories ?? (await listMemoriesForAI(ctx, args.userId, 100));
@@ -818,6 +820,8 @@ async function searchMemories(
     userId: args.userId,
     query: normalizedQuery,
     limit: 12,
+    chatTurnId: args.chatTurnId,
+    chatMessageId: args.chatTurnId,
   });
 
   return {
@@ -888,6 +892,7 @@ async function buildGroundingContext(
     userId: Id<"users">;
     recentMemories?: MemoryDoc[];
     skipInitialGroundingSearch?: boolean;
+    chatTurnId?: Id<"chatMessages">;
   },
 ): Promise<GroundingContext> {
   const isGenericOnly = isGenericOnlyQuery(args.message);
@@ -913,6 +918,7 @@ async function buildGroundingContext(
     query: args.message,
     userId: args.userId,
     recentMemories,
+    chatTurnId: args.chatTurnId,
   });
 
   return {
@@ -1070,6 +1076,10 @@ export const chat = action({
       content: args.message,
       role: "user",
     });
+    const analyticsLink = {
+      chatTurnId: chatMessageId,
+      chatMessageId,
+    } as const;
     await ctx.runMutation(internal.chat.clearSearchStatus, {
       userId: session._id,
     });
@@ -1140,6 +1150,7 @@ export const chat = action({
       userId: session._id,
       attachments: chatAttachments,
       setStreamingStatus,
+      chatTurnId: chatMessageId,
     });
     const flowAttachments: CardFlowAttachment[] = extractedChatAttachments.map((attachment) => ({
       name: attachment.name,
@@ -1214,6 +1225,7 @@ export const chat = action({
       });
 
       return {
+        chatTurnId: String(chatMessageId),
         assistantProvider: "openai",
         toolSequence,
         searches,
@@ -1289,6 +1301,7 @@ export const chat = action({
           userId: session._id,
           recentMemories: await getRecentMemoriesCache(),
           skipInitialGroundingSearch: shouldSkipInitialGroundingForCreate,
+          chatTurnId: chatMessageId,
         });
         const flowSearches: CardFlowSearch[] = [];
         const flowToolSequence: string[] = [];
@@ -1395,6 +1408,7 @@ export const chat = action({
             feature: "memory_chat",
             stage: "planner",
             visibility: "user_visible",
+            link: analyticsLink,
             request: {
               model: OPENAI_CHAT_MODEL,
               messages: conversation,
@@ -1813,6 +1827,7 @@ export const chat = action({
                 await ctx.runMutation(api.memories.update, {
                   token: args.token,
                   id: forcedUpdateTargetId as Id<"memories">,
+                  sourceChatTurnId: chatMessageId,
                   ...updateExistingPatch,
                 });
                 recentMemoriesCache = undefined;
@@ -1859,6 +1874,7 @@ export const chat = action({
                   await ctx.runMutation(api.memories.update, {
                     token: args.token,
                     id: existingCreated.id,
+                    sourceChatTurnId: chatMessageId,
                     ...memoryUpdatePatch,
                   });
                   recentMemoriesCache = undefined;
@@ -1897,12 +1913,14 @@ export const chat = action({
                   content: contentToSave,
                   currentTime: args.currentTime,
                   currentTimezone: effectiveTimezone,
+                  sourceChatTurnId: chatMessageId,
                 });
 
                 if (Object.keys(memoryUpdatePatch).length > 0) {
                   await ctx.runMutation(api.memories.update, {
                     token: args.token,
                     id: created.memoryId,
+                    sourceChatTurnId: chatMessageId,
                     ...memoryUpdatePatch,
                   });
                 }
@@ -1990,6 +2008,7 @@ export const chat = action({
                 await ctx.runMutation(api.memories.update, {
                   token: args.token,
                   id: targetMemoryId as Id<"memories">,
+                  sourceChatTurnId: chatMessageId,
                   ...(normalizedForWrite.title ? { title: normalizedForWrite.title } : {}),
                   ...(normalizedForWrite.content ? { content: normalizedForWrite.content } : {}),
                   ...(normalizedForWrite.people ? { people: normalizedForWrite.people } : {}),
@@ -2728,6 +2747,7 @@ async function extractChatAttachmentsForConversation(
     userId: Id<"users">;
     attachments: ChatAttachmentRecord[];
     setStreamingStatus: (status: StreamingStatus) => Promise<void>;
+    chatTurnId: Id<"chatMessages">;
   },
 ): Promise<ChatAttachmentExtraction[]> {
   if (args.attachments.length === 0) {
@@ -2826,6 +2846,8 @@ async function extractChatAttachmentsForConversation(
       analytics: {
         ctx,
         userId: args.userId,
+        chatTurnId: args.chatTurnId,
+        chatMessageId: args.chatTurnId,
       },
     });
 

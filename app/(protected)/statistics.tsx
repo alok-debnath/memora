@@ -2,7 +2,16 @@ import React, { useMemo, useState } from "react";
 import { ScrollView, View, useWindowDimensions } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useQuery } from "convex/react";
-import Svg, { Line, Path, Rect, Text as SvgText } from "react-native-svg";
+import Svg, {
+  Circle,
+  Defs,
+  Line,
+  LinearGradient as SvgLinearGradient,
+  Path,
+  Rect,
+  Stop,
+  Text as SvgText,
+} from "react-native-svg";
 import Animated, { FadeInUp } from "react-native-reanimated";
 import { Text, XStack, YStack } from "tamagui";
 
@@ -145,45 +154,98 @@ function TimelineChart({
   lineColor: string;
 }) {
   const width = Math.max(280, data.length * 24);
-  const height = 160;
-  const chartHeight = 106;
+  const height = 184;
+  const chartTop = 16;
+  const chartHeight = 110;
+  const chartBottom = chartTop + chartHeight;
   const barWidth = Math.max(8, Math.min(14, width / Math.max(data.length * 2, 1)));
   const step = width / Math.max(data.length, 1);
   const maxBar = Math.max(1, ...data.map((item) => item.primaryValue));
   const maxLine = Math.max(1, ...data.map((item) => item.secondaryValue));
   const linePoints = data.map((item, index) => {
     const x = index * step + step / 2;
-    const y = chartHeight - (item.secondaryValue / maxLine) * chartHeight;
+    const y = chartBottom - (item.secondaryValue / maxLine) * chartHeight;
     return { x, y };
   });
   const path = linePoints
     .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
     .join(" ");
+  const areaPath =
+    linePoints.length > 1
+      ? `${path} L ${linePoints[linePoints.length - 1]?.x ?? 0} ${chartBottom} L ${
+          linePoints[0]?.x ?? 0
+        } ${chartBottom} Z`
+      : "";
+  const peakBar = data.reduce(
+    (best, item) => (item.primaryValue > best.primaryValue ? item : best),
+    data[0] ?? { dayKey: "", primaryValue: 0, secondaryValue: 0 },
+  );
+  const peakLine = data.reduce(
+    (best, item) => (item.secondaryValue > best.secondaryValue ? item : best),
+    data[0] ?? { dayKey: "", primaryValue: 0, secondaryValue: 0 },
+  );
+  const gridValues = [0.25, 0.5, 0.75, 1];
+  const axisColor = "#7A7A7A";
 
   return (
     <Svg width={width} height={height}>
+      <Defs>
+        <SvgLinearGradient id="aiAreaFade" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0%" stopColor={lineColor} stopOpacity={0.26} />
+          <Stop offset="100%" stopColor={lineColor} stopOpacity={0.02} />
+        </SvgLinearGradient>
+      </Defs>
+      {gridValues.map((value) => {
+        const y = chartBottom - value * chartHeight;
+        return (
+          <Line
+            key={`grid-${value}`}
+            x1={0}
+            y1={y}
+            x2={width}
+            y2={y}
+            stroke="#B8B8B8"
+            strokeOpacity={value === 1 ? 0.2 : 0.1}
+            strokeDasharray="4 6"
+          />
+        );
+      })}
+      {linePoints.length > 1 ? <Path d={areaPath} fill="url(#aiAreaFade)" /> : null}
       {data.map((item, index) => {
         const x = index * step + step / 2 - barWidth / 2;
         const barHeight = (item.primaryValue / maxBar) * chartHeight;
         const isTick =
           index === 0 || index === data.length - 1 || index === Math.floor(data.length / 2);
+        const isPeakBar = item.dayKey === peakBar.dayKey && item.primaryValue > 0;
         return (
           <React.Fragment key={item.dayKey}>
             <Rect
               x={x}
-              y={chartHeight - barHeight}
+              y={chartBottom - barHeight}
               width={barWidth}
               height={Math.max(4, barHeight)}
               rx={5}
               fill={barColor}
-              opacity={0.8}
+              opacity={isPeakBar ? 0.96 : 0.78}
             />
+            {isPeakBar ? (
+              <Rect
+                x={x - 2}
+                y={chartBottom - barHeight - 4}
+                width={barWidth + 4}
+                height={Math.max(8, barHeight + 4)}
+                rx={7}
+                stroke={barColor}
+                strokeOpacity={0.24}
+                fill="transparent"
+              />
+            ) : null}
             {isTick ? (
               <SvgText
                 x={index * step + step / 2}
-                y={height - 8}
+                y={height - 16}
                 fontSize={10}
-                fill="#7A7A7A"
+                fill={axisColor}
                 textAnchor="middle"
               >
                 {formatDateLabel(item.dayKey)}
@@ -193,19 +255,27 @@ function TimelineChart({
         );
       })}
       {linePoints.length > 1 ? (
-        <Path d={path} fill="none" stroke={lineColor} strokeWidth={2.5} />
+        <Path d={path} fill="none" stroke={lineColor} strokeWidth={3} strokeLinecap="round" />
       ) : null}
       {linePoints.map((point, index) => (
-        <Rect
+        <Circle
           key={`${data[index]?.dayKey}-dot`}
-          x={point.x - 2}
-          y={point.y - 2}
-          width={4}
-          height={4}
-          rx={2}
+          cx={point.x}
+          cy={point.y}
+          r={data[index]?.dayKey === peakLine.dayKey && data[index]?.secondaryValue > 0 ? 4.5 : 3}
           fill={lineColor}
+          stroke="#FFFFFF"
+          strokeWidth={1.5}
         />
       ))}
+      <Line
+        x1={0}
+        y1={chartBottom}
+        x2={width}
+        y2={chartBottom}
+        stroke="#B8B8B8"
+        strokeOpacity={0.12}
+      />
     </Svg>
   );
 }
@@ -277,7 +347,7 @@ export default function AnalyticsScreen() {
   const theme = useAppTheme();
   const { token } = useAuth();
   const { width: windowWidth } = useWindowDimensions();
-  const [range, setRange] = useState<RangeKey>("30d");
+  const [range, setRange] = useState<RangeKey>("7d");
   const [detailPanel, setDetailPanel] = useState<"none" | "models" | "events" | "features">("none");
   const isCompact = windowWidth < 720;
   const contentWidth = Math.min(windowWidth - 32, 1040);
@@ -304,6 +374,49 @@ export default function AnalyticsScreen() {
   }, [overview]);
 
   const topModels = useMemo(() => aiBreakdown.slice(0, 5), [aiBreakdown]);
+  const topBackgroundFeature = useMemo(
+    () => aiFeatureBreakdown.find((item) => item.visibility === "background") ?? null,
+    [aiFeatureBreakdown],
+  );
+  const actionToOpRatio = useMemo(() => {
+    const actions = overview?.rangeTotals.aiActions ?? 0;
+    const ops = overview?.rangeTotals.aiRequests ?? 0;
+    if (actions <= 0 || ops <= 0) return null;
+    return ops / actions;
+  }, [overview]);
+  const usageFlowStats = useMemo(() => {
+    const timeline = overview?.timeline ?? [];
+    const totals = timeline.reduce(
+      (acc, item) => {
+        acc.searches += item.searches ?? 0;
+        acc.aiRequests += item.aiRequests ?? 0;
+        return acc;
+      },
+      { searches: 0, aiRequests: 0 },
+    );
+    const peakSearchDay = timeline.reduce(
+      (best, item) => ((item.searches ?? 0) > (best?.searches ?? 0) ? item : best),
+      timeline[0],
+    );
+    const peakAiDay = timeline.reduce(
+      (best, item) => ((item.aiRequests ?? 0) > (best?.aiRequests ?? 0) ? item : best),
+      timeline[0],
+    );
+
+    return {
+      searches: totals.searches,
+      aiRequests: totals.aiRequests,
+      peakSearchDay,
+      peakAiDay,
+    };
+  }, [overview]);
+  const usageFlowScale = useMemo(() => {
+    const timeline = overview?.timeline ?? [];
+    return {
+      maxSearches: Math.max(1, ...timeline.map((item) => item.searches ?? 0)),
+      maxAiCalls: Math.max(1, ...timeline.map((item) => item.aiRequests ?? 0)),
+    };
+  }, [overview]);
 
   return (
     <MorePageScaffold title="Analytics" scrollProps={{ contentContainerStyle: { gap: 18 } }}>
@@ -394,66 +507,143 @@ export default function AnalyticsScreen() {
 
       <Animated.View entering={FadeInUp.delay(240).duration(360)}>
         <SectionLabel>Usage Flow</SectionLabel>
-        <Card style={{ borderRadius: 26, overflow: "hidden" }}>
-          <XStack
-            alignItems={isCompact ? "flex-start" : "center"}
-            justifyContent="space-between"
-            flexWrap="wrap"
-            gap={10}
-            marginBottom={12}
-          >
-            <YStack gap={2} flex={1} minWidth={isCompact ? "100%" : 0}>
-              <Text fontSize={18} fontFamily="$heading" fontWeight="700" color="$color">
-                Search vs AI load
-              </Text>
-              <Text fontSize={13} fontFamily="$body" color="$colorMuted">
-                Bars show searches. The line tracks AI requests over the same range.
-              </Text>
-            </YStack>
-            <XStack gap={10} flexWrap="wrap">
-              <XStack alignItems="center" gap={6}>
-                <View
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: 5,
-                    backgroundColor: theme.primary.val,
-                  }}
-                />
-                <Text fontSize={12} color="$colorMuted">
-                  Searches
+        <Card
+          style={{
+            borderRadius: 26,
+            overflow: "hidden",
+          }}
+        >
+          <YStack gap={0}>
+            <XStack
+              alignItems={isCompact ? "flex-start" : "center"}
+              justifyContent="space-between"
+              flexWrap="wrap"
+              gap={10}
+              marginBottom={12}
+            >
+              <YStack gap={2} flex={1} minWidth={isCompact ? "100%" : 0}>
+                <Text fontSize={18} fontFamily="$heading" fontWeight="700" color="$color">
+                  Search vs AI load
                 </Text>
-              </XStack>
-              <XStack alignItems="center" gap={6}>
-                <View
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: 5,
-                    backgroundColor: integrationAccentColors.openai,
-                  }}
-                />
-                <Text fontSize={12} color="$colorMuted">
-                  AI calls
+                <Text fontSize={13} fontFamily="$body" color="$colorMuted">
+                  Search demand and AI backend pressure plotted together across the selected window.
                 </Text>
+              </YStack>
+              <XStack gap={10} flexWrap="wrap">
+                <XStack alignItems="center" gap={6}>
+                  <View
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: 5,
+                      backgroundColor: theme.primary.val,
+                    }}
+                  />
+                  <Text fontSize={12} color="$colorMuted">
+                    Searches
+                  </Text>
+                </XStack>
+                <XStack alignItems="center" gap={6}>
+                  <View
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: 5,
+                      backgroundColor: integrationAccentColors.openai,
+                    }}
+                  />
+                  <Text fontSize={12} color="$colorMuted">
+                    AI calls
+                  </Text>
+                </XStack>
               </XStack>
             </XStack>
-          </XStack>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingRight: 8 }}
-          >
-            <TimelineChart
-              data={(overview?.timeline ?? []).map((item) => ({
-                dayKey: item.dayKey,
-                primaryValue: item.searches ?? 0,
-                secondaryValue: item.aiRequests,
-              }))}
-              barColor={theme.primary.val}
-              lineColor={integrationAccentColors.openai}
-            />
-          </ScrollView>
+            <XStack gap={10} flexWrap="wrap" marginBottom={14}>
+              <YStack
+                minWidth={isCompact ? 132 : 148}
+                paddingHorizontal={12}
+                paddingVertical={10}
+                borderRadius={18}
+                backgroundColor={withAlpha(theme.primary.val, "10")}
+                borderWidth={1}
+                borderColor={withAlpha(theme.primary.val, "18")}
+              >
+                <Text fontSize={11} color="$colorMuted">
+                  Searches in range
+                </Text>
+                <Text fontSize={18} fontFamily="$heading" fontWeight="700" color="$color">
+                  {formatCompactNumber(usageFlowStats.searches)}
+                </Text>
+              </YStack>
+              <YStack
+                minWidth={isCompact ? 132 : 148}
+                paddingHorizontal={12}
+                paddingVertical={10}
+                borderRadius={18}
+                backgroundColor={withAlpha(integrationAccentColors.openai, "10")}
+                borderWidth={1}
+                borderColor={withAlpha(integrationAccentColors.openai, "18")}
+              >
+                <Text fontSize={11} color="$colorMuted">
+                  AI calls in range
+                </Text>
+                <Text fontSize={18} fontFamily="$heading" fontWeight="700" color="$color">
+                  {formatCompactNumber(usageFlowStats.aiRequests)}
+                </Text>
+              </YStack>
+              <YStack
+                flex={1}
+                minWidth={isCompact ? "100%" : 220}
+                paddingHorizontal={12}
+                paddingVertical={10}
+                borderRadius={18}
+                backgroundColor="$background"
+                borderWidth={1}
+                borderColor="$borderColor"
+              >
+                <Text fontSize={11} color="$colorMuted">
+                  Peak days
+                </Text>
+                <Text fontSize={13} fontFamily="$body" fontWeight="600" color="$color">
+                  Search peak:{" "}
+                  {usageFlowStats.peakSearchDay
+                    ? `${formatDateLabel(usageFlowStats.peakSearchDay.dayKey)}`
+                    : "No data"}
+                </Text>
+                <Text fontSize={12} color="$colorMuted">
+                  AI peak:{" "}
+                  {usageFlowStats.peakAiDay
+                    ? formatDateLabel(usageFlowStats.peakAiDay.dayKey)
+                    : "No data"}
+                </Text>
+              </YStack>
+            </XStack>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingRight: 8, paddingBottom: 2 }}
+            >
+              <YStack>
+                <XStack justifyContent="space-between" alignItems="center" marginBottom={8}>
+                  <Text fontSize={10} color="$colorMuted">
+                    {formatCompactNumber(usageFlowScale.maxSearches)} searches
+                  </Text>
+                  <Text fontSize={10} color="$colorMuted">
+                    {formatCompactNumber(usageFlowScale.maxAiCalls)} AI calls
+                  </Text>
+                </XStack>
+                <TimelineChart
+                  data={(overview?.timeline ?? []).map((item) => ({
+                    dayKey: item.dayKey,
+                    primaryValue: item.searches ?? 0,
+                    secondaryValue: item.aiRequests,
+                  }))}
+                  barColor={theme.primary.val}
+                  lineColor={integrationAccentColors.openai}
+                />
+              </YStack>
+            </ScrollView>
+          </YStack>
         </Card>
       </Animated.View>
 
@@ -518,6 +708,10 @@ export default function AnalyticsScreen() {
               <Text fontSize={17} fontFamily="$heading" fontWeight="700" color="$color">
                 Model spend and token load
               </Text>
+              <Text fontSize={13} color="$colorMuted" lineHeight={18}>
+                User-visible actions stay compact here. Detailed pipeline work, fallback chains, and
+                recent operations live in the drilldowns.
+              </Text>
               <XStack gap={10} flexWrap="wrap">
                 <Badge
                   label={`${formatCompactNumber(overview?.rangeTotals.aiInputTokens ?? 0)} input tokens`}
@@ -538,6 +732,12 @@ export default function AnalyticsScreen() {
                       : statusAccentColors.success
                   }
                 />
+                {actionToOpRatio ? (
+                  <Badge
+                    label={`${actionToOpRatio.toFixed(1)} ops / action`}
+                    color={statusAccentColors.warning}
+                  />
+                ) : null}
               </XStack>
             </YStack>
             <YStack
@@ -559,14 +759,19 @@ export default function AnalyticsScreen() {
                   ? formatFeatureLabel(overview.topModel.feature)
                   : "Waiting for tracked usage"}
               </Text>
+              {topBackgroundFeature ? (
+                <Text fontSize={12} color="$colorMuted">
+                  Top background: {formatFeatureLabel(topBackgroundFeature.feature)}
+                </Text>
+              ) : null}
             </YStack>
           </XStack>
 
           {topModels.length > 0 ? (
             <YStack marginTop={16} gap={10}>
-              {topModels.slice(0, 3).map((item) => (
+              {topModels.slice(0, 3).map((item, index) => (
                 <XStack
-                  key={`${item.provider}-${item.model}-${item.operation}-${item.feature}`}
+                  key={`${item.provider}-${item.model}-${item.operation}-${item.feature}-${index}`}
                   alignItems="center"
                   gap={10}
                 >
@@ -702,40 +907,73 @@ export default function AnalyticsScreen() {
                 </Text>
                 {aiFeatureBreakdown.length > 0 ? (
                   aiFeatureBreakdown.map((item) => (
-                    <XStack
+                    <YStack
                       key={`${item.feature}-${item.stage}-${item.visibility}`}
-                      alignItems="center"
-                      gap={10}
+                      gap={8}
+                      padding={12}
+                      borderRadius={18}
+                      backgroundColor={withAlpha(
+                        item.visibility === "user_visible"
+                          ? theme.primary.val
+                          : integrationAccentColors.openai,
+                        "08",
+                      )}
+                      borderWidth={1}
+                      borderColor={withAlpha(
+                        item.visibility === "user_visible"
+                          ? theme.primary.val
+                          : integrationAccentColors.openai,
+                        "20",
+                      )}
                     >
-                      <YStack
-                        width={10}
-                        height={10}
-                        borderRadius={5}
-                        backgroundColor={
-                          item.visibility === "user_visible"
-                            ? theme.primary.val
-                            : integrationAccentColors.openai
-                        }
-                      />
-                      <YStack flex={1}>
-                        <Text fontSize={13} fontWeight="700" color="$color">
-                          {formatFeatureLabel(item.feature)}
-                        </Text>
-                        <Text fontSize={12} color="$colorMuted">
-                          {formatStageLabel(item.stage)} ·{" "}
-                          {item.visibility === "user_visible" ? "user visible" : "background"} ·{" "}
-                          {formatCompactNumber(item.requests)} calls
-                        </Text>
-                      </YStack>
-                      <YStack alignItems="flex-end">
-                        <Text fontSize={13} fontWeight="700" color="$color">
-                          {formatUsdMicros(item.costUsdMicros)}
-                        </Text>
-                        <Text fontSize={11} color="$colorMuted">
-                          {formatCompactNumber(item.totalTokens)} tokens
-                        </Text>
-                      </YStack>
-                    </XStack>
+                      <XStack alignItems="center" gap={10}>
+                        <YStack
+                          width={10}
+                          height={10}
+                          borderRadius={5}
+                          backgroundColor={
+                            item.visibility === "user_visible"
+                              ? theme.primary.val
+                              : integrationAccentColors.openai
+                          }
+                        />
+                        <YStack flex={1}>
+                          <Text fontSize={13} fontWeight="700" color="$color">
+                            {formatFeatureLabel(item.feature)}
+                          </Text>
+                          <Text fontSize={12} color="$colorMuted">
+                            {formatStageLabel(item.stage)} ·{" "}
+                            {item.visibility === "user_visible" ? "user visible" : "background"} ·{" "}
+                            {formatCompactNumber(item.requests)} calls
+                          </Text>
+                        </YStack>
+                        <YStack alignItems="flex-end">
+                          <Text fontSize={13} fontWeight="700" color="$color">
+                            {formatUsdMicros(item.costUsdMicros)}
+                          </Text>
+                          <Text fontSize={11} color="$colorMuted">
+                            {formatCompactNumber(item.totalTokens)} tokens
+                          </Text>
+                        </YStack>
+                      </XStack>
+                      <XStack gap={8} flexWrap="wrap">
+                        <Badge
+                          label={`${formatCompactNumber(item.inputTokens)} in`}
+                          color={integrationAccentColors.openai}
+                        />
+                        <Badge label={`${formatCompactNumber(item.outputTokens)} out`} />
+                        <Badge
+                          label={`${Math.round(
+                            item.requests > 0 ? ((item.errors ?? 0) / item.requests) * 100 : 0,
+                          )}% failures`}
+                          color={
+                            (item.errors ?? 0) > 0
+                              ? statusAccentColors.error
+                              : statusAccentColors.success
+                          }
+                        />
+                      </XStack>
+                    </YStack>
                   ))
                 ) : (
                   <Text fontSize={13} color="$colorMuted">
@@ -750,9 +988,9 @@ export default function AnalyticsScreen() {
             <Card style={{ borderRadius: 26 }}>
               <YStack gap={12}>
                 {aiBreakdown.length > 0 ? (
-                  aiBreakdown.map((item) => (
+                  aiBreakdown.map((item, index) => (
                     <XStack
-                      key={`${item.provider}-${item.model}-${item.operation}-${item.feature}`}
+                      key={`${item.provider}-${item.model}-${item.operation}-${item.feature}-${index}`}
                       alignItems="center"
                       gap={10}
                     >

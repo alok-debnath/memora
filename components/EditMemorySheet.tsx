@@ -43,6 +43,7 @@ import { integrationAccentColors, statusAccentColors } from "@/constants/colors"
 import { withAlpha } from "@/components/ui/themeHelpers";
 import type { MemoryNote } from "@/types/memory";
 import { getReminderDate, inferMemoryEntryKind } from "@/types/memoryKind";
+import { canUseGoogleDrive } from "@/lib/googleIntegration";
 
 const MANUAL_OPTIONS = [
   { value: "manual" as const, label: "Manual" },
@@ -100,9 +101,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
     api.integrations.getGoogleIntegration,
     token ? { token } : "skip",
   );
-  const driveConnected = !!(
-    googleIntegration?.connected && (googleIntegration as any).hasDriveScope
-  );
+  const driveConnected = canUseGoogleDrive(googleIntegration ?? null);
 
   const existingAttachments =
     useQuery(
@@ -136,7 +135,11 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
   const handleRequestDriveAccess = () => {
     Alert.alert(
       "Google Drive Required",
-      "Connect Google Drive in Profile → Integrations to attach files.",
+      googleIntegration?.connected
+        ? googleIntegration.hasDriveScope
+          ? "Turn Google Drive uploads back on in Profile → Integrations to attach files."
+          : "Reconnect Google in Profile → Integrations to grant Drive access."
+        : "Connect Google Drive in Profile → Integrations to attach files.",
       [{ text: "OK" }],
     );
   };

@@ -25,6 +25,7 @@ import { Dropdown, type IDropdownRef } from "react-native-element-dropdown";
 import { getTimeZones } from "@vvo/tzdb";
 import * as Google from "expo-auth-session/providers/google";
 import { makeRedirectUri } from "expo-auth-session";
+import { canUseGoogleCalendar, canUseGoogleDrive } from "@/lib/googleIntegration";
 
 type TimezoneOption = {
   value: string;
@@ -62,6 +63,57 @@ const ALL_TIMEZONE_OPTIONS: TimezoneOption[] = getTimeZones({
       ? a.value.localeCompare(b.value)
       : a.offsetInMinutes - b.offsetInMinutes,
   );
+
+function IntegrationFeatureRow({
+  theme,
+  icon,
+  title,
+  description,
+  value,
+  disabled,
+  onValueChange,
+}: {
+  theme: ReturnType<typeof useAppTheme>;
+  icon: keyof typeof Feather.glyphMap;
+  title: string;
+  description: string;
+  value: boolean;
+  disabled: boolean;
+  onValueChange: (value: boolean) => void;
+}) {
+  return (
+    <XStack alignItems="center" gap={12}>
+      <YStack
+        width={34}
+        height={34}
+        borderRadius={12}
+        alignItems="center"
+        justifyContent="center"
+        backgroundColor={theme.primary.val + "12"}
+      >
+        <Feather name={icon} size={16} color={theme.primary.val} />
+      </YStack>
+      <YStack flex={1} gap={2}>
+        <Text fontSize={14} fontFamily="$body" fontWeight="600" color="$color">
+          {title}
+        </Text>
+        <Text fontSize={12} fontFamily="$body" lineHeight={17} color="$colorMuted">
+          {description}
+        </Text>
+      </YStack>
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        disabled={disabled}
+        trackColor={{
+          true: theme.primary.val,
+          false: theme.borderColor.val,
+        }}
+        thumbColor={theme.textInverse.val}
+      />
+    </XStack>
+  );
+}
 
 export default function ProfileScreen() {
   const theme = useAppTheme();
@@ -111,7 +163,13 @@ export default function ProfileScreen() {
   });
   const connectGoogle = useAction(api.integrations.connectGoogle);
   const disconnectGoogle = useMutation(api.integrations.disconnectGoogle);
+  const updateGoogleIntegrationPreferences = useMutation(
+    api.integrations.updateGoogleIntegrationPreferences,
+  );
   const [isConnectingGoogle, setIsConnectingGoogle] = React.useState(false);
+  const [updatingGoogleFeature, setUpdatingGoogleFeature] = React.useState<
+    "calendar" | "drive" | null
+  >(null);
   const googlePlatform =
     Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : "web";
   const googleRedirectUri = React.useMemo(() => {
@@ -194,6 +252,50 @@ export default function ProfileScreen() {
       promptAsync();
     }
   };
+
+  const handleToggleGoogleFeature = async (feature: "calendar" | "drive", value: boolean) => {
+    if (!token || !googleIntegration?.connected) return;
+    setUpdatingGoogleFeature(feature);
+    try {
+      await updateGoogleIntegrationPreferences({
+        token,
+        ...(feature === "calendar" ? { calendarEnabled: value } : { driveEnabled: value }),
+      });
+      showToast({
+        title: value
+          ? feature === "calendar"
+            ? "Google Calendar enabled"
+            : "Google Drive enabled"
+          : feature === "calendar"
+            ? "Google Calendar disabled"
+            : "Google Drive disabled",
+        message: value
+          ? feature === "calendar"
+            ? "Reminder sync is available again."
+            : "File uploads and attachments are available again."
+          : feature === "calendar"
+            ? "Future reminder sync stays off until you turn it back on."
+            : "New file uploads stay off until you turn it back on.",
+        tone: "success",
+      });
+    } catch (error) {
+      showToast({
+        title: "Update failed",
+        message:
+          error instanceof Error ? error.message : "Unable to update Google integration settings.",
+        tone: "error",
+      });
+    } finally {
+      setUpdatingGoogleFeature(null);
+    }
+  };
+
+  const canUseCalendar = canUseGoogleCalendar(googleIntegration ?? null);
+  const canUseDrive = canUseGoogleDrive(googleIntegration ?? null);
+  const showGoogleFeatureControls = !!(
+    googleIntegration?.connected &&
+    (googleIntegration.hasCalendarScope || googleIntegration.hasDriveScope)
+  );
 
   React.useEffect(() => {
     setDisplayName(user?.name ?? "");
@@ -828,6 +930,83 @@ export default function ProfileScreen() {
               thumbColor={theme.textInverse.val}
             />
           </XStack>
+          {showGoogleFeatureControls ? (
+            <YStack
+              marginTop={14}
+              marginLeft={4}
+              borderRadius={20}
+              borderWidth={1}
+              borderColor={theme.borderColor.val}
+              backgroundColor={theme.background.val}
+              overflow="hidden"
+            >
+              <XStack
+                alignItems="center"
+                justifyContent="space-between"
+                paddingHorizontal={14}
+                paddingTop={12}
+                paddingBottom={10}
+              >
+                <Text
+                  fontSize={11}
+                  fontFamily="$heading"
+                  fontWeight="600"
+                  letterSpacing={0.8}
+                  textTransform="uppercase"
+                  color="$colorMuted"
+                >
+                  Google Capabilities
+                </Text>
+                <YStack
+                  width={8}
+                  height={8}
+                  borderRadius={4}
+                  backgroundColor={theme.primary.val}
+                  opacity={0.85}
+                />
+              </XStack>
+
+              <YStack height={StyleSheet.hairlineWidth} backgroundColor="$borderColor" />
+
+              <YStack padding={14} gap={12}>
+                {googleIntegration.hasCalendarScope ? (
+                  <IntegrationFeatureRow
+                    theme={theme}
+                    icon="calendar"
+                    title="Calendar"
+                    description={
+                      canUseCalendar
+                        ? "AI and reminder edits can sync to Google Calendar."
+                        : "Future reminder sync is paused. Existing events stay as-is."
+                    }
+                    value={googleIntegration.calendarEnabled}
+                    onValueChange={(value) => void handleToggleGoogleFeature("calendar", value)}
+                    disabled={updatingGoogleFeature !== null || isConnectingGoogle}
+                  />
+                ) : null}
+
+                {googleIntegration.hasCalendarScope && googleIntegration.hasDriveScope ? (
+                  <YStack height={StyleSheet.hairlineWidth} backgroundColor="$borderColor" />
+                ) : null}
+
+                {googleIntegration.hasDriveScope ? (
+                  <IntegrationFeatureRow
+                    theme={theme}
+                    icon="paperclip"
+                    title="Drive"
+                    description={
+                      canUseDrive
+                        ? "Attach new files from chat and memory screens."
+                        : "New uploads are paused. Existing files remain viewable."
+                    }
+                    value={googleIntegration.driveEnabled}
+                    onValueChange={(value) => void handleToggleGoogleFeature("drive", value)}
+                    disabled={updatingGoogleFeature !== null || isConnectingGoogle}
+                  />
+                ) : null}
+              </YStack>
+            </YStack>
+          ) : null}
         </Card>
       </Animated.View>
 

@@ -35,6 +35,7 @@ import { SearchBar } from "@/components/ui/SearchBar";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { statusAccentColors } from "@/constants/colors";
+import { canUseGoogleCalendar } from "@/lib/googleIntegration";
 
 const INITIAL_FEED_SIZE = 6;
 
@@ -207,6 +208,11 @@ export default function HomeScreen() {
   const upcomingReminders = upcomingRemindersRaw ?? [];
   const stats =
     useQuery(api.memories.stats, token ? { token, asOf: querySnapshot.nowMs } : "skip") ?? null;
+  const googleIntegration = useQuery(
+    api.integrations.getGoogleIntegration,
+    token ? { token } : "skip",
+  );
+  const calendarSyncEnabled = canUseGoogleCalendar(googleIntegration ?? null);
 
   const semanticSearch = useAction(api.actions.semanticSearch.search);
   const reconcileTopics = useAction(api.actions.manageTopics.reconcileTopics);
@@ -650,8 +656,9 @@ export default function HomeScreen() {
                     memory.googleSyncMessage
                   );
                   const showTriggerSyncAction =
-                    !hasGoogleSyncInfo || memory.googleSyncStatus === "failed";
-                  const showRemoveSyncAction = hasGoogleSyncInfo;
+                    calendarSyncEnabled &&
+                    (!hasGoogleSyncInfo || memory.googleSyncStatus === "failed");
+                  const showRemoveSyncAction = calendarSyncEnabled && hasGoogleSyncInfo;
                   return (
                     <ContextMenu
                       key={memory._id}

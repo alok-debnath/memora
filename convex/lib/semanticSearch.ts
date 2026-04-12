@@ -69,6 +69,9 @@ export async function runSemanticSearch(
     query: string;
     limit?: number;
     forceDeepSearch?: boolean;
+    chatTurnId?: Id<"chatMessages">;
+    chatMessageId?: Id<"chatMessages">;
+    conversationId?: string;
   },
 ): Promise<{ results: SearchableMemory[]; isCached: boolean }> {
   const maxResults = args.limit ? Math.min(args.limit, 20) : 10;
@@ -116,6 +119,11 @@ export async function runSemanticSearch(
             visibility: "background",
             input: expandedQuery,
             metadata: { stage: "semantic_search" },
+            link: {
+              chatTurnId: args.chatTurnId,
+              chatMessageId: args.chatMessageId,
+              conversationId: args.conversationId,
+            },
           });
           await ctx.runMutation(internal.memories.setQueryCache, {
             userId: args.userId,
@@ -237,6 +245,9 @@ export async function runSemanticSearch(
   if (rankedIds.length === 0) {
     await ctx.runMutation(internal.analytics.recordSearchUsage, {
       userId: args.userId,
+      chatTurnId: args.chatTurnId,
+      chatMessageId: args.chatMessageId,
+      conversationId: args.conversationId,
       feature: args.forceDeepSearch ? "deep_search" : "memory_search",
       status: "success",
       latencyMs: Date.now() - startedAt,
@@ -267,6 +278,9 @@ export async function runSemanticSearch(
 
   await ctx.runMutation(internal.analytics.recordSearchUsage, {
     userId: args.userId,
+    chatTurnId: args.chatTurnId,
+    chatMessageId: args.chatMessageId,
+    conversationId: args.conversationId,
     feature: args.forceDeepSearch ? "deep_search" : "memory_search",
     status: "success",
     latencyMs: Date.now() - startedAt,

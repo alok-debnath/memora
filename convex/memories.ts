@@ -36,6 +36,27 @@ function isActiveMemory(m: { status: string }): boolean {
   return m.status === "active";
 }
 
+async function getGoogleIntegrationForUser(ctx: MutationCtx | QueryCtx, userId: Id<"users">) {
+  return await ctx.db
+    .query("userIntegrations")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .unique();
+}
+
+function isCalendarSyncEnabled(
+  integration?: {
+    grantedScopes?: string[];
+    calendarEnabled?: boolean;
+  } | null,
+) {
+  if (!integration) return false;
+  const grantedScopes = integration.grantedScopes ?? [];
+  const hasCalendarScope =
+    grantedScopes.includes("https://www.googleapis.com/auth/calendar") ||
+    grantedScopes.includes("https://www.googleapis.com/auth/calendar.events");
+  return hasCalendarScope && integration.calendarEnabled !== false;
+}
+
 async function replaceTopicLinksForMemory(ctx: MutationCtx, memory: Doc<"memories">) {
   const existingLinks = await ctx.db
     .query("memoryTopicLinks")
@@ -717,6 +738,7 @@ export const create = mutation({
     schedule: v.optional(memoryScheduleValidator),
     capsuleUnlockDate: v.optional(v.string()),
     skipAiProcessing: v.optional(v.boolean()),
+    sourceChatTurnId: v.optional(v.id("chatMessages")),
   },
   handler: async (ctx, args) => {
     const user = await resolveUser(ctx, args.token);
@@ -732,6 +754,9 @@ export const create = mutation({
     if (scheduling.schedule?.dueAt && !scheduling.entryKind) {
       scheduling.entryKind = "reminder";
     }
+    const googleIntegration =
+      scheduling.entryKind === "reminder" ? await getGoogleIntegrationForUser(ctx, userId) : null;
+    const canSyncReminderToGoogle = isCalendarSyncEnabled(googleIntegration);
     const memoryId = await ctx.db.insert("memories", {
       userId,
       title: args.title,
@@ -748,7 +773,7 @@ export const create = mutation({
       capsuleUnlockDate: args.capsuleUnlockDate,
       embeddingState: "missing",
       status: "active",
-      ...(scheduling.entryKind === "reminder"
+      ...(scheduling.entryKind === "reminder" && canSyncReminderToGoogle
         ? {
             googleSyncStatus: "pending" as const,
             googleSyncMessage: "Reminder saved. Waiting to sync to Google Calendar...",
@@ -765,7 +790,7 @@ export const create = mutation({
       });
 
       // Sync to Google Calendar if it's a reminder
-      if (createdMemory.entryKind === "reminder") {
+      if (createdMemory.entryKind === "reminder" && canSyncReminderToGoogle) {
         await ctx.runMutation(internal.integrations.queueReminderSync, {
           memoryId: createdMemory._id,
           pendingMessage: "Reminder saved. Waiting to sync to Google Calendar...",
@@ -779,6 +804,7 @@ export const create = mutation({
         content: args.content ?? "",
         userTimezone: user.timezone,
         currentTime: new Date().toISOString(),
+        sourceChatTurnId: args.sourceChatTurnId,
       });
     }
 
@@ -804,6 +830,7 @@ export const update = mutation({
     schedule: v.optional(v.union(memoryScheduleValidator, v.null())),
     nextDueAt: v.optional(v.union(v.string(), v.null())),
     capsuleUnlockDate: v.optional(v.union(v.string(), v.null())),
+    sourceChatTurnId: v.optional(v.id("chatMessages")),
   },
   handler: async (ctx, args) => {
     const user = await resolveUser(ctx, args.token);
@@ -889,6 +916,10 @@ export const update = mutation({
         googleSyncDesiredFingerprint: undefined,
       });
     } else if (updatedMemory && updatedMemory.entryKind === "reminder") {
+      const googleIntegration = await getGoogleIntegrationForUser(ctx, userId);
+      if (!isCalendarSyncEnabled(googleIntegration)) {
+        return;
+      }
       await ctx.runMutation(internal.integrations.queueReminderSync, {
         memoryId: updatedMemory._id,
         pendingMessage: "Reminder updated. Syncing changes to Google Calendar...",
@@ -908,6 +939,7 @@ export const update = mutation({
           "",
         userTimezone: user.timezone,
         currentTime: new Date().toISOString(),
+        sourceChatTurnId: args.sourceChatTurnId,
       });
     }
   },
@@ -1043,6 +1075,10 @@ export const restore = mutation({
     }
 
     if (nextMemory.entryKind === "reminder") {
+      const googleIntegration = await getGoogleIntegrationForUser(ctx, userId);
+      if (!isCalendarSyncEnabled(googleIntegration)) {
+        return;
+      }
       await ctx.runMutation(internal.integrations.queueReminderSync, {
         memoryId: args.id,
         pendingMessage: "Reminder restored. Syncing to Google Calendar...",
@@ -1592,6 +1628,10 @@ export const uncomplete = mutation({
 
     // Re-sync to Google Calendar if it's a reminder
     if (nextMemory.entryKind === "reminder") {
+      const googleIntegration = await getGoogleIntegrationForUser(ctx, userId);
+      if (!isCalendarSyncEnabled(googleIntegration)) {
+        return;
+      }
       await ctx.runMutation(internal.integrations.queueReminderSync, {
         memoryId: nextMemory._id,
         pendingMessage: "Reminder restored. Syncing to Google Calendar...",

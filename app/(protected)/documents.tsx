@@ -14,6 +14,7 @@ import { useDrivePreviewUrls } from "@/hooks/useDrivePreviewUrls";
 import { useAppToast } from "@/components/ui/toast";
 import { statusAccentColors } from "@/constants/colors";
 import { useUIStore } from "@/store/ui";
+import { canUseGoogleDrive } from "@/lib/googleIntegration";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const GRID_PADDING = 16;
@@ -75,9 +76,7 @@ export default function FilesScreen() {
   const isLoading = attachmentsResult === undefined;
   const previewUrls = useDrivePreviewUrls(attachments, token);
 
-  const driveConnected = !!(
-    googleIntegration?.connected && (googleIntegration as any).hasDriveScope
-  );
+  const driveConnected = canUseGoogleDrive(googleIntegration ?? null);
 
   const renderItem = useCallback(
     ({ item, index }: { item: AttachmentDoc; index: number }) => {
@@ -154,7 +153,9 @@ export default function FilesScreen() {
         <Pressable
           onPress={() =>
             showToast({
-              title: "Connect Google in Settings to sync files",
+              title: googleIntegration?.connected
+                ? "Google Drive uploads are turned off"
+                : "Connect Google in Settings to sync files",
               tone: "info",
             })
           }
@@ -168,7 +169,11 @@ export default function FilesScreen() {
         >
           <Feather name="alert-circle" size={14} color={colors.primary} />
           <Text fontSize={12} color={colors.text} flex={1}>
-            Connect Google Drive to store and sync files
+            {googleIntegration?.connected
+              ? googleIntegration.hasDriveScope
+                ? "Turn Google Drive uploads back on in Profile to add new files"
+                : "Reconnect Google in Profile to grant Drive upload access"
+              : "Connect Google Drive to store and sync files"}
           </Text>
           <Feather name="external-link" size={14} color={colors.textSecondary} />
         </Pressable>

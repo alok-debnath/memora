@@ -189,6 +189,7 @@ async function extractStructuredMemory(args: {
   userTz: string;
   currentTime: string;
   existingMemories?: string;
+  chatTurnId?: Id<"chatMessages">;
 }) {
   const response = await trackedChatCompletion(args.ctx, {
     userId: args.userId,
@@ -196,6 +197,9 @@ async function extractStructuredMemory(args: {
     stage: "structuring",
     visibility: "background",
     metadata: { stage: "structured_extract" },
+    link: args.chatTurnId
+      ? { chatTurnId: args.chatTurnId, chatMessageId: args.chatTurnId }
+      : undefined,
     request: {
       model: OPENAI_CHAT_MODEL,
       temperature: 0.3,
@@ -340,6 +344,7 @@ async function buildMemoryEmbedding(args: {
   locations?: string[];
   lifeArea?: string;
   entryKind?: string;
+  chatTurnId?: Id<"chatMessages">;
 }) {
   return await trackedEmbedText(args.ctx, {
     userId: args.userId,
@@ -354,6 +359,9 @@ async function buildMemoryEmbedding(args: {
       lifeArea: args.lifeArea,
       entryKind: args.entryKind,
     }),
+    link: args.chatTurnId
+      ? { chatTurnId: args.chatTurnId, chatMessageId: args.chatTurnId }
+      : undefined,
   });
 }
 
@@ -365,6 +373,7 @@ export const processMemory = action({
     userTimezone: v.optional(v.string()),
     currentTime: v.optional(v.string()),
     currentTimezone: v.optional(v.string()),
+    sourceChatTurnId: v.optional(v.id("chatMessages")),
   },
   handler: async (ctx, args) => {
     const client = getOpenAIClient();
@@ -397,6 +406,9 @@ export const processMemory = action({
         visibility: "background",
         input: args.content.slice(0, 4000),
         metadata: { stage: "conflict_prefetch" },
+        link: args.sourceChatTurnId
+          ? { chatTurnId: args.sourceChatTurnId, chatMessageId: args.sourceChatTurnId }
+          : undefined,
       });
       const semanticallySimilar = await ctx.vectorSearch("memories", "by_embedding", {
         vector: queryEmbedding,
@@ -438,6 +450,7 @@ export const processMemory = action({
         userTz,
         currentTime,
         existingMemories: existingMemoriesContext || undefined,
+        chatTurnId: args.sourceChatTurnId,
       });
     } catch {
       extracted = null;
@@ -465,6 +478,7 @@ export const processMemory = action({
         locations: normalizedForWrite.locations,
         lifeArea: normalizedForWrite.lifeArea,
         entryKind: normalizedForWrite.entryKind,
+        chatTurnId: args.sourceChatTurnId,
       });
 
       await ctx.runMutation(internal.processMemoryMutations.updateAIFields, {
@@ -510,6 +524,7 @@ export const captureMemory = action({
     content: v.string(),
     currentTime: v.optional(v.string()),
     currentTimezone: v.optional(v.string()),
+    sourceChatTurnId: v.optional(v.id("chatMessages")),
   },
   handler: async (
     ctx,
@@ -551,6 +566,9 @@ export const captureMemory = action({
             visibility: "background",
             input: args.content.slice(0, 4000),
             metadata: { stage: "conflict_prefetch" },
+            link: args.sourceChatTurnId
+              ? { chatTurnId: args.sourceChatTurnId, chatMessageId: args.sourceChatTurnId }
+              : undefined,
           });
           const semanticallySimilar = await ctx.vectorSearch("memories", "by_embedding", {
             vector: queryEmbedding,
@@ -591,6 +609,7 @@ export const captureMemory = action({
           userTz,
           currentTime,
           existingMemories: existingMemoriesContext || undefined,
+          chatTurnId: args.sourceChatTurnId,
         });
         if (analysisRaw) {
           structured = {
@@ -620,6 +639,7 @@ export const captureMemory = action({
           locations: structured.locations,
           lifeArea: structured.lifeArea,
           entryKind: structured.entryKind,
+          chatTurnId: args.sourceChatTurnId,
         });
       } catch {
         embedding = undefined;
@@ -641,6 +661,7 @@ export const captureMemory = action({
       entryKind: structured.entryKind,
       schedule: structured.schedule,
       skipAiProcessing: true,
+      sourceChatTurnId: args.sourceChatTurnId,
     });
 
     if (
@@ -680,6 +701,7 @@ export const captureMemory = action({
         userTimezone: session.timezone,
         currentTime: args.currentTime ?? new Date().toISOString(),
         currentTimezone: args.currentTimezone,
+        sourceChatTurnId: args.sourceChatTurnId,
       });
     }
 

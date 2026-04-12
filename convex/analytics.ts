@@ -332,6 +332,9 @@ export const recordStorageDelta = internalMutation({
 export const recordSearchUsage = internalMutation({
   args: {
     userId: v.id("users"),
+    chatTurnId: v.optional(v.id("chatMessages")),
+    chatMessageId: v.optional(v.id("chatMessages")),
+    conversationId: v.optional(v.string()),
     occurredAt: v.optional(v.number()),
     feature: searchFeatureValidator,
     status: v.union(v.literal("success"), v.literal("error")),
@@ -356,6 +359,9 @@ export const recordSearchUsage = internalMutation({
     await ctx.db.insert("userAiUsageEvents", {
       userId: args.userId,
       analyticsSubjectId,
+      chatTurnId: args.chatTurnId,
+      chatMessageId: args.chatMessageId,
+      conversationId: args.conversationId,
       occurredAt: now,
       dayKey,
       provider: "memora",
@@ -409,6 +415,9 @@ export const recordSearchUsage = internalMutation({
 export const recordAiUsage = internalMutation({
   args: {
     userId: v.id("users"),
+    chatTurnId: v.optional(v.id("chatMessages")),
+    chatMessageId: v.optional(v.id("chatMessages")),
+    conversationId: v.optional(v.string()),
     occurredAt: v.optional(v.number()),
     provider: v.string(),
     model: v.string(),
@@ -453,6 +462,9 @@ export const recordAiUsage = internalMutation({
     await ctx.db.insert("userAiUsageEvents", {
       userId: args.userId,
       analyticsSubjectId,
+      chatTurnId: args.chatTurnId,
+      chatMessageId: args.chatMessageId,
+      conversationId: args.conversationId,
       occurredAt: now,
       dayKey,
       provider: args.provider,
@@ -846,6 +858,223 @@ export const recentEvents = query({
       .withIndex("by_user_occurred_at", (q) => q.eq("userId", userId))
       .order("desc")
       .paginate(args.paginationOpts);
+  },
+});
+
+export const chatTurnBreakdown = query({
+  args: {
+    token: v.string(),
+    chatTurnId: v.id("chatMessages"),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = await resolveUser(ctx, args.token);
+    const rows = await ctx.db
+      .query("userAiUsageEvents")
+      .withIndex("by_user_chat_turn_occurred_at", (q) =>
+        q.eq("userId", userId).eq("chatTurnId", args.chatTurnId),
+      )
+      .order("asc")
+      .take(200);
+
+    const relevantRows = rows.filter((row) => row.chatTurnId === args.chatTurnId);
+    const featureGroups = new Map<
+      string,
+      {
+        feature: string;
+        stage: string;
+        visibility: AiVisibility;
+        providers: string[];
+        models: string[];
+        requests: number;
+        errors: number;
+        inputTokens: number;
+        outputTokens: number;
+        totalTokens: number;
+        costUsdMicros: number;
+        latencyMs: number;
+      }
+    >();
+    const modelGroups = new Map<
+      string,
+      {
+        provider: string;
+        model: string;
+        operation: string;
+        feature: string;
+        stage?: string;
+        visibility: AiVisibility;
+        requests: number;
+        errors: number;
+        totalTokens: number;
+        costUsdMicros: number;
+        latencyMs: number;
+      }
+    >();
+
+    let aiRequests = 0;
+    let aiActions = 0;
+    let backgroundAiOperations = 0;
+    let failures = 0;
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let totalTokens = 0;
+    let costUsdMicros = 0;
+    let totalLatencyMs = 0;
+    let searches = 0;
+    let deepSearches = 0;
+    let vectorSearches = 0;
+    let fullTextSearches = 0;
+    let keywordSearches = 0;
+    let searchCacheHits = 0;
+    let totalSearchResults = 0;
+    let totalSearchLatencyMs = 0;
+
+    for (const row of relevantRows) {
+      const isSearch = row.provider === "memora" && row.operation === "search";
+      const visibility = row.visibility ?? "background";
+      const stage = row.stage ?? row.operation;
+      const rowLatency = row.latencyMs ?? 0;
+      const rowTotalTokens = row.totalTokens ?? 0;
+      const rowCost = row.costUsdMicros ?? 0;
+
+      if (isSearch) {
+        searches += 1;
+        deepSearches += row.feature === "deep_search" ? 1 : 0;
+        vectorSearches += row.metadata?.usedVector === "true" ? 1 : 0;
+        fullTextSearches += row.metadata?.usedFullText === "true" ? 1 : 0;
+        keywordSearches += row.metadata?.usedKeyword === "true" ? 1 : 0;
+        searchCacheHits += row.metadata?.cacheHit === "true" ? 1 : 0;
+        totalSearchResults += Number(row.metadata?.resultCount ?? "0") || 0;
+        totalSearchLatencyMs += rowLatency;
+      } else {
+        aiRequests += 1;
+        aiActions += visibility === "user_visible" ? 1 : 0;
+        backgroundAiOperations += visibility === "background" ? 1 : 0;
+        failures += row.status === "error" ? 1 : 0;
+        inputTokens += row.inputTokens ?? 0;
+        outputTokens += row.outputTokens ?? 0;
+        totalTokens += rowTotalTokens;
+        costUsdMicros += rowCost;
+        totalLatencyMs += rowLatency;
+      }
+
+      const featureKey = [row.feature, stage, visibility].join("|");
+      const featureCurrent = featureGroups.get(featureKey) ?? {
+        feature: row.feature,
+        stage,
+        visibility,
+        providers: [],
+        models: [],
+        requests: 0,
+        errors: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        costUsdMicros: 0,
+        latencyMs: 0,
+      };
+      if (!featureCurrent.providers.includes(row.provider)) {
+        featureCurrent.providers.push(row.provider);
+      }
+      if (!featureCurrent.models.includes(row.model)) {
+        featureCurrent.models.push(row.model);
+      }
+      featureCurrent.requests += 1;
+      featureCurrent.errors += row.status === "error" ? 1 : 0;
+      featureCurrent.inputTokens += row.inputTokens ?? 0;
+      featureCurrent.outputTokens += row.outputTokens ?? 0;
+      featureCurrent.totalTokens += rowTotalTokens;
+      featureCurrent.costUsdMicros += rowCost;
+      featureCurrent.latencyMs += rowLatency;
+      featureGroups.set(featureKey, featureCurrent);
+
+      const modelKey = [
+        row.provider,
+        row.model,
+        row.operation,
+        row.feature,
+        stage,
+        visibility,
+      ].join("|");
+      const modelCurrent = modelGroups.get(modelKey) ?? {
+        provider: row.provider,
+        model: row.model,
+        operation: row.operation,
+        feature: row.feature,
+        stage,
+        visibility,
+        requests: 0,
+        errors: 0,
+        totalTokens: 0,
+        costUsdMicros: 0,
+        latencyMs: 0,
+      };
+      modelCurrent.requests += 1;
+      modelCurrent.errors += row.status === "error" ? 1 : 0;
+      modelCurrent.totalTokens += rowTotalTokens;
+      modelCurrent.costUsdMicros += rowCost;
+      modelCurrent.latencyMs += rowLatency;
+      modelGroups.set(modelKey, modelCurrent);
+    }
+
+    return {
+      chatTurnId: args.chatTurnId,
+      overview: {
+        aiRequests,
+        aiActions,
+        backgroundAiOperations,
+        failures,
+        inputTokens,
+        outputTokens,
+        totalTokens,
+        costUsdMicros,
+        totalLatencyMs,
+        operationCount: relevantRows.length,
+      },
+      search: {
+        searches,
+        deepSearches,
+        vectorSearches,
+        fullTextSearches,
+        keywordSearches,
+        searchCacheHits,
+        avgResults: searches > 0 ? totalSearchResults / searches : 0,
+        avgLatencyMs: searches > 0 ? totalSearchLatencyMs / searches : 0,
+      },
+      features: Array.from(featureGroups.values())
+        .map((item) => ({
+          ...item,
+          avgLatencyMs: item.requests > 0 ? item.latencyMs / item.requests : 0,
+          fallback: item.providers.length > 1,
+        }))
+        .sort(
+          (a, b) =>
+            Number(b.visibility === "user_visible") - Number(a.visibility === "user_visible") ||
+            b.costUsdMicros - a.costUsdMicros ||
+            b.requests - a.requests,
+        ),
+      models: Array.from(modelGroups.values())
+        .map((item) => ({
+          ...item,
+          avgLatencyMs: item.requests > 0 ? item.latencyMs / item.requests : 0,
+        }))
+        .sort((a, b) => b.costUsdMicros - a.costUsdMicros || b.requests - a.requests),
+      timeline: relevantRows.map((row) => ({
+        _id: row._id,
+        occurredAt: row.occurredAt,
+        provider: row.provider,
+        model: row.model,
+        operation: row.operation,
+        feature: row.feature,
+        stage: row.stage ?? row.operation,
+        visibility: row.visibility ?? "background",
+        status: row.status,
+        latencyMs: row.latencyMs ?? 0,
+        totalTokens: row.totalTokens ?? 0,
+        costUsdMicros: row.costUsdMicros ?? 0,
+        metadata: row.metadata ?? {},
+      })),
+    };
   },
 });
 

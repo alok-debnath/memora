@@ -19,12 +19,40 @@ const GOOGLE_SYNC_LOCK_TTL_MS = 2 * 60 * 1000;
 
 const GOOGLE_SCOPES = {
   calendar: "https://www.googleapis.com/auth/calendar",
+  calendarEvents: "https://www.googleapis.com/auth/calendar.events",
   driveFile: "https://www.googleapis.com/auth/drive.file",
 } as const;
+
+function hasCalendarScope(grantedScopes?: string[]): boolean {
+  if (!grantedScopes) return false;
+  return (
+    grantedScopes.includes(GOOGLE_SCOPES.calendar) ||
+    grantedScopes.includes(GOOGLE_SCOPES.calendarEvents)
+  );
+}
 
 function hasDriveScope(grantedScopes?: string[]): boolean {
   if (!grantedScopes) return false;
   return grantedScopes.includes(GOOGLE_SCOPES.driveFile);
+}
+
+function isCalendarEnabled(
+  integration?: {
+    grantedScopes?: string[];
+    calendarEnabled?: boolean;
+  } | null,
+): boolean {
+  return (
+    !!integration &&
+    hasCalendarScope(integration.grantedScopes) &&
+    integration.calendarEnabled !== false
+  );
+}
+
+function isDriveEnabled(integration?: { grantedScopes?: string[]; driveEnabled?: boolean } | null) {
+  return (
+    !!integration && hasDriveScope(integration.grantedScopes) && integration.driveEnabled !== false
+  );
 }
 
 export function buildGoogleOAuthScope(): string {
@@ -83,9 +111,18 @@ export const getGoogleIntegration = query({
           connected: true,
           email: integration.email,
           updatedAt: integration.updatedAt,
+          hasCalendarScope: hasCalendarScope(integration.grantedScopes),
           hasDriveScope: hasDriveScope(integration.grantedScopes),
+          calendarEnabled: integration.calendarEnabled !== false,
+          driveEnabled: integration.driveEnabled !== false,
         }
-      : { connected: false, hasDriveScope: false };
+      : {
+          connected: false,
+          hasCalendarScope: false,
+          hasDriveScope: false,
+          calendarEnabled: false,
+          driveEnabled: false,
+        };
   },
 });
 
@@ -108,6 +145,46 @@ export const disconnectGoogle = mutation({
   },
 });
 
+export const updateGoogleIntegrationPreferences = mutation({
+  args: {
+    token: v.optional(v.string()),
+    calendarEnabled: v.optional(v.boolean()),
+    driveEnabled: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const user = await resolveUser(ctx, args.token);
+    const integration = await ctx.db
+      .query("userIntegrations")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .unique();
+
+    if (!integration) {
+      throw new Error("Google is not connected.");
+    }
+
+    const patch: {
+      calendarEnabled?: boolean;
+      driveEnabled?: boolean;
+      updatedAt: number;
+    } = {
+      updatedAt: Date.now(),
+    };
+    if (args.calendarEnabled !== undefined) {
+      patch.calendarEnabled = args.calendarEnabled;
+    }
+    if (args.driveEnabled !== undefined) {
+      patch.driveEnabled = args.driveEnabled;
+    }
+    await ctx.db.patch(integration._id, patch);
+
+    return {
+      success: true,
+      calendarEnabled: patch.calendarEnabled ?? integration.calendarEnabled !== false,
+      driveEnabled: patch.driveEnabled ?? integration.driveEnabled !== false,
+    };
+  },
+});
+
 /**
  * Manually trigger Google Calendar sync for an existing reminder.
  */
@@ -126,6 +203,7 @@ export const triggerReminderSync = mutation({
       | "in_flight"
       | "already_synced"
       | "not_connected"
+      | "disabled"
       | "not_reminder"
       | "missing_due_at"
       | "not_syncable";
@@ -172,6 +250,13 @@ export const triggerReminderSync = mutation({
         message,
       };
     }
+    if (!isCalendarEnabled(integration)) {
+      return {
+        queued: false as const,
+        reason: "disabled" as const,
+        message: "Google Calendar sync is turned off in integrations.",
+      };
+    }
 
     await ctx.db.patch(memory._id, {
       googleSyncFingerprint: undefined,
@@ -185,22 +270,26 @@ export const triggerReminderSync = mutation({
 
     const queued: {
       queued: boolean;
-      reason?: "already_synced" | "in_flight" | "not_syncable";
+      reason?: "already_synced" | "in_flight" | "not_syncable" | "integration_disabled";
     } = await ctx.runMutation(internal.integrations.queueReminderSync, {
       memoryId: memory._id,
       pendingMessage: "Manual sync requested. Syncing reminder to Google Calendar...",
     });
 
     if (queued.queued) {
+      const queuedReason =
+        queued.reason === "integration_disabled" ? "disabled" : (queued.reason ?? "queued");
       return {
         queued: true as const,
-        reason: queued.reason ?? "queued",
+        reason: queuedReason,
         message:
           queued.reason === "in_flight"
             ? "Reminder sync is already in progress."
             : "Reminder sync has been queued.",
       };
     }
+
+    const resolvedReason = queued.reason === "integration_disabled" ? "disabled" : queued.reason;
 
     if (queued.reason === "already_synced") {
       const message = "Reminder is already synced to Google Calendar.";
@@ -218,7 +307,7 @@ export const triggerReminderSync = mutation({
 
     return {
       queued: false as const,
-      reason: queued.reason ?? "not_syncable",
+      reason: resolvedReason ?? "not_syncable",
       message: "Reminder could not be queued for Google Calendar sync.",
     };
   },
@@ -333,6 +422,8 @@ export const saveGoogleCredentials = internalMutation({
         clientId: args.clientId,
         platform: args.platform,
         grantedScopes: args.grantedScopes ?? existing.grantedScopes,
+        calendarEnabled: existing.calendarEnabled ?? true,
+        driveEnabled: existing.driveEnabled ?? true,
         updatedAt: now,
       });
     } else {
@@ -344,6 +435,8 @@ export const saveGoogleCredentials = internalMutation({
         clientId: args.clientId,
         platform: args.platform,
         grantedScopes: args.grantedScopes,
+        calendarEnabled: true,
+        driveEnabled: true,
         createdAt: now,
         updatedAt: now,
       });
@@ -514,6 +607,14 @@ export const queueReminderSync = internalMutation({
     const memory = await ctx.db.get(args.memoryId);
     if (!isSyncableReminder(memory)) {
       return { queued: false, reason: "not_syncable" as const };
+    }
+
+    const integration = await ctx.db
+      .query("userIntegrations")
+      .withIndex("by_user", (q) => q.eq("userId", memory.userId))
+      .unique();
+    if (integration && !isCalendarEnabled(integration)) {
+      return { queued: false, reason: "integration_disabled" as const };
     }
 
     const desiredFingerprint = buildReminderSyncFingerprint(memory);
@@ -745,6 +846,15 @@ export const syncReminderToGoogle = internalAction({
           lockToken,
           result: "failed",
           message: "Google Calendar is not connected for this account.",
+        });
+        return;
+      }
+      if (!isCalendarEnabled(integration)) {
+        await ctx.runMutation(internal.integrations.finalizeReminderSyncLock, {
+          memoryId: args.memoryId,
+          lockToken,
+          result: "failed",
+          message: "Google Calendar sync is turned off in integrations.",
         });
         return;
       }
@@ -1145,6 +1255,7 @@ export const getDriveUploadCredentials = action({
     });
     if (!integration) throw new Error("GOOGLE_NOT_CONNECTED");
     if (!hasDriveScope(integration.grantedScopes)) throw new Error("DRIVE_SCOPE_MISSING");
+    if (!isDriveEnabled(integration)) throw new Error("DRIVE_DISABLED");
 
     const accessToken = await getAccessToken({
       refreshToken: integration.refreshToken,

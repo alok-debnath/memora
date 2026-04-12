@@ -70,6 +70,11 @@ export function BaseSheet({
   const theme = useAppTheme();
   const resolvedBg = backgroundColor ?? theme.backgroundStrong?.val ?? "$backgroundStrong";
   const sheetStack = useUIStore((state) => state.sheetStack);
+  // Important: any sheet that can appear while another BaseSheet may already be open
+  // must pass a registered `sheetId` and be opened via `useUIStore`, otherwise it will
+  // bypass the shared sheet stack and render outside the stacking system.
+  // Also avoid custom `snapPoints` for normal sheets. Let BaseSheet own height/stack sizing
+  // unless there is a deliberate exception that truly needs a different presentation.
   const stackIndex = sheetId ? sheetStack.indexOf(sheetId) : -1;
   const stackSize = sheetStack.length;
   const topSheetId = sheetStack[stackSize - 1] ?? null;
@@ -144,6 +149,8 @@ export function BaseSheet({
     >
       <Sheet.Overlay backgroundColor={withAlpha(theme.shadowColor.val, "80")} />
       <Sheet.Frame
+        flex={1}
+        minHeight={0}
         backgroundColor={resolvedBg}
         borderTopLeftRadius={SHEET_CONFIG.frameBorderRadius}
         borderTopRightRadius={SHEET_CONFIG.frameBorderRadius}
@@ -158,7 +165,11 @@ export function BaseSheet({
           marginTop={10}
           marginBottom={6}
         />
-        {children}
+        {/* Keep sheet content in a bounded flex container so ScrollView/FlatList children
+            get a real viewport and can scroll correctly inside the shared sheet frame. */}
+        <View flex={1} minHeight={0}>
+          {children}
+        </View>
       </Sheet.Frame>
     </Sheet>
   );

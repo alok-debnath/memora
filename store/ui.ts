@@ -1,7 +1,12 @@
 import { create } from "zustand";
 import type { MemoryNote } from "@/types/memory";
 
-export type SheetId = "unifiedCommand" | "editMemory" | "homeOverview" | "filePreview";
+export type SheetId =
+  | "unifiedCommand"
+  | "editMemory"
+  | "homeOverview"
+  | "filePreview"
+  | "turnBreakdown";
 
 export type FilePreviewPayload = {
   _id: string;
@@ -22,6 +27,7 @@ export type SheetPayloadMap = {
   editMemory: { memory: MemoryNote };
   homeOverview: null;
   filePreview: { attachment: FilePreviewPayload };
+  turnBreakdown: null;
 };
 
 type SheetEntry<K extends SheetId = SheetId> = {
@@ -53,6 +59,8 @@ interface UIStore {
   closeHomeOverview: () => void;
   openFilePreview: (attachment: FilePreviewPayload) => void;
   closeFilePreview: () => void;
+  openTurnBreakdown: () => void;
+  closeTurnBreakdown: () => void;
   resetSheets: () => void;
 }
 
@@ -61,6 +69,7 @@ const EMPTY_SHEETS: SheetState = {
   editMemory: { open: false, payload: null, enteredAt: null },
   homeOverview: { open: false, payload: null, enteredAt: null },
   filePreview: { open: false, payload: null, enteredAt: null },
+  turnBreakdown: { open: false, payload: null, enteredAt: null },
 };
 
 function registerSheetId(stack: SheetId[], id: SheetId) {
@@ -237,6 +246,27 @@ export const useUIStore = create<UIStore>()((set) => ({
         filePreview: resetSheetEntry("filePreview"),
       },
       sheetStack: unregisterSheetId(state.sheetStack, "filePreview"),
+    })),
+
+  openTurnBreakdown: () =>
+    set((state) => ({
+      sheets: {
+        ...state.sheets,
+        turnBreakdown: {
+          open: true,
+          payload: null,
+          enteredAt: Date.now(),
+        },
+      },
+      sheetStack: registerSheetId(state.sheetStack, "turnBreakdown"),
+    })),
+  closeTurnBreakdown: () =>
+    set((state) => ({
+      sheets: {
+        ...state.sheets,
+        turnBreakdown: resetSheetEntry("turnBreakdown"),
+      },
+      sheetStack: unregisterSheetId(state.sheetStack, "turnBreakdown"),
     })),
 
   resetSheets: () =>

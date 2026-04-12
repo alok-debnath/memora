@@ -14,6 +14,11 @@ export const OPENAI_TRANSCRIPTION_MODEL =
 
 type UsageRecorderCtx = Pick<ActionCtx, "runMutation">;
 type AiVisibility = "user_visible" | "background";
+type AnalyticsLink = {
+  chatTurnId?: Id<"chatMessages">;
+  chatMessageId?: Id<"chatMessages">;
+  conversationId?: string;
+};
 
 type OpenAIFeature =
   | "memory_chat"
@@ -113,10 +118,14 @@ async function recordOpenAiUsage(
     stage?: string;
     visibility?: AiVisibility;
     metadata?: Record<string, string>;
+    link?: AnalyticsLink;
   },
 ) {
   await ctx.runMutation(internal.analytics.recordAiUsage, {
     userId: args.userId,
+    chatTurnId: args.link?.chatTurnId,
+    chatMessageId: args.link?.chatMessageId,
+    conversationId: args.link?.conversationId,
     provider: "openai",
     model: args.model,
     operation: args.operation,
@@ -208,6 +217,7 @@ export async function trackedChatCompletion(
     stage?: string;
     visibility?: AiVisibility;
     metadata?: Record<string, string>;
+    link?: AnalyticsLink;
     request: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming;
   },
 ) {
@@ -237,6 +247,7 @@ export async function trackedChatCompletion(
       stage: args.stage ?? "chat_completion",
       visibility: args.visibility ?? "background",
       metadata: args.metadata,
+      link: args.link,
     });
     return response;
   } catch (error) {
@@ -251,6 +262,7 @@ export async function trackedChatCompletion(
       stage: args.stage ?? "chat_completion",
       visibility: args.visibility ?? "background",
       metadata: args.metadata,
+      link: args.link,
     });
     throw error;
   }
@@ -265,6 +277,7 @@ export async function trackedEmbedText(
     stage?: string;
     visibility?: AiVisibility;
     metadata?: Record<string, string>;
+    link?: AnalyticsLink;
   },
 ) {
   return (
@@ -275,6 +288,7 @@ export async function trackedEmbedText(
       stage: args.stage,
       visibility: args.visibility,
       metadata: args.metadata,
+      link: args.link,
     })
   )[0];
 }
@@ -288,6 +302,7 @@ export async function trackedEmbedTexts(
     stage?: string;
     visibility?: AiVisibility;
     metadata?: Record<string, string>;
+    link?: AnalyticsLink;
   },
 ) {
   const client = requireOpenAI();
@@ -319,6 +334,7 @@ export async function trackedEmbedTexts(
       stage: args.stage ?? "embedding",
       visibility: args.visibility ?? "background",
       metadata: args.metadata,
+      link: args.link,
     });
     return response.data.map((item) => item.embedding);
   } catch (error) {
@@ -333,6 +349,7 @@ export async function trackedEmbedTexts(
       stage: args.stage ?? "embedding",
       visibility: args.visibility ?? "background",
       metadata: args.metadata,
+      link: args.link,
     });
     throw error;
   }

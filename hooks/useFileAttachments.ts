@@ -234,7 +234,12 @@ export function useFileAttachments({ token }: UseFileAttachmentsOptions = {}) {
       accessToken = creds.accessToken;
       folderId = creds.folderId;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Drive not connected";
+      const msg =
+        err instanceof Error
+          ? err.message === "DRIVE_DISABLED"
+            ? "Google Drive uploads are turned off in Profile."
+            : err.message
+          : "Drive not connected";
       for (const a of toUpload) {
         updateAttachment(a.id, { uploadStatus: "error", errorMessage: msg });
       }

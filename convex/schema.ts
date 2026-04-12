@@ -225,6 +225,9 @@ export default defineSchema({
   userAiUsageEvents: defineTable({
     userId: v.id("users"),
     analyticsSubjectId: v.optional(v.string()),
+    chatTurnId: v.optional(v.id("chatMessages")),
+    chatMessageId: v.optional(v.id("chatMessages")),
+    conversationId: v.optional(v.string()),
     occurredAt: v.number(),
     dayKey: v.string(),
     provider: v.string(),
@@ -245,6 +248,7 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_user_occurred_at", ["userId", "occurredAt"])
+    .index("by_user_chat_turn_occurred_at", ["userId", "chatTurnId", "occurredAt"])
     .index("by_occurred_at", ["occurredAt"])
     .index("by_analytics_subject_id_and_occurred_at", ["analyticsSubjectId", "occurredAt"]),
 
@@ -530,6 +534,8 @@ export default defineSchema({
     clientId: v.optional(v.string()),
     // Kept optional for backward compatibility with existing stored integrations.
     grantedScopes: v.optional(v.array(v.string())),
+    calendarEnabled: v.optional(v.boolean()),
+    driveEnabled: v.optional(v.boolean()),
     platform: v.optional(v.union(v.literal("android"), v.literal("ios"), v.literal("web"))),
     // Cached Google Drive folder IDs
     driveFolderId: v.optional(v.string()),

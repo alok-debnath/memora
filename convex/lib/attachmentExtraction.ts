@@ -60,6 +60,9 @@ export async function extractAttachmentFromDrive(args: {
   analytics?: {
     ctx: Pick<ActionCtx, "runMutation">;
     userId: Id<"users">;
+    chatTurnId?: Id<"chatMessages">;
+    chatMessageId?: Id<"chatMessages">;
+    conversationId?: string;
   };
 }): Promise<AttachmentExtractionResult> {
   const { accessToken, attachment, textLimit = ATTACHMENT_TEXT_LIMIT } = args;
@@ -168,6 +171,9 @@ async function recordGeminiUsage(args: {
   analytics?: {
     ctx: Pick<ActionCtx, "runMutation">;
     userId: Id<"users">;
+    chatTurnId?: Id<"chatMessages">;
+    chatMessageId?: Id<"chatMessages">;
+    conversationId?: string;
   };
   model: string;
   operation: string;
@@ -180,6 +186,9 @@ async function recordGeminiUsage(args: {
   }
   await args.analytics.ctx.runMutation(internal.analytics.recordAiUsage, {
     userId: args.analytics.userId,
+    chatTurnId: args.analytics.chatTurnId,
+    chatMessageId: args.analytics.chatMessageId,
+    conversationId: args.analytics.conversationId,
     provider: "google",
     model: args.model,
     operation: args.operation,
@@ -200,6 +209,9 @@ async function extractImageWithGemini(
   analytics?: {
     ctx: Pick<ActionCtx, "runMutation">;
     userId: Id<"users">;
+    chatTurnId?: Id<"chatMessages">;
+    chatMessageId?: Id<"chatMessages">;
+    conversationId?: string;
   },
 ): Promise<string | undefined> {
   const response = await fetch(
@@ -260,6 +272,9 @@ async function extractImageWithFallback(
   analytics?: {
     ctx: Pick<ActionCtx, "runMutation">;
     userId: Id<"users">;
+    chatTurnId?: Id<"chatMessages">;
+    chatMessageId?: Id<"chatMessages">;
+    conversationId?: string;
   },
 ): Promise<AttachmentExtractionResult> {
   try {
@@ -320,6 +335,9 @@ async function extractImageWithOpenAI(
   analytics?: {
     ctx: Pick<ActionCtx, "runMutation">;
     userId: Id<"users">;
+    chatTurnId?: Id<"chatMessages">;
+    chatMessageId?: Id<"chatMessages">;
+    conversationId?: string;
   },
 ): Promise<string | undefined> {
   const client = getOpenAIClient();
@@ -370,6 +388,11 @@ async function extractImageWithOpenAI(
           stage: "extraction",
           visibility: "background",
           metadata: { attachmentType: "image", fallback: "openai" },
+          link: {
+            chatTurnId: analytics.chatTurnId,
+            chatMessageId: analytics.chatMessageId,
+            conversationId: analytics.conversationId,
+          },
           request,
         })
       : await client.chat.completions.create(request);
@@ -388,6 +411,9 @@ async function extractPdfContent(
   analytics?: {
     ctx: Pick<ActionCtx, "runMutation">;
     userId: Id<"users">;
+    chatTurnId?: Id<"chatMessages">;
+    chatMessageId?: Id<"chatMessages">;
+    conversationId?: string;
   },
 ): Promise<{ text: string; method: "gemini" | "pdf-extract" } | undefined> {
   const response = await fetch(

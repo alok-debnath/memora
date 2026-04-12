@@ -5,6 +5,7 @@ import {
   Pressable,
   Platform,
   Alert,
+  ScrollView,
   View,
   Text as RNText,
 } from "react-native";
@@ -43,11 +44,13 @@ import { useAppToast } from "@/components/ui/toast";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { logDevError } from "@/lib/devLog";
 import { Badge } from "@/components/ui/Badge";
+import { BaseSheet } from "@/components/ui/BaseSheet";
 import {
   ContextMenu,
   type ContextMenuHandle,
   type ContextMenuItemDef,
 } from "@/components/ui/ContextMenu";
+import { SheetHeader } from "@/components/ui/SheetHeader";
 import type { MemoryNote } from "@/types/memory";
 import { getReminderDate, inferMemoryEntryKind } from "@/types/memoryKind";
 import { AttachmentPreviewBar } from "@/components/AttachmentPreviewBar";
@@ -56,7 +59,8 @@ import { useFileAttachments, type PendingAttachment } from "@/hooks/useFileAttac
 import { Linking, StyleSheet } from "react-native";
 import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
 import { withAlpha } from "@/components/ui/themeHelpers";
-import { useUIStore } from "@/store/ui";
+import { selectSheetOpen, useUIStore } from "@/store/ui";
+import { canUseGoogleCalendar, canUseGoogleDrive } from "@/lib/googleIntegration";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -447,6 +451,41 @@ function extractSpeakableText(content: string): string {
   return text;
 }
 
+function formatCompactNumber(value: number) {
+  return new Intl.NumberFormat(undefined, {
+    notation: "compact",
+    maximumFractionDigits: value >= 1000 ? 1 : 0,
+  }).format(value);
+}
+
+function formatUsdMicros(value: number) {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: value >= 100_000 ? 2 : 4,
+  }).format(value / 1_000_000);
+}
+
+function formatFeatureLabel(feature: string) {
+  const map: Record<string, string> = {
+    memory_chat: "Chat assistant",
+    attachment_extraction: "Image / document extraction",
+    memory_capture: "Memory capture",
+    memory_processing: "Memory processing",
+    memory_search: "Search grounding",
+    topic_management: "Topic assignment",
+    diary_processing: "Diary processing",
+    conflict_detection: "Conflict detection",
+    audio_transcription: "Audio transcription",
+    deep_search: "Deep search",
+  };
+  return map[feature] ?? feature.replace(/_/g, " ");
+}
+
+function formatStageLabel(stage?: string | null) {
+  return stage ? stage.replace(/_/g, " ") : "unspecified";
+}
+
 type CardFlowAttachment = {
   name: string;
   type: "image" | "document";
@@ -500,6 +539,7 @@ type CardFlowStep =
     };
 
 type CardFlow = {
+  chatTurnId?: string;
   assistantProvider?: "openai";
   toolSequence?: string[];
   searches?: unknown[];
@@ -513,6 +553,7 @@ function parseCardIds(content: string): {
   isCached: boolean;
   turns?: number;
   flow?: CardFlow;
+  chatTurnId?: string;
   cleanText: string;
 } | null {
   const marker = "<!--MEMORA_CARD_IDS:";
@@ -526,6 +567,8 @@ function parseCardIds(content: string): {
     const ids: string[] = Array.isArray(parsed.ids) ? parsed.ids : [];
     const isCached: boolean = parsed.isCached ?? false;
     const turns: number | undefined = typeof parsed.turns === "number" ? parsed.turns : undefined;
+    const chatTurnId: string | undefined =
+      typeof parsed.flow?.chatTurnId === "string" ? parsed.flow.chatTurnId : undefined;
     const flow: CardFlow | undefined =
       parsed.flow && typeof parsed.flow === "object" && parsed.flow.summary && parsed.flow.steps
         ? (parsed.flow as CardFlow)
@@ -535,7 +578,7 @@ function parseCardIds(content: string): {
     const markerFull = content.slice(startIdx, endIdx + endMarker.length);
     const cleanText = content.replace(markerFull, "").trim();
 
-    return ids.length > 0 ? { ids, isCached, turns, flow, cleanText } : null;
+    return ids.length > 0 ? { ids, isCached, turns, flow, chatTurnId, cleanText } : null;
   } catch {
     return null;
   }
@@ -836,6 +879,7 @@ function SearchResultRow({
   theme,
   token,
   isCompleted,
+  calendarSyncEnabled,
   onComplete,
   onDelete,
   onEdit,
@@ -848,6 +892,7 @@ function SearchResultRow({
   theme: ReturnType<typeof useAppTheme>;
   token?: string | null;
   isCompleted: boolean;
+  calendarSyncEnabled: boolean;
   onComplete: (item: SearchResultItem) => void;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
@@ -886,8 +931,10 @@ function SearchResultRow({
             labelColor: theme.textWarning.val,
           };
   const showTriggerSyncAction =
-    isReminder && (!hasGoogleSyncInfo || item.google_sync_status === "failed");
-  const showRemoveSyncAction = isReminder && hasGoogleSyncInfo;
+    calendarSyncEnabled &&
+    isReminder &&
+    (!hasGoogleSyncInfo || item.google_sync_status === "failed");
+  const showRemoveSyncAction = calendarSyncEnabled && isReminder && hasGoogleSyncInfo;
 
   const menuItems: ContextMenuItemDef[] = [
     ...(isReminder && !isCompleted
@@ -1652,6 +1699,7 @@ function SearchStatsPreview({
   onDeepSearch,
   flow,
   theme,
+  onOpenTelemetry,
 }: {
   isCached: boolean;
   turns: number;
@@ -1661,6 +1709,7 @@ function SearchStatsPreview({
   onDeepSearch?: () => void;
   flow?: CardFlow;
   theme: ReturnType<typeof useAppTheme>;
+  onOpenTelemetry?: () => void;
 }) {
   const normalizedFlow = normalizeCardFlow(flow, isCached, turns, resultCount);
   const baseColor =
@@ -1706,6 +1755,27 @@ function SearchStatsPreview({
         attachments={normalizedFlow.attachments}
         theme={theme}
       />
+      {flow?.chatTurnId && onOpenTelemetry ? (
+        <XStack justifyContent="flex-end">
+          <Pressable
+            onPress={onOpenTelemetry}
+            style={({ pressed }) => ({
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: withAlpha(theme.primary.val, "24"),
+              backgroundColor: pressed
+                ? withAlpha(theme.primary.val, "12")
+                : withAlpha(theme.primary.val, "08"),
+            })}
+          >
+            <Text fontSize={11} fontFamily={FontFamily.semiBold} color={theme.primary.val}>
+              Full breakdown
+            </Text>
+          </Pressable>
+        </XStack>
+      ) : null}
       <FlowTimeline steps={normalizedFlow.steps} summary={normalizedFlow.summary} theme={theme} />
 
       {canDeepSearch ? (
@@ -1850,6 +1920,7 @@ function PerformancePill({
   isDeepSearching = false,
   onDeepSearch,
   theme,
+  onOpenTelemetry,
 }: {
   isCached: boolean;
   turns?: number;
@@ -1858,6 +1929,7 @@ function PerformancePill({
   isDeepSearching?: boolean;
   onDeepSearch?: () => void;
   theme: ReturnType<typeof useAppTheme>;
+  onOpenTelemetry?: () => void;
 }) {
   const menuRef = useRef<ContextMenuHandle>(null);
   const isReasoned = (turns ?? 1) > 1;
@@ -1870,6 +1942,14 @@ function PerformancePill({
     menuRef.current?.close();
     onDeepSearch?.();
   }, [onDeepSearch]);
+  const handleOpenTelemetryPress = useCallback(() => {
+    menuRef.current?.close();
+    if (onOpenTelemetry) {
+      setTimeout(() => {
+        onOpenTelemetry();
+      }, 220);
+    }
+  }, [onOpenTelemetry]);
 
   return (
     <ContextMenu
@@ -1884,6 +1964,7 @@ function PerformancePill({
           onDeepSearch={handleDeepSearchPress}
           flow={flow}
           theme={theme}
+          onOpenTelemetry={handleOpenTelemetryPress}
         />
       }
       items={[]}
@@ -1943,6 +2024,7 @@ function SearchResultsCard({
   flow,
   token,
   theme,
+  calendarSyncEnabled,
   onDeepSearch,
   onEdit,
 }: {
@@ -1952,6 +2034,7 @@ function SearchResultsCard({
   flow?: CardFlow;
   token?: string | null;
   theme: ReturnType<typeof useAppTheme>;
+  calendarSyncEnabled?: boolean;
   onDeepSearch?: (query: string) => void;
   onEdit?: (id: string) => void;
 }) {
@@ -1964,6 +2047,14 @@ function SearchResultsCard({
   const removeReminderSync = useMutation(api.integrations.removeReminderSync);
   const { showToast } = useAppToast();
   const { confirm } = useAppConfirm();
+  const showTelemetry = useUIStore(selectSheetOpen("turnBreakdown"));
+  const openTurnBreakdown = useUIStore((state) => state.openTurnBreakdown);
+  const closeTurnBreakdown = useUIStore((state) => state.closeTurnBreakdown);
+  const chatTurnId = flow?.chatTurnId;
+  const telemetry = useQuery(
+    (api.analytics as Record<string, any>).chatTurnBreakdown,
+    token && chatTurnId && showTelemetry ? { token, chatTurnId: chatTurnId as any } : "skip",
+  );
 
   // Fetch full memory docs by ID reactively
   const fetchedDocs = useQuery(
@@ -2146,6 +2237,7 @@ function SearchResultsCard({
               isDeepSearching={isDeepSearching}
               onDeepSearch={isCached && onDeepSearch ? handleDeepSearch : undefined}
               theme={theme}
+              onOpenTelemetry={chatTurnId ? openTurnBreakdown : undefined}
             />
           </XStack>
         </XStack>
@@ -2161,6 +2253,7 @@ function SearchResultsCard({
               token={token}
               isCompleted={completedIds.has(item.id)}
               hasFiles={!!(attachmentCounts as Record<string, number>)[item.id]}
+              calendarSyncEnabled={calendarSyncEnabled ?? true}
               onComplete={handleComplete}
               onDelete={handleDelete}
               onEdit={handleEdit}
@@ -2187,6 +2280,213 @@ function SearchResultsCard({
           </Pressable>
         )}
       </YStack>
+      <BaseSheet
+        open={showTelemetry}
+        onOpenChange={(open) => {
+          if (!open) closeTurnBreakdown();
+        }}
+        sheetId="turnBreakdown"
+      >
+        <SheetHeader
+          title="Turn Breakdown"
+          subtitle="Everything tracked for this completed chat turn"
+          right={
+            <Pressable
+              onPress={closeTurnBreakdown}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 12,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: theme.backgroundStrong.val,
+                borderWidth: 1,
+                borderColor: theme.borderColor.val,
+              }}
+            >
+              <Feather name="x" size={16} color={theme.color.val} />
+            </Pressable>
+          }
+        />
+        <ScrollView
+          style={{ flex: 1, minHeight: 0 }}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32, gap: 14 }}
+          showsVerticalScrollIndicator={false}
+          nestedScrollEnabled
+        >
+          <XStack gap={10} flexWrap="wrap">
+            <Badge
+              label={`${formatCompactNumber(telemetry?.overview.aiActions ?? 0)} AI actions`}
+              color={theme.primary.val}
+            />
+            <Badge
+              label={`${formatCompactNumber(telemetry?.overview.aiRequests ?? 0)} backend ops`}
+            />
+            <Badge
+              label={`${formatCompactNumber(telemetry?.overview.totalTokens ?? 0)} tokens`}
+              color={integrationAccentColors.openai}
+            />
+            <Badge
+              label={formatUsdMicros(telemetry?.overview.costUsdMicros ?? 0)}
+              color={statusAccentColors.success}
+            />
+          </XStack>
+
+          <YStack
+            gap={8}
+            padding={14}
+            borderRadius={16}
+            backgroundColor={withAlpha(theme.primary.val, "10")}
+            borderWidth={1}
+            borderColor={withAlpha(theme.primary.val, "20")}
+          >
+            <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
+              Turn summary
+            </Text>
+            <Text fontSize={12} color="$colorMuted" lineHeight={18}>
+              {formatCompactNumber(telemetry?.overview.aiActions ?? 0)} user-visible actions
+              triggered {formatCompactNumber(telemetry?.overview.operationCount ?? 0)} tracked
+              operations. Searches: {formatCompactNumber(telemetry?.search.searches ?? 0)}.
+            </Text>
+          </YStack>
+
+          <YStack gap={10}>
+            <Text fontSize={12} fontFamily={FontFamily.semiBold} color="$colorMuted">
+              Feature breakdown
+            </Text>
+            {(telemetry?.features ?? []).length > 0 ? (
+              telemetry?.features.map((item: any) => (
+                <YStack
+                  key={`${item.feature}-${item.stage}-${item.visibility}`}
+                  gap={4}
+                  padding={12}
+                  borderRadius={14}
+                  backgroundColor={withAlpha(
+                    item.visibility === "user_visible"
+                      ? theme.primary.val
+                      : integrationAccentColors.openai,
+                    "08",
+                  )}
+                  borderWidth={1}
+                  borderColor={withAlpha(
+                    item.visibility === "user_visible"
+                      ? theme.primary.val
+                      : integrationAccentColors.openai,
+                    "18",
+                  )}
+                >
+                  <XStack justifyContent="space-between" gap={10}>
+                    <YStack flex={1}>
+                      <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
+                        {formatFeatureLabel(item.feature)}
+                      </Text>
+                      <Text fontSize={11} color="$colorMuted">
+                        {formatStageLabel(item.stage)} ·{" "}
+                        {item.visibility === "user_visible" ? "user visible" : "background"}
+                        {item.fallback ? " · fallback chain" : ""}
+                      </Text>
+                    </YStack>
+                    <YStack alignItems="flex-end">
+                      <Text fontSize={12} fontFamily={FontFamily.semiBold} color="$color">
+                        {formatUsdMicros(item.costUsdMicros)}
+                      </Text>
+                      <Text fontSize={11} color="$colorMuted">
+                        {formatCompactNumber(item.requests)} calls
+                      </Text>
+                    </YStack>
+                  </XStack>
+                  <XStack gap={8} flexWrap="wrap">
+                    <Badge label={`${formatCompactNumber(item.totalTokens)} tokens`} />
+                    <Badge label={`${Math.round(item.avgLatencyMs)} ms avg`} />
+                    <Badge label={`${item.errors} failures`} />
+                  </XStack>
+                </YStack>
+              ))
+            ) : (
+              <Text fontSize={12} color="$colorMuted">
+                Loading tracked operations…
+              </Text>
+            )}
+          </YStack>
+
+          <YStack gap={10}>
+            <Text fontSize={12} fontFamily={FontFamily.semiBold} color="$colorMuted">
+              Retrieval
+            </Text>
+            <XStack gap={8} flexWrap="wrap">
+              <Badge label={`${formatCompactNumber(telemetry?.search.searches ?? 0)} searches`} />
+              <Badge label={`${formatCompactNumber(telemetry?.search.deepSearches ?? 0)} deep`} />
+              <Badge
+                label={`${formatCompactNumber(telemetry?.search.vectorSearches ?? 0)}/${formatCompactNumber(telemetry?.search.fullTextSearches ?? 0)} vector/full-text`}
+              />
+              <Badge label={`${Math.round(telemetry?.search.avgLatencyMs ?? 0)} ms avg latency`} />
+            </XStack>
+          </YStack>
+
+          <Text fontSize={12} fontFamily={FontFamily.semiBold} color="$colorMuted">
+            Operation timeline
+          </Text>
+
+          {(telemetry?.timeline ?? []).length > 0 ? (
+            telemetry?.timeline.map((item: any) => (
+              <XStack
+                key={item._id}
+                padding={12}
+                gap={10}
+                borderRadius={14}
+                backgroundColor={withAlpha(
+                  item.status === "error" ? statusAccentColors.error : theme.backgroundStrong.val,
+                  item.status === "error" ? "10" : "CC",
+                )}
+                borderWidth={1}
+                borderColor={withAlpha(
+                  item.status === "error" ? statusAccentColors.error : theme.borderColor.val,
+                  item.status === "error" ? "26" : "66",
+                )}
+              >
+                <YStack
+                  width={10}
+                  height={10}
+                  marginTop={4}
+                  borderRadius={5}
+                  backgroundColor={
+                    item.status === "error"
+                      ? statusAccentColors.error
+                      : item.visibility === "user_visible"
+                        ? theme.primary.val
+                        : integrationAccentColors.openai
+                  }
+                />
+                <YStack flex={1} gap={3}>
+                  <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
+                    {formatFeatureLabel(item.feature)}
+                  </Text>
+                  <Text fontSize={11} color="$colorMuted">
+                    {formatStageLabel(item.stage)} · {item.model} · {item.provider}
+                  </Text>
+                  <Text fontSize={11} color="$colorMuted">
+                    {new Date(item.occurredAt).toLocaleTimeString()} · {item.latencyMs} ms
+                  </Text>
+                </YStack>
+                <YStack alignItems="flex-end" gap={3}>
+                  <Text fontSize={12} fontFamily={FontFamily.semiBold} color="$color">
+                    {item.costUsdMicros ? formatUsdMicros(item.costUsdMicros) : "n/a"}
+                  </Text>
+                  <Text fontSize={11} color="$colorMuted">
+                    {item.totalTokens
+                      ? `${formatCompactNumber(item.totalTokens)} tok`
+                      : item.status}
+                  </Text>
+                </YStack>
+              </XStack>
+            ))
+          ) : (
+            <Text fontSize={12} color="$colorMuted">
+              No finalized telemetry for this turn yet.
+            </Text>
+          )}
+        </ScrollView>
+      </BaseSheet>
     </Animated.View>
   );
 }
@@ -2760,6 +3060,7 @@ const ChatBubble = React.memo(function ChatBubble({
   cardIsCached,
   cardTurns,
   cardFlow,
+  calendarSyncEnabled,
   onDeepSearch,
   onEditMemory,
 }: {
@@ -2775,6 +3076,7 @@ const ChatBubble = React.memo(function ChatBubble({
   cardIsCached?: boolean;
   cardTurns?: number;
   cardFlow?: CardFlow;
+  calendarSyncEnabled?: boolean;
   onDeepSearch?: (messageId: string, query: string) => void;
   onEditMemory?: (id: string) => void;
 }) {
@@ -2942,6 +3244,7 @@ const ChatBubble = React.memo(function ChatBubble({
           flow={cardFlow}
           token={token}
           theme={theme}
+          calendarSyncEnabled={calendarSyncEnabled}
           onDeepSearch={onDeepSearch ? (q) => onDeepSearch(msg._id, q) : undefined}
           onEdit={onEditMemory}
         />
@@ -3344,9 +3647,8 @@ export function AIChatPanel({
   const runDeepSearch = useAction(api.chat.deepSearch);
   const clearChat = useMutation(api.chat.clear);
 
-  const driveConnected = !!(
-    googleIntegration?.connected && (googleIntegration as any).hasDriveScope
-  );
+  const driveConnected = canUseGoogleDrive(googleIntegration ?? null);
+  const calendarSyncEnabled = canUseGoogleCalendar(googleIntegration ?? null);
 
   const fileAttachments = useFileAttachments({ token: token ?? undefined });
 
@@ -3602,11 +3904,17 @@ export function AIChatPanel({
 
   const handleRequestDriveAccess = useCallback(() => {
     showToast({
-      title: "Google Drive not connected",
-      message: "Connect Google in Settings to attach files.",
+      title: googleIntegration?.connected
+        ? "Google Drive uploads disabled"
+        : "Google Drive not connected",
+      message: googleIntegration?.connected
+        ? googleIntegration.hasDriveScope
+          ? "Turn Google Drive uploads back on in Profile → Integrations to attach files."
+          : "Reconnect Google in Profile → Integrations to grant Drive access."
+        : "Connect Google in Settings to attach files.",
       tone: "info",
     });
-  }, [showToast]);
+  }, [googleIntegration, showToast]);
 
   const handleClearChat = useCallback(() => {
     if (!token) return;
@@ -3790,6 +4098,7 @@ export function AIChatPanel({
           cardIsCached={cardIsCached}
           cardTurns={cardTurns}
           cardFlow={cardFlow}
+          calendarSyncEnabled={calendarSyncEnabled}
           onDeepSearch={handleDeepSearch}
           onEditMemory={handleEditMemory}
         />

@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import { internalMutation } from "./_generated/server";
+import { internalMutation, type MutationCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { applyUserMemoryStatsTransition } from "./lib/memoryStats";
 import {
@@ -24,6 +25,19 @@ function isSameValue(left: unknown, right: unknown) {
     return left === right;
   }
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+async function isCalendarSyncEnabledForUser(ctx: MutationCtx, userId: Id<"users">) {
+  const integration = await ctx.db
+    .query("userIntegrations")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .unique();
+  if (!integration) return false;
+  const grantedScopes = integration.grantedScopes ?? [];
+  const hasCalendarScope =
+    grantedScopes.includes("https://www.googleapis.com/auth/calendar") ||
+    grantedScopes.includes("https://www.googleapis.com/auth/calendar.events");
+  return hasCalendarScope && integration.calendarEnabled !== false;
 }
 
 export const updateEmbedding = internalMutation({
@@ -142,6 +156,9 @@ export const updateAIFields = internalMutation({
         googleSyncDesiredFingerprint: undefined,
       });
     } else if (updatedMemory && updatedMemory.entryKind === "reminder") {
+      if (!(await isCalendarSyncEnabledForUser(ctx, updatedMemory.userId))) {
+        return;
+      }
       await ctx.runMutation(internal.integrations.queueReminderSync, {
         memoryId: updatedMemory._id,
         pendingMessage: "Reminder updated. Syncing changes to Google Calendar...",
