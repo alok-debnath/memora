@@ -9,6 +9,9 @@ interface ResolvedUser {
   name: string;
   timezone?: string;
   userId: Id<"users">;
+  userType?: "user" | "admin";
+  analyticsSubjectId?: string;
+  authUserId?: string;
 }
 
 export async function resolveUser(ctx: DbCtx, _token?: string): Promise<ResolvedUser> {
@@ -26,6 +29,9 @@ export async function resolveUser(ctx: DbCtx, _token?: string): Promise<Resolved
   if (!user) {
     throw new Error("User profile not initialized");
   }
+  if (user.deletedAt) {
+    throw new Error("Account deleted");
+  }
 
   return {
     _id: user._id,
@@ -33,5 +39,16 @@ export async function resolveUser(ctx: DbCtx, _token?: string): Promise<Resolved
     name: user.name,
     timezone: user.timezone,
     userId: user._id,
+    userType: user.userType ?? "user",
+    analyticsSubjectId: user.analyticsSubjectId,
+    authUserId: user.authUserId,
   };
+}
+
+export async function requireAdmin(ctx: DbCtx) {
+  const user = await resolveUser(ctx);
+  if ((user.userType ?? "user") !== "admin") {
+    throw new Error("Admin access required");
+  }
+  return user;
 }

@@ -21,6 +21,10 @@ export default defineSchema({
     authUserId: v.optional(v.string()),
     email: v.string(),
     name: v.string(),
+    userType: v.optional(v.union(v.literal("user"), v.literal("admin"))),
+    analyticsSubjectId: v.optional(v.string()),
+    deletedAt: v.optional(v.number()),
+    anonymizedAt: v.optional(v.number()),
     passwordHash: v.optional(v.string()),
     timezone: v.optional(v.string()),
     avatarUrl: v.optional(v.string()),
@@ -33,7 +37,9 @@ export default defineSchema({
     ),
   })
     .index("by_email", ["email"])
-    .index("by_token_identifier", ["tokenIdentifier"]),
+    .index("by_token_identifier", ["tokenIdentifier"])
+    .index("by_user_type", ["userType"])
+    .index("by_analytics_subject_id", ["analyticsSubjectId"]),
 
   memories: defineTable({
     userId: v.id("users"),
@@ -122,6 +128,7 @@ export default defineSchema({
 
   userAnalyticsSummary: defineTable({
     userId: v.id("users"),
+    analyticsSubjectId: v.optional(v.string()),
     trackingStartedAt: v.number(),
     lastActivityAt: v.optional(v.number()),
     totalMemoryCreates: v.number(),
@@ -142,11 +149,22 @@ export default defineSchema({
     totalAiOutputTokens: v.number(),
     totalAiAudioSeconds: v.number(),
     totalAiCostUsdMicros: v.number(),
+    totalSearches: v.optional(v.number()),
+    totalDeepSearches: v.optional(v.number()),
+    totalSearchCacheHits: v.optional(v.number()),
+    totalVectorSearches: v.optional(v.number()),
+    totalFullTextSearches: v.optional(v.number()),
+    totalKeywordSearches: v.optional(v.number()),
+    totalSearchResults: v.optional(v.number()),
+    totalSearchLatencyMs: v.optional(v.number()),
     updatedAt: v.number(),
-  }).index("by_user", ["userId"]),
+  })
+    .index("by_user", ["userId"])
+    .index("by_analytics_subject_id", ["analyticsSubjectId"]),
 
   userAnalyticsDaily: defineTable({
     userId: v.id("users"),
+    analyticsSubjectId: v.optional(v.string()),
     dayKey: v.string(),
     memoryCreates: v.number(),
     memoryUpdates: v.number(),
@@ -162,13 +180,23 @@ export default defineSchema({
     aiOutputTokens: v.number(),
     aiAudioSeconds: v.number(),
     aiCostUsdMicros: v.number(),
+    searches: v.optional(v.number()),
+    deepSearches: v.optional(v.number()),
+    searchCacheHits: v.optional(v.number()),
+    vectorSearches: v.optional(v.number()),
+    fullTextSearches: v.optional(v.number()),
+    keywordSearches: v.optional(v.number()),
+    searchResults: v.optional(v.number()),
+    searchLatencyMs: v.optional(v.number()),
     updatedAt: v.number(),
   })
     .index("by_user", ["userId"])
-    .index("by_user_and_day", ["userId", "dayKey"]),
+    .index("by_user_and_day", ["userId", "dayKey"])
+    .index("by_analytics_subject_id_and_day", ["analyticsSubjectId", "dayKey"]),
 
   userAnalyticsModelDaily: defineTable({
     userId: v.id("users"),
+    analyticsSubjectId: v.optional(v.string()),
     dayKey: v.string(),
     provider: v.string(),
     model: v.string(),
@@ -185,10 +213,12 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_user_day", ["userId", "dayKey"])
-    .index("by_user_day_model", ["userId", "dayKey", "provider", "model"]),
+    .index("by_user_day_model", ["userId", "dayKey", "provider", "model"])
+    .index("by_analytics_subject_id_and_day", ["analyticsSubjectId", "dayKey"]),
 
   userAiUsageEvents: defineTable({
     userId: v.id("users"),
+    analyticsSubjectId: v.optional(v.string()),
     occurredAt: v.number(),
     dayKey: v.string(),
     provider: v.string(),
@@ -207,7 +237,8 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_user_occurred_at", ["userId", "occurredAt"])
-    .index("by_occurred_at", ["occurredAt"]),
+    .index("by_occurred_at", ["occurredAt"])
+    .index("by_analytics_subject_id_and_occurred_at", ["analyticsSubjectId", "occurredAt"]),
 
   userTopics: defineTable({
     userId: v.id("users"),

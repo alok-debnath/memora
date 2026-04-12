@@ -106,6 +106,8 @@ export const syncSessionUser = mutation({
         authUserId: identity.subject,
         email,
         name,
+        userType: "user",
+        analyticsSubjectId: `subj_${Date.now().toString(36)}`,
         timezone: "UTC",
       });
 
@@ -140,11 +142,22 @@ export const syncSessionUser = mutation({
       });
 
       user = await ctx.db.get(userId);
-    } else if (user.email !== email || user.name !== name || user.authUserId !== identity.subject) {
+    } else if (
+      user.email !== email ||
+      user.name !== name ||
+      user.authUserId !== identity.subject ||
+      !user.analyticsSubjectId ||
+      !user.userType ||
+      user.deletedAt
+    ) {
       await ctx.db.patch(user._id, {
         email,
         name,
         authUserId: identity.subject,
+        userType: user.userType ?? "user",
+        analyticsSubjectId: user.analyticsSubjectId ?? `subj_${user._id}`,
+        deletedAt: undefined,
+        anonymizedAt: undefined,
       });
       user = await ctx.db.get(user._id);
     }
@@ -169,7 +182,7 @@ export const deleteAccount = mutation({
     const BATCH = 200;
     let hasMore = false;
 
-    // Delete from child tables in batches
+    // Delete from child tables in batches. Analytics is retained.
     const tables = [
       "memoryAttachments",
       "memoryHistory",
@@ -180,10 +193,6 @@ export const deleteAccount = mutation({
       "chatMessages",
       "userMemoryStats",
       "userMemoryDailyCounts",
-      "userAnalyticsSummary",
-      "userAnalyticsDaily",
-      "userAnalyticsModelDaily",
-      "userAiUsageEvents",
     ] as const;
 
     for (const table of tables) {
@@ -215,14 +224,56 @@ export const deleteAccount = mutation({
     }
     if (memories.length >= BATCH) hasMore = true;
 
+    const appUserId = String(user._id);
+    const authUserId = user.authUserId;
+    const authUsers = await ctx.db
+      .query("authUsers")
+      .withIndex("userId", (q) => q.eq("userId", appUserId))
+      .take(BATCH);
+    for (const authUser of authUsers) {
+      await ctx.db.delete(authUser._id);
+    }
+    if (authUsers.length >= BATCH) hasMore = true;
+
+    if (authUserId) {
+      const authLinkedTables = [
+        "authSessions",
+        "authAccounts",
+        "authTwoFactor",
+        "authOauthAccessTokens",
+        "authOauthConsents",
+      ] as const;
+      for (const table of authLinkedTables) {
+        const docs = await ctx.db
+          .query(table)
+          .withIndex("userId", (q) => q.eq("userId", authUserId))
+          .take(BATCH);
+        for (const doc of docs) {
+          await ctx.db.delete(doc._id);
+        }
+        if (docs.length >= BATCH) hasMore = true;
+      }
+    }
+
     if (hasMore) {
       // More data to delete — schedule another pass
       await ctx.scheduler.runAfter(0, api.auth.deleteAccount, {});
       return { success: false, message: "Deletion in progress" };
     }
 
-    // All data deleted, remove the user record
-    await ctx.db.delete(user._id);
+    const anonymizedAt = Date.now();
+    await ctx.db.patch(user._id, {
+      tokenIdentifier: undefined,
+      authUserId: undefined,
+      email: `deleted+${user._id}@memora.local`,
+      name: "Deleted user",
+      avatarUrl: undefined,
+      passwordHash: undefined,
+      preferences: undefined,
+      analyticsSubjectId: user.analyticsSubjectId ?? `subj_${user._id}`,
+      deletedAt: anonymizedAt,
+      anonymizedAt,
+    });
     return { success: true };
   },
 });

@@ -76,6 +76,7 @@ export async function runSemanticSearch(
   if (!rawQuery) {
     return { results: [], isCached: false };
   }
+  const startedAt = Date.now();
 
   const contentTerms = extractSearchTerms(rawQuery);
   const vectorRanked: Array<{ id: Id<"memories">; vectorScore: number }> = [];
@@ -110,7 +111,7 @@ export async function runSemanticSearch(
           const expandedQuery = cleanSearchQuery(rawQuery);
           queryEmbedding = await trackedEmbedText(ctx, {
             userId: args.userId,
-            feature: "memory_chat",
+            feature: "memory_search",
             input: expandedQuery,
             metadata: { stage: "semantic_search" },
           });
@@ -232,6 +233,18 @@ export async function runSemanticSearch(
     .map(([id]) => id);
 
   if (rankedIds.length === 0) {
+    await ctx.runMutation(internal.analytics.recordSearchUsage, {
+      userId: args.userId,
+      feature: args.forceDeepSearch ? "deep_search" : "memory_search",
+      status: "success",
+      latencyMs: Date.now() - startedAt,
+      resultCount: 0,
+      usedVector: vectorRanked.length > 0,
+      usedFullText: fulltextRanked.length > 0,
+      usedKeyword: keywordRanked.length > 0,
+      cacheHit: isCached,
+      isDeepSearch: Boolean(args.forceDeepSearch),
+    });
     return { results: [], isCached };
   }
 
@@ -249,6 +262,19 @@ export async function runSemanticSearch(
     }
     results.push({ ...memory, _score: rrfScores.get(id)?.score ?? 0 });
   }
+
+  await ctx.runMutation(internal.analytics.recordSearchUsage, {
+    userId: args.userId,
+    feature: args.forceDeepSearch ? "deep_search" : "memory_search",
+    status: "success",
+    latencyMs: Date.now() - startedAt,
+    resultCount: results.length,
+    usedVector: vectorRanked.length > 0,
+    usedFullText: fulltextRanked.length > 0,
+    usedKeyword: keywordRanked.length > 0,
+    cacheHit: isCached,
+    isDeepSearch: Boolean(args.forceDeepSearch),
+  });
 
   return { results, isCached };
 }

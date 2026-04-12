@@ -16,6 +16,7 @@ type UsageRecorderCtx = Pick<ActionCtx, "runMutation">;
 
 type OpenAIFeature =
   | "memory_chat"
+  | "memory_search"
   | "memory_processing"
   | "memory_capture"
   | "diary_processing"

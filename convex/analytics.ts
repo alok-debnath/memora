@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { internalMutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { resolveUser } from "./lib/withAuth";
+import { requireAdmin, resolveUser } from "./lib/withAuth";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RAW_EVENT_RETENTION_MS = 90 * DAY_MS;
@@ -45,6 +45,29 @@ type SummaryDoc = Doc<"userAnalyticsSummary">;
 type DailyDoc = Doc<"userAnalyticsDaily">;
 type ModelDailyDoc = Doc<"userAnalyticsModelDaily">;
 
+const searchFeatureValidator = v.union(
+  v.literal("memory_search"),
+  v.literal("memory_chat"),
+  v.literal("deep_search"),
+  v.literal("conflict_detection"),
+);
+
+async function ensureAnalyticsSubjectId(
+  ctx: Pick<MutationCtx, "db">,
+  userId: Id<"users">,
+): Promise<string> {
+  const user = await ctx.db.get(userId);
+  if (!user) {
+    throw new Error("User not found");
+  }
+  if (user.analyticsSubjectId) {
+    return user.analyticsSubjectId;
+  }
+  const analyticsSubjectId = `subj_${userId}`;
+  await ctx.db.patch(userId, { analyticsSubjectId });
+  return analyticsSubjectId;
+}
+
 async function getSummary(
   ctx: Pick<MutationCtx, "db">,
   userId: Id<"users">,
@@ -66,6 +89,7 @@ async function ensureSummary(
   const now = Date.now();
   const id = await ctx.db.insert("userAnalyticsSummary", {
     userId,
+    analyticsSubjectId: await ensureAnalyticsSubjectId(ctx, userId),
     trackingStartedAt: now,
     totalMemoryCreates: 0,
     totalMemoryUpdates: 0,
@@ -85,6 +109,14 @@ async function ensureSummary(
     totalAiOutputTokens: 0,
     totalAiAudioSeconds: 0,
     totalAiCostUsdMicros: 0,
+    totalSearches: 0,
+    totalDeepSearches: 0,
+    totalSearchCacheHits: 0,
+    totalVectorSearches: 0,
+    totalFullTextSearches: 0,
+    totalKeywordSearches: 0,
+    totalSearchResults: 0,
+    totalSearchLatencyMs: 0,
     updatedAt: now,
   });
   const created = await ctx.db.get(id);
@@ -109,6 +141,7 @@ async function getOrCreateDaily(
   const now = Date.now();
   const id = await ctx.db.insert("userAnalyticsDaily", {
     userId,
+    analyticsSubjectId: await ensureAnalyticsSubjectId(ctx, userId),
     dayKey,
     memoryCreates: 0,
     memoryUpdates: 0,
@@ -124,6 +157,14 @@ async function getOrCreateDaily(
     aiOutputTokens: 0,
     aiAudioSeconds: 0,
     aiCostUsdMicros: 0,
+    searches: 0,
+    deepSearches: 0,
+    searchCacheHits: 0,
+    vectorSearches: 0,
+    fullTextSearches: 0,
+    keywordSearches: 0,
+    searchResults: 0,
+    searchLatencyMs: 0,
     updatedAt: now,
   });
   const created = await ctx.db.get(id);
@@ -162,6 +203,7 @@ async function getOrCreateModelDaily(
   const now = Date.now();
   const id = await ctx.db.insert("userAnalyticsModelDaily", {
     userId: args.userId,
+    analyticsSubjectId: await ensureAnalyticsSubjectId(ctx, args.userId),
     dayKey: args.dayKey,
     provider: args.provider,
     model: args.model,
@@ -210,14 +252,17 @@ export const recordProductEvent = internalMutation({
     const quantity = Math.max(1, Math.floor(args.quantity ?? 1));
     const bytes = Math.max(0, Math.floor(args.bytes ?? 0));
     const dayKey = getDayKey(now);
+    const analyticsSubjectId = await ensureAnalyticsSubjectId(ctx, args.userId);
     const summary = await ensureSummary(ctx, args.userId);
     const daily = await getOrCreateDaily(ctx, args.userId, dayKey);
 
     const summaryPatch: Partial<SummaryDoc> = {
+      analyticsSubjectId,
       lastActivityAt: now,
       updatedAt: now,
     };
     const dailyPatch: Partial<DailyDoc> = {
+      analyticsSubjectId,
       updatedAt: now,
     };
 
@@ -262,8 +307,10 @@ export const recordStorageDelta = internalMutation({
     occurredAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const analyticsSubjectId = await ensureAnalyticsSubjectId(ctx, args.userId);
     const summary = await ensureSummary(ctx, args.userId);
     await ctx.db.patch(summary._id, {
+      analyticsSubjectId,
       liveStorageBytes: clampNonNegative(summary.liveStorageBytes + args.bytesDelta),
       liveStorageCount: clampNonNegative(summary.liveStorageCount + args.fileCountDelta),
       liveImageCount: clampNonNegative(summary.liveImageCount + (args.imageCountDelta ?? 0)),
@@ -272,6 +319,83 @@ export const recordStorageDelta = internalMutation({
       ),
       lastActivityAt: args.occurredAt ?? Date.now(),
       updatedAt: args.occurredAt ?? Date.now(),
+    });
+    return null;
+  },
+});
+
+export const recordSearchUsage = internalMutation({
+  args: {
+    userId: v.id("users"),
+    occurredAt: v.optional(v.number()),
+    feature: searchFeatureValidator,
+    status: v.union(v.literal("success"), v.literal("error")),
+    latencyMs: v.optional(v.number()),
+    resultCount: v.optional(v.number()),
+    usedVector: v.boolean(),
+    usedFullText: v.boolean(),
+    usedKeyword: v.boolean(),
+    cacheHit: v.boolean(),
+    isDeepSearch: v.boolean(),
+    metadata: v.optional(v.record(v.string(), v.string())),
+  },
+  handler: async (ctx, args) => {
+    const now = args.occurredAt ?? Date.now();
+    const dayKey = getDayKey(now);
+    const analyticsSubjectId = await ensureAnalyticsSubjectId(ctx, args.userId);
+    const summary = await ensureSummary(ctx, args.userId);
+    const daily = await getOrCreateDaily(ctx, args.userId, dayKey);
+    const latencyMs = Math.max(0, Math.floor(args.latencyMs ?? 0));
+    const resultCount = Math.max(0, Math.floor(args.resultCount ?? 0));
+
+    await ctx.db.insert("userAiUsageEvents", {
+      userId: args.userId,
+      analyticsSubjectId,
+      occurredAt: now,
+      dayKey,
+      provider: "memora",
+      model: "search_pipeline",
+      operation: "search",
+      feature: args.feature,
+      status: args.status,
+      latencyMs: latencyMs || undefined,
+      costAvailability: "unavailable",
+      metadata: {
+        ...(args.metadata ?? {}),
+        kind: "search",
+        cacheHit: args.cacheHit ? "true" : "false",
+        usedVector: args.usedVector ? "true" : "false",
+        usedFullText: args.usedFullText ? "true" : "false",
+        usedKeyword: args.usedKeyword ? "true" : "false",
+        resultCount: String(resultCount),
+      },
+    });
+
+    await ctx.db.patch(summary._id, {
+      analyticsSubjectId,
+      totalSearches: (summary.totalSearches ?? 0) + 1,
+      totalDeepSearches: (summary.totalDeepSearches ?? 0) + (args.isDeepSearch ? 1 : 0),
+      totalSearchCacheHits: (summary.totalSearchCacheHits ?? 0) + (args.cacheHit ? 1 : 0),
+      totalVectorSearches: (summary.totalVectorSearches ?? 0) + (args.usedVector ? 1 : 0),
+      totalFullTextSearches: (summary.totalFullTextSearches ?? 0) + (args.usedFullText ? 1 : 0),
+      totalKeywordSearches: (summary.totalKeywordSearches ?? 0) + (args.usedKeyword ? 1 : 0),
+      totalSearchResults: (summary.totalSearchResults ?? 0) + resultCount,
+      totalSearchLatencyMs: (summary.totalSearchLatencyMs ?? 0) + latencyMs,
+      lastActivityAt: now,
+      updatedAt: now,
+    });
+
+    await ctx.db.patch(daily._id, {
+      analyticsSubjectId,
+      searches: (daily.searches ?? 0) + 1,
+      deepSearches: (daily.deepSearches ?? 0) + (args.isDeepSearch ? 1 : 0),
+      searchCacheHits: (daily.searchCacheHits ?? 0) + (args.cacheHit ? 1 : 0),
+      vectorSearches: (daily.vectorSearches ?? 0) + (args.usedVector ? 1 : 0),
+      fullTextSearches: (daily.fullTextSearches ?? 0) + (args.usedFullText ? 1 : 0),
+      keywordSearches: (daily.keywordSearches ?? 0) + (args.usedKeyword ? 1 : 0),
+      searchResults: (daily.searchResults ?? 0) + resultCount,
+      searchLatencyMs: (daily.searchLatencyMs ?? 0) + latencyMs,
+      updatedAt: now,
     });
     return null;
   },
@@ -298,6 +422,7 @@ export const recordAiUsage = internalMutation({
   handler: async (ctx, args) => {
     const now = args.occurredAt ?? Date.now();
     const dayKey = getDayKey(now);
+    const analyticsSubjectId = await ensureAnalyticsSubjectId(ctx, args.userId);
     const summary = await ensureSummary(ctx, args.userId);
     const daily = await getOrCreateDaily(ctx, args.userId, dayKey);
     const modelDaily = await getOrCreateModelDaily(ctx, {
@@ -317,6 +442,7 @@ export const recordAiUsage = internalMutation({
 
     await ctx.db.insert("userAiUsageEvents", {
       userId: args.userId,
+      analyticsSubjectId,
       occurredAt: now,
       dayKey,
       provider: args.provider,
@@ -335,6 +461,7 @@ export const recordAiUsage = internalMutation({
     });
 
     await ctx.db.patch(summary._id, {
+      analyticsSubjectId,
       totalAiRequests: summary.totalAiRequests + 1,
       totalAiErrors: summary.totalAiErrors + (args.status === "error" ? 1 : 0),
       totalAiInputTokens: summary.totalAiInputTokens + inputTokens,
@@ -346,6 +473,7 @@ export const recordAiUsage = internalMutation({
     });
 
     await ctx.db.patch(daily._id, {
+      analyticsSubjectId,
       aiRequests: daily.aiRequests + 1,
       aiErrors: daily.aiErrors + (args.status === "error" ? 1 : 0),
       aiInputTokens: daily.aiInputTokens + inputTokens,
@@ -356,6 +484,7 @@ export const recordAiUsage = internalMutation({
     });
 
     await ctx.db.patch(modelDaily._id, {
+      analyticsSubjectId,
       requests: modelDaily.requests + 1,
       errors: modelDaily.errors + (args.status === "error" ? 1 : 0),
       inputTokens: modelDaily.inputTokens + inputTokens,
@@ -422,11 +551,6 @@ export const overview = query({
       .query("diaryEntries")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .take(1000);
-    const topics = await ctx.db
-      .query("userTopics")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .take(100);
-
     const activeDaySet = new Set(
       memoryDaily.filter((row) => row.count > 0).map((row) => row.dayKey),
     );
@@ -456,6 +580,14 @@ export const overview = query({
         acc.memoriesCreated += row.memoryCreates;
         acc.diaryEntries += row.diaryEntries;
         acc.chatMessages += row.chatMessages;
+        acc.searches += row.searches ?? 0;
+        acc.deepSearches += row.deepSearches ?? 0;
+        acc.searchCacheHits += row.searchCacheHits ?? 0;
+        acc.vectorSearches += row.vectorSearches ?? 0;
+        acc.fullTextSearches += row.fullTextSearches ?? 0;
+        acc.keywordSearches += row.keywordSearches ?? 0;
+        acc.searchResults += row.searchResults ?? 0;
+        acc.searchLatencyMs += row.searchLatencyMs ?? 0;
         return acc;
       },
       {
@@ -469,6 +601,14 @@ export const overview = query({
         memoriesCreated: 0,
         diaryEntries: 0,
         chatMessages: 0,
+        searches: 0,
+        deepSearches: 0,
+        searchCacheHits: 0,
+        vectorSearches: 0,
+        fullTextSearches: 0,
+        keywordSearches: 0,
+        searchResults: 0,
+        searchLatencyMs: 0,
       },
     );
 
@@ -479,32 +619,29 @@ export const overview = query({
         totalMemories: memoryStats?.totalMemories ?? 0,
         totalReminders: memoryStats?.totalReminders ?? 0,
         totalDiaryEntries: diaryEntries.length,
-        totalTopics: topics.length,
         totalAiRequests: summary?.totalAiRequests ?? 0,
         totalAiCostUsdMicros: summary?.totalAiCostUsdMicros ?? 0,
         liveStorageBytes: summary?.liveStorageBytes ?? 0,
         liveStorageCount: summary?.liveStorageCount ?? 0,
         liveImageCount: summary?.liveImageCount ?? 0,
         liveDocumentCount: summary?.liveDocumentCount ?? 0,
+        totalSearches: summary?.totalSearches ?? 0,
+        totalDeepSearches: summary?.totalDeepSearches ?? 0,
+        totalSearchCacheHits: summary?.totalSearchCacheHits ?? 0,
+        totalVectorSearches: summary?.totalVectorSearches ?? 0,
+        totalFullTextSearches: summary?.totalFullTextSearches ?? 0,
       },
       rangeTotals: {
         ...totals,
         failureRate: totals.aiRequests > 0 ? totals.aiErrors / totals.aiRequests : 0,
+        searchCacheHitRate: totals.searches > 0 ? totals.searchCacheHits / totals.searches : 0,
+        avgSearchLatencyMs: totals.searches > 0 ? totals.searchLatencyMs / totals.searches : 0,
+        avgSearchResults: totals.searches > 0 ? totals.searchResults / totals.searches : 0,
       },
       consistency: {
         streakDays,
         activeDays: activeDays.length,
       },
-      topTopics: topics
-        .slice()
-        .sort((a, b) => b.memoryCount - a.memoryCount)
-        .slice(0, 6)
-        .map((topic) => ({
-          id: topic._id,
-          name: topic.name,
-          color: topic.color,
-          memoryCount: topic.memoryCount,
-        })),
       topModel: topModel
         ? {
             provider: topModel.provider,
@@ -522,6 +659,8 @@ export const overview = query({
         diaryEntries: row.diaryEntries,
         chatMessages: row.chatMessages,
         aiRequests: row.aiRequests,
+        searches: row.searches ?? 0,
+        vectorSearches: row.vectorSearches ?? 0,
         aiCostUsdMicros: row.aiCostUsdMicros,
         attachmentBytesUploaded: row.attachmentBytesUploaded,
       })),
@@ -625,6 +764,56 @@ export const activityTimeline = query({
       range,
     ).reverse();
     return rows;
+  },
+});
+
+export const adminOverview = query({
+  args: {
+    range: rangeValidator,
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const range = args.range ?? "30d";
+    const rows = filterDailyByRange(
+      await ctx.db.query("userAnalyticsDaily").order("desc").take(5000),
+      range,
+    );
+    const subjects = new Set(rows.map((row) => row.analyticsSubjectId).filter(Boolean));
+    return rows.reduce(
+      (acc, row) => {
+        acc.subjects = subjects.size;
+        acc.aiRequests += row.aiRequests;
+        acc.aiCostUsdMicros += row.aiCostUsdMicros;
+        acc.searches += row.searches ?? 0;
+        acc.deepSearches += row.deepSearches ?? 0;
+        acc.vectorSearches += row.vectorSearches ?? 0;
+        acc.storageUploadsBytes += row.attachmentBytesUploaded;
+        return acc;
+      },
+      {
+        subjects: subjects.size,
+        aiRequests: 0,
+        aiCostUsdMicros: 0,
+        searches: 0,
+        deepSearches: 0,
+        vectorSearches: 0,
+        storageUploadsBytes: 0,
+      },
+    );
+  },
+});
+
+export const adminRecentEvents = query({
+  args: {
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    return await ctx.db
+      .query("userAiUsageEvents")
+      .withIndex("by_occurred_at")
+      .order("desc")
+      .paginate(args.paginationOpts);
   },
 });
 

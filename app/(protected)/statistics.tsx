@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { View } from "react-native";
+import { ScrollView, View, useWindowDimensions } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useQuery } from "convex/react";
 import Svg, { Line, Path, Rect, Text as SvgText } from "react-native-svg";
@@ -73,15 +73,17 @@ function KPI({
   value,
   tone,
   hint,
+  width,
 }: {
   icon: React.ComponentProps<typeof Feather>["name"];
   label: string;
   value: string;
   tone: string;
   hint: string;
+  width: number;
 }) {
   return (
-    <Card style={{ flex: 1, minWidth: "47%", borderRadius: 24 }}>
+    <Card style={{ width, borderRadius: 24 }}>
       <XStack alignItems="flex-start" justifyContent="space-between">
         <YStack
           width={42}
@@ -114,8 +116,8 @@ function TimelineChart({
 }: {
   data: Array<{
     dayKey: string;
-    memoryCreates: number;
-    aiRequests: number;
+    primaryValue: number;
+    secondaryValue: number;
   }>;
   barColor: string;
   lineColor: string;
@@ -125,11 +127,11 @@ function TimelineChart({
   const chartHeight = 106;
   const barWidth = Math.max(8, Math.min(14, width / Math.max(data.length * 2, 1)));
   const step = width / Math.max(data.length, 1);
-  const maxBar = Math.max(1, ...data.map((item) => item.memoryCreates));
-  const maxLine = Math.max(1, ...data.map((item) => item.aiRequests));
+  const maxBar = Math.max(1, ...data.map((item) => item.primaryValue));
+  const maxLine = Math.max(1, ...data.map((item) => item.secondaryValue));
   const linePoints = data.map((item, index) => {
     const x = index * step + step / 2;
-    const y = chartHeight - (item.aiRequests / maxLine) * chartHeight;
+    const y = chartHeight - (item.secondaryValue / maxLine) * chartHeight;
     return { x, y };
   });
   const path = linePoints
@@ -140,7 +142,7 @@ function TimelineChart({
     <Svg width={width} height={height}>
       {data.map((item, index) => {
         const x = index * step + step / 2 - barWidth / 2;
-        const barHeight = (item.memoryCreates / maxBar) * chartHeight;
+        const barHeight = (item.primaryValue / maxBar) * chartHeight;
         const isTick =
           index === 0 || index === data.length - 1 || index === Math.floor(data.length / 2);
         return (
@@ -189,8 +191,14 @@ function TimelineChart({
 export default function AnalyticsScreen() {
   const theme = useAppTheme();
   const { token } = useAuth();
+  const { width: windowWidth } = useWindowDimensions();
   const [range, setRange] = useState<RangeKey>("30d");
   const [detailPanel, setDetailPanel] = useState<"none" | "models" | "events">("none");
+  const isCompact = windowWidth < 720;
+  const contentWidth = Math.min(windowWidth - 32, 1040);
+  const kpiWidth = isCompact
+    ? Math.max(150, Math.floor((contentWidth - 10) / 2))
+    : Math.max(200, Math.floor((contentWidth - 30) / 4));
 
   const overview = useQuery(api.analytics.overview, token ? { token, range } : "skip");
   const aiBreakdown = useQuery(api.analytics.aiBreakdown, token ? { token, range } : "skip") ?? [];
@@ -202,9 +210,9 @@ export default function AnalyticsScreen() {
 
   const summaryLine = useMemo(() => {
     if (!overview) return "Loading telemetry and history…";
-    return `${formatCompactNumber(overview.rangeTotals.aiRequests)} AI calls, ${formatUsdMicros(
-      overview.rangeTotals.aiCostUsdMicros,
-    )} spend, ${formatBytes(overview.totals.liveStorageBytes)} live storage.`;
+    return `${formatCompactNumber(overview.rangeTotals.aiRequests)} AI calls, ${formatCompactNumber(
+      overview.rangeTotals.searches ?? 0,
+    )} searches, ${formatUsdMicros(overview.rangeTotals.aiCostUsdMicros)} spend.`;
   }, [overview]);
 
   const topModels = useMemo(() => aiBreakdown.slice(0, 5), [aiBreakdown]);
@@ -241,7 +249,7 @@ export default function AnalyticsScreen() {
                 fontWeight="700"
                 color="$color"
               >
-                Personal ops, without the clutter
+                Usage overview
               </Text>
               <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
                 {summaryLine}
@@ -280,12 +288,12 @@ export default function AnalyticsScreen() {
           </XStack>
 
           <XStack marginTop={18} gap={10} flexWrap="wrap">
-            <Badge
-              label={`${overview?.consistency.streakDays ?? 0} day streak`}
-              color={theme.primary.val}
-            />
             <Badge label={`${overview?.consistency.activeDays ?? 0} active days`} />
             <Badge label={`Tracking since ${formatTrackedDate(overview?.trackingStartedAt)}`} />
+            <Badge
+              label={`${Math.round((overview?.rangeTotals.searchCacheHitRate ?? 0) * 100)}% search cache hit`}
+              color={statusAccentColors.info}
+            />
           </XStack>
         </Card>
       </Animated.View>
@@ -294,70 +302,68 @@ export default function AnalyticsScreen() {
         <SegmentedControl options={RANGE_OPTIONS} value={range} onChange={setRange} />
       </Animated.View>
 
-      <XStack flexWrap="wrap" gap={10}>
-        <Animated.View
-          entering={FadeInUp.delay(110).duration(360)}
-          style={{ flex: 1, minWidth: "46%" }}
-        >
-          <KPI
-            icon="layers"
-            label="Total memories"
-            value={formatCompactNumber(overview?.totals.totalMemories ?? 0)}
-            hint={`${formatCompactNumber(overview?.rangeTotals.memoriesCreated ?? 0)} new in range`}
-            tone={statAccentColors.memories}
-          />
-        </Animated.View>
-        <Animated.View
-          entering={FadeInUp.delay(140).duration(360)}
-          style={{ flex: 1, minWidth: "46%" }}
-        >
-          <KPI
-            icon="book-open"
-            label="Diary entries"
-            value={formatCompactNumber(overview?.totals.totalDiaryEntries ?? 0)}
-            hint={`${formatCompactNumber(overview?.rangeTotals.diaryEntries ?? 0)} logged in range`}
-            tone={statAccentColors.diary}
-          />
-        </Animated.View>
-        <Animated.View
-          entering={FadeInUp.delay(170).duration(360)}
-          style={{ flex: 1, minWidth: "46%" }}
-        >
+      <XStack flexWrap="wrap" gap={10} alignItems="flex-start">
+        <Animated.View entering={FadeInUp.delay(110).duration(360)} style={{ width: kpiWidth }}>
           <KPI
             icon="cpu"
             label="AI spend"
             value={formatUsdMicros(overview?.rangeTotals.aiCostUsdMicros ?? 0)}
             hint={`${formatCompactNumber(overview?.rangeTotals.aiRequests ?? 0)} requests`}
             tone={integrationAccentColors.openai}
+            width={kpiWidth}
           />
         </Animated.View>
-        <Animated.View
-          entering={FadeInUp.delay(200).duration(360)}
-          style={{ flex: 1, minWidth: "46%" }}
-        >
+        <Animated.View entering={FadeInUp.delay(140).duration(360)} style={{ width: kpiWidth }}>
+          <KPI
+            icon="search"
+            label="Searches"
+            value={formatCompactNumber(overview?.rangeTotals.searches ?? 0)}
+            hint={`${formatCompactNumber(overview?.rangeTotals.deepSearches ?? 0)} deep scans`}
+            tone={statAccentColors.diary}
+            width={kpiWidth}
+          />
+        </Animated.View>
+        <Animated.View entering={FadeInUp.delay(170).duration(360)} style={{ width: kpiWidth }}>
+          <KPI
+            icon="activity"
+            label="AI requests"
+            value={formatCompactNumber(overview?.rangeTotals.aiRequests ?? 0)}
+            hint={`${Math.round((overview?.rangeTotals.failureRate ?? 0) * 100)}% failure rate`}
+            tone={theme.primary.val}
+            width={kpiWidth}
+          />
+        </Animated.View>
+        <Animated.View entering={FadeInUp.delay(200).duration(360)} style={{ width: kpiWidth }}>
           <KPI
             icon="hard-drive"
             label="Live storage"
             value={formatBytes(overview?.totals.liveStorageBytes ?? 0)}
             hint={`${formatCompactNumber(overview?.totals.liveStorageCount ?? 0)} files`}
             tone={statusAccentColors.info}
+            width={kpiWidth}
           />
         </Animated.View>
       </XStack>
 
       <Animated.View entering={FadeInUp.delay(240).duration(360)}>
-        <SectionLabel>Activity Mix</SectionLabel>
-        <Card style={{ borderRadius: 26 }}>
-          <XStack alignItems="center" justifyContent="space-between" marginBottom={12}>
-            <YStack gap={2}>
+        <SectionLabel>Usage Flow</SectionLabel>
+        <Card style={{ borderRadius: 26, overflow: "hidden" }}>
+          <XStack
+            alignItems={isCompact ? "flex-start" : "center"}
+            justifyContent="space-between"
+            flexWrap="wrap"
+            gap={10}
+            marginBottom={12}
+          >
+            <YStack gap={2} flex={1} minWidth={isCompact ? "100%" : 0}>
               <Text fontSize={18} fontFamily="$heading" fontWeight="700" color="$color">
-                Output vs AI load
+                Search vs AI load
               </Text>
               <Text fontSize={13} fontFamily="$body" color="$colorMuted">
-                Bars show memories created. The line tracks AI requests over the same range.
+                Bars show searches. The line tracks AI requests over the same range.
               </Text>
             </YStack>
-            <XStack gap={10}>
+            <XStack gap={10} flexWrap="wrap">
               <XStack alignItems="center" gap={6}>
                 <View
                   style={{
@@ -368,7 +374,7 @@ export default function AnalyticsScreen() {
                   }}
                 />
                 <Text fontSize={12} color="$colorMuted">
-                  Memories
+                  Searches
                 </Text>
               </XStack>
               <XStack alignItems="center" gap={6}>
@@ -386,22 +392,28 @@ export default function AnalyticsScreen() {
               </XStack>
             </XStack>
           </XStack>
-          <TimelineChart
-            data={(overview?.timeline ?? []).map((item) => ({
-              dayKey: item.dayKey,
-              memoryCreates: item.memoryCreates,
-              aiRequests: item.aiRequests,
-            }))}
-            barColor={theme.primary.val}
-            lineColor={integrationAccentColors.openai}
-          />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingRight: 8 }}
+          >
+            <TimelineChart
+              data={(overview?.timeline ?? []).map((item) => ({
+                dayKey: item.dayKey,
+                primaryValue: item.searches ?? 0,
+                secondaryValue: item.aiRequests,
+              }))}
+              barColor={theme.primary.val}
+              lineColor={integrationAccentColors.openai}
+            />
+          </ScrollView>
         </Card>
       </Animated.View>
 
       <Animated.View entering={FadeInUp.delay(280).duration(360)}>
         <SectionLabel>AI Usage</SectionLabel>
         <Card style={{ borderRadius: 26 }}>
-          <XStack justifyContent="space-between" gap={16}>
+          <XStack justifyContent="space-between" gap={16} flexWrap="wrap">
             <YStack flex={1} gap={10}>
               <Text fontSize={18} fontFamily="$heading" fontWeight="700" color="$color">
                 Model spend and token load
@@ -425,7 +437,7 @@ export default function AnalyticsScreen() {
               </XStack>
             </YStack>
             <YStack
-              minWidth={120}
+              minWidth={isCompact ? "100%" : 120}
               paddingHorizontal={14}
               paddingVertical={12}
               borderRadius={18}
@@ -481,6 +493,68 @@ export default function AnalyticsScreen() {
       </Animated.View>
 
       <Animated.View entering={FadeInUp.delay(320).duration(360)}>
+        <SectionLabel>Search & Retrieval</SectionLabel>
+        <Card style={{ borderRadius: 26 }}>
+          <XStack flexWrap="wrap" gap={10}>
+            <YStack
+              flex={1}
+              minWidth={110}
+              padding={14}
+              borderRadius={18}
+              backgroundColor={withAlpha(theme.primary.val, "10")}
+            >
+              <Text fontSize={12} color="$colorMuted">
+                Cache hit rate
+              </Text>
+              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">
+                {Math.round((overview?.rangeTotals.searchCacheHitRate ?? 0) * 100)}%
+              </Text>
+            </YStack>
+            <YStack
+              flex={1}
+              minWidth={110}
+              padding={14}
+              borderRadius={18}
+              backgroundColor={withAlpha(statusAccentColors.success, "10")}
+            >
+              <Text fontSize={12} color="$colorMuted">
+                Avg latency
+              </Text>
+              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">
+                {Math.round(overview?.rangeTotals.avgSearchLatencyMs ?? 0)} ms
+              </Text>
+            </YStack>
+            <YStack
+              flex={1}
+              minWidth={110}
+              padding={14}
+              borderRadius={18}
+              backgroundColor={withAlpha(statusAccentColors.warning, "10")}
+            >
+              <Text fontSize={12} color="$colorMuted">
+                Vector / full-text
+              </Text>
+              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">
+                {formatCompactNumber(overview?.rangeTotals.vectorSearches ?? 0)}/
+                {formatCompactNumber(overview?.rangeTotals.fullTextSearches ?? 0)}
+              </Text>
+            </YStack>
+          </XStack>
+          <XStack marginTop={14} gap={10} flexWrap="wrap">
+            <Badge
+              label={`${formatCompactNumber(overview?.rangeTotals.keywordSearches ?? 0)} keyword assists`}
+            />
+            <Badge
+              label={`${Math.round(overview?.rangeTotals.avgSearchResults ?? 0)} avg results`}
+            />
+            <Badge
+              label={`${formatCompactNumber(overview?.totals.totalSearches ?? 0)} tracked searches`}
+            />
+          </XStack>
+        </Card>
+      </Animated.View>
+
+      <Animated.View entering={FadeInUp.delay(360).duration(360)}>
         <SectionLabel>Storage Footprint</SectionLabel>
         <Card style={{ borderRadius: 26 }}>
           <XStack flexWrap="wrap" gap={10}>
@@ -530,33 +604,8 @@ export default function AnalyticsScreen() {
         </Card>
       </Animated.View>
 
-      <Animated.View entering={FadeInUp.delay(360).duration(360)}>
-        <SectionLabel>Topic Footprint</SectionLabel>
-        <Card style={{ borderRadius: 26 }}>
-          {overview?.topTopics?.length ? (
-            <YStack gap={10}>
-              {overview.topTopics.map((topic) => (
-                <XStack key={topic.id} alignItems="center" gap={10}>
-                  <YStack width={10} height={10} borderRadius={5} backgroundColor={topic.color} />
-                  <Text flex={1} fontSize={13} fontWeight="600" color="$color" numberOfLines={1}>
-                    {topic.name}
-                  </Text>
-                  <Text fontSize={12} color="$colorMuted">
-                    {topic.memoryCount}
-                  </Text>
-                </XStack>
-              ))}
-            </YStack>
-          ) : (
-            <Text fontSize={13} color="$colorMuted">
-              Topic analytics will fill in as your memories continue to be processed.
-            </Text>
-          )}
-        </Card>
-      </Animated.View>
-
       {detailPanel === "models" ? (
-        <Animated.View entering={FadeInUp.delay(420).duration(360)}>
+        <Animated.View entering={FadeInUp.delay(400).duration(360)}>
           <SectionLabel>Model Cost Drilldown</SectionLabel>
           <Card style={{ borderRadius: 26 }}>
             <YStack gap={12}>
@@ -596,8 +645,8 @@ export default function AnalyticsScreen() {
       ) : null}
 
       {detailPanel === "events" ? (
-        <Animated.View entering={FadeInUp.delay(420).duration(360)}>
-          <SectionLabel>Recent AI Events</SectionLabel>
+        <Animated.View entering={FadeInUp.delay(400).duration(360)}>
+          <SectionLabel>Recent Usage Events</SectionLabel>
           <Card style={{ borderRadius: 26 }}>
             <YStack gap={12}>
               {recentEvents.length > 0 ? (
