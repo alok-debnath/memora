@@ -51,6 +51,8 @@ import { withAlpha } from "./themeHelpers";
 export interface ContextMenuHandle {
   /** Imperatively open the menu (same as user tapping with openOn="press"). */
   open: () => void;
+  /** Imperatively close the menu. */
+  close: () => void;
 }
 
 export interface ContextMenuItemDef {
@@ -245,7 +247,7 @@ export const ContextMenu = React.forwardRef<ContextMenuHandle, ContextMenuProps>
     });
   }, []);
 
-  useImperativeHandle(ref, () => ({ open: openMenuOnPress }), [openMenuOnPress]);
+  useImperativeHandle(ref, () => ({ open: openMenuOnPress, close: closeMenu }), [openMenuOnPress, closeMenu]);
 
   // ── Animated styles ───────────────────────────────────────────────────────
 

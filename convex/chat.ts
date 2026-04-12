@@ -222,7 +222,51 @@ export const deepSearch = action({
       const cardMetadata = { 
         ids: fresh.results.map(r => r._id), 
         isCached: false,
-        turns: 1 // Deep scan is an explicit single-purpose turn
+        turns: 1, // Deep scan is an explicit single-purpose turn
+        flow: {
+          assistantProvider: "openai",
+          toolSequence: ["deep_search", "surface_cards"],
+          searches: [
+            {
+              source: "tool",
+              query: args.query.trim() || undefined,
+              resultCount: fresh.results.length,
+              cacheState: "fresh",
+              searchMode: "semantic_fresh",
+            },
+          ],
+          attachments: [],
+          summary: {
+            assistantProvider: "openai",
+            turns: 1,
+            cardCount: fresh.results.length,
+            pathMode: "fresh",
+            hasFiles: false,
+          },
+          steps: [
+            {
+              kind: "search",
+              query: args.query.trim() || undefined,
+              resultCount: fresh.results.length,
+              cacheState: "fresh",
+              searchMode: "semantic_fresh",
+            },
+            {
+              kind: "tool",
+              toolName: "deep_search",
+              label: "Deep scan",
+            },
+            {
+              kind: "reasoning",
+              turns: 1,
+              assistantProvider: "openai",
+            },
+            {
+              kind: "result",
+              cardCount: fresh.results.length,
+            },
+          ],
+        },
       };
 
       let newContent: string;

@@ -21,7 +21,6 @@ import Animated, {
 } from "react-native-reanimated";
 import { XStack, YStack, Text } from "tamagui";
 
-import { UnifiedCommandPanel } from "@/components/UnifiedCommandPanel";
 import { AppButton } from "@/components/ui/AppButton";
 import { FontFamily } from "@/constants/fonts";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -462,9 +461,7 @@ function LiquidGlassTabBar({
 
 function CustomTabLayout() {
   const theme = useAppTheme();
-  const isCommandOpen = useUIStore((s) => s.isCommandOpen);
   const openCommand = useUIStore((s) => s.openCommand);
-  const closeCommand = useUIStore((s) => s.closeCommand);
 
   return (
     <>
@@ -505,10 +502,6 @@ function CustomTabLayout() {
         {/* __fab.tsx exists for file-system routing but is not a nav tab */}
         <Tabs.Screen name="__fab" options={{ href: null }} />
       </Tabs>
-      <UnifiedCommandPanel
-        visible={isCommandOpen}
-        onClose={closeCommand}
-      />
     </>
   );
 }
@@ -519,9 +512,7 @@ function DesktopSidebarLayout() {
   const theme = useAppTheme();
   const router = useRouter();
   const pathname = usePathname();
-  const isCommandOpen = useUIStore((s) => s.isCommandOpen);
   const openCommand = useUIStore((s) => s.openCommand);
-  const closeCommand = useUIStore((s) => s.closeCommand);
 
   const isActive = (name: string) => {
     if (name === "index") return pathname === "/" || pathname === "/index";
@@ -672,10 +663,6 @@ function DesktopSidebarLayout() {
           </YStack>
         </YStack>
 
-        <UnifiedCommandPanel
-          visible={isCommandOpen}
-          onClose={closeCommand}
-        />
       </XStack>
     </SafeAreaView>
   );

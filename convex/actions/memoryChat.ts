@@ -102,11 +102,58 @@ type CardFlowAttachment = {
   method?: AttachmentExtractionResult["extractionMethod"];
 };
 
+type CardFlowSummary = {
+  assistantProvider: "openai";
+  turns: number;
+  cardCount: number;
+  pathMode: "cached" | "fresh";
+  hasFiles: boolean;
+};
+
+type CardFlowStep =
+  | {
+      kind: "grounding";
+      query?: string;
+      resultCount: number;
+      cacheState?: "cached" | "fresh";
+      searchMode?: MemorySearchResult["searchMode"];
+    }
+  | {
+      kind: "search";
+      query?: string;
+      resultCount: number;
+      cacheState?: "cached" | "fresh";
+      searchMode?: MemorySearchResult["searchMode"];
+    }
+  | {
+      kind: "files";
+      total: number;
+      completed: number;
+      failed: number;
+      methods: Array<NonNullable<CardFlowAttachment["method"]>>;
+    }
+  | {
+      kind: "tool";
+      toolName: string;
+      label: string;
+    }
+  | {
+      kind: "reasoning";
+      turns: number;
+      assistantProvider: "openai";
+    }
+  | {
+      kind: "result";
+      cardCount: number;
+    };
+
 type CardFlowPayload = {
   assistantProvider: "openai";
   toolSequence: string[];
   searches: CardFlowSearch[];
   attachments: CardFlowAttachment[];
+  summary: CardFlowSummary;
+  steps: CardFlowStep[];
 };
 
 const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
@@ -411,6 +458,28 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     },
   },
 ];
+
+const TOOL_LABELS: Record<string, string> = {
+  search_memories: "Search memories",
+  search_documents: "Search documents",
+  create_memory: "Create memory",
+  update_memory: "Update memory",
+  sync_reminder: "Sync reminder",
+  remove_reminder_sync: "Remove sync",
+  propose_deletion: "Find delete matches",
+  list_deleted_memories: "Load deleted",
+  restore_memory: "Restore memory",
+  list_memories: "List memories",
+  get_stats: "Compute stats",
+  analyze_memories: "Analyze memories",
+  history: "Load history",
+  manage_topics: "Update topics",
+  surface_cards: "Surface cards",
+};
+
+function formatFlowToolLabel(toolName: string) {
+  return TOOL_LABELS[toolName] ?? toolName.replace(/_/g, " ");
+}
 
 function parseAttachments(message: string): ParsedAttachment[] {
   const matches = message.matchAll(
@@ -1033,6 +1102,87 @@ export const chat = action({
         method: attachment.extractionMethod,
       })
     );
+    const buildCardFlowPayload = ({
+      turns,
+      cardCount,
+      pathMode,
+      searches,
+      toolSequence,
+      attachments,
+    }: {
+      turns: number;
+      cardCount: number;
+      pathMode: "cached" | "fresh";
+      searches: CardFlowSearch[];
+      toolSequence: string[];
+      attachments: CardFlowAttachment[];
+    }): CardFlowPayload => {
+      const attachmentMethods = Array.from(
+        new Set(
+          attachments
+            .map((attachment) => attachment.method)
+            .filter((method): method is NonNullable<CardFlowAttachment["method"]> => !!method),
+        ),
+      );
+      const completedAttachmentCount = attachments.filter(
+        (attachment) => attachment.status === "completed",
+      ).length;
+      const failedAttachmentCount = attachments.length - completedAttachmentCount;
+      const steps: CardFlowStep[] = [];
+
+      for (const search of searches) {
+        steps.push({
+          kind: search.source === "grounding" ? "grounding" : "search",
+          query: search.query,
+          resultCount: search.resultCount,
+          cacheState: search.cacheState,
+          searchMode: search.searchMode,
+        });
+      }
+
+      if (attachments.length > 0) {
+        steps.push({
+          kind: "files",
+          total: attachments.length,
+          completed: completedAttachmentCount,
+          failed: failedAttachmentCount,
+          methods: attachmentMethods,
+        });
+      }
+
+      for (const toolName of toolSequence) {
+        steps.push({
+          kind: "tool",
+          toolName,
+          label: formatFlowToolLabel(toolName),
+        });
+      }
+
+      steps.push({
+        kind: "reasoning",
+        turns,
+        assistantProvider: "openai",
+      });
+      steps.push({
+        kind: "result",
+        cardCount,
+      });
+
+      return {
+        assistantProvider: "openai",
+        toolSequence,
+        searches,
+        attachments,
+        summary: {
+          assistantProvider: "openai",
+          turns,
+          cardCount,
+          pathMode,
+          hasFiles: attachments.length > 0,
+        },
+        steps,
+      };
+    };
     let aiResponse =
       "I'm having trouble connecting right now. Please try again in a moment.";
 
@@ -2423,12 +2573,14 @@ export const chat = action({
             ids: Array.from(pendingCardIds), 
             isCached: pendingSearchIsCached,
             turns: finalIteration + 1,
-            flow: {
-              assistantProvider: "openai",
-              toolSequence: flowToolSequence,
+            flow: buildCardFlowPayload({
+              turns: finalIteration + 1,
+              cardCount: pendingCardIds.size,
+              pathMode: pendingSearchIsCached ? "cached" : "fresh",
               searches: flowSearches,
+              toolSequence: flowToolSequence,
               attachments: flowAttachments,
-            } satisfies CardFlowPayload,
+            }) satisfies CardFlowPayload,
           })}-->`;
         }
 

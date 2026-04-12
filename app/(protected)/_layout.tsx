@@ -8,7 +8,7 @@ import { AppButton } from "@/components/ui/AppButton";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
-import { UnifiedCommandPanel } from "@/components/UnifiedCommandPanel";
+import { ProtectedSheetHost } from "@/components/sheets/ProtectedSheetHost";
 import { useUIStore } from "@/store/ui";
 
 const NAV_ITEMS = [
@@ -42,9 +42,7 @@ function DesktopProtectedShell() {
   const theme = useAppTheme();
   const router = useRouter();
   const pathname = usePathname();
-  const isCommandOpen = useUIStore((s) => s.isCommandOpen);
   const openCommand = useUIStore((s) => s.openCommand);
-  const closeCommand = useUIStore((s) => s.closeCommand);
 
   const isActive = (name: string) => {
     if (name === "index") return pathname === "/";
@@ -188,8 +186,6 @@ function DesktopProtectedShell() {
             <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.background?.val } }} />
           </YStack>
         </YStack>
-
-        <UnifiedCommandPanel visible={isCommandOpen} onClose={closeCommand} />
       </XStack>
     </SafeAreaView>
   );
@@ -218,8 +214,18 @@ export default function ProtectedLayout() {
   }
 
   if (isLargeScreen && !isTabPath(pathname)) {
-    return <DesktopProtectedShell />;
+    return (
+      <>
+        <DesktopProtectedShell />
+        <ProtectedSheetHost />
+      </>
+    );
   }
 
-  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.background?.val } }} />;
+  return (
+    <>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.background?.val } }} />
+      <ProtectedSheetHost />
+    </>
+  );
 }

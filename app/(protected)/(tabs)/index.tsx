@@ -8,7 +8,6 @@ import React, {
 import {
   Alert,
   Platform,
-  ScrollView,
   Share,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
@@ -17,7 +16,6 @@ import * as Haptics from "expo-haptics";
 import { useAction, useMutation, useQuery } from "convex/react";
 import Animated, {
   FadeIn,
-  FadeInRight,
   FadeInUp,
   useSharedValue,
   useAnimatedStyle,
@@ -27,8 +25,6 @@ import Animated, {
 } from "react-native-reanimated";
 import { XStack, YStack, Text } from "tamagui";
 
-import { EditMemorySheet } from "@/components/EditMemorySheet";
-import { FlashbackCard } from "@/components/FlashbackCard";
 import { MemoryCard, CardBody } from "@/components/MemoryCard";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import { api } from "@/convex/_generated/api";
@@ -44,7 +40,6 @@ import { FontFamily } from "@/constants/fonts";
 import { TopicPills } from "@/components/ui/TopicPills";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AppScreen, SectionCard } from "@/components/ui/AppScreen";
-import { BaseSheet } from "@/components/ui/BaseSheet";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { SkeletonCard } from "@/components/ui/Skeleton";
@@ -158,27 +153,6 @@ function getReminderSyncBadge(memory: MemoryItem, theme: ReturnType<typeof useAp
   return { label: "syncing", color: theme.warning.val };
 }
 
-function MetricTile({ value, label }: { value: number; label: string }) {
-  return (
-    <YStack
-      flex={1}
-      padding={14}
-      borderRadius={20}
-      backgroundColor="$background"
-      borderWidth={1}
-      borderColor="$borderColor"
-      gap={4}
-    >
-      <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
-        {value}
-      </Text>
-      <Text fontSize={12} color="$colorMuted">
-        {label}
-      </Text>
-    </YStack>
-  );
-}
-
 export default function HomeScreen() {
   const theme = useAppTheme();
   const { confirm } = useAppConfirm();
@@ -191,10 +165,7 @@ export default function HomeScreen() {
   const [semanticResults, setSemanticResults] = useState<MemoryItem[] | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [isSemanticCached, setIsSemanticCached] = useState(false);
-  const [editMemory, setEditMemory] = useState<MemoryItem | null>(null);
-  const [isOverviewOpen, setIsOverviewOpen] = useState(false);
   const [showFullFeed, setShowFullFeed] = useState(false);
-  const [upcomingRange, setUpcomingRange] = useState<"week" | "month" | "year" | "all">("week");
   const requestIdRef = useRef(0);
 
   const querySnapshot = useMemo(
@@ -237,12 +208,11 @@ export default function HomeScreen() {
   const allMemories = (allMemoryResult ?? []) as MemoryItem[];
   const feedMemories = allMemories;
 
-  const flashbacks = useQuery(api.memories.flashbacks, token ? { token } : "skip") ?? [];
   const reminderMemoriesRaw =
     useQuery(api.memories.reminders, token ? { token, asOf: querySnapshot.nowIso } : "skip");
   const reminderMemories = reminderMemoriesRaw ?? [];
   const upcomingRemindersRaw =
-    useQuery(api.memories.upcomingReminders, token ? { token, asOf: querySnapshot.nowIso, range: upcomingRange } : "skip");
+    useQuery(api.memories.upcomingReminders, token ? { token, asOf: querySnapshot.nowIso, range: "week" } : "skip");
   const upcomingReminders = upcomingRemindersRaw ?? [];
   const stats =
     useQuery(api.memories.stats, token ? { token, asOf: querySnapshot.nowMs } : "skip") ?? null;
@@ -269,11 +239,8 @@ export default function HomeScreen() {
     token && visibleMemoryIds.length > 0 ? { token, memoryIds: visibleMemoryIds } : "skip"
   ) ?? {};
 
-  const isEditMemoryOpen = useUIStore((state) => state.isEditMemoryOpen);
   const openEditMemory = useUIStore((state) => state.openEditMemory);
-  const closeEditMemory = useUIStore((state) => state.closeEditMemory);
-  const pushSheet = useUIStore((state) => state.pushSheet);
-  const popSheet = useUIStore((state) => state.popSheet);
+  const openHomeOverview = useUIStore((state) => state.openHomeOverview);
 
   useEffect(() => {
     if (!trimmedSearchQuery || trimmedSearchQuery.length < 3 || !token) {
@@ -320,15 +287,6 @@ export default function HomeScreen() {
       setSelectedTopic(null);
     }
   }, [activeTopicSummaries, selectedTopic]);
-
-  const handleOverviewOpenChange = useCallback((open: boolean) => {
-    if (open) {
-      pushSheet("homeOverview");
-    } else {
-      popSheet("homeOverview");
-    }
-    setIsOverviewOpen(open);
-  }, [popSheet, pushSheet]);
 
   const handleSyncTopics = async () => {
     if (!token || isSyncingTopics) return;
@@ -401,17 +359,6 @@ export default function HomeScreen() {
           : "Unable to remove Google sync for this reminder."
       );
     }
-  };
-
-  const handleSaveEdit = async (data: Record<string, unknown>) => {
-    if (!editMemory || !token) return;
-    if (data._delete) {
-      await deleteMemory({ token, id: editMemory._id });
-    } else {
-      await updateMemory({ token, id: editMemory._id, ...data });
-    }
-    setEditMemory(null);
-    closeEditMemory();
   };
 
   const handleShare = async (id: Id<"memories">) => {
@@ -644,7 +591,7 @@ export default function HomeScreen() {
             ) : null}
 
             {!searchMode ? (
-              <PressableScale onPress={() => handleOverviewOpenChange(true)}>
+              <PressableScale onPress={openHomeOverview}>
                 <XStack
                   alignItems="center"
                   justifyContent="space-between"
@@ -745,8 +692,7 @@ export default function HomeScreen() {
                           label: "Edit Memory",
                           icon: "edit-2",
                           onPress: () => {
-                            setEditMemory(memory as MemoryItem);
-                            openEditMemory();
+                            openEditMemory(toMemoryNote(memory));
                           },
                         },
                         {
@@ -877,8 +823,7 @@ export default function HomeScreen() {
                       resolvedTopics={resolvedTopics.length > 0 ? resolvedTopics : undefined}
                       hasFiles={hasFiles}
                       onPress={() => {
-                        setEditMemory(raw);
-                        openEditMemory();
+                        openEditMemory(note);
                       }}
                       onDelete={() => {
                         void handleDelete(raw._id);
@@ -898,211 +843,6 @@ export default function HomeScreen() {
         </Animated.View>
       </AppScreen>
 
-      <BaseSheet
-        open={isOverviewOpen}
-        onOpenChange={handleOverviewOpenChange}
-        sheetId="homeOverview"
-      >
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 40, gap: 18 }}
-        >
-          <YStack gap={18}>
-            <XStack alignItems="center" justifyContent="space-between" gap={12}>
-              <Text fontSize={26} fontFamily="$heading" fontWeight="700" color="$color">
-                Overview
-              </Text>
-              <PressableScale onPress={() => handleOverviewOpenChange(false)}>
-                <YStack
-                  width={38}
-                  height={38}
-                  borderRadius={14}
-                  alignItems="center"
-                  justifyContent="center"
-                  backgroundColor="$background"
-                  borderWidth={1}
-                  borderColor="$borderColor"
-                >
-                  <Feather name="x" size={18} color={theme.color.val} />
-                </YStack>
-              </PressableScale>
-            </XStack>
-
-            <XStack gap={10}>
-              <MetricTile value={totalMemories} label="Memories" />
-              <MetricTile value={totalReminders} label="Reminders" />
-              <MetricTile value={totalCategories} label="Categories" />
-            </XStack>
-
-            <SectionCard
-              title="Due now"
-              action={
-                topReminders.length > 0 ? (
-                  <YStack
-                    minWidth={24}
-                    height={24}
-                    borderRadius={999}
-                    paddingHorizontal={8}
-                    alignItems="center"
-                    justifyContent="center"
-                    backgroundColor={theme.warning.val + "22"}
-                  >
-                    <Text fontSize={12} fontWeight="700" color={theme.warning.val}>
-                      {topReminders.length}
-                    </Text>
-                  </YStack>
-                ) : null
-              }
-            >
-              {topReminders.length > 0 ? (
-                <YStack gap={10}>
-                  {topReminders.map((memory) => (
-                    <XStack key={memory._id} alignItems="center" justifyContent="space-between" gap={12}>
-                      <YStack flex={1} gap={2}>
-                        <Text fontSize={14} fontWeight="700" color="$color" numberOfLines={1}>
-                          {memory.title || "Untitled memory"}
-                        </Text>
-                        <Text fontSize={12} color="$colorMuted">
-                          {new Date(getReminderDate(memory)!).toLocaleString(undefined, {
-                            month: "short",
-                            day: "numeric",
-                            hour: "numeric",
-                            minute: "2-digit",
-                          })}
-                        </Text>
-                      </YStack>
-                      <Badge
-                        label="reminder"
-                        color={theme.warning.val}
-                        small
-                      />
-                    </XStack>
-                  ))}
-                </YStack>
-              ) : (
-                <Text fontSize={13} lineHeight={20} color="$colorMuted">
-                  Nothing needs attention immediately.
-                </Text>
-              )}
-            </SectionCard>
-
-            <SectionCard
-              title="Upcoming"
-              action={
-                upcomingReminders.length > 0 ? (
-                  <YStack
-                    minWidth={24}
-                    height={24}
-                    borderRadius={999}
-                    paddingHorizontal={8}
-                    alignItems="center"
-                    justifyContent="center"
-                    backgroundColor={theme.primary.val + "22"}
-                  >
-                    <Text fontSize={12} fontWeight="700" color="$primary">
-                      {upcomingReminders.length}
-                    </Text>
-                  </YStack>
-                ) : null
-              }
-            >
-              <XStack gap={6} flexWrap="wrap">
-                {(["week", "month", "year", "all"] as const).map((r) => (
-                  <PressableScale key={r} onPress={() => setUpcomingRange(r)}>
-                    <YStack
-                      paddingHorizontal={12}
-                      paddingVertical={6}
-                      borderRadius={999}
-                      backgroundColor={upcomingRange === r ? theme.primary.val + "22" : "$secondary"}
-                      borderWidth={1}
-                      borderColor={upcomingRange === r ? theme.primary.val : "$borderColor"}
-                    >
-                      <Text
-                        fontSize={12}
-                        fontWeight="700"
-                        color={upcomingRange === r ? "$primary" : "$colorMuted"}
-                        textTransform="capitalize"
-                      >
-                        {r}
-                      </Text>
-                    </YStack>
-                  </PressableScale>
-                ))}
-              </XStack>
-              {upcomingReminders.length > 0 ? (
-                <YStack gap={10}>
-                  {upcomingReminders.map((memory) => (
-                    <XStack key={memory._id} alignItems="center" justifyContent="space-between" gap={12}>
-                      <YStack flex={1} gap={2}>
-                        <Text fontSize={14} fontWeight="700" color="$color" numberOfLines={1}>
-                          {memory.title || "Untitled memory"}
-                        </Text>
-                        <Text fontSize={12} color="$colorMuted">
-                          {new Date(getReminderDate(memory)!).toLocaleString(undefined, {
-                            weekday: "short",
-                            month: "short",
-                            day: "numeric",
-                            hour: "numeric",
-                            minute: "2-digit",
-                          })}
-                        </Text>
-                      </YStack>
-                      <Badge
-                        label="upcoming"
-                        color={theme.primary.val}
-                        small
-                      />
-                    </XStack>
-                  ))}
-                </YStack>
-              ) : (
-                <Text fontSize={13} lineHeight={20} color="$colorMuted">
-                  No reminders in this range.
-                </Text>
-              )}
-            </SectionCard>
-
-            {flashbacks.length > 0 ? (
-              <SectionCard title="On this day">
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={{ gap: 12, paddingRight: 8 }}
-                >
-                  {flashbacks.map((memory, index) => (
-                    <Animated.View
-                      key={memory._id}
-                      entering={FadeInRight.delay(index * 60).duration(240)}
-                    >
-                      <FlashbackCard
-                        memory={toMemoryNote(memory)}
-                        onPress={() => {
-                          handleOverviewOpenChange(false);
-                          setEditMemory(memory as MemoryItem);
-                          openEditMemory();
-                        }}
-                      />
-                    </Animated.View>
-                  ))}
-                </ScrollView>
-              </SectionCard>
-            ) : null}
-          </YStack>
-        </ScrollView>
-      </BaseSheet>
-
-      {editMemory ? (
-        <EditMemorySheet
-          key={editMemory._id}
-          memory={toMemoryNote(editMemory)}
-          visible={isEditMemoryOpen}
-          onClose={() => {
-            setEditMemory(null);
-            closeEditMemory();
-          }}
-          onSave={handleSaveEdit}
-        />
-      ) : null}
     </>
   );
 }

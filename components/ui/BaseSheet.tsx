@@ -4,7 +4,7 @@ import { Sheet, type SheetProps, View } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { withAlpha } from "@/components/ui/themeHelpers";
 
-import { useUIStore } from "@/store/ui";
+import { type SheetId, useUIStore } from "@/store/ui";
 
 export const SHEET_CONFIG = {
   snapPoints: [90] as number[],
@@ -55,7 +55,7 @@ interface BaseSheetProps
   onOpenChange: (open: boolean) => void;
   backgroundColor?: string;
   handleColor?: string;
-  sheetId?: string;
+  sheetId?: SheetId;
   children: React.ReactNode;
 }
 

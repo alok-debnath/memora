@@ -42,7 +42,6 @@ import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { logDevError } from "@/lib/devLog";
 import { Badge } from "@/components/ui/Badge";
 import { ContextMenu, type ContextMenuHandle, type ContextMenuItemDef } from "@/components/ui/ContextMenu";
-import { EditMemorySheet } from "@/components/EditMemorySheet";
 import type { MemoryNote } from "@/types/memory";
 import { getReminderDate, inferMemoryEntryKind } from "@/types/memoryKind";
 import { AttachmentPreviewBar } from "@/components/AttachmentPreviewBar";
@@ -431,14 +430,6 @@ function extractSpeakableText(content: string): string {
   return text;
 }
 
-type CardFlowSearch = {
-  source: "grounding" | "tool";
-  query?: string;
-  resultCount: number;
-  cacheState?: "cached" | "fresh";
-  searchMode?: "recent_only" | "semantic_fresh" | "semantic_cached";
-};
-
 type CardFlowAttachment = {
   name: string;
   type: "image" | "document";
@@ -446,11 +437,58 @@ type CardFlowAttachment = {
   method?: "gemini" | "openai" | "pdf-extract";
 };
 
+type CardFlowSummary = {
+  assistantProvider: "openai";
+  turns: number;
+  cardCount: number;
+  pathMode: "cached" | "fresh";
+  hasFiles: boolean;
+};
+
+type CardFlowStep =
+  | {
+      kind: "grounding";
+      query?: string;
+      resultCount: number;
+      cacheState?: "cached" | "fresh";
+      searchMode?: "recent_only" | "semantic_fresh" | "semantic_cached";
+    }
+  | {
+      kind: "search";
+      query?: string;
+      resultCount: number;
+      cacheState?: "cached" | "fresh";
+      searchMode?: "recent_only" | "semantic_fresh" | "semantic_cached";
+    }
+  | {
+      kind: "files";
+      total: number;
+      completed: number;
+      failed: number;
+      methods?: Array<"gemini" | "openai" | "pdf-extract">;
+    }
+  | {
+      kind: "tool";
+      toolName: string;
+      label?: string;
+    }
+  | {
+      kind: "reasoning";
+      turns: number;
+      assistantProvider?: "openai";
+    }
+  | {
+      kind: "result";
+      cardCount: number;
+    };
+
 type CardFlow = {
   assistantProvider?: "openai";
   toolSequence?: string[];
-  searches?: CardFlowSearch[];
+  searches?: unknown[];
   attachments?: CardFlowAttachment[];
+  summary: CardFlowSummary;
+  steps: CardFlowStep[];
 };
 
 function parseCardIds(content: string): { 
@@ -472,7 +510,12 @@ function parseCardIds(content: string): {
     const isCached: boolean = parsed.isCached ?? false;
     const turns: number | undefined = typeof parsed.turns === "number" ? parsed.turns : undefined;
     const flow: CardFlow | undefined =
-      parsed.flow && typeof parsed.flow === "object" ? parsed.flow : undefined;
+      parsed.flow &&
+      typeof parsed.flow === "object" &&
+      parsed.flow.summary &&
+      parsed.flow.steps
+        ? parsed.flow as CardFlow
+        : undefined;
     
     // Remove only THIS marker from the text
     const markerFull = content.slice(startIdx, endIdx + endMarker.length);
@@ -837,8 +880,8 @@ function SearchResultRow({
       ? [{
           label:
             item.google_sync_status === "failed"
-              ? "Retry Google Sync"
-              : "Trigger Google Sync",
+              ? "Retry Calendar Sync"
+              : "Sync to Calendar",
           icon: "refresh-cw" as const,
           iconColor: theme.primary.val,
           onPress: () => onTriggerSync(item),
@@ -846,7 +889,7 @@ function SearchResultRow({
       : []),
     ...(showRemoveSyncAction
       ? [{
-          label: "Remove Google Sync",
+          label: "Remove Calendar Sync",
           icon: "link-2" as const,
           destructive: true as const,
           onPress: () => onRemoveSync(item),
@@ -1069,6 +1112,7 @@ function SearchResultRow({
 
 const TOOL_LABELS: Record<string, string> = {
   search_memories: "Search",
+  search_documents: "Docs",
   create_memory: "Create",
   update_memory: "Update",
   sync_reminder: "Sync",
@@ -1088,266 +1132,434 @@ function formatToolLabel(toolName: string) {
   return TOOL_LABELS[toolName] ?? toolName.replace(/_/g, " ");
 }
 
-function getFlowUsageBadges(
-  flow: CardFlow | undefined,
-  theme: ReturnType<typeof useAppTheme>
-) {
-  const assistantLabel = flow?.assistantProvider === "openai" ? "OpenAI" : "Assistant";
-  const attachments = flow?.attachments ?? [];
-  const completedAttachments = attachments.filter(
-    (attachment) => attachment.status === "completed"
-  );
-  const geminiCount = completedAttachments.filter(
-    (attachment) => attachment.method === "gemini"
-  ).length;
-  const openAiVisionCount = completedAttachments.filter(
-    (attachment) => attachment.method === "openai"
-  ).length;
-  const directPdfCount = completedAttachments.filter(
-    (attachment) => attachment.method === "pdf-extract"
-  ).length;
-  const failedCount = attachments.filter(
-    (attachment) => attachment.status === "failed"
-  ).length;
+type FlowSummaryChip = {
+  icon: string;
+  label: string;
+  value: string;
+  color: string;
+};
 
-  const badges = [
+function normalizeCardFlow(
+  flow: CardFlow | undefined,
+  isCached: boolean,
+  turns: number,
+  resultCount: number,
+) {
+  if (!flow?.summary || !Array.isArray(flow.steps) || flow.steps.length === 0) {
+    return {
+      summary: {
+        assistantProvider: "openai" as const,
+        turns,
+        cardCount: resultCount,
+        pathMode: isCached ? "cached" as const : "fresh" as const,
+        hasFiles: false,
+      },
+      steps: [
+        {
+          kind: "reasoning" as const,
+          turns,
+          assistantProvider: "openai" as const,
+        },
+        {
+          kind: "result" as const,
+          cardCount: resultCount,
+        },
+      ],
+      attachments: [] as CardFlowAttachment[],
+    };
+  }
+
+  const attachments = flow.attachments ?? [];
+  const summary = {
+    assistantProvider: flow.summary.assistantProvider,
+    turns: flow.summary.turns,
+    cardCount: flow.summary.cardCount,
+    pathMode: flow.summary.pathMode,
+    hasFiles: flow.summary.hasFiles,
+  } satisfies CardFlowSummary;
+
+  return {
+    summary,
+    steps: flow.steps,
+    attachments,
+  };
+}
+
+function getAttachmentMethodSummary(attachments: CardFlowAttachment[]) {
+  const completedAttachments = attachments.filter((attachment) => attachment.status === "completed");
+  const geminiCount = completedAttachments.filter((attachment) => attachment.method === "gemini").length;
+  const openAiVisionCount = completedAttachments.filter((attachment) => attachment.method === "openai").length;
+  const directPdfCount = completedAttachments.filter((attachment) => attachment.method === "pdf-extract").length;
+  const failedCount = attachments.filter((attachment) => attachment.status === "failed").length;
+
+  return {
+    geminiCount,
+    openAiVisionCount,
+    directPdfCount,
+    failedCount,
+  };
+}
+
+function getFlowCapabilityPills(
+  attachments: CardFlowAttachment[],
+  theme: ReturnType<typeof useAppTheme>,
+) {
+  const { geminiCount, openAiVisionCount, directPdfCount, failedCount } =
+    getAttachmentMethodSummary(attachments);
+  const chips: FlowSummaryChip[] = [
     {
       icon: "cpu",
-      label: assistantLabel,
-      value: "reason + reply",
+      label: "OpenAI",
+      value: "reply",
       color: theme.primary.val,
     },
   ];
 
   if (geminiCount > 0) {
-    badges.push({
+    chips.push({
       icon: "image",
       label: "Gemini",
-      value: `read ${geminiCount} file${geminiCount === 1 ? "" : "s"}`,
+      value: `${geminiCount} file${geminiCount === 1 ? "" : "s"}`,
       color: integrationAccentColors.reasoning,
     });
   }
-
   if (openAiVisionCount > 0) {
-    badges.push({
+    chips.push({
       icon: "camera",
-      label: "OpenAI vision",
-      value: `fallback × ${openAiVisionCount}`,
+      label: "Vision fallback",
+      value: `${openAiVisionCount}`,
       color: integrationAccentColors.openai,
     });
   }
-
   if (directPdfCount > 0) {
-    badges.push({
+    chips.push({
       icon: "file-text",
-      label: "No AI",
-      value: `PDF text × ${directPdfCount}`,
+      label: "PDF text",
+      value: `${directPdfCount}`,
       color: theme.success.val,
     });
   }
-
   if (failedCount > 0) {
-    badges.push({
+    chips.push({
       icon: "alert-circle",
       label: "Read failed",
-      value: `${failedCount} file${failedCount === 1 ? "" : "s"}`,
+      value: `${failedCount}`,
       color: statusAccentColors.error,
     });
   }
 
-  return badges;
+  return chips;
 }
 
-function describeAttachmentFlow(flow: CardFlow | undefined) {
-  const attachments = flow?.attachments ?? [];
-  if (attachments.length === 0) return null;
-
-  const completedAttachments = attachments.filter(
-    (attachment) => attachment.status === "completed"
-  );
-  const failedCount = attachments.length - completedAttachments.length;
-  const geminiCount = completedAttachments.filter(
-    (attachment) => attachment.method === "gemini"
-  ).length;
-  const openAiVisionCount = completedAttachments.filter(
-    (attachment) => attachment.method === "openai"
-  ).length;
-  const directPdfCount = completedAttachments.filter(
-    (attachment) => attachment.method === "pdf-extract"
-  ).length;
-
-  const parts: string[] = [];
-  if (directPdfCount > 0) parts.push(`direct PDF text on ${directPdfCount}`);
-  if (geminiCount > 0) parts.push(`Gemini read ${geminiCount}`);
-  if (openAiVisionCount > 0) parts.push(`OpenAI vision fallback on ${openAiVisionCount}`);
-  if (failedCount > 0) parts.push(`${failedCount} failed`);
-
-  return parts.join(" · ");
+function getStepTone(
+  step: CardFlowStep,
+  theme: ReturnType<typeof useAppTheme>,
+) {
+  if ((step.kind === "grounding" || step.kind === "search") && step.cacheState === "cached") {
+    return statusAccentColors.warning;
+  }
+  if (step.kind === "files" && step.failed > 0) {
+    return statusAccentColors.error;
+  }
+  if (step.kind === "files") {
+    return integrationAccentColors.reasoning;
+  }
+  if (step.kind === "tool") {
+    return theme.primary.val;
+  }
+  if (step.kind === "reasoning") {
+    return integrationAccentColors.reasoning;
+  }
+  if (step.kind === "result") {
+    return theme.success.val;
+  }
+  return theme.primary.val;
 }
 
-function describeSearchStep(search: CardFlowSearch) {
-  const cacheLabel =
-    search.cacheState === "cached"
-      ? "cached"
-      : search.cacheState === "fresh"
-        ? "fresh"
-        : null;
-  const queryLabel = search.query?.trim() ? ` for "${search.query.trim()}"` : "";
-  const resultLabel = `${search.resultCount} match${search.resultCount === 1 ? "" : "es"}`;
-  const prefix =
-    search.source === "grounding" ? "Grounding checked memories" : "Search ran";
-
-  return `${prefix}${queryLabel}${cacheLabel ? ` on the ${cacheLabel} path` : ""} and found ${resultLabel}.`;
+function getStepIcon(step: CardFlowStep) {
+  switch (step.kind) {
+    case "grounding":
+      return step.cacheState === "cached" ? "zap" : "database";
+    case "search":
+      return step.cacheState === "cached" ? "zap" : "search";
+    case "files":
+      return step.failed > 0 ? "alert-circle" : "paperclip";
+    case "tool":
+      return "corner-down-right";
+    case "reasoning":
+      return "cpu";
+    case "result":
+      return "archive";
+  }
 }
 
-function FlowToolPath({
-  tools,
+function describeFlowStep(step: CardFlowStep) {
+  switch (step.kind) {
+    case "grounding":
+      return {
+        title: "Grounding",
+        detail: step.query?.trim()
+          ? `Checked stored context for "${step.query.trim()}".`
+          : "Checked stored context before answering.",
+        meta: [
+          `${step.resultCount} match${step.resultCount === 1 ? "" : "es"}`,
+          step.cacheState === "cached" ? "fast cached path" : step.cacheState === "fresh" ? "fresh retrieval" : null,
+        ].filter(Boolean) as string[],
+      };
+    case "search":
+      return {
+        title: "Memory search",
+        detail: step.query?.trim()
+          ? `Searched memories for "${step.query.trim()}".`
+          : "Searched memories for supporting matches.",
+        meta: [
+          `${step.resultCount} result${step.resultCount === 1 ? "" : "s"}`,
+          step.cacheState === "cached" ? "cached" : step.cacheState === "fresh" ? "fresh" : null,
+        ].filter(Boolean) as string[],
+      };
+    case "files": {
+      const methodLabels = [
+        step.methods?.includes("gemini") ? "Gemini" : null,
+        step.methods?.includes("openai") ? "Vision fallback" : null,
+        step.methods?.includes("pdf-extract") ? "PDF text" : null,
+      ].filter(Boolean) as string[];
+      return {
+        title: "File reading",
+        detail:
+          step.failed > 0
+            ? `Read ${step.completed}/${step.total} file${step.total === 1 ? "" : "s"} successfully.`
+            : `Processed ${step.total} file${step.total === 1 ? "" : "s"} for this reply.`,
+        meta: [
+          methodLabels.length > 0 ? methodLabels.join(" · ") : null,
+          step.failed > 0 ? `${step.failed} failed` : null,
+        ].filter(Boolean) as string[],
+      };
+    }
+    case "tool":
+      return {
+        title: "Tool action",
+        detail: step.label ?? formatToolLabel(step.toolName),
+        meta: [],
+      };
+    case "reasoning":
+      return {
+        title: "Reasoning",
+        detail: `${step.assistantProvider === "openai" ? "OpenAI" : "Assistant"} assembled the reply.`,
+        meta: [`${step.turns} pass${step.turns === 1 ? "" : "es"}`],
+      };
+    case "result":
+      return {
+        title: "Cards surfaced",
+        detail: `${step.cardCount} matching card${step.cardCount === 1 ? "" : "s"} attached to this reply.`,
+        meta: [],
+      };
+  }
+}
+
+function FlowSummaryStrip({
+  summary,
+  attachments,
   theme,
 }: {
-  tools: string[];
+  summary: ReturnType<typeof normalizeCardFlow>["summary"];
+  attachments: CardFlowAttachment[];
   theme: ReturnType<typeof useAppTheme>;
 }) {
-  if (tools.length === 0) return null;
+  const topChips: FlowSummaryChip[] = [
+    {
+      icon: summary.pathMode === "cached" ? "zap" : "radio",
+      label: summary.pathMode === "cached" ? "Fast path" : "Fresh path",
+      value: summary.pathMode === "cached" ? "cached" : "fresh",
+      color: summary.pathMode === "cached" ? statusAccentColors.warning : theme.primary.val,
+    },
+    {
+      icon: "archive",
+      label: "Cards",
+      value: `${summary.cardCount}`,
+      color: theme.colorMuted.val,
+    },
+    {
+      icon: "layers",
+      label: "Passes",
+      value: `${summary.turns}`,
+      color: summary.turns > 1 ? integrationAccentColors.reasoning : theme.colorMuted.val,
+    },
+    ...(summary.hasFiles
+      ? [{
+          icon: "paperclip",
+          label: "Files",
+          value: `${attachments.length}`,
+          color: integrationAccentColors.reasoning,
+        }]
+      : []),
+  ];
+  const capabilityPills = getFlowCapabilityPills(attachments, theme);
 
   return (
-    <XStack gap={6} alignItems="center" flexWrap="wrap">
-      {tools.map((tool, index) => (
-        <React.Fragment key={`${tool}-${index}`}>
-          <XStack
-            alignItems="center"
-            gap={5}
-            paddingHorizontal={9}
-            paddingVertical={6}
-            borderRadius={999}
-            backgroundColor={`${theme.primary.val}10`}
-            borderWidth={1}
-            borderColor={`${theme.primary.val}18`}
-          >
-            <Feather name="corner-down-right" size={10} color={theme.primary.val} />
-            <Text fontSize={10} fontFamily="$body" fontWeight="700" color="$color">
-              {formatToolLabel(tool)}
-            </Text>
-          </XStack>
-          {index < tools.length - 1 ? (
-            <Feather name="chevron-right" size={12} color={theme.colorMuted.val} />
-          ) : null}
-        </React.Fragment>
-      ))}
-    </XStack>
-  );
-}
-
-function CurrentFlowSummary({
-  flow,
-  turns,
-  theme,
-}: {
-  flow?: CardFlow;
-  turns: number;
-  theme: ReturnType<typeof useAppTheme>;
-}) {
-  const searches = flow?.searches ?? [];
-  const groundingSearch = searches.find((search) => search.source === "grounding");
-  const latestToolSearch = [...searches]
-    .reverse()
-    .find((search) => search.source === "tool");
-  const latestSearch = latestToolSearch ?? groundingSearch;
-  const toolSequence = flow?.toolSequence ?? [];
-  const attachmentSummary = describeAttachmentFlow(flow);
-  const usageBadges = getFlowUsageBadges(flow, theme);
-  const assistantLabel = flow?.assistantProvider === "openai" ? "OpenAI" : "Assistant";
-
-  return (
-    <YStack gap={12}>
+    <YStack gap={10}>
       <YStack gap={8}>
-        <Text
-          fontSize={10}
-          fontFamily="$body"
-          fontWeight="600"
-          color="$colorMuted"
-          style={{ textTransform: "uppercase", letterSpacing: 0.5 }}
-        >
+        <Text fontSize={10} fontFamily="$body" fontWeight="600" color="$colorMuted" style={{ textTransform: "uppercase", letterSpacing: 0.5 }}>
           Used This Turn
         </Text>
         <XStack gap={8} flexWrap="wrap">
-          {usageBadges.map((badge) => (
+          {topChips.map((chip) => (
             <InsightStatChip
-              key={`${badge.label}-${badge.value}`}
-              icon={badge.icon}
-              label={badge.label}
-              value={badge.value}
-              color={badge.color}
+              key={`${chip.label}-${chip.value}`}
+              icon={chip.icon}
+              label={chip.label}
+              value={chip.value}
+              color={chip.color}
             />
           ))}
         </XStack>
       </YStack>
 
+      <XStack gap={8} flexWrap="wrap">
+        {capabilityPills.map((chip) => (
+          <InsightStatChip
+            key={`${chip.label}-${chip.value}`}
+            icon={chip.icon}
+            label={chip.label}
+            value={chip.value}
+            color={chip.color}
+          />
+        ))}
+      </XStack>
+    </YStack>
+  );
+}
+
+function FlowStepCard({
+  step,
+  isLast,
+  theme,
+}: {
+  step: CardFlowStep;
+  isLast: boolean;
+  theme: ReturnType<typeof useAppTheme>;
+}) {
+  const tone = getStepTone(step, theme);
+  const icon = getStepIcon(step);
+  const copy = describeFlowStep(step);
+
+  return (
+    <XStack gap={10} alignItems="stretch">
+      <YStack width={24} alignItems="center">
+        <View
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: 12,
+            backgroundColor: withAlpha(tone, "18"),
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Feather name={icon as any} size={11} color={tone} />
+        </View>
+        {!isLast ? (
+          <View
+            style={{
+              width: 2,
+              flex: 1,
+              minHeight: 18,
+              marginTop: 6,
+              borderRadius: 999,
+              backgroundColor: withAlpha(tone, "26"),
+            }}
+          />
+        ) : null}
+      </YStack>
+
       <YStack
-        gap={10}
+        flex={1}
+        gap={4}
         padding={12}
         borderRadius={14}
-        backgroundColor={
-          latestSearch?.cacheState === "cached"
-            ? withAlpha(statusAccentColors.warning, "14")
-            : `${theme.primary.val}10`
-        }
+        backgroundColor={withAlpha(tone, "10")}
         borderWidth={1}
-        borderColor={
-          latestSearch?.cacheState === "cached"
-            ? withAlpha(statusAccentColors.warning, "29")
-            : `${theme.primary.val}20`
-        }
+        borderColor={withAlpha(tone, "20")}
       >
-        <Text
-          fontSize={10}
-          fontFamily="$body"
-          fontWeight="600"
-          color="$colorMuted"
-          style={{ textTransform: "uppercase", letterSpacing: 0.5 }}
-        >
-          Current Path
+        <XStack alignItems="center" justifyContent="space-between" gap={10}>
+          <Text fontSize={12} fontFamily="$body" fontWeight="700" color="$color">
+            {copy.title}
+          </Text>
+          {(step.kind === "grounding" || step.kind === "search") && step.cacheState ? (
+            <Text fontSize={10} fontFamily="$body" fontWeight="700" color={tone}>
+              {step.cacheState === "cached" ? "cached" : "fresh"}
+            </Text>
+          ) : null}
+        </XStack>
+        <Text fontSize={11} fontFamily="$body" color="$colorMuted" lineHeight={16}>
+          {copy.detail}
         </Text>
+        {copy.meta.length > 0 ? (
+          <XStack gap={6} flexWrap="wrap">
+            {copy.meta.map((meta) => (
+              <XStack
+                key={meta}
+                alignItems="center"
+                gap={4}
+                paddingHorizontal={8}
+                paddingVertical={4}
+                borderRadius={999}
+                backgroundColor={withAlpha(theme.backgroundStrong.val, "CC")}
+                borderWidth={1}
+                borderColor={withAlpha(tone, "18")}
+              >
+                <View
+                  style={{
+                    width: 4,
+                    height: 4,
+                    borderRadius: 2,
+                    backgroundColor: tone,
+                  }}
+                />
+                <Text fontSize={10} fontFamily="$body" color="$colorMuted">
+                  {meta}
+                </Text>
+              </XStack>
+            ))}
+          </XStack>
+        ) : null}
+      </YStack>
+    </XStack>
+  );
+}
 
-        {attachmentSummary ? (
-          <InsightLine
-            icon="paperclip"
-            color={integrationAccentColors.reasoning}
-            text={`Attachments: ${attachmentSummary}.`}
+function FlowTimeline({
+  steps,
+  summary,
+  theme,
+}: {
+  steps: CardFlowStep[];
+  summary: ReturnType<typeof normalizeCardFlow>["summary"];
+  theme: ReturnType<typeof useAppTheme>;
+}) {
+  const tone =
+    summary.pathMode === "cached" ? statusAccentColors.warning : theme.primary.val;
+
+  return (
+    <YStack
+      gap={10}
+      padding={12}
+      borderRadius={14}
+      backgroundColor={withAlpha(tone, "10")}
+      borderWidth={1}
+      borderColor={withAlpha(tone, "20")}
+    >
+      <Text fontSize={10} fontFamily="$body" fontWeight="600" color="$colorMuted" style={{ textTransform: "uppercase", letterSpacing: 0.5 }}>
+        Current Path
+      </Text>
+      <YStack gap={10}>
+        {steps.map((step, index) => (
+          <FlowStepCard
+            key={`${step.kind}-${index}-${"toolName" in step ? step.toolName : ""}`}
+            step={step}
+            isLast={index === steps.length - 1}
+            theme={theme}
           />
-        ) : null}
-
-        {groundingSearch ? (
-          <InsightLine
-            icon={groundingSearch.cacheState === "cached" ? "zap" : "search"}
-            color={groundingSearch.cacheState === "cached" ? statusAccentColors.warning : theme.primary.val}
-            text={describeSearchStep(groundingSearch)}
-          />
-        ) : null}
-
-        {latestToolSearch ? (
-          <InsightLine
-            icon={latestToolSearch.cacheState === "cached" ? "zap" : "radio"}
-            color={latestToolSearch.cacheState === "cached" ? statusAccentColors.warning : theme.primary.val}
-            text={describeSearchStep(latestToolSearch)}
-          />
-        ) : null}
-
-        {toolSequence.length > 0 ? (
-          <YStack gap={8}>
-            <InsightLine
-              icon="layers"
-              color={theme.primary.val}
-              text="Tool path for this reply."
-            />
-            <FlowToolPath tools={toolSequence} theme={theme} />
-          </YStack>
-        ) : null}
-
-        <InsightLine
-          icon="cpu"
-          color={theme.primary.val}
-          text={`${assistantLabel} handled reasoning across ${turns} pass${turns === 1 ? "" : "es"} for this reply.`}
-        />
+        ))}
       </YStack>
     </YStack>
   );
@@ -1358,6 +1570,8 @@ function SearchStatsPreview({
   turns,
   resultCount,
   canDeepSearch,
+  isDeepSearching,
+  onDeepSearch,
   flow,
   theme,
 }: {
@@ -1365,20 +1579,26 @@ function SearchStatsPreview({
   turns: number;
   resultCount: number;
   canDeepSearch?: boolean;
+  isDeepSearching?: boolean;
+  onDeepSearch?: () => void;
   flow?: CardFlow;
   theme: ReturnType<typeof useAppTheme>;
 }) {
-  const isReasoned = turns > 1;
-  const baseColor = isReasoned
-    ? integrationAccentColors.reasoning
-    : isCached
+  const normalizedFlow = normalizeCardFlow(flow, isCached, turns, resultCount);
+  const baseColor =
+    normalizedFlow.summary.pathMode === "cached"
       ? statusAccentColors.warning
-      : theme.primary.val;
-  const latestSearch = [...(flow?.searches ?? [])].reverse()[0];
-  const modeLabel = latestSearch?.cacheState === "cached" || isCached ? "Fast path" : "Fresh path";
-  const subtitle = latestSearch?.query?.trim()
-    ? `${modeLabel} · "${latestSearch.query.trim()}"`
-    : modeLabel;
+      : normalizedFlow.summary.turns > 1
+        ? integrationAccentColors.reasoning
+        : theme.primary.val;
+  const modeLabel = normalizedFlow.summary.pathMode === "cached" ? "Fast path" : "Fresh path";
+  const latestSearchStep = [...normalizedFlow.steps]
+    .reverse()
+    .find((step) => step.kind === "grounding" || step.kind === "search");
+  const subtitle =
+    latestSearchStep && "query" in latestSearchStep && latestSearchStep.query?.trim()
+      ? `${modeLabel} · "${latestSearchStep.query.trim()}"`
+      : `${modeLabel} · ${normalizedFlow.summary.cardCount} ${normalizedFlow.summary.cardCount === 1 ? "card" : "cards"}`;
 
   return (
     <YStack
@@ -1401,153 +1621,77 @@ function SearchStatsPreview({
             Live flow
           </Text>
           <Text fontSize={11} fontFamily="$body" color="$colorMuted" lineHeight={16}>
-            {subtitle} · {resultCount} {resultCount === 1 ? "card" : "cards"} surfaced
+            {subtitle}
           </Text>
         </YStack>
       </XStack>
 
-      <XStack gap={8} flexWrap="wrap">
-        <InsightStatChip
-          icon={isCached ? "zap" : "radio"}
-          label="Search"
-          value={isCached ? "cached" : "fresh"}
-          color={isCached ? statusAccentColors.warning : theme.primary.val}
-        />
-        <InsightStatChip
-          icon="layers"
-          label="Passes"
-          value={`${turns} pass${turns === 1 ? "" : "es"}`}
-          color={isReasoned ? integrationAccentColors.reasoning : theme.colorMuted.val}
-        />
-        <InsightStatChip
-          icon="archive"
-          label="Cards"
-          value={`${resultCount}`}
-          color={theme.colorMuted.val}
-        />
-        {(flow?.attachments?.length ?? 0) > 0 ? (
-          <InsightStatChip
-            icon="paperclip"
-            label="Files"
-            value={`${flow?.attachments?.length ?? 0}`}
-            color={integrationAccentColors.reasoning}
-          />
-        ) : null}
-      </XStack>
-
-      <CurrentFlowSummary flow={flow} turns={turns} theme={theme} />
+      <FlowSummaryStrip
+        summary={normalizedFlow.summary}
+        attachments={normalizedFlow.attachments}
+        theme={theme}
+      />
+      <FlowTimeline
+        steps={normalizedFlow.steps}
+        summary={normalizedFlow.summary}
+        theme={theme}
+      />
 
       {canDeepSearch ? (
         <YStack
-          gap={8}
+          gap={10}
           paddingTop={12}
           borderTopWidth={StyleSheet.hairlineWidth}
           borderTopColor="$borderColor"
         >
           <Text fontSize={10} fontFamily="$body" fontWeight="600" color="$colorMuted" style={{ textTransform: "uppercase", letterSpacing: 0.5 }}>
-            Next Step
+            Optional Fallback
           </Text>
-          <XStack
-            alignItems="flex-start"
-            gap={8}
-            padding={10}
+          <YStack
+            gap={10}
+            padding={12}
             borderRadius={14}
             backgroundColor={withAlpha(integrationAccentColors.reasoning, "14")}
             borderWidth={1}
             borderColor={withAlpha(integrationAccentColors.reasoning, "29")}
           >
-            <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: withAlpha(integrationAccentColors.reasoning, "24"), alignItems: "center", justifyContent: "center" }}>
-              <Feather name="refresh-cw" size={13} color={integrationAccentColors.reasoning} />
-            </View>
-            <YStack flex={1} gap={2}>
-              <Text fontSize={12} fontFamily="$body" fontWeight="700" color="$color">
-                Deep scan available
+            <XStack alignItems="flex-start" gap={8}>
+              <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: withAlpha(integrationAccentColors.reasoning, "24"), alignItems: "center", justifyContent: "center" }}>
+                <Feather name="refresh-cw" size={13} color={integrationAccentColors.reasoning} />
+              </View>
+              <YStack flex={1} gap={2}>
+                <Text fontSize={12} fontFamily="$body" fontWeight="700" color="$color">
+                  {isDeepSearching ? "Running deep scan" : "Deep scan"}
+                </Text>
+                <Text fontSize={11} fontFamily="$body" color="$colorMuted" lineHeight={17}>
+                  Only use this if the fast result looks stale, incomplete, or wrong.
+                </Text>
+              </YStack>
+            </XStack>
+            <Pressable
+              onPress={isDeepSearching ? undefined : onDeepSearch}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+                borderRadius: 12,
+                paddingVertical: 10,
+                paddingHorizontal: 12,
+                backgroundColor: withAlpha(integrationAccentColors.reasoning, "18"),
+                borderWidth: 1,
+                borderColor: withAlpha(integrationAccentColors.reasoning, "32"),
+                opacity: isDeepSearching ? 0.6 : pressed ? 0.75 : 1,
+              })}
+            >
+              <Feather name="refresh-cw" size={12} color={integrationAccentColors.reasoning} />
+              <Text fontSize={11} fontFamily={FontFamily.semiBold} color={integrationAccentColors.reasoning}>
+                {isDeepSearching ? "Running deep scan..." : "Run deep scan"}
               </Text>
-              <Text fontSize={11} fontFamily="$body" color="$colorMuted" lineHeight={17}>
-                Reruns retrieval fresh while keeping the rest of this flow aligned.
-              </Text>
-            </YStack>
-          </XStack>
+            </Pressable>
+          </YStack>
         </YStack>
       ) : null}
-    </YStack>
-  );
-}
-
-function DeepSearchPreview({
-  resultCount,
-  turns,
-  flow,
-  theme,
-}: {
-  resultCount: number;
-  turns: number;
-  flow?: CardFlow;
-  theme: ReturnType<typeof useAppTheme>;
-}) {
-  const latestSearch = [...(flow?.searches ?? [])].reverse()[0];
-
-  return (
-    <YStack
-      padding={18}
-      gap={16}
-    >
-      <XStack alignItems="center" gap={10}>
-        <YStack
-          width={42}
-          height={42}
-          borderRadius={12}
-          alignItems="center"
-          justifyContent="center"
-          backgroundColor={withAlpha(integrationAccentColors.reasoning, "24")}
-        >
-          <Feather name="refresh-cw" size={16} color={integrationAccentColors.reasoning} />
-        </YStack>
-        <YStack flex={1}>
-          <Text fontSize={15} fontFamily="$body" fontWeight="700" color="$color">
-            Deep scan
-          </Text>
-          <Text fontSize={11} fontFamily="$body" color="$colorMuted" lineHeight={16}>
-            Rebuild this reply with a fresh retrieval pass.
-          </Text>
-        </YStack>
-      </XStack>
-
-      <XStack gap={8} flexWrap="wrap">
-        <InsightStatChip icon="archive" label="Cards" value={`${resultCount}`} color={theme.primary.val} />
-        <InsightStatChip icon="layers" label="Passes" value={`${turns}`} color={integrationAccentColors.reasoning} />
-        <InsightStatChip
-          icon={latestSearch?.cacheState === "cached" ? "zap" : "radio"}
-          label="Current search"
-          value={latestSearch?.cacheState === "cached" ? "cached" : "fresh"}
-          color={latestSearch?.cacheState === "cached" ? statusAccentColors.warning : theme.primary.val}
-        />
-      </XStack>
-
-      <CurrentFlowSummary flow={flow} turns={turns} theme={theme} />
-
-      <YStack
-        gap={8}
-        padding={12}
-        borderRadius={14}
-        backgroundColor={withAlpha(integrationAccentColors.reasoning, "14")}
-        borderWidth={1}
-        borderColor={withAlpha(integrationAccentColors.reasoning, "29")}
-      >
-        <Text fontSize={10} fontFamily="$body" fontWeight="600" color="$colorMuted" style={{ textTransform: "uppercase", letterSpacing: 0.5 }}>
-          What Changes
-        </Text>
-        <InsightLine
-          icon="refresh-cw"
-          color={integrationAccentColors.reasoning}
-          text="The memory retrieval step reruns fresh and ignores the cached path."
-        />
-        <InsightLine
-          icon="git-branch"
-          color={theme.primary.val}
-          text="Attachment reading and the rest of the tool path stay aligned unless the new results change the plan."
-        />
-      </YStack>
     </YStack>
   );
 }
@@ -1621,29 +1765,41 @@ function PerformancePill({
   turns = 1,
   resultCount,
   flow,
+  isDeepSearching = false,
+  onDeepSearch,
   theme,
 }: {
   isCached: boolean;
   turns?: number;
   resultCount: number;
   flow?: CardFlow;
+  isDeepSearching?: boolean;
+  onDeepSearch?: () => void;
   theme: ReturnType<typeof useAppTheme>;
 }) {
+  const menuRef = useRef<ContextMenuHandle>(null);
   const isReasoned = (turns ?? 1) > 1;
   const baseColor = isReasoned
     ? integrationAccentColors.reasoning
     : isCached
       ? statusAccentColors.warning
       : theme.primary.val;
+  const handleDeepSearchPress = useCallback(() => {
+    menuRef.current?.close();
+    onDeepSearch?.();
+  }, [onDeepSearch]);
 
   return (
     <ContextMenu
+      ref={menuRef}
       preview={
         <SearchStatsPreview
           isCached={isCached}
           turns={turns ?? 1}
           resultCount={resultCount}
-          canDeepSearch={isCached}
+          canDeepSearch={isCached && !!onDeepSearch}
+          isDeepSearching={isDeepSearching}
+          onDeepSearch={handleDeepSearchPress}
           flow={flow}
           theme={theme}
         />
@@ -1865,51 +2021,10 @@ function SearchResultsCard({
               turns={turns}
               resultCount={ids.length}
               flow={flow}
+              isDeepSearching={isDeepSearching}
+              onDeepSearch={isCached && onDeepSearch ? handleDeepSearch : undefined}
               theme={theme}
             />
-
-            {isCached && onDeepSearch && (
-              <ContextMenu
-                preview={
-                  <DeepSearchPreview
-                    resultCount={ids.length}
-                    turns={turns ?? 1}
-                    flow={flow}
-                    theme={theme}
-                  />
-                }
-                items={[
-                  {
-                    label: isDeepSearching ? "Scanning..." : "Run deep scan",
-                    icon: "refresh-cw",
-                    iconColor: theme.primary.val,
-                    onPress: handleDeepSearch,
-                  },
-                ]}
-                previewMinWidth={320}
-                previewFrame
-              >
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 4,
-                    paddingHorizontal: 8,
-                    paddingVertical: 3,
-                    borderRadius: 20,
-                    borderWidth: 1,
-                    borderColor: theme.primary.val + "50",
-                    backgroundColor: theme.primary.val + "12",
-                    opacity: isDeepSearching ? 0.5 : 1,
-                  }}
-                >
-                  <Feather name="refresh-cw" size={10} color={theme.primary.val} />
-                  <Text style={{ fontSize: 11, fontFamily: FontFamily.semiBold, color: theme.primary.val }}>
-                    {isDeepSearching ? "Scanning..." : "Deep scan"}
-                  </Text>
-                </View>
-              </ContextMenu>
-            )}
           </XStack>
         </XStack>
 
@@ -2960,8 +3075,7 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
   const theme = useAppTheme();
   const auth = useAuth();
   const { showToast } = useAppToast();
-  const pushSheet = useUIStore((state) => state.pushSheet);
-  const popSheet = useUIStore((state) => state.popSheet);
+  const openEditMemory = useUIStore((state) => state.openEditMemory);
   const token = tokenProp ?? auth.token;
   const insets = useSafeAreaInsets();
   const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
@@ -2979,8 +3093,6 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
   const sendMessage = useAction(api.actions.memoryChat.chat);
   const runDeepSearch = useAction(api.chat.deepSearch);
   const clearChat = useMutation(api.chat.clear);
-  const updateMemory = useMutation(api.memories.update);
-  const deleteMemoryMutation = useMutation(api.memories.remove);
 
   const driveConnected = !!(googleIntegration?.connected && (googleIntegration as any).hasDriveScope);
 
@@ -2988,7 +3100,6 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
 
   const [isSending, setIsSending] = useState(false);
   const [editTargetId, setEditTargetId] = useState<string | null>(null);
-  const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
   const [optimisticMessage, setOptimisticMessage] = useState<ChatMsg | null>(null);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [speechLocale, setSpeechLocale] = useState(getPreferredSpeechLocale);
@@ -3010,11 +3121,11 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
 
   // Auto-open edit sheet as soon as the memory document arrives
   useEffect(() => {
-    if (editMemoryNote && editTargetId && !isEditSheetOpen) {
-      pushSheet("editMemory");
-      setIsEditSheetOpen(true);
+    if (editMemoryNote && editTargetId) {
+      openEditMemory(editMemoryNote);
+      setEditTargetId(null);
     }
-  }, [editMemoryNote, editTargetId, isEditSheetOpen, pushSheet]);
+  }, [editMemoryNote, editTargetId, openEditMemory]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3247,28 +3358,6 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
   const handleEditMemory = useCallback((id: string) => {
     setEditTargetId(id);
   }, []);
-
-  const handleCloseEdit = useCallback(() => {
-    popSheet("editMemory");
-    setIsEditSheetOpen(false);
-    setEditTargetId(null);
-  }, [popSheet]);
-
-  const handleSaveEdit = useCallback(async (data: Record<string, unknown>) => {
-    if (!editTargetId || !token) return;
-    try {
-      if (data._delete) {
-        await deleteMemoryMutation({ token, id: editTargetId as any });
-        showToast({ title: "Memory deleted", tone: "success" });
-      } else {
-        await updateMemory({ token, id: editTargetId as any, ...data });
-        showToast({ title: "Memory updated", tone: "success" });
-      }
-    } catch {
-      showToast({ title: "Couldn't save — try again", tone: "error" });
-    }
-    handleCloseEdit();
-  }, [editTargetId, token, updateMemory, deleteMemoryMutation, showToast, handleCloseEdit]);
 
   // ── Markdown styles ────────────────────────────────────────────────────────
   const aiMdStyles = useMemo(
@@ -3563,14 +3652,6 @@ export function AIChatPanel({ compact, token: tokenProp, chatInputMode, setChatI
       </YStack>
 
       {inputBar}
-
-      {/* Edit memory sheet — opens when user taps Edit on a search result card */}
-      <EditMemorySheet
-        memory={editMemoryNote ?? undefined}
-        visible={isEditSheetOpen}
-        onClose={handleCloseEdit}
-        onSave={handleSaveEdit}
-      />
     </YStack>
   );
 }
