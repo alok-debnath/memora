@@ -125,6 +125,15 @@ function fallbackStructuredData(content: string): AIExtractedMemory {
   };
 }
 
+function looksLikeDirectReminderCapture(content: string) {
+  const normalized = content.trim().toLowerCase();
+  return (
+    /\bremind me\b/.test(normalized) ||
+    /\bset (?:a )?reminder\b/.test(normalized) ||
+    /\bcreate (?:a )?reminder\b/.test(normalized)
+  );
+}
+
 function isSameValue(left: unknown, right: unknown) {
   if (left === right) {
     return true;
@@ -184,6 +193,8 @@ async function extractStructuredMemory(args: {
   const response = await trackedChatCompletion(args.ctx, {
     userId: args.userId,
     feature: "memory_processing",
+    stage: "structuring",
+    visibility: "background",
     metadata: { stage: "structured_extract" },
     request: {
       model: OPENAI_CHAT_MODEL,
@@ -333,6 +344,8 @@ async function buildMemoryEmbedding(args: {
   return await trackedEmbedText(args.ctx, {
     userId: args.userId,
     feature: args.feature,
+    stage: "embedding",
+    visibility: "background",
     input: buildEmbeddingText({
       title: args.title,
       content: args.content,
@@ -380,6 +393,8 @@ export const processMemory = action({
       const queryEmbedding = await trackedEmbedText(ctx, {
         userId: memory.userId,
         feature: "memory_processing",
+        stage: "conflict_prefetch",
+        visibility: "background",
         input: args.content.slice(0, 4000),
         metadata: { stage: "conflict_prefetch" },
       });
@@ -518,49 +533,54 @@ export const captureMemory = action({
     if (client) {
       const userTz = args.currentTimezone?.trim() || session.timezone || "UTC";
       const currentTime = args.currentTime ?? new Date().toISOString();
+      const skipConflictPrefetch = looksLikeDirectReminderCapture(args.content);
 
       // Find conflict candidates BEFORE the LLM call to provide context
       let existingMemoriesContext = "";
-      try {
-        let candidates: Array<{
-          _id: Id<"memories">;
-          title?: string;
-          content?: string;
-        }> = [];
-        const queryEmbedding = await trackedEmbedText(ctx, {
-          userId: session._id,
-          feature: "memory_capture",
-          input: args.content.slice(0, 4000),
-          metadata: { stage: "conflict_prefetch" },
-        });
-        const semanticallySimilar = await ctx.vectorSearch("memories", "by_embedding", {
-          vector: queryEmbedding,
-          limit: 8,
-          filter: (q) => q.eq("userId", session._id),
-        });
-
-        const similarIds = semanticallySimilar
-          .filter((result) => result._score > 0.65)
-          .map((result) => result._id);
-
-        if (similarIds.length > 0) {
-          candidates = await ctx.runQuery(internal.memories.listByIdsInternal, {
+      if (!skipConflictPrefetch) {
+        try {
+          let candidates: Array<{
+            _id: Id<"memories">;
+            title?: string;
+            content?: string;
+          }> = [];
+          const queryEmbedding = await trackedEmbedText(ctx, {
             userId: session._id,
-            ids: similarIds.slice(0, 8),
+            feature: "memory_capture",
+            stage: "conflict_prefetch",
+            visibility: "background",
+            input: args.content.slice(0, 4000),
+            metadata: { stage: "conflict_prefetch" },
           });
-        } else {
-          candidates = await ctx.runQuery(internal.memories.searchByKeyword, {
-            userId: session._id,
-            query: args.content,
+          const semanticallySimilar = await ctx.vectorSearch("memories", "by_embedding", {
+            vector: queryEmbedding,
             limit: 8,
+            filter: (q) => q.eq("userId", session._id),
           });
-        }
 
-        existingMemoriesContext = candidates
-          .map((m) => `[${m._id}] ${m.title ?? "Untitled"}: ${(m.content ?? "").slice(0, 200)}`)
-          .join("\n");
-      } catch (e) {
-        console.error("Error finding conflict candidates:", e);
+          const similarIds = semanticallySimilar
+            .filter((result) => result._score > 0.65)
+            .map((result) => result._id);
+
+          if (similarIds.length > 0) {
+            candidates = await ctx.runQuery(internal.memories.listByIdsInternal, {
+              userId: session._id,
+              ids: similarIds.slice(0, 8),
+            });
+          } else {
+            candidates = await ctx.runQuery(internal.memories.searchByKeyword, {
+              userId: session._id,
+              query: args.content,
+              limit: 8,
+            });
+          }
+
+          existingMemoriesContext = candidates
+            .map((m) => `[${m._id}] ${m.title ?? "Untitled"}: ${(m.content ?? "").slice(0, 200)}`)
+            .join("\n");
+        } catch (e) {
+          console.error("Error finding conflict candidates:", e);
+        }
       }
 
       try {

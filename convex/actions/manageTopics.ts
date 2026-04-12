@@ -243,6 +243,8 @@ Return ONLY valid JSON: { "name": "Title Case", "slug": "kebab-case", "descripti
     const resp = await trackedChatCompletion(ctx, {
       userId,
       feature: "topic_management",
+      stage: "topic_assignment",
+      visibility: "background",
       metadata: { stage: "topic_create" },
       request: {
         model: OPENAI_CHAT_MODEL,
@@ -326,6 +328,8 @@ Return ONLY valid JSON: {"choice": 0} to create new, or {"choice": 2} to use can
     const resp = await trackedChatCompletion(ctx, {
       userId,
       feature: "topic_management",
+      stage: "topic_assignment",
+      visibility: "background",
       metadata: { stage: "topic_select" },
       request: {
         model: OPENAI_CHAT_MODEL,
@@ -348,77 +352,6 @@ Return ONLY valid JSON: {"choice": 0} to create new, or {"choice": 2} to use can
 
   const topicData = await aiCreateTopic(ctx, userId, title, content, allExistingTopics);
   return { action: "new", topicData };
-}
-
-async function aiReconcileTopicProposal(
-  ctx: Pick<ActionCtx, "runMutation">,
-  userId: Id<"users">,
-  title: string,
-  content: string,
-  proposedTopic: TopicData,
-  existingTopics: TopicRecord[],
-): Promise<{ action: "existing"; topicId: Id<"userTopics"> } | { action: "new" }> {
-  const client = getOpenAIClient();
-  if (!client) {
-    const normalizedMatch = findNormalizedTopicMatch(existingTopics, proposedTopic);
-    return normalizedMatch
-      ? { action: "existing", topicId: normalizedMatch._id }
-      : { action: "new" };
-  }
-
-  const taxonomy = existingTopics
-    .map(
-      (topic, index) => `${index + 1}. "${topic.name}" — ${topic.description || "no description"}`,
-    )
-    .join("\n");
-
-  const prompt = `You are validating whether a newly proposed topic is actually necessary.
-
-Memory title: "${title}"
-Memory content: ${content.slice(0, 300)}
-
-Proposed new topic:
-- Name: ${proposedTopic.name}
-- Description: ${proposedTopic.description || "none"}
-
-Existing topics:
-${taxonomy || "none"}
-
-Rules:
-- Prefer reusing an existing topic whenever the proposal is narrower, more specific, or just a wording variant
-- Example: "Mother's Names" should reuse "Family Names"
-- Example: "Dad Medical Test" should reuse "Health Records" if that exists
-- Return 0 only if none of the existing topics are a reasonable umbrella for this memory
-
-Return ONLY valid JSON: {"choice": 0} for a truly new topic, or {"choice": 3} to reuse topic #3.`;
-
-  try {
-    const response = await trackedChatCompletion(ctx, {
-      userId,
-      feature: "topic_management",
-      metadata: { stage: "topic_reconcile" },
-      request: {
-        model: OPENAI_CHAT_MODEL,
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-        max_tokens: 30,
-        temperature: 0,
-      },
-    });
-    const parsed = JSON.parse(response.choices[0]?.message?.content ?? "{}");
-    const choice = typeof parsed.choice === "number" ? parsed.choice : 0;
-    if (choice >= 1 && choice <= existingTopics.length) {
-      return {
-        action: "existing",
-        topicId: existingTopics[choice - 1]._id,
-      };
-    }
-  } catch {
-    // Fall through to normalized match / create.
-  }
-
-  const normalizedMatch = findNormalizedTopicMatch(existingTopics, proposedTopic);
-  return normalizedMatch ? { action: "existing", topicId: normalizedMatch._id } : { action: "new" };
 }
 
 // ─── Main actions ─────────────────────────────────────────────────────────────
@@ -500,21 +433,9 @@ export const assignTopicsToMemory = internalAction({
         )!;
         primaryTopicId = matched._id;
       } else {
-        const reconciled = await aiReconcileTopicProposal(
-          ctx,
-          args.userId,
-          args.title,
-          args.content,
-          result.topicData,
-          curatedTopics,
-        );
-
-        if (reconciled.action === "existing") {
-          const matched = topics.find((topic: TopicRecord) => topic._id === reconciled.topicId);
-          if (!matched) {
-            throw new Error("Reconciled topic no longer exists");
-          }
-          primaryTopicId = matched._id;
+        const normalizedMatch = findNormalizedTopicMatch(topics, result.topicData);
+        if (normalizedMatch) {
+          primaryTopicId = normalizedMatch._id;
         } else {
           // Enforce topic cap by merging the most similar pair before creating
           if (topics.length >= MAX_TOPICS_PER_USER && topics.length >= 2) {
@@ -721,6 +642,8 @@ export const handleManageTopic = internalAction({
           (await trackedEmbedText(ctx, {
             userId: args.userId,
             feature: "topic_management",
+            stage: "embedding",
+            visibility: "background",
             input: [memory.title ?? "", memory.content ?? ""].filter(Boolean).join("\n\n"),
             metadata: { stage: "retag_memory" },
           }));
@@ -763,6 +686,8 @@ export const handleManageTopic = internalAction({
           const resp = await trackedChatCompletion(ctx, {
             userId: args.userId,
             feature: "topic_management",
+            stage: "topic_assignment",
+            visibility: "background",
             metadata: { stage: "rename_topic" },
             request: {
               model: OPENAI_CHAT_MODEL,

@@ -184,6 +184,8 @@ async function recordGeminiUsage(args: {
     model: args.model,
     operation: args.operation,
     feature: "attachment_extraction",
+    stage: "extraction",
+    visibility: "background",
     status: args.status,
     latencyMs: args.latencyMs,
     costAvailability: "unavailable",
@@ -365,6 +367,8 @@ async function extractImageWithOpenAI(
           userId: analytics.userId,
           feature: "attachment_extraction",
           model: "gpt-4o",
+          stage: "extraction",
+          visibility: "background",
           metadata: { attachmentType: "image", fallback: "openai" },
           request,
         })

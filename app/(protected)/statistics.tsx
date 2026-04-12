@@ -12,7 +12,9 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { SectionLabel } from "@/components/ui/SectionLabel";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
-import { PopoverMenu } from "@/components/ui/PopoverMenu";
+import { PressableScale } from "@/components/ui/PressableScale";
+import { BaseSheet } from "@/components/ui/BaseSheet";
+import { SheetHeader } from "@/components/ui/SheetHeader";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useAuth } from "@/hooks/useAuth";
 import { integrationAccentColors, statAccentColors, statusAccentColors } from "@/constants/colors";
@@ -65,6 +67,26 @@ function formatTrackedDate(timestamp: number | null | undefined) {
     month: "short",
     day: "numeric",
   });
+}
+
+function formatFeatureLabel(feature: string) {
+  const map: Record<string, string> = {
+    memory_chat: "Chat assistant",
+    attachment_extraction: "Image / document extraction",
+    memory_capture: "Memory structuring",
+    memory_processing: "Memory processing",
+    memory_search: "Search grounding",
+    topic_management: "Topic assignment",
+    diary_processing: "Diary processing",
+    conflict_detection: "Conflict detection",
+    audio_transcription: "Audio transcription",
+  };
+  return map[feature] ?? feature.replace(/_/g, " ");
+}
+
+function formatStageLabel(stage: string | null | undefined) {
+  if (!stage) return "unspecified";
+  return stage.replace(/_/g, " ");
 }
 
 function KPI({
@@ -188,12 +210,75 @@ function TimelineChart({
   );
 }
 
+function DetailToggle({
+  icon,
+  label,
+  active,
+  onPress,
+  tone,
+}: {
+  icon: React.ComponentProps<typeof Feather>["name"];
+  label: string;
+  active: boolean;
+  onPress: () => void;
+  tone: string;
+}) {
+  return (
+    <PressableScale onPress={onPress}>
+      <XStack
+        alignItems="center"
+        gap={8}
+        paddingHorizontal={12}
+        paddingVertical={10}
+        borderRadius={999}
+        borderWidth={1}
+        borderColor={active ? tone : withAlpha(tone, "24")}
+        backgroundColor={active ? withAlpha(tone, "14") : "$background"}
+      >
+        <Feather name={icon} size={14} color={tone} />
+        <Text
+          fontSize={12}
+          fontFamily="$body"
+          fontWeight={active ? "700" : "500"}
+          color={active ? tone : "$colorMuted"}
+        >
+          {label}
+        </Text>
+      </XStack>
+    </PressableScale>
+  );
+}
+
+function getDetailPanelMeta(
+  detailPanel: "none" | "models" | "events" | "features",
+): { title: string; subtitle: string } | null {
+  switch (detailPanel) {
+    case "features":
+      return {
+        title: "Feature Breakdown",
+        subtitle: "User-visible actions and background AI stages",
+      };
+    case "models":
+      return {
+        title: "Model Costs",
+        subtitle: "Spend and token load by model",
+      };
+    case "events":
+      return {
+        title: "Recent Usage Events",
+        subtitle: "Latest tracked AI operations",
+      };
+    default:
+      return null;
+  }
+}
+
 export default function AnalyticsScreen() {
   const theme = useAppTheme();
   const { token } = useAuth();
   const { width: windowWidth } = useWindowDimensions();
   const [range, setRange] = useState<RangeKey>("30d");
-  const [detailPanel, setDetailPanel] = useState<"none" | "models" | "events">("none");
+  const [detailPanel, setDetailPanel] = useState<"none" | "models" | "events" | "features">("none");
   const isCompact = windowWidth < 720;
   const contentWidth = Math.min(windowWidth - 32, 1040);
   const kpiWidth = isCompact
@@ -202,6 +287,9 @@ export default function AnalyticsScreen() {
 
   const overview = useQuery(api.analytics.overview, token ? { token, range } : "skip");
   const aiBreakdown = useQuery(api.analytics.aiBreakdown, token ? { token, range } : "skip") ?? [];
+  const aiFeatureBreakdown =
+    useQuery(api.analytics.aiFeatureBreakdown, token ? { token, range } : "skip") ?? [];
+  const detailMeta = getDetailPanelMeta(detailPanel);
   const recentEventsResult = useQuery(
     api.analytics.recentEvents,
     token ? { token, paginationOpts: { numItems: 10, cursor: null } } : "skip",
@@ -210,9 +298,9 @@ export default function AnalyticsScreen() {
 
   const summaryLine = useMemo(() => {
     if (!overview) return "Loading telemetry and history…";
-    return `${formatCompactNumber(overview.rangeTotals.aiRequests)} AI calls, ${formatCompactNumber(
-      overview.rangeTotals.searches ?? 0,
-    )} searches, ${formatUsdMicros(overview.rangeTotals.aiCostUsdMicros)} spend.`;
+    return `${formatCompactNumber(overview.rangeTotals.aiActions ?? 0)} AI actions, ${formatCompactNumber(
+      overview.rangeTotals.aiRequests ?? 0,
+    )} backend ops, ${formatUsdMicros(overview.rangeTotals.aiCostUsdMicros)} spend.`;
   }, [overview]);
 
   const topModels = useMemo(() => aiBreakdown.slice(0, 5), [aiBreakdown]);
@@ -228,17 +316,6 @@ export default function AnalyticsScreen() {
             overflow: "hidden",
           }}
         >
-          <View
-            style={{
-              position: "absolute",
-              right: -20,
-              top: -18,
-              width: 150,
-              height: 150,
-              borderRadius: 999,
-              backgroundColor: withAlpha(theme.primary.val, "12"),
-            }}
-          />
           <XStack justifyContent="space-between" gap={14}>
             <YStack flex={1} gap={6}>
               <Badge label="Analytics" color={theme.primary.val} />
@@ -255,36 +332,6 @@ export default function AnalyticsScreen() {
                 {summaryLine}
               </Text>
             </YStack>
-            <PopoverMenu
-              items={[
-                {
-                  label: "Show model costs",
-                  icon: "cpu",
-                  onPress: () => setDetailPanel("models"),
-                },
-                {
-                  label: "Show recent AI events",
-                  icon: "clock",
-                  onPress: () => setDetailPanel("events"),
-                },
-                {
-                  label: "Hide details",
-                  icon: "eye-off",
-                  onPress: () => setDetailPanel("none"),
-                },
-              ]}
-            >
-              <YStack
-                width={44}
-                height={44}
-                borderRadius={14}
-                alignItems="center"
-                justifyContent="center"
-                backgroundColor={withAlpha(theme.primary.val, "14")}
-              >
-                <Feather name="more-horizontal" size={18} color={theme.primary.val} />
-              </YStack>
-            </PopoverMenu>
           </XStack>
 
           <XStack marginTop={18} gap={10} flexWrap="wrap">
@@ -326,20 +373,20 @@ export default function AnalyticsScreen() {
         <Animated.View entering={FadeInUp.delay(170).duration(360)} style={{ width: kpiWidth }}>
           <KPI
             icon="activity"
-            label="AI requests"
-            value={formatCompactNumber(overview?.rangeTotals.aiRequests ?? 0)}
-            hint={`${Math.round((overview?.rangeTotals.failureRate ?? 0) * 100)}% failure rate`}
+            label="AI actions"
+            value={formatCompactNumber(overview?.rangeTotals.aiActions ?? 0)}
+            hint={`${formatCompactNumber(overview?.rangeTotals.backgroundAiOperations ?? 0)} background ops`}
             tone={theme.primary.val}
             width={kpiWidth}
           />
         </Animated.View>
         <Animated.View entering={FadeInUp.delay(200).duration(360)} style={{ width: kpiWidth }}>
           <KPI
-            icon="hard-drive"
-            label="Live storage"
-            value={formatBytes(overview?.totals.liveStorageBytes ?? 0)}
-            hint={`${formatCompactNumber(overview?.totals.liveStorageCount ?? 0)} files`}
-            tone={statusAccentColors.info}
+            icon="layers"
+            label="AI backend ops"
+            value={formatCompactNumber(overview?.rangeTotals.aiRequests ?? 0)}
+            hint={`${formatCompactNumber(overview?.rangeTotals.backgroundAiOperations ?? 0)} background`}
+            tone={statusAccentColors.warning}
             width={kpiWidth}
           />
         </Animated.View>
@@ -413,9 +460,62 @@ export default function AnalyticsScreen() {
       <Animated.View entering={FadeInUp.delay(280).duration(360)}>
         <SectionLabel>AI Usage</SectionLabel>
         <Card style={{ borderRadius: 26 }}>
+          <YStack gap={10} marginBottom={16}>
+            <XStack alignItems="center" justifyContent="space-between" gap={12} flexWrap="wrap">
+              <Text fontSize={18} fontFamily="$heading" fontWeight="700" color="$color">
+                AI detail views
+              </Text>
+              {detailPanel !== "none" ? (
+                <Badge
+                  label={
+                    detailPanel === "features"
+                      ? "Feature breakdown open"
+                      : detailPanel === "models"
+                        ? "Model costs open"
+                        : "Recent events open"
+                  }
+                  color={theme.primary.val}
+                />
+              ) : null}
+            </XStack>
+            <Text fontSize={13} fontFamily="$body" color="$colorMuted">
+              Choose a detailed view here. It opens as a popup so the content is immediately
+              visible.
+            </Text>
+            <XStack gap={8} flexWrap="wrap">
+              <DetailToggle
+                icon="layers"
+                label="Feature breakdown"
+                active={detailPanel === "features"}
+                onPress={() =>
+                  setDetailPanel((current) => (current === "features" ? "none" : "features"))
+                }
+                tone={theme.primary.val}
+              />
+              <DetailToggle
+                icon="cpu"
+                label="Model costs"
+                active={detailPanel === "models"}
+                onPress={() =>
+                  setDetailPanel((current) => (current === "models" ? "none" : "models"))
+                }
+                tone={integrationAccentColors.openai}
+              />
+              <DetailToggle
+                icon="clock"
+                label="Recent events"
+                active={detailPanel === "events"}
+                onPress={() =>
+                  setDetailPanel((current) => (current === "events" ? "none" : "events"))
+                }
+                tone={statusAccentColors.info}
+              />
+            </XStack>
+          </YStack>
+
           <XStack justifyContent="space-between" gap={16} flexWrap="wrap">
             <YStack flex={1} gap={10}>
-              <Text fontSize={18} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text fontSize={17} fontFamily="$heading" fontWeight="700" color="$color">
                 Model spend and token load
               </Text>
               <XStack gap={10} flexWrap="wrap">
@@ -425,6 +525,10 @@ export default function AnalyticsScreen() {
                 />
                 <Badge
                   label={`${formatCompactNumber(overview?.rangeTotals.aiOutputTokens ?? 0)} output tokens`}
+                />
+                <Badge
+                  label={`${formatCompactNumber(overview?.rangeTotals.aiRequests ?? 0)} backend ops`}
+                  color={statusAccentColors.info}
                 />
                 <Badge
                   label={`${Math.round((overview?.rangeTotals.failureRate ?? 0) * 100)}% failure rate`}
@@ -451,7 +555,9 @@ export default function AnalyticsScreen() {
                 {overview?.topModel?.model ?? "No data"}
               </Text>
               <Text fontSize={12} color="$colorMuted">
-                {overview?.topModel?.feature ?? "Waiting for tracked usage"}
+                {overview?.topModel?.feature
+                  ? formatFeatureLabel(overview.topModel.feature)
+                  : "Waiting for tracked usage"}
               </Text>
             </YStack>
           </XStack>
@@ -475,7 +581,8 @@ export default function AnalyticsScreen() {
                       {item.model}
                     </Text>
                     <Text fontSize={12} color="$colorMuted">
-                      {item.feature} · {item.operation} · {formatCompactNumber(item.requests)} calls
+                      {formatFeatureLabel(item.feature)} · {formatStageLabel(item.stage)} ·{" "}
+                      {formatCompactNumber(item.requests)} calls
                     </Text>
                   </YStack>
                   <Text fontSize={13} fontWeight="700" color="$color">
@@ -554,144 +661,175 @@ export default function AnalyticsScreen() {
         </Card>
       </Animated.View>
 
-      <Animated.View entering={FadeInUp.delay(360).duration(360)}>
-        <SectionLabel>Storage Footprint</SectionLabel>
-        <Card style={{ borderRadius: 26 }}>
-          <XStack flexWrap="wrap" gap={10}>
-            <YStack
-              flex={1}
-              minWidth={110}
-              padding={14}
-              borderRadius={18}
-              backgroundColor={withAlpha(statusAccentColors.info, "10")}
-            >
-              <Text fontSize={12} color="$colorMuted">
-                Files live
-              </Text>
-              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">
-                {formatCompactNumber(overview?.totals.liveStorageCount ?? 0)}
-              </Text>
-            </YStack>
-            <YStack
-              flex={1}
-              minWidth={110}
-              padding={14}
-              borderRadius={18}
-              backgroundColor={withAlpha(statusAccentColors.success, "10")}
-            >
-              <Text fontSize={12} color="$colorMuted">
-                Uploaded in range
-              </Text>
-              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">
-                {formatBytes(overview?.rangeTotals.attachmentBytesUploaded ?? 0)}
-              </Text>
-            </YStack>
-            <YStack
-              flex={1}
-              minWidth={110}
-              padding={14}
-              borderRadius={18}
-              backgroundColor={withAlpha(statusAccentColors.warning, "10")}
-            >
-              <Text fontSize={12} color="$colorMuted">
-                Images / docs
-              </Text>
-              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">
-                {overview?.totals.liveImageCount ?? 0}/{overview?.totals.liveDocumentCount ?? 0}
-              </Text>
-            </YStack>
-          </XStack>
-        </Card>
-      </Animated.View>
-
-      {detailPanel === "models" ? (
-        <Animated.View entering={FadeInUp.delay(400).duration(360)}>
-          <SectionLabel>Model Cost Drilldown</SectionLabel>
-          <Card style={{ borderRadius: 26 }}>
-            <YStack gap={12}>
-              {aiBreakdown.length > 0 ? (
-                aiBreakdown.map((item) => (
-                  <XStack
-                    key={`${item.provider}-${item.model}-${item.operation}-${item.feature}`}
-                    alignItems="center"
-                    gap={10}
-                  >
-                    <YStack flex={1}>
-                      <Text fontSize={13} fontWeight="700" color="$color">
-                        {item.model}
-                      </Text>
-                      <Text fontSize={12} color="$colorMuted">
-                        {item.feature} · {item.operation}
-                      </Text>
-                    </YStack>
-                    <YStack alignItems="flex-end">
-                      <Text fontSize={13} fontWeight="700" color="$color">
-                        {formatUsdMicros(item.costUsdMicros)}
-                      </Text>
-                      <Text fontSize={11} color="$colorMuted">
-                        {formatCompactNumber(item.totalTokens)} tokens
-                      </Text>
-                    </YStack>
-                  </XStack>
-                ))
-              ) : (
+      <BaseSheet
+        open={detailPanel !== "none"}
+        onOpenChange={(open) => {
+          if (!open) setDetailPanel("none");
+        }}
+        snapPoints={[86]}
+      >
+        <SheetHeader
+          title={detailMeta?.title ?? "AI Details"}
+          subtitle={detailMeta?.subtitle}
+          right={
+            <PressableScale onPress={() => setDetailPanel("none")}>
+              <YStack
+                width={36}
+                height={36}
+                borderRadius={12}
+                alignItems="center"
+                justifyContent="center"
+                backgroundColor="$background"
+                borderWidth={1}
+                borderColor="$borderColor"
+              >
+                <Feather name="x" size={16} color={theme.color.val} />
+              </YStack>
+            </PressableScale>
+          }
+        />
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32, gap: 14 }}
+        >
+          {detailPanel === "features" ? (
+            <Card style={{ borderRadius: 26 }}>
+              <YStack gap={12}>
                 <Text fontSize={13} color="$colorMuted">
-                  No model-level AI data yet for this range.
+                  {formatCompactNumber(overview?.rangeTotals.aiActions ?? 0)} user-visible actions
+                  triggered {formatCompactNumber(overview?.rangeTotals.aiRequests ?? 0)} backend AI
+                  operations in this range.
                 </Text>
-              )}
-            </YStack>
-          </Card>
-        </Animated.View>
-      ) : null}
+                {aiFeatureBreakdown.length > 0 ? (
+                  aiFeatureBreakdown.map((item) => (
+                    <XStack
+                      key={`${item.feature}-${item.stage}-${item.visibility}`}
+                      alignItems="center"
+                      gap={10}
+                    >
+                      <YStack
+                        width={10}
+                        height={10}
+                        borderRadius={5}
+                        backgroundColor={
+                          item.visibility === "user_visible"
+                            ? theme.primary.val
+                            : integrationAccentColors.openai
+                        }
+                      />
+                      <YStack flex={1}>
+                        <Text fontSize={13} fontWeight="700" color="$color">
+                          {formatFeatureLabel(item.feature)}
+                        </Text>
+                        <Text fontSize={12} color="$colorMuted">
+                          {formatStageLabel(item.stage)} ·{" "}
+                          {item.visibility === "user_visible" ? "user visible" : "background"} ·{" "}
+                          {formatCompactNumber(item.requests)} calls
+                        </Text>
+                      </YStack>
+                      <YStack alignItems="flex-end">
+                        <Text fontSize={13} fontWeight="700" color="$color">
+                          {formatUsdMicros(item.costUsdMicros)}
+                        </Text>
+                        <Text fontSize={11} color="$colorMuted">
+                          {formatCompactNumber(item.totalTokens)} tokens
+                        </Text>
+                      </YStack>
+                    </XStack>
+                  ))
+                ) : (
+                  <Text fontSize={13} color="$colorMuted">
+                    No feature-level AI data yet for this range.
+                  </Text>
+                )}
+              </YStack>
+            </Card>
+          ) : null}
 
-      {detailPanel === "events" ? (
-        <Animated.View entering={FadeInUp.delay(400).duration(360)}>
-          <SectionLabel>Recent Usage Events</SectionLabel>
-          <Card style={{ borderRadius: 26 }}>
-            <YStack gap={12}>
-              {recentEvents.length > 0 ? (
-                recentEvents.map((event) => (
-                  <XStack key={event._id} alignItems="center" gap={10}>
-                    <YStack
-                      width={12}
-                      height={12}
-                      borderRadius={6}
-                      backgroundColor={
-                        event.status === "error"
-                          ? statusAccentColors.error
-                          : integrationAccentColors.openai
-                      }
-                    />
-                    <YStack flex={1}>
-                      <Text fontSize={13} fontWeight="700" color="$color">
-                        {event.model}
-                      </Text>
-                      <Text fontSize={12} color="$colorMuted">
-                        {event.feature} · {event.operation} ·{" "}
-                        {new Date(event.occurredAt).toLocaleString()}
-                      </Text>
-                    </YStack>
-                    <YStack alignItems="flex-end">
-                      <Text fontSize={12} fontWeight="700" color="$color">
-                        {event.costUsdMicros ? formatUsdMicros(event.costUsdMicros) : "n/a"}
-                      </Text>
-                      <Text fontSize={11} color="$colorMuted">
-                        {event.totalTokens
-                          ? `${formatCompactNumber(event.totalTokens)} tok`
-                          : event.status}
-                      </Text>
-                    </YStack>
-                  </XStack>
-                ))
-              ) : (
-                <Text fontSize={13} color="$colorMuted">
-                  No recent AI events yet.
-                </Text>
-              )}
-            </YStack>
-          </Card>
-        </Animated.View>
-      ) : null}
+          {detailPanel === "models" ? (
+            <Card style={{ borderRadius: 26 }}>
+              <YStack gap={12}>
+                {aiBreakdown.length > 0 ? (
+                  aiBreakdown.map((item) => (
+                    <XStack
+                      key={`${item.provider}-${item.model}-${item.operation}-${item.feature}`}
+                      alignItems="center"
+                      gap={10}
+                    >
+                      <YStack flex={1}>
+                        <Text fontSize={13} fontWeight="700" color="$color">
+                          {item.model}
+                        </Text>
+                        <Text fontSize={12} color="$colorMuted">
+                          {formatFeatureLabel(item.feature)} · {formatStageLabel(item.stage)}
+                        </Text>
+                      </YStack>
+                      <YStack alignItems="flex-end">
+                        <Text fontSize={13} fontWeight="700" color="$color">
+                          {formatUsdMicros(item.costUsdMicros)}
+                        </Text>
+                        <Text fontSize={11} color="$colorMuted">
+                          {formatCompactNumber(item.totalTokens)} tokens
+                        </Text>
+                      </YStack>
+                    </XStack>
+                  ))
+                ) : (
+                  <Text fontSize={13} color="$colorMuted">
+                    No model-level AI data yet for this range.
+                  </Text>
+                )}
+              </YStack>
+            </Card>
+          ) : null}
+
+          {detailPanel === "events" ? (
+            <Card style={{ borderRadius: 26 }}>
+              <YStack gap={12}>
+                {recentEvents.length > 0 ? (
+                  recentEvents.map((event) => (
+                    <XStack key={event._id} alignItems="center" gap={10}>
+                      <YStack
+                        width={12}
+                        height={12}
+                        borderRadius={6}
+                        backgroundColor={
+                          event.status === "error"
+                            ? statusAccentColors.error
+                            : integrationAccentColors.openai
+                        }
+                      />
+                      <YStack flex={1}>
+                        <Text fontSize={13} fontWeight="700" color="$color">
+                          {event.model}
+                        </Text>
+                        <Text fontSize={12} color="$colorMuted">
+                          {formatFeatureLabel(event.feature)} · {formatStageLabel(event.stage)} ·{" "}
+                          {new Date(event.occurredAt).toLocaleString()}
+                        </Text>
+                      </YStack>
+                      <YStack alignItems="flex-end">
+                        <Text fontSize={12} fontWeight="700" color="$color">
+                          {event.costUsdMicros ? formatUsdMicros(event.costUsdMicros) : "n/a"}
+                        </Text>
+                        <Text fontSize={11} color="$colorMuted">
+                          {event.totalTokens
+                            ? `${formatCompactNumber(event.totalTokens)} tok`
+                            : (event.visibility ?? event.status)}
+                        </Text>
+                      </YStack>
+                    </XStack>
+                  ))
+                ) : (
+                  <Text fontSize={13} color="$colorMuted">
+                    No recent AI events yet.
+                  </Text>
+                )}
+              </YStack>
+            </Card>
+          ) : null}
+        </ScrollView>
+      </BaseSheet>
     </MorePageScaffold>
   );
 }

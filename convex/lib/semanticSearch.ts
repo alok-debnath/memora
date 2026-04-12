@@ -112,6 +112,8 @@ export async function runSemanticSearch(
           queryEmbedding = await trackedEmbedText(ctx, {
             userId: args.userId,
             feature: "memory_search",
+            stage: "search_grounding",
+            visibility: "background",
             input: expandedQuery,
             metadata: { stage: "semantic_search" },
           });

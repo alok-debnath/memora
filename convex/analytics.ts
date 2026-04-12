@@ -44,6 +44,7 @@ function getRangeDays(range: "7d" | "30d" | "90d" | "365d" | "all") {
 type SummaryDoc = Doc<"userAnalyticsSummary">;
 type DailyDoc = Doc<"userAnalyticsDaily">;
 type ModelDailyDoc = Doc<"userAnalyticsModelDaily">;
+type AiVisibility = "user_visible" | "background";
 
 const searchFeatureValidator = v.union(
   v.literal("memory_search"),
@@ -109,6 +110,8 @@ async function ensureSummary(
     totalAiOutputTokens: 0,
     totalAiAudioSeconds: 0,
     totalAiCostUsdMicros: 0,
+    totalAiActions: 0,
+    totalBackgroundAiOperations: 0,
     totalSearches: 0,
     totalDeepSearches: 0,
     totalSearchCacheHits: 0,
@@ -157,6 +160,8 @@ async function getOrCreateDaily(
     aiOutputTokens: 0,
     aiAudioSeconds: 0,
     aiCostUsdMicros: 0,
+    aiActions: 0,
+    backgroundAiOperations: 0,
     searches: 0,
     deepSearches: 0,
     searchCacheHits: 0,
@@ -183,6 +188,8 @@ async function getOrCreateModelDaily(
     model: string;
     operation: string;
     feature: string;
+    stage?: string;
+    visibility?: AiVisibility;
   },
 ): Promise<ModelDailyDoc> {
   const rows = await ctx.db
@@ -196,7 +203,13 @@ async function getOrCreateModelDaily(
     )
     .take(20);
   const existing =
-    rows.find((row) => row.operation === args.operation && row.feature === args.feature) ?? null;
+    rows.find(
+      (row) =>
+        row.operation === args.operation &&
+        row.feature === args.feature &&
+        row.stage === args.stage &&
+        row.visibility === args.visibility,
+    ) ?? null;
   if (existing) {
     return existing;
   }
@@ -209,6 +222,8 @@ async function getOrCreateModelDaily(
     model: args.model,
     operation: args.operation,
     feature: args.feature,
+    stage: args.stage,
+    visibility: args.visibility,
     requests: 0,
     errors: 0,
     inputTokens: 0,
@@ -306,20 +321,10 @@ export const recordStorageDelta = internalMutation({
     documentCountDelta: v.optional(v.number()),
     occurredAt: v.optional(v.number()),
   },
-  handler: async (ctx, args) => {
-    const analyticsSubjectId = await ensureAnalyticsSubjectId(ctx, args.userId);
-    const summary = await ensureSummary(ctx, args.userId);
-    await ctx.db.patch(summary._id, {
-      analyticsSubjectId,
-      liveStorageBytes: clampNonNegative(summary.liveStorageBytes + args.bytesDelta),
-      liveStorageCount: clampNonNegative(summary.liveStorageCount + args.fileCountDelta),
-      liveImageCount: clampNonNegative(summary.liveImageCount + (args.imageCountDelta ?? 0)),
-      liveDocumentCount: clampNonNegative(
-        summary.liveDocumentCount + (args.documentCountDelta ?? 0),
-      ),
-      lastActivityAt: args.occurredAt ?? Date.now(),
-      updatedAt: args.occurredAt ?? Date.now(),
-    });
+  handler: async (_ctx, _args) => {
+    // Attachments are stored in Google Drive, not Memora-managed storage.
+    // Keep the mutation as a no-op to avoid breaking existing call sites while
+    // stopping misleading "live storage" analytics.
     return null;
   },
 });
@@ -409,6 +414,8 @@ export const recordAiUsage = internalMutation({
     model: v.string(),
     operation: v.string(),
     feature: v.string(),
+    stage: v.optional(v.string()),
+    visibility: v.optional(v.union(v.literal("user_visible"), v.literal("background"))),
     status: v.union(v.literal("success"), v.literal("error")),
     latencyMs: v.optional(v.number()),
     inputTokens: v.optional(v.number()),
@@ -425,6 +432,7 @@ export const recordAiUsage = internalMutation({
     const analyticsSubjectId = await ensureAnalyticsSubjectId(ctx, args.userId);
     const summary = await ensureSummary(ctx, args.userId);
     const daily = await getOrCreateDaily(ctx, args.userId, dayKey);
+    const visibility: AiVisibility = args.visibility ?? "background";
     const modelDaily = await getOrCreateModelDaily(ctx, {
       userId: args.userId,
       dayKey,
@@ -432,6 +440,8 @@ export const recordAiUsage = internalMutation({
       model: args.model,
       operation: args.operation,
       feature: args.feature,
+      stage: args.stage,
+      visibility,
     });
 
     const inputTokens = Math.max(0, Math.floor(args.inputTokens ?? 0));
@@ -449,6 +459,8 @@ export const recordAiUsage = internalMutation({
       model: args.model,
       operation: args.operation,
       feature: args.feature,
+      stage: args.stage,
+      visibility,
       status: args.status,
       latencyMs: args.latencyMs,
       inputTokens: inputTokens || undefined,
@@ -468,6 +480,9 @@ export const recordAiUsage = internalMutation({
       totalAiOutputTokens: summary.totalAiOutputTokens + outputTokens,
       totalAiAudioSeconds: summary.totalAiAudioSeconds + audioSeconds,
       totalAiCostUsdMicros: summary.totalAiCostUsdMicros + costUsdMicros,
+      totalAiActions: (summary.totalAiActions ?? 0) + (visibility === "user_visible" ? 1 : 0),
+      totalBackgroundAiOperations:
+        (summary.totalBackgroundAiOperations ?? 0) + (visibility === "background" ? 1 : 0),
       lastActivityAt: now,
       updatedAt: now,
     });
@@ -480,11 +495,16 @@ export const recordAiUsage = internalMutation({
       aiOutputTokens: daily.aiOutputTokens + outputTokens,
       aiAudioSeconds: daily.aiAudioSeconds + audioSeconds,
       aiCostUsdMicros: daily.aiCostUsdMicros + costUsdMicros,
+      aiActions: (daily.aiActions ?? 0) + (visibility === "user_visible" ? 1 : 0),
+      backgroundAiOperations:
+        (daily.backgroundAiOperations ?? 0) + (visibility === "background" ? 1 : 0),
       updatedAt: now,
     });
 
     await ctx.db.patch(modelDaily._id, {
       analyticsSubjectId,
+      stage: args.stage,
+      visibility,
       requests: modelDaily.requests + 1,
       errors: modelDaily.errors + (args.status === "error" ? 1 : 0),
       inputTokens: modelDaily.inputTokens + inputTokens,
@@ -571,6 +591,8 @@ export const overview = query({
     const totals = dailyRows.reduce(
       (acc, row) => {
         acc.aiRequests += row.aiRequests;
+        acc.aiActions += row.aiActions ?? 0;
+        acc.backgroundAiOperations += row.backgroundAiOperations ?? 0;
         acc.aiErrors += row.aiErrors;
         acc.aiInputTokens += row.aiInputTokens;
         acc.aiOutputTokens += row.aiOutputTokens;
@@ -592,6 +614,8 @@ export const overview = query({
       },
       {
         aiRequests: 0,
+        aiActions: 0,
+        backgroundAiOperations: 0,
         aiErrors: 0,
         aiInputTokens: 0,
         aiOutputTokens: 0,
@@ -620,11 +644,9 @@ export const overview = query({
         totalReminders: memoryStats?.totalReminders ?? 0,
         totalDiaryEntries: diaryEntries.length,
         totalAiRequests: summary?.totalAiRequests ?? 0,
+        totalAiActions: summary?.totalAiActions ?? 0,
+        totalBackgroundAiOperations: summary?.totalBackgroundAiOperations ?? 0,
         totalAiCostUsdMicros: summary?.totalAiCostUsdMicros ?? 0,
-        liveStorageBytes: summary?.liveStorageBytes ?? 0,
-        liveStorageCount: summary?.liveStorageCount ?? 0,
-        liveImageCount: summary?.liveImageCount ?? 0,
-        liveDocumentCount: summary?.liveDocumentCount ?? 0,
         totalSearches: summary?.totalSearches ?? 0,
         totalDeepSearches: summary?.totalDeepSearches ?? 0,
         totalSearchCacheHits: summary?.totalSearchCacheHits ?? 0,
@@ -648,6 +670,8 @@ export const overview = query({
             model: topModel.model,
             operation: topModel.operation,
             feature: topModel.feature,
+            stage: topModel.stage ?? null,
+            visibility: topModel.visibility ?? "background",
             requests: topModel.requests,
             costUsdMicros: topModel.costUsdMicros,
             totalTokens: topModel.totalTokens,
@@ -659,6 +683,8 @@ export const overview = query({
         diaryEntries: row.diaryEntries,
         chatMessages: row.chatMessages,
         aiRequests: row.aiRequests,
+        aiActions: row.aiActions ?? 0,
+        backgroundAiOperations: row.backgroundAiOperations ?? 0,
         searches: row.searches ?? 0,
         vectorSearches: row.vectorSearches ?? 0,
         aiCostUsdMicros: row.aiCostUsdMicros,
@@ -691,6 +717,8 @@ export const aiBreakdown = query({
         model: string;
         operation: string;
         feature: string;
+        stage?: string;
+        visibility: AiVisibility;
         requests: number;
         errors: number;
         inputTokens: number;
@@ -702,12 +730,21 @@ export const aiBreakdown = query({
     >();
 
     for (const row of rows) {
-      const key = [row.provider, row.model, row.operation, row.feature].join("|");
+      const key = [
+        row.provider,
+        row.model,
+        row.operation,
+        row.feature,
+        row.stage ?? "",
+        row.visibility ?? "background",
+      ].join("|");
       const current = grouped.get(key) ?? {
         provider: row.provider,
         model: row.model,
         operation: row.operation,
         feature: row.feature,
+        stage: row.stage,
+        visibility: row.visibility ?? "background",
         requests: 0,
         errors: 0,
         inputTokens: 0,
@@ -728,6 +765,71 @@ export const aiBreakdown = query({
 
     return Array.from(grouped.values()).sort(
       (a, b) => b.costUsdMicros - a.costUsdMicros || b.requests - a.requests,
+    );
+  },
+});
+
+export const aiFeatureBreakdown = query({
+  args: {
+    token: v.string(),
+    range: rangeValidator,
+  },
+  handler: async (ctx, args) => {
+    const { userId } = await resolveUser(ctx, args.token);
+    const range = args.range ?? "30d";
+    const rows = filterDailyByRange(
+      await ctx.db
+        .query("userAnalyticsModelDaily")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .order("desc")
+        .take(Math.max(getRangeDays(range) * 10, 60)),
+      range,
+    );
+    const grouped = new Map<
+      string,
+      {
+        feature: string;
+        stage: string;
+        visibility: AiVisibility;
+        requests: number;
+        errors: number;
+        inputTokens: number;
+        outputTokens: number;
+        totalTokens: number;
+        costUsdMicros: number;
+        latencyMs?: number;
+      }
+    >();
+
+    for (const row of rows) {
+      const stage = row.stage ?? row.operation;
+      const visibility = row.visibility ?? "background";
+      const key = [row.feature, stage, visibility].join("|");
+      const current = grouped.get(key) ?? {
+        feature: row.feature,
+        stage,
+        visibility,
+        requests: 0,
+        errors: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        costUsdMicros: 0,
+      };
+      current.requests += row.requests;
+      current.errors += row.errors;
+      current.inputTokens += row.inputTokens;
+      current.outputTokens += row.outputTokens;
+      current.totalTokens += row.totalTokens;
+      current.costUsdMicros += row.costUsdMicros;
+      grouped.set(key, current);
+    }
+
+    return Array.from(grouped.values()).sort(
+      (a, b) =>
+        Number(b.visibility === "user_visible") - Number(a.visibility === "user_visible") ||
+        b.costUsdMicros - a.costUsdMicros ||
+        b.requests - a.requests,
     );
   },
 });

@@ -13,6 +13,7 @@ export const OPENAI_TRANSCRIPTION_MODEL =
   process.env.OPENAI_TRANSCRIPTION_MODEL ?? "gpt-4o-mini-transcribe";
 
 type UsageRecorderCtx = Pick<ActionCtx, "runMutation">;
+type AiVisibility = "user_visible" | "background";
 
 type OpenAIFeature =
   | "memory_chat"
@@ -109,6 +110,8 @@ async function recordOpenAiUsage(
     audioSeconds?: number;
     costUsdMicros?: number;
     costAvailability: "estimated" | "exact" | "unavailable";
+    stage?: string;
+    visibility?: AiVisibility;
     metadata?: Record<string, string>;
   },
 ) {
@@ -126,6 +129,8 @@ async function recordOpenAiUsage(
     audioSeconds: args.audioSeconds,
     costUsdMicros: args.costUsdMicros,
     costAvailability: args.costAvailability,
+    stage: args.stage,
+    visibility: args.visibility,
     metadata: args.metadata,
   });
 }
@@ -200,6 +205,8 @@ export async function trackedChatCompletion(
     userId: Id<"users">;
     feature: OpenAIFeature;
     model?: string;
+    stage?: string;
+    visibility?: AiVisibility;
     metadata?: Record<string, string>;
     request: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming;
   },
@@ -227,6 +234,8 @@ export async function trackedChatCompletion(
       usage,
       costUsdMicros,
       costAvailability: usage ? "estimated" : "unavailable",
+      stage: args.stage ?? "chat_completion",
+      visibility: args.visibility ?? "background",
       metadata: args.metadata,
     });
     return response;
@@ -239,6 +248,8 @@ export async function trackedChatCompletion(
       status: "error",
       latencyMs: Date.now() - startedAt,
       costAvailability: "unavailable",
+      stage: args.stage ?? "chat_completion",
+      visibility: args.visibility ?? "background",
       metadata: args.metadata,
     });
     throw error;
@@ -251,6 +262,8 @@ export async function trackedEmbedText(
     userId: Id<"users">;
     feature: OpenAIFeature;
     input: string;
+    stage?: string;
+    visibility?: AiVisibility;
     metadata?: Record<string, string>;
   },
 ) {
@@ -259,6 +272,8 @@ export async function trackedEmbedText(
       userId: args.userId,
       feature: args.feature,
       input: args.input,
+      stage: args.stage,
+      visibility: args.visibility,
       metadata: args.metadata,
     })
   )[0];
@@ -270,6 +285,8 @@ export async function trackedEmbedTexts(
     userId: Id<"users">;
     feature: OpenAIFeature;
     input: string | string[];
+    stage?: string;
+    visibility?: AiVisibility;
     metadata?: Record<string, string>;
   },
 ) {
@@ -299,6 +316,8 @@ export async function trackedEmbedTexts(
       usage,
       costUsdMicros,
       costAvailability: usage.prompt_tokens ? "estimated" : "unavailable",
+      stage: args.stage ?? "embedding",
+      visibility: args.visibility ?? "background",
       metadata: args.metadata,
     });
     return response.data.map((item) => item.embedding);
@@ -311,6 +330,8 @@ export async function trackedEmbedTexts(
       status: "error",
       latencyMs: Date.now() - startedAt,
       costAvailability: "unavailable",
+      stage: args.stage ?? "embedding",
+      visibility: args.visibility ?? "background",
       metadata: args.metadata,
     });
     throw error;

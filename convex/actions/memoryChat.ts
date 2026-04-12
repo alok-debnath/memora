@@ -887,6 +887,7 @@ async function buildGroundingContext(
     message: string;
     userId: Id<"users">;
     recentMemories?: MemoryDoc[];
+    skipInitialGroundingSearch?: boolean;
   },
 ): Promise<GroundingContext> {
   const isGenericOnly = isGenericOnlyQuery(args.message);
@@ -894,7 +895,7 @@ async function buildGroundingContext(
   const shouldPreferUpdate = shouldPreferUpdatingExisting(args.message);
   const shouldRunSearch = shouldRunInitialGroundingSearch(args.message);
 
-  if (!shouldGround || !shouldRunSearch) {
+  if (!shouldGround || !shouldRunSearch || args.skipInitialGroundingSearch) {
     return {
       shouldGround: false,
       shouldPreferUpdate,
@@ -1058,6 +1059,11 @@ export const chat = action({
     }
 
     const effectiveTimezone = args.currentTimezone?.trim() || session.timezone || "UTC";
+    const hasDirectAttachments = (args.attachments?.length ?? 0) > 0;
+    const shouldSkipInitialGroundingForCreate =
+      hasDirectAttachments &&
+      CREATE_ONLY_INTENT_PATTERNS.some((pattern) => pattern.test(args.message)) &&
+      !shouldPreferUpdatingExisting(args.message);
 
     const chatMessageId = await ctx.runMutation(internal.chat.send, {
       userId: session._id,
@@ -1282,6 +1288,7 @@ export const chat = action({
           message: args.message,
           userId: session._id,
           recentMemories: await getRecentMemoriesCache(),
+          skipInitialGroundingSearch: shouldSkipInitialGroundingForCreate,
         });
         const flowSearches: CardFlowSearch[] = [];
         const flowToolSequence: string[] = [];
@@ -1386,6 +1393,8 @@ export const chat = action({
           const response = await trackedChatCompletion(ctx, {
             userId: session._id,
             feature: "memory_chat",
+            stage: "planner",
+            visibility: "user_visible",
             request: {
               model: OPENAI_CHAT_MODEL,
               messages: conversation,
