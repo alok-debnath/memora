@@ -46,14 +46,12 @@ export async function uploadFileToDrive(
       const d = (await metaRes.json()) as { error?: { message?: string } };
       msg = d?.error?.message ?? msg;
     } catch {}
-    console.error("[driveUpload] Step 1 failed:", msg);
     throw new Error(msg);
   }
 
   const meta = (await metaRes.json()) as { id: string };
   const fileId = meta.id;
   if (!fileId) throw new Error("Drive did not return a file ID");
-  console.log("[driveUpload] Step 1 OK, fileId:", fileId);
 
   // ── Step 2: Upload content via FileSystem.uploadAsync ───────────────────────
   // FileSystem.uploadAsync reads the file natively — no JS blob/arrayBuffer needed.
@@ -69,12 +67,6 @@ export async function uploadFileToDrive(
     },
   );
 
-  console.log(
-    "[driveUpload] Step 2 status:",
-    uploadResult.status,
-    "body:",
-    uploadResult.body?.slice(0, 200),
-  );
   if (uploadResult.status === 401) throw new Error("TOKEN_EXPIRED");
   if (uploadResult.status < 200 || uploadResult.status >= 300) {
     let msg = `Upload failed (${uploadResult.status})`;
@@ -84,7 +76,6 @@ export async function uploadFileToDrive(
       };
       msg = d?.error?.message ?? msg;
     } catch {}
-    console.error("[driveUpload] Step 2 failed:", msg, "full body:", uploadResult.body);
     throw new Error(msg);
   }
 
