@@ -125,12 +125,6 @@ function fallbackStructuredData(content: string): AIExtractedMemory {
   };
 }
 
-function hasExplicitSchedulingFields(value: Record<string, unknown>) {
-  return (
-    value.entryKind !== undefined || value.entry_kind !== undefined || value.schedule !== undefined
-  );
-}
-
 function isSameValue(left: unknown, right: unknown) {
   if (left === right) {
     return true;
@@ -446,12 +440,6 @@ export const processMemory = action({
         ...normalized,
         title: normalizedTitle,
       };
-      const existingIsReminder = memory.entryKind === "reminder" && !!memory.schedule?.dueAt;
-      const extractionHasSchedule = !!normalizedForWrite.schedule?.dueAt;
-      const shouldUpdateScheduling =
-        !!extracted &&
-        hasExplicitSchedulingFields(extracted) &&
-        (extractionHasSchedule || !existingIsReminder);
       const embedding = await buildMemoryEmbedding({
         ctx,
         userId: memory.userId,
@@ -473,7 +461,6 @@ export const processMemory = action({
         lifeArea: normalizedForWrite.lifeArea,
         contextTags: normalizedForWrite.contextTags,
         linkedUrls: normalizedForWrite.linkedUrls,
-        ...(shouldUpdateScheduling ? toStoredMemoryFields(normalizedForWrite) : {}),
         sentimentScore: normalizedForWrite.sentimentScore,
         extractedActions: normalizedForWrite.extractedActions,
         embedding,

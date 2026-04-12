@@ -133,6 +133,18 @@ async function deleteMemoryRelatedData(ctx: MutationCtx, memoryId: Id<"memories"
 }
 
 async function permanentlyDeleteMemory(ctx: MutationCtx, memory: Doc<"memories">) {
+  if (memory.googleEventId) {
+    await ctx.scheduler.runAfter(0, internal.integrations.deleteGoogleEvent, {
+      userId: memory.userId,
+      googleEventId: memory.googleEventId,
+    });
+  }
+
+  await ctx.scheduler.runAfter(0, internal.integrations.deleteGoogleEventsForMemory, {
+    userId: memory.userId,
+    memoryId: memory._id,
+  });
+
   await deleteMemoryRelatedData(ctx, memory._id);
   await ctx.db.delete(memory._id);
 }
@@ -1093,57 +1105,12 @@ export const clearAllUserMemoryData = mutation({
     const BATCH = 200;
     let deleted = 0;
 
-    const memoryAttachmentBatch = await ctx.db
-      .query("memoryAttachments")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .take(BATCH);
-    for (const doc of memoryAttachmentBatch) {
-      await ctx.db.delete(doc._id);
-      deleted += 1;
-    }
-
-    const memoryHistoryBatch = await ctx.db
-      .query("memoryHistory")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .take(BATCH);
-    for (const doc of memoryHistoryBatch) {
-      await ctx.db.delete(doc._id);
-      deleted += 1;
-    }
-
-    const reviewCardBatch = await ctx.db
-      .query("reviewCards")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .take(BATCH);
-    for (const doc of reviewCardBatch) {
-      await ctx.db.delete(doc._id);
-      deleted += 1;
-    }
-
-    const sharedBatch = await ctx.db
-      .query("sharedMemories")
-      .withIndex("by_user", (q) => q.eq("sharedByUserId", userId))
-      .take(BATCH);
-    for (const doc of sharedBatch) {
-      await ctx.db.delete(doc._id);
-      deleted += 1;
-    }
-
-    const topicLinkBatch = await ctx.db
-      .query("memoryTopicLinks")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .take(BATCH);
-    for (const doc of topicLinkBatch) {
-      await ctx.db.delete(doc._id);
-      deleted += 1;
-    }
-
     const memoryBatch = await ctx.db
       .query("memories")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .take(BATCH);
     for (const doc of memoryBatch) {
-      await ctx.db.delete(doc._id);
+      await permanentlyDeleteMemory(ctx, doc);
       deleted += 1;
     }
 
@@ -1175,11 +1142,6 @@ export const clearAllUserMemoryData = mutation({
     }
 
     const hasMore =
-      memoryAttachmentBatch.length === BATCH ||
-      memoryHistoryBatch.length === BATCH ||
-      reviewCardBatch.length === BATCH ||
-      sharedBatch.length === BATCH ||
-      topicLinkBatch.length === BATCH ||
       memoryBatch.length === BATCH ||
       topicBatch.length === BATCH ||
       statsBatch.length === BATCH ||

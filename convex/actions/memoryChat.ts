@@ -712,6 +712,17 @@ function hasExplicitSchedulingFields(value: Record<string, unknown>) {
   );
 }
 
+function normalizeAiMemoryWriteFields(value: Record<string, unknown>) {
+  const normalized = normalizeMemoryFields(value);
+  if (normalized.schedule?.dueAt) {
+    return {
+      ...normalized,
+      entryKind: "reminder" as const,
+    };
+  }
+  return normalized;
+}
+
 function toMemorySummary(memory: MemoryDoc) {
   return {
     id: memory._id,
@@ -1712,7 +1723,7 @@ export const chat = action({
                 }
               }
 
-              const normalized = normalizeMemoryFields(fnArgs);
+              const normalized = normalizeAiMemoryWriteFields(fnArgs);
               const normalizedTitle =
                 normalized.entryKind === "reminder" && normalized.schedule?.dueAt
                   ? getReminderTitleWithoutSchedule(
@@ -1928,7 +1939,7 @@ export const chat = action({
               }
             } else if (fnName === "update_memory") {
               try {
-                const normalized = normalizeMemoryFields(fnArgs);
+                const normalized = normalizeAiMemoryWriteFields(fnArgs);
                 const normalizedTitle =
                   normalized.entryKind === "reminder" && normalized.schedule?.dueAt
                     ? getReminderTitleWithoutSchedule(
