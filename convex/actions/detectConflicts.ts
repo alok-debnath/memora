@@ -6,11 +6,10 @@ import { action, type ActionCtx } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import {
   extractTextContent,
-  OPENAI_CHAT_MODEL,
   safeJsonParse,
   trackedChatCompletion,
   trackedEmbedText,
-} from "../lib/openai";
+} from "../lib/aiDispatch";
 
 type Conflict = {
   existingMemoryId: string;
@@ -120,7 +119,6 @@ async function analyzeConflicts(
       userId,
       feature: "conflict_detection",
       request: {
-        model: OPENAI_CHAT_MODEL,
         temperature: 0.2,
         response_format: { type: "json_object" },
         messages: [

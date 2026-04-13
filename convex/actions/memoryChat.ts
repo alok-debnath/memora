@@ -11,7 +11,7 @@ import {
   getGoogleDriveAccessToken,
   type AttachmentExtractionResult,
 } from "../lib/attachmentExtraction";
-import { extractTextContent, resolveAiRoute, trackedChatCompletion } from "../lib/openai";
+import { extractTextContent, resolveAiRoute, trackedChatCompletion } from "../lib/aiDispatch";
 import { runSemanticSearch } from "../lib/semanticSearch";
 import { normalizeSearchQueryHash } from "../lib/search";
 import { normalizeMemoryFields } from "../lib/aiNormalization";
@@ -1407,7 +1407,6 @@ export const chat = action({
           visibility: "user_visible",
           link: analyticsLink,
           request: {
-            model: chatRoute.model,
             messages: conversation,
             tools: TOOLS,
             tool_choice: "auto",

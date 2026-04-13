@@ -839,8 +839,8 @@ export const update = mutation({
     if (!memory || memory.userId !== userId || !isActiveMemory(memory))
       throw new Error("Not found");
 
-    // Build patch object — only include defined, non-null fields
-    const { id, token, ...updates } = args;
+    // Build patch object — only include defined, non-null fields (exclude non-schema args)
+    const { id, token, sourceChatTurnId: _sourceChatTurnId, ...updates } = args;
     const patch: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(updates)) {
       if (value !== undefined) {

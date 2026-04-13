@@ -7,11 +7,10 @@ import { api, internal } from "../_generated/api";
 import {
   extractTextContent,
   getEmbeddingFingerprintForUser,
-  OPENAI_CHAT_MODEL,
   safeJsonParse,
   trackedChatCompletion,
   trackedEmbedText,
-} from "../lib/openai";
+} from "../lib/aiDispatch";
 import { normalizeMemoryFields } from "../lib/aiNormalization";
 import { toStoredMemoryFields } from "../lib/memoryKind";
 import { getReminderTitleWithoutSchedule } from "../lib/reminderTitle";
@@ -201,7 +200,6 @@ async function extractStructuredMemory(args: {
       ? { chatTurnId: args.chatTurnId, chatMessageId: args.chatTurnId }
       : undefined,
     request: {
-      model: OPENAI_CHAT_MODEL,
       temperature: 0.3,
       messages: [
         {
@@ -403,7 +401,7 @@ export const processMemory = action({
       if (!embeddingStatus.isRebuilding) {
         const queryEmbedding = await trackedEmbedText(ctx, {
           userId: memory.userId,
-          feature: "memory_processing",
+          feature: "memory_search",
           stage: "conflict_prefetch",
           visibility: "background",
           input: args.content.slice(0, 4000),
@@ -577,7 +575,7 @@ export const captureMemory = action({
           if (!embeddingStatus.isRebuilding) {
             const queryEmbedding = await trackedEmbedText(ctx, {
               userId: session._id,
-              feature: "memory_capture",
+              feature: "memory_search",
               stage: "conflict_prefetch",
               visibility: "background",
               input: args.content.slice(0, 4000),

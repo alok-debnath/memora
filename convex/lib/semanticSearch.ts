@@ -3,7 +3,7 @@
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import { trackedEmbedText } from "./openai";
+import { trackedEmbedText } from "./aiDispatch";
 import { cleanSearchQuery, extractSearchTerms, normalizeSearchQueryHash } from "./search";
 
 type SearchableMemory = Doc<"memories"> & { _score?: number };

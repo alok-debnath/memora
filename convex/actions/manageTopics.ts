@@ -7,10 +7,9 @@ import { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import {
   getEmbeddingFingerprintForUser,
-  OPENAI_CHAT_MODEL,
   trackedChatCompletion,
   trackedEmbedText,
-} from "../lib/openai";
+} from "../lib/aiDispatch";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -244,7 +243,6 @@ Return ONLY valid JSON: { "name": "Title Case", "slug": "kebab-case", "descripti
       visibility: "background",
       metadata: { stage: "topic_create" },
       request: {
-        model: OPENAI_CHAT_MODEL,
         messages: [
           { role: "system", content: prompt },
           {
@@ -319,7 +317,6 @@ Return ONLY valid JSON: {"choice": 0} to create new, or {"choice": 2} to use can
       visibility: "background",
       metadata: { stage: "topic_select" },
       request: {
-        model: OPENAI_CHAT_MODEL,
         messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" },
         max_tokens: 30,
@@ -681,7 +678,6 @@ export const handleManageTopic = internalAction({
           visibility: "background",
           metadata: { stage: "rename_topic" },
           request: {
-            model: OPENAI_CHAT_MODEL,
             messages: [
               {
                 role: "user",

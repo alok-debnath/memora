@@ -54,7 +54,12 @@ export function toStoredMemoryFields(input: {
   schedule?: MemorySchedule;
 }) {
   const hasDueAt = !!input.schedule?.dueAt;
-  const entryKind: MemoryEntryKind = hasDueAt ? "reminder" : (input.entryKind ?? "memory");
+  // A "reminder" without a due date is invalid; treat it as "memory" to avoid broken state
+  const entryKind: MemoryEntryKind = hasDueAt
+    ? "reminder"
+    : input.entryKind === "reminder"
+      ? "memory"
+      : (input.entryKind ?? "memory");
   const schedule =
     entryKind === "reminder" && input.schedule?.dueAt
       ? {

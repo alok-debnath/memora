@@ -3,12 +3,7 @@
 import { v } from "convex/values";
 import { action } from "../_generated/server";
 import { internal } from "../_generated/api";
-import {
-  extractTextContent,
-  OPENAI_CHAT_MODEL,
-  safeJsonParse,
-  trackedChatCompletion,
-} from "../lib/openai";
+import { extractTextContent, safeJsonParse, trackedChatCompletion } from "../lib/aiDispatch";
 import { normalizeDiaryFields } from "../lib/aiNormalization";
 
 export const processDiary = action({
@@ -28,7 +23,6 @@ export const processDiary = action({
         feature: "diary_processing",
         metadata: { stage: "analysis" },
         request: {
-          model: OPENAI_CHAT_MODEL,
           temperature: 0.3,
           messages: [
             {
@@ -206,7 +200,6 @@ export const processDiary = action({
           feature: "diary_processing",
           metadata: { stage: "nudge_generation" },
           request: {
-            model: OPENAI_CHAT_MODEL,
             temperature: 0.3,
             messages: [
               {

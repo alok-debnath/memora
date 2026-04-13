@@ -3,7 +3,7 @@
 import { v } from "convex/values";
 import { action } from "../_generated/server";
 import { api } from "../_generated/api";
-import { trackedTranscribeBase64Audio } from "../lib/openai";
+import { trackedTranscribeBase64Audio } from "../lib/aiDispatch";
 
 export const transcribe = action({
   args: {
