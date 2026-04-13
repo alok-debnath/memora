@@ -15,6 +15,7 @@ import {
   type AiFeature,
   type AiProvider,
   type AiProviderModelSelections,
+  type AiRoutingEntry,
   type AiVisibility,
 } from "./ai";
 import {
@@ -193,6 +194,37 @@ export async function resolveAiRoute(
   return platformRouteForFeature(args.feature);
 }
 
+/**
+ * Resolves the admin-configured fallback route for a feature (platform-only).
+ * Returns null if no fallback is configured or fallback is disabled.
+ * BYOK users should never use this — the fallback is platform credits only.
+ */
+export async function resolveAiFallbackRoute(
+  ctx: UsageRecorderCtx,
+  feature: AiFeature,
+): Promise<ResolvedRoute | null> {
+  const capability = FEATURE_TO_CAPABILITY[feature];
+  const routing: Record<string, AiRoutingEntry> = await ctx.runQuery(
+    internal.aiProviders.getRoutingInternal,
+    {},
+  );
+  const entry = routing[capability];
+  if (!entry?.fallbackProvider || !entry.fallbackModel || entry.fallbackEnabled === false) {
+    return null;
+  }
+  const fallbackAdapter = getAdapter(entry.fallbackProvider);
+  if (!fallbackAdapter.hasPlatformCredentials()) {
+    return null;
+  }
+  return {
+    provider: entry.fallbackProvider,
+    model: entry.fallbackModel,
+    credentialSource: "platform",
+    billingOwner: "platform",
+    routingReason: "admin_fallback",
+  };
+}
+
 // ─── Pricing helpers ──────────────────────────────────────────────────────────
 
 type ResolvedPricing = {
@@ -297,6 +329,83 @@ export async function trackedChatCompletion(
   },
 ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
   const route = await resolveAiRoute(ctx, { userId: args.userId, feature: args.feature });
+  const adapter = getAdapter(route.provider);
+  const startedAt = Date.now();
+  try {
+    const response = await adapter.chatCompletion({ route, request: args.request });
+    const usage = response.usage as ChatUsage | undefined;
+    const pricing = await resolvePricing(ctx, {
+      provider: route.provider,
+      model: route.model,
+      operation: "chat_completion",
+    });
+    const priced = estimatePricingMicros({
+      pricing,
+      inputTokens: usage?.prompt_tokens,
+      outputTokens: usage?.completion_tokens,
+    });
+    await recordAiUsage(ctx, route, {
+      userId: args.userId,
+      feature: args.feature,
+      operation: "chat_completion",
+      model: route.model,
+      status: "success",
+      latencyMs: Date.now() - startedAt,
+      usage,
+      billedTo: resolveBilledTo(route),
+      costUsdMicros: priced.costUsdMicros,
+      costAvailability: priced.priceDisplayMode,
+      priceDisplayMode: priced.priceDisplayMode,
+      pricingOperation: "chat_completion",
+      pricingVersion: pricing.pricingVersion,
+      pricingReason: priced.pricingReason,
+      stage: args.stage ?? "chat_completion",
+      visibility: args.visibility ?? "background",
+      metadata: args.metadata,
+      link: args.link,
+    });
+    return response;
+  } catch (error) {
+    await recordAiUsage(ctx, route, {
+      userId: args.userId,
+      feature: args.feature,
+      operation: "chat_completion",
+      model: route.model,
+      status: "error",
+      latencyMs: Date.now() - startedAt,
+      billedTo: resolveBilledTo(route),
+      costAvailability: "unavailable",
+      priceDisplayMode: "unavailable",
+      pricingOperation: "chat_completion",
+      pricingVersion: DEFAULT_AI_PRICING_VERSION,
+      pricingReason: "request_failed",
+      stage: args.stage ?? "chat_completion",
+      visibility: args.visibility ?? "background",
+      metadata: args.metadata,
+      link: args.link,
+    });
+    throw error;
+  }
+}
+
+/**
+ * Like `trackedChatCompletion` but with a pre-resolved route — skips route resolution.
+ * Use when you've already called `resolveAiRoute` or `resolveAiFallbackRoute` and want
+ * to avoid a second DB round-trip.
+ */
+export async function trackedChatCompletionOnRoute(
+  ctx: UsageRecorderCtx,
+  route: ResolvedRoute,
+  args: {
+    userId: Id<"users">;
+    feature: AiFeature;
+    stage?: string;
+    visibility?: AiVisibility;
+    metadata?: Record<string, string>;
+    link?: AnalyticsLink;
+    request: Omit<OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming, "model">;
+  },
+): Promise<OpenAI.Chat.Completions.ChatCompletion> {
   const adapter = getAdapter(route.provider);
   const startedAt = Date.now();
   try {

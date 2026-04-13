@@ -23,7 +23,9 @@ import {
   supportsCapability,
   supportsProviderModelCapability,
   type AiCapability,
+  type AiProvider,
   type AiProviderModelSelections,
+  type AiRoutingEntry,
   type EmbeddingRebuildStatus,
 } from "./lib/ai";
 
@@ -196,21 +198,24 @@ export const getRoutingInternal = internalQuery({
   args: {},
   handler: async (ctx) => {
     const rows = await ctx.db.query("aiRoutingConfig").take(20);
+    // Start from code-level bootstrap defaults (used only until the table is seeded).
+    // DB rows always override — admin changes via setAdminRouting or seedRoutingConfig
+    // are the authoritative source of truth.
     const routing = Object.fromEntries(
       AI_CAPABILITIES.map((capability) => [
         capability,
         { capability, ...DEFAULT_ROUTING[capability] },
       ]),
-    ) as Record<
-      AiCapability,
-      { capability: AiCapability; provider: Provider; model: string; enabled: boolean }
-    >;
+    ) as Record<AiCapability, { capability: AiCapability } & AiRoutingEntry>;
     for (const row of rows) {
       routing[row.capability] = {
         capability: row.capability,
         provider: row.provider,
         model: row.model,
         enabled: row.enabled,
+        fallbackProvider: row.fallbackProvider,
+        fallbackModel: row.fallbackModel,
+        fallbackEnabled: row.fallbackEnabled,
       };
     }
     return routing;
@@ -650,12 +655,17 @@ export const getAdminRouting = query({
       provider: Provider;
       model: string;
       enabled: boolean;
+      fallbackProvider?: AiProvider;
+      fallbackModel?: string;
+      fallbackEnabled?: boolean;
       supportedProviders: Array<Provider>;
     }>
   > => {
     await requireAdmin(ctx);
-    const routing: Record<AiCapability, { provider: Provider; model: string; enabled: boolean }> =
-      await ctx.runQuery(internal.aiProviders.getRoutingInternal, {});
+    const routing: Record<AiCapability, AiRoutingEntry> = await ctx.runQuery(
+      internal.aiProviders.getRoutingInternal,
+      {},
+    );
     return USER_VISIBLE_AI_CAPABILITIES.map((capability) => ({
       capability,
       ...routing[capability],
@@ -666,21 +676,55 @@ export const getAdminRouting = query({
   },
 });
 
+/**
+ * Writes the default routing config to the DB for any capability that doesn't
+ * already have a row. Safe to run multiple times — existing rows are not touched.
+ * Run this once after first deploy: `npx convex run aiProviders:seedRoutingConfig`
+ */
+export const seedRoutingConfig = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const now = Date.now();
+    let seeded = 0;
+    for (const capability of AI_CAPABILITIES) {
+      const existing = await ctx.db
+        .query("aiRoutingConfig")
+        .withIndex("by_capability", (q) => q.eq("capability", capability))
+        .unique();
+      if (existing) continue;
+      const entry = DEFAULT_ROUTING[capability];
+      await ctx.db.insert("aiRoutingConfig", {
+        capability,
+        provider: entry.provider,
+        model: entry.model,
+        enabled: entry.enabled,
+        fallbackProvider: entry.fallbackProvider,
+        fallbackModel: entry.fallbackModel,
+        fallbackEnabled: entry.fallbackEnabled,
+        updatedAt: now,
+      });
+      seeded++;
+    }
+    return { seeded };
+  },
+});
+
 export const setAdminRouting = mutation({
   args: {
     capability: aiCapabilityValidator,
     provider: aiProviderValidator,
     model: v.string(),
     enabled: v.boolean(),
+    fallbackProvider: v.optional(aiProviderValidator),
+    fallbackModel: v.optional(v.string()),
+    fallbackEnabled: v.optional(v.boolean()),
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
-    if (!supportsProviderModelCapability(args.provider, args.model, args.capability)) {
-      throw new Error(
-        `${args.provider} model ${args.model} is not verified for ${args.capability}.`,
-      );
-    }
+    // No model allowlist check here — admins are trusted to set valid model IDs.
+    // The PROVIDER_MODELS list is used for BYOK user suggestions only.
     const existing = await ctx.db
       .query("aiRoutingConfig")
       .withIndex("by_capability", (q) => q.eq("capability", args.capability))

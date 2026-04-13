@@ -72,8 +72,8 @@ export const FEATURE_TO_CAPABILITY: Record<AiFeature, AiCapability> = {
 export const PROVIDER_MODELS: Record<AiProvider, AiProviderModel[]> = {
   openai: [
     {
-      id: process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini",
-      label: "OpenAI Chat Default",
+      id: "gpt-4o-mini",
+      label: "GPT-4o mini",
       capabilities: ["chat", "structured_text"],
     },
     {
@@ -82,30 +82,65 @@ export const PROVIDER_MODELS: Record<AiProvider, AiProviderModel[]> = {
       capabilities: ["chat", "structured_text", "vision"],
     },
     {
-      id: process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small",
-      label: "OpenAI Embeddings Default",
+      id: "gpt-4.1-mini",
+      label: "GPT-4.1 mini",
+      capabilities: ["chat", "structured_text", "vision"],
+    },
+    {
+      id: "gpt-4.1",
+      label: "GPT-4.1",
+      capabilities: ["chat", "structured_text", "vision"],
+    },
+    {
+      id: "text-embedding-3-small",
+      label: "text-embedding-3-small",
       capabilities: ["embeddings"],
     },
     {
-      id: process.env.OPENAI_TRANSCRIPTION_MODEL ?? "gpt-4o-mini-transcribe",
-      label: "OpenAI Transcription Default",
+      id: "text-embedding-3-large",
+      label: "text-embedding-3-large",
+      capabilities: ["embeddings"],
+    },
+    {
+      id: "gpt-4o-mini-transcribe",
+      label: "GPT-4o mini Transcribe",
       capabilities: ["transcription"],
     },
     {
-      id: process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-1",
-      label: "OpenAI Image Default",
+      id: "gpt-4o-transcribe",
+      label: "GPT-4o Transcribe",
+      capabilities: ["transcription"],
+    },
+    {
+      id: "gpt-image-1",
+      label: "GPT Image 1",
       capabilities: ["image_generation"],
     },
   ],
   google: [
     {
-      id: process.env.GEMINI_TEXT_MODEL ?? "gemini-2.0-flash",
-      label: "Gemini Text Default",
+      id: "gemini-2.0-flash",
+      label: "Gemini 2.0 Flash",
       capabilities: ["chat", "structured_text", "vision"],
     },
     {
-      id: process.env.GEMINI_EMBEDDING_MODEL ?? "gemini-embedding-001",
-      label: "Gemini Embeddings Default",
+      id: "gemini-2.5-flash-preview-04-17",
+      label: "Gemini 2.5 Flash Preview",
+      capabilities: ["chat", "structured_text", "vision"],
+    },
+    {
+      id: "gemini-2.5-pro-preview-05-06",
+      label: "Gemini 2.5 Pro Preview",
+      capabilities: ["chat", "structured_text", "vision"],
+    },
+    {
+      id: "gemini-embedding-001",
+      label: "Gemini Embedding 001",
+      capabilities: ["embeddings"],
+    },
+    {
+      id: "gemini-text-embedding-004",
+      label: "Gemini Text Embedding 004",
       capabilities: ["embeddings"],
     },
   ],
@@ -113,54 +148,80 @@ export const PROVIDER_MODELS: Record<AiProvider, AiProviderModel[]> = {
 
 export const PROVIDER_DEFAULT_MODELS: Record<AiProvider, Partial<Record<AiCapability, string>>> = {
   openai: {
-    chat: process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini",
-    structured_text: process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini",
-    embeddings: process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small",
+    chat: "gpt-4o-mini",
+    structured_text: "gpt-4o-mini",
+    embeddings: "text-embedding-3-small",
     vision: "gpt-4o",
-    transcription: process.env.OPENAI_TRANSCRIPTION_MODEL ?? "gpt-4o-mini-transcribe",
-    image_generation: process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-1",
+    transcription: "gpt-4o-mini-transcribe",
+    image_generation: "gpt-image-1",
   },
   google: {
-    chat: process.env.GEMINI_TEXT_MODEL ?? "gemini-2.0-flash",
-    structured_text: process.env.GEMINI_TEXT_MODEL ?? "gemini-2.0-flash",
-    embeddings: process.env.GEMINI_EMBEDDING_MODEL ?? "gemini-embedding-001",
-    vision: process.env.GEMINI_VISION_MODEL ?? "gemini-2.0-flash",
+    chat: "gemini-2.0-flash",
+    structured_text: "gemini-2.0-flash",
+    embeddings: "gemini-embedding-001",
+    vision: "gemini-2.0-flash",
   },
 };
 
-export const DEFAULT_ROUTING: Record<
-  AiCapability,
-  { provider: AiProvider; model: string; enabled: boolean }
-> = {
+export type AiRoutingEntry = {
+  provider: AiProvider;
+  model: string;
+  enabled: boolean;
+  fallbackProvider?: AiProvider;
+  fallbackModel?: string;
+  fallbackEnabled?: boolean;
+};
+
+/**
+ * Seed defaults written to `aiRoutingConfig` on first deploy via `seedRoutingConfig`.
+ * At runtime the routing system reads exclusively from the DB — this constant is only
+ * used as a bootstrap fallback if the DB has not been seeded yet, and to populate the
+ * seed mutation. No env vars — all values are explicit and admin-changeable.
+ */
+export const DEFAULT_ROUTING: Record<AiCapability, AiRoutingEntry> = {
   chat: {
     provider: "openai",
-    model: process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini",
+    model: "gpt-4o-mini",
     enabled: true,
+    fallbackProvider: "google",
+    fallbackModel: "gemini-2.0-flash",
+    fallbackEnabled: true,
   },
   structured_text: {
     provider: "openai",
-    model: process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini",
+    model: "gpt-4o-mini",
     enabled: true,
+    fallbackProvider: "google",
+    fallbackModel: "gemini-2.0-flash",
+    fallbackEnabled: true,
   },
   embeddings: {
     provider: "openai",
-    model: process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small",
+    model: "text-embedding-3-small",
     enabled: true,
+    fallbackProvider: "google",
+    fallbackModel: "gemini-embedding-001",
+    fallbackEnabled: true,
   },
   vision: {
-    provider: "google",
-    model: process.env.GEMINI_VISION_MODEL ?? "gemini-2.0-flash",
+    provider: "openai",
+    model: "gpt-4o",
     enabled: true,
+    fallbackProvider: "google",
+    fallbackModel: "gemini-2.0-flash",
+    fallbackEnabled: true,
   },
   transcription: {
     provider: "openai",
-    model: process.env.OPENAI_TRANSCRIPTION_MODEL ?? "gpt-4o-mini-transcribe",
+    model: "gpt-4o-mini-transcribe",
     enabled: true,
+    // Google does not support transcription
   },
   image_generation: {
     provider: "openai",
-    model: process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-1",
+    model: "gpt-image-1",
     enabled: true,
+    // Google does not support image_generation
   },
 };
 

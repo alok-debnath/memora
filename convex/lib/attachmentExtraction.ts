@@ -1,16 +1,15 @@
 "use node";
 
-import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import { extractTextContent, resolveAiRoute, trackedChatCompletion } from "./aiDispatch";
-import { DEFAULT_AI_PRICING_VERSION, resolveBilledTo } from "./aiPricing";
-import { callGoogleVisionDirect, getPlatformGoogleApiKey } from "./providers/google";
-import { getOpenAIClientDirect } from "./providers/openai";
+import {
+  extractTextContent,
+  resolveAiRoute,
+  resolveAiFallbackRoute,
+  trackedChatCompletionOnRoute,
+} from "./aiDispatch";
 
 export const ATTACHMENT_TEXT_LIMIT = 3000;
-
-const GEMINI_VISION_MODEL = process.env.GEMINI_VISION_MODEL ?? "gemini-2.0-flash";
 
 type AttachmentLike = {
   type: "image" | "document";
@@ -101,152 +100,22 @@ async function downloadDriveFile(
 const IMAGE_PROMPT =
   "Describe this image concisely for personal memory context. Focus on readable text, dates, names, places, objects, and what is happening. Be specific and factual.";
 
-async function extractImageByok(
-  accessToken: string,
-  driveFileId: string,
-  filename: string,
-  analytics: AnalyticsCtx,
-): Promise<string | undefined> {
-  const file = await downloadDriveFile(accessToken, driveFileId);
-  if (!file) return undefined;
-  const base64 = arrayBufferToBase64(file.buffer);
-  try {
-    const response = await trackedChatCompletion(analytics.ctx, {
-      userId: analytics.userId,
-      feature: "attachment_extraction",
-      stage: "extraction",
-      visibility: "background",
-      metadata: { attachmentType: "image" },
-      link: {
-        chatTurnId: analytics.chatTurnId,
-        chatMessageId: analytics.chatMessageId,
-        conversationId: analytics.conversationId,
-      },
-      request: {
-        max_tokens: 500,
-        messages: [
+function buildVisionRequest(filename: string, mimeType: string, base64: string) {
+  return {
+    max_tokens: 500,
+    messages: [
+      {
+        role: "user" as const,
+        content: [
+          { type: "text" as const, text: `${IMAGE_PROMPT} File: ${filename}` },
           {
-            role: "user",
-            content: [
-              { type: "text", text: `${IMAGE_PROMPT} File: ${filename}` },
-              {
-                type: "image_url",
-                image_url: { url: `data:${file.mimeType};base64,${base64}`, detail: "low" },
-              },
-            ],
+            type: "image_url" as const,
+            image_url: { url: `data:${mimeType};base64,${base64}`, detail: "low" as const },
           },
         ],
       },
-    });
-    return extractTextContent(response.choices[0]?.message?.content) || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-async function extractImagePlatformGemini(
-  accessToken: string,
-  driveFileId: string,
-  filename: string,
-  analytics: AnalyticsCtx,
-): Promise<string | undefined> {
-  const apiKey = getPlatformGoogleApiKey();
-  if (!apiKey) return undefined;
-
-  const file = await downloadDriveFile(accessToken, driveFileId);
-  if (!file) return undefined;
-  const base64 = arrayBufferToBase64(file.buffer);
-
-  const startedAt = Date.now();
-  try {
-    const text = await callGoogleVisionDirect({
-      apiKey,
-      model: GEMINI_VISION_MODEL,
-      body: {
-        contents: [
-          {
-            parts: [
-              { text: `${IMAGE_PROMPT} File: ${filename}` },
-              { inline_data: { mime_type: file.mimeType, data: base64 } },
-            ],
-          },
-        ],
-        generationConfig: { maxOutputTokens: 500 },
-      },
-    });
-    await analytics.ctx.runMutation(internal.analytics.recordAiUsage, {
-      userId: analytics.userId,
-      provider: "google",
-      model: GEMINI_VISION_MODEL,
-      operation: "vision_extract",
-      feature: "attachment_extraction",
-      stage: "extraction",
-      visibility: "background",
-      status: "success",
-      latencyMs: Date.now() - startedAt,
-      costAvailability: "unavailable",
-      billedTo: "memora",
-      credentialSource: "platform",
-      billingOwner: "platform",
-      routingReason: "platform_default",
-      metadata: { attachmentType: "image" },
-    });
-    return text;
-  } catch (error) {
-    await analytics.ctx.runMutation(internal.analytics.recordAiUsage, {
-      userId: analytics.userId,
-      provider: "google",
-      model: GEMINI_VISION_MODEL,
-      operation: "vision_extract",
-      feature: "attachment_extraction",
-      stage: "extraction",
-      visibility: "background",
-      status: "error",
-      latencyMs: Date.now() - startedAt,
-      costAvailability: "unavailable",
-      billedTo: "memora",
-      credentialSource: "platform",
-      billingOwner: "platform",
-      routingReason: "platform_default",
-      metadata: { attachmentType: "image" },
-    });
-    throw error;
-  }
-}
-
-async function extractImagePlatformOpenAiFallback(
-  accessToken: string,
-  driveFileId: string,
-  filename: string,
-): Promise<string | undefined> {
-  const openaiClient = getOpenAIClientDirect();
-  if (!openaiClient) return undefined;
-
-  const file = await downloadDriveFile(accessToken, driveFileId);
-  if (!file) return undefined;
-  const base64 = arrayBufferToBase64(file.buffer);
-
-  try {
-    const response = await openaiClient.chat.completions.create({
-      model: "gpt-4o",
-      max_tokens: 500,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: `${IMAGE_PROMPT} File: ${filename}` },
-            {
-              type: "image_url",
-              image_url: { url: `data:${file.mimeType};base64,${base64}`, detail: "low" },
-            },
-          ],
-        },
-      ],
-    });
-    return extractTextContent(response.choices[0]?.message?.content) || undefined;
-  } catch {
-    return undefined;
-  }
+    ],
+  };
 }
 
 async function extractImageWithFallback(
@@ -255,75 +124,131 @@ async function extractImageWithFallback(
   filename: string,
   analytics?: AnalyticsCtx,
 ): Promise<AttachmentExtractionResult> {
-  const route = analytics
-    ? await resolveAiRoute(analytics.ctx, {
-        userId: analytics.userId,
-        feature: "attachment_extraction",
-      })
-    : null;
-
-  // BYOK: use only their configured provider — no platform fallback
-  if (route?.credentialSource === "user_byok" && analytics) {
-    const extracted = await extractImageByok(accessToken, driveFileId, filename, analytics);
-    return extracted
-      ? {
-          processingStatus: "completed",
-          extractedContent: extracted,
-          extractionMethod: route.provider === "openai" ? "openai" : "gemini",
-        }
-      : {
-          processingStatus: "failed",
-          processingError: "Vision extraction failed for this attachment.",
-        };
+  if (!analytics) {
+    return { processingStatus: "failed", processingError: "No user context for image extraction." };
   }
 
-  // Platform: Gemini first, GPT-4o fallback
-  if (analytics) {
+  const route = await resolveAiRoute(analytics.ctx, {
+    userId: analytics.userId,
+    feature: "attachment_extraction",
+  });
+
+  const file = await downloadDriveFile(accessToken, driveFileId);
+  if (!file) {
+    return { processingStatus: "failed", processingError: "Could not download image from Drive." };
+  }
+  const base64 = arrayBufferToBase64(file.buffer);
+  const request = buildVisionRequest(filename, file.mimeType, base64);
+  const link = {
+    chatTurnId: analytics.chatTurnId,
+    chatMessageId: analytics.chatMessageId,
+    conversationId: analytics.conversationId,
+  };
+
+  // BYOK: use only their configured provider — no platform fallback
+  if (route.credentialSource === "user_byok") {
     try {
-      const extracted = await extractImagePlatformGemini(
-        accessToken,
-        driveFileId,
-        filename,
-        analytics,
-      );
-      if (extracted?.trim()) {
-        return {
-          processingStatus: "completed",
-          extractedContent: extracted.trim(),
-          extractionMethod: "gemini",
-        };
-      }
-    } catch (geminiError) {
-      console.warn(
-        "Platform Gemini image extraction failed, falling back to OpenAI:",
-        geminiError instanceof Error ? geminiError.message : geminiError,
-      );
+      const response = await trackedChatCompletionOnRoute(analytics.ctx, route, {
+        userId: analytics.userId,
+        feature: "attachment_extraction",
+        stage: "extraction",
+        visibility: "background",
+        metadata: { attachmentType: "image" },
+        link,
+        request,
+      });
+      const text = extractTextContent(response.choices[0]?.message?.content);
+      return text?.trim()
+        ? {
+            processingStatus: "completed",
+            extractedContent: text.trim(),
+            extractionMethod: route.provider === "openai" ? "openai" : "gemini",
+          }
+        : { processingStatus: "failed", processingError: "Vision extraction returned no content." };
+    } catch {
+      return {
+        processingStatus: "failed",
+        processingError: "Vision extraction failed for this attachment.",
+      };
     }
   }
 
-  const fallback = await extractImagePlatformOpenAiFallback(accessToken, driveFileId, filename);
-  if (fallback?.trim()) {
+  // Platform: try primary route, then admin-configured fallback
+  try {
+    const response = await trackedChatCompletionOnRoute(analytics.ctx, route, {
+      userId: analytics.userId,
+      feature: "attachment_extraction",
+      stage: "extraction",
+      visibility: "background",
+      metadata: { attachmentType: "image" },
+      link,
+      request,
+    });
+    const text = extractTextContent(response.choices[0]?.message?.content);
+    if (text?.trim()) {
+      return {
+        processingStatus: "completed",
+        extractedContent: text.trim(),
+        extractionMethod: route.provider === "openai" ? "openai" : "gemini",
+      };
+    }
+  } catch (primaryError) {
+    console.warn(
+      "Primary image extraction failed, trying fallback:",
+      primaryError instanceof Error ? primaryError.message : primaryError,
+    );
+  }
+
+  const fallbackRoute = await resolveAiFallbackRoute(analytics.ctx, "attachment_extraction");
+  if (!fallbackRoute) {
     return {
-      processingStatus: "completed",
-      extractedContent: fallback.trim(),
-      extractionMethod: "openai",
+      processingStatus: "failed",
+      processingError: "Image extraction failed and no fallback route is configured.",
     };
+  }
+
+  try {
+    const response = await trackedChatCompletionOnRoute(analytics.ctx, fallbackRoute, {
+      userId: analytics.userId,
+      feature: "attachment_extraction",
+      stage: "extraction_fallback",
+      visibility: "background",
+      metadata: { attachmentType: "image" },
+      link,
+      request,
+    });
+    const text = extractTextContent(response.choices[0]?.message?.content);
+    if (text?.trim()) {
+      return {
+        processingStatus: "completed",
+        extractedContent: text.trim(),
+        extractionMethod: fallbackRoute.provider === "openai" ? "openai" : "gemini",
+      };
+    }
+  } catch (fallbackError) {
+    console.warn(
+      "Fallback image extraction also failed:",
+      fallbackError instanceof Error ? fallbackError.message : fallbackError,
+    );
   }
 
   return {
     processingStatus: "failed",
-    processingError: "Image extraction failed with both Gemini and OpenAI vision.",
+    processingError: "Image extraction failed with both primary and fallback providers.",
   };
 }
 
 // ─── PDF extraction ───────────────────────────────────────────────────────────
+
+const PDF_EXTRACT_PROMPT =
+  "Extract all readable text and key factual details from this PDF document. Return plain text only.";
 
 async function extractPdfContent(
   accessToken: string,
   driveFileId: string,
   textLimit: number,
   analytics?: AnalyticsCtx,
-): Promise<{ text: string; method: "gemini" | "pdf-extract" } | undefined> {
+): Promise<{ text: string; method: "gemini" | "openai" | "pdf-extract" } | undefined> {
   const file = await downloadDriveFile(accessToken, driveFileId);
   if (!file) throw new Error("Could not download document attachment from Google Drive");
 
@@ -334,75 +259,86 @@ async function extractPdfContent(
     return { text: rawText.slice(0, textLimit).trim(), method: "pdf-extract" };
   }
 
-  // Scanned PDF: use Gemini
-  const apiKey = getPlatformGoogleApiKey();
-  if (!apiKey) return undefined;
+  // Scanned PDF: route through the AI provider system
+  if (!analytics) return undefined;
 
   const base64 = arrayBufferToBase64(file.buffer);
-  const startedAt = Date.now();
-  let description: string | undefined;
-  try {
-    description = await callGoogleVisionDirect({
-      apiKey,
-      model: GEMINI_VISION_MODEL,
-      body: {
-        contents: [
+  const pdfRequest = {
+    max_tokens: 800,
+    messages: [
+      {
+        role: "user" as const,
+        content: [
+          { type: "text" as const, text: PDF_EXTRACT_PROMPT },
           {
-            parts: [
-              {
-                text: "Extract all readable text and key factual details from this PDF document. Return plain text only.",
-              },
-              { inline_data: { mime_type: "application/pdf", data: base64 } },
-            ],
+            type: "image_url" as const,
+            image_url: { url: `data:application/pdf;base64,${base64}` },
           },
         ],
-        generationConfig: { maxOutputTokens: 800 },
       },
+    ],
+  };
+
+  const route = await resolveAiRoute(analytics.ctx, {
+    userId: analytics.userId,
+    feature: "attachment_extraction",
+  });
+
+  // For BYOK and platform primary, try the resolved route first
+  try {
+    const response = await trackedChatCompletionOnRoute(analytics.ctx, route, {
+      userId: analytics.userId,
+      feature: "attachment_extraction",
+      stage: "pdf_extraction",
+      visibility: "background",
+      metadata: { attachmentType: "document" },
+      request: pdfRequest,
     });
-    if (analytics) {
-      await analytics.ctx.runMutation(internal.analytics.recordAiUsage, {
-        userId: analytics.userId,
-        provider: "google",
-        model: GEMINI_VISION_MODEL,
-        operation: "pdf_extract",
-        feature: "attachment_extraction",
-        stage: "extraction",
-        visibility: "background",
-        status: "success",
-        latencyMs: Date.now() - startedAt,
-        costAvailability: "unavailable",
-        billedTo: "memora",
-        credentialSource: "platform",
-        billingOwner: "platform",
-        routingReason: "platform_default",
-        metadata: { attachmentType: "document" },
-      });
+    const text = extractTextContent(response.choices[0]?.message?.content);
+    if (text?.trim()) {
+      return {
+        text: text.trim().slice(0, textLimit),
+        method: route.provider === "openai" ? "openai" : "gemini",
+      };
     }
-  } catch (error) {
-    if (analytics) {
-      await analytics.ctx.runMutation(internal.analytics.recordAiUsage, {
-        userId: analytics.userId,
-        provider: "google",
-        model: GEMINI_VISION_MODEL,
-        operation: "pdf_extract",
-        feature: "attachment_extraction",
-        stage: "extraction",
-        visibility: "background",
-        status: "error",
-        latencyMs: Date.now() - startedAt,
-        costAvailability: "unavailable",
-        billedTo: "memora",
-        credentialSource: "platform",
-        billingOwner: "platform",
-        routingReason: "platform_default",
-        metadata: { attachmentType: "document" },
-      });
+  } catch (primaryError) {
+    if (route.credentialSource !== "user_byok") {
+      console.warn(
+        "Primary PDF extraction failed, trying fallback:",
+        primaryError instanceof Error ? primaryError.message : primaryError,
+      );
+    } else {
+      throw primaryError;
     }
-    throw error;
   }
 
-  if (!description) return undefined;
-  return { text: description.trim(), method: "gemini" };
+  // Platform fallback
+  if (route.credentialSource === "user_byok") return undefined;
+
+  const fallbackRoute = await resolveAiFallbackRoute(analytics.ctx, "attachment_extraction");
+  if (!fallbackRoute) return undefined;
+
+  try {
+    const response = await trackedChatCompletionOnRoute(analytics.ctx, fallbackRoute, {
+      userId: analytics.userId,
+      feature: "attachment_extraction",
+      stage: "pdf_extraction_fallback",
+      visibility: "background",
+      metadata: { attachmentType: "document" },
+      request: pdfRequest,
+    });
+    const text = extractTextContent(response.choices[0]?.message?.content);
+    if (text?.trim()) {
+      return {
+        text: text.trim().slice(0, textLimit),
+        method: fallbackRoute.provider === "openai" ? "openai" : "gemini",
+      };
+    }
+  } catch {
+    // Fallback also failed — return undefined to signal no extraction
+  }
+
+  return undefined;
 }
 
 // ─── Main entry point ─────────────────────────────────────────────────────────
