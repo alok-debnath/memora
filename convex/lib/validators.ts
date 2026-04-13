@@ -88,6 +88,29 @@ export const aiCredentialSourceValidator = v.union(v.literal("platform"), v.lite
 
 export const aiBillingOwnerValidator = v.union(v.literal("platform"), v.literal("user"));
 
+export const aiBilledToValidator = v.union(v.literal("memora"), v.literal("user_byok"));
+
+export const aiPriceDisplayModeValidator = v.union(
+  v.literal("estimated"),
+  v.literal("exact"),
+  v.literal("unavailable"),
+);
+
+export const aiPricingOperationValidator = v.union(
+  v.literal("chat_completion"),
+  v.literal("embedding"),
+  v.literal("transcription"),
+  v.literal("image_generation"),
+);
+
+export const embeddingRebuildStatusValidator = v.union(
+  v.literal("idle"),
+  v.literal("queued"),
+  v.literal("reembedding_memories"),
+  v.literal("rebuilding_topics"),
+  v.literal("failed"),
+);
+
 /**
  * Audit log action types
  */

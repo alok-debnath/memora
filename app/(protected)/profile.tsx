@@ -34,6 +34,8 @@ type TimezoneOption = {
   offsetInMinutes: number;
 };
 
+type VisibleAiCapability = "chat" | "structured_text" | "embeddings" | "vision" | "transcription";
+
 const formatUtcOffset = (offsetInMinutes: number) => {
   const sign = offsetInMinutes >= 0 ? "+" : "-";
   const absoluteMinutes = Math.abs(offsetInMinutes);
@@ -41,6 +43,13 @@ const formatUtcOffset = (offsetInMinutes: number) => {
   const minutes = String(absoluteMinutes % 60).padStart(2, "0");
   return `UTC${sign}${hours}:${minutes}`;
 };
+
+const formatUsdMicros = (value: number) =>
+  new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: value >= 100_000 ? 2 : 4,
+  }).format(value / 1_000_000);
 
 // Computed once at module load — avoids blocking the JS thread on every mount.
 const ALL_TIMEZONE_OPTIONS: TimezoneOption[] = getTimeZones({
@@ -157,12 +166,17 @@ export default function ProfileScreen() {
   const deleteAccount = useMutation(api.auth.deleteAccount);
   const updateProfile = useMutation(api.auth.updateProfile);
   const aiProviderSettings = useQuery(api.aiProviders.getSettings, token ? {} : "skip");
+  const aiUsageOverview = useQuery(
+    api.analytics.overview,
+    token ? { token, range: "30d", spendSource: "combined" } : "skip",
+  );
   const setAiByokPreference = useMutation(api.aiProviders.setByokPreference);
   const deleteAiProviderKey = useMutation(api.aiProviders.deleteProviderKey);
   const upsertAiProviderKey = useAction(api.actions.aiProviderKeys.upsertProviderKey);
   const [selectedAiProvider, setSelectedAiProvider] = React.useState<"openai" | "google">("openai");
   const [aiApiKey, setAiApiKey] = React.useState("");
   const [aiBaseUrl, setAiBaseUrl] = React.useState("");
+  const [aiCapabilityModels, setAiCapabilityModels] = React.useState<Record<string, string>>({});
   const [isSavingAiKey, setIsSavingAiKey] = React.useState(false);
   const [isUpdatingByok, setIsUpdatingByok] = React.useState(false);
 
@@ -329,6 +343,20 @@ export default function ProfileScreen() {
   }, [aiProviderSettings?.providers, selectedAiProvider]);
 
   React.useEffect(() => {
+    const selectedConfig = aiProviderSettings?.providers?.find(
+      (provider: any) => provider.provider === selectedAiProvider,
+    );
+    setAiCapabilityModels({
+      ...(selectedConfig?.defaultModels ?? {}),
+      ...(selectedConfig?.savedModels ?? {}),
+    });
+  }, [
+    aiProviderSettings?.preference?.preferredProvider,
+    aiProviderSettings?.providers,
+    selectedAiProvider,
+  ]);
+
+  React.useEffect(() => {
     if (!exportRequested || !exportData || Platform.OS !== "web") {
       return;
     }
@@ -442,11 +470,14 @@ export default function ProfileScreen() {
       await setAiByokPreference({
         preferredProvider: selectedAiProvider,
         byokEnabled: value,
+        providerModels: {
+          [selectedAiProvider]: aiCapabilityModels,
+        },
       });
       showToast({
         title: value ? "BYOK enabled" : "BYOK disabled",
         message: value
-          ? "Supported AI requests will use your own provider key."
+          ? "Supported AI requests will use your own provider key and selected models."
           : "AI requests will use Memora's provider routing.",
         tone: "success",
       });
@@ -481,6 +512,9 @@ export default function ProfileScreen() {
       await setAiByokPreference({
         preferredProvider: selectedAiProvider,
         byokEnabled: aiProviderSettings?.preference?.byokEnabled ?? false,
+        providerModels: {
+          [selectedAiProvider]: aiCapabilityModels,
+        },
       });
       setAiApiKey("");
       showToast({
@@ -529,6 +563,52 @@ export default function ProfileScreen() {
   const selectedAiConfig = aiProviderSettings?.providers?.find(
     (provider: any) => provider.provider === selectedAiProvider,
   );
+  const embeddingRebuildActive =
+    aiProviderSettings?.preference?.embeddingRebuildStatus &&
+    aiProviderSettings.preference.embeddingRebuildStatus !== "idle" &&
+    aiProviderSettings.preference.embeddingRebuildStatus !== "failed";
+  const embeddingRebuildProcessed = aiProviderSettings?.preference?.embeddingRebuildProcessed ?? 0;
+  const embeddingRebuildTotal = aiProviderSettings?.preference?.embeddingRebuildTotal ?? 0;
+
+  const formatCapabilityLabel = (capability: string) =>
+    capability
+      .split("_")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  const capabilityOrder: VisibleAiCapability[] = [
+    "chat",
+    "structured_text",
+    "embeddings",
+    "vision",
+    "transcription",
+  ];
+  const previewCapabilityMatrix = capabilityOrder.map((capability: VisibleAiCapability) => {
+    const selectedModel =
+      aiCapabilityModels[capability] ?? selectedAiConfig?.defaultModels?.[capability];
+    const supported = selectedAiConfig?.supportedCapabilities?.includes(capability);
+    if (!supported || !selectedModel) {
+      return {
+        capability,
+        available: false,
+        label: "Unavailable",
+      };
+    }
+    if (!selectedAiConfig?.configured) {
+      return {
+        capability,
+        available: false,
+        label: `${selectedAiProvider} · Needs key · ${selectedModel}`,
+      };
+    }
+    const byokActive =
+      aiProviderSettings?.preference?.byokEnabled &&
+      aiProviderSettings?.preference?.preferredProvider === selectedAiProvider;
+    return {
+      capability,
+      available: true,
+      label: `${selectedAiProvider} · ${byokActive ? "BYOK" : "Ready"} · ${selectedModel}`,
+    };
+  });
 
   return (
     <MorePageScaffold title="Profile" scrollProps={{ contentContainerStyle: styles.content }}>
@@ -1145,6 +1225,29 @@ export default function ProfileScreen() {
                 Use one provider for supported AI capabilities and skip Memora pricing on those
                 requests.
               </Text>
+              <Text
+                fontSize={12}
+                fontFamily="$body"
+                marginTop={4}
+                lineHeight={18}
+                color="$colorMuted"
+              >
+                Image generation is hidden until Memora actually ships an image feature. Server
+                transcription remains optional fallback behind the scenes.
+              </Text>
+              {embeddingRebuildActive ? (
+                <Text
+                  fontSize={12}
+                  fontFamily="$body"
+                  marginTop={4}
+                  lineHeight={18}
+                  color="$colorMuted"
+                >
+                  Rebuilding embeddings in the background: {embeddingRebuildProcessed} /{" "}
+                  {embeddingRebuildTotal || "?"}. Search falls back to keyword matching until this
+                  finishes, and embedding provider changes are locked meanwhile.
+                </Text>
+              ) : null}
             </YStack>
             <Switch
               value={aiProviderSettings?.preference?.byokEnabled ?? false}
@@ -1251,6 +1354,72 @@ export default function ProfileScreen() {
             </YStack>
           ) : null}
 
+          <YStack gap={10} marginTop={16}>
+            <Text
+              fontSize={12}
+              fontFamily="$heading"
+              fontWeight="600"
+              textTransform="uppercase"
+              letterSpacing={0.8}
+              marginLeft={4}
+              color="$colorMuted"
+            >
+              Models
+            </Text>
+            {selectedAiConfig?.supportedCapabilities?.map((capability: string) => {
+              const matchingModels =
+                selectedAiConfig?.availableModels?.filter((model: any) =>
+                  model.capabilities.includes(capability),
+                ) ?? [];
+              return (
+                <YStack key={capability} gap={8}>
+                  <Text fontSize={13} fontFamily="$body" color="$color">
+                    {formatCapabilityLabel(capability)}
+                  </Text>
+                  <XStack flexWrap="wrap" gap={8}>
+                    {matchingModels.map((model: any) => {
+                      const isSelected = aiCapabilityModels[capability] === model.id;
+                      const isLocked = capability === "embeddings" && embeddingRebuildActive;
+                      return (
+                        <PressableScale
+                          key={`${capability}-${model.id}`}
+                          onPress={
+                            isLocked
+                              ? undefined
+                              : () =>
+                                  setAiCapabilityModels((current) => ({
+                                    ...current,
+                                    [capability]: model.id,
+                                  }))
+                          }
+                          style={[
+                            styles.modelChip,
+                            {
+                              borderColor: isSelected ? theme.primary.val : theme.borderColor.val,
+                              backgroundColor: isSelected
+                                ? theme.primary.val + "14"
+                                : theme.background.val,
+                              opacity: isLocked ? 0.55 : 1,
+                            },
+                          ]}
+                        >
+                          <Text
+                            fontSize={12}
+                            fontFamily="$body"
+                            fontWeight="600"
+                            color={isSelected ? theme.primary.val : theme.color.val}
+                          >
+                            {model.id}
+                          </Text>
+                        </PressableScale>
+                      );
+                    })}
+                  </XStack>
+                </YStack>
+              );
+            })}
+          </YStack>
+
           <XStack gap={10} marginTop={16}>
             <GradientButton
               title={isSavingAiKey ? "Saving..." : "Save Key"}
@@ -1295,10 +1464,41 @@ export default function ProfileScreen() {
                 : (selectedAiConfig?.lastValidationMessage ??
                   "Your key is encrypted server-side and only used to execute your AI requests.")}
             </Text>
+            {aiProviderSettings?.preference?.embeddingRebuildStatus === "failed" ? (
+              <Text fontSize={12} fontFamily="$body" lineHeight={18} color="$destructive">
+                {aiProviderSettings?.preference?.embeddingRebuildError ||
+                  "Embedding rebuild failed. Search will keep using the last ready vectors."}
+              </Text>
+            ) : null}
+            <Text fontSize={12} fontFamily="$body" lineHeight={18} color="$colorMuted">
+              Last 30 days: Memora{" "}
+              {formatUsdMicros(aiUsageOverview?.totals?.totalAiMemoraCostUsdMicros ?? 0)} /{" "}
+              {aiUsageOverview?.totals?.totalAiMemoraRequests ?? 0} ops, your key{" "}
+              {formatUsdMicros(aiUsageOverview?.totals?.totalAiByokCostUsdMicros ?? 0)} /{" "}
+              {aiUsageOverview?.totals?.totalAiByokRequests ?? 0} ops.
+            </Text>
+            <PressableScale onPress={() => router.push("/(protected)/statistics")}>
+              <XStack
+                alignItems="center"
+                gap={8}
+                paddingHorizontal={12}
+                paddingVertical={10}
+                borderRadius={14}
+                borderWidth={1}
+                borderColor={theme.borderColor.val}
+                backgroundColor={theme.card.val}
+                alignSelf="flex-start"
+              >
+                <Feather name="bar-chart-2" size={14} color={theme.primary.val} />
+                <Text fontSize={12} fontFamily="$body" fontWeight="600" color="$color">
+                  View AI usage
+                </Text>
+              </XStack>
+            </PressableScale>
           </YStack>
 
           <YStack marginTop={16} gap={8}>
-            {aiProviderSettings?.capabilityMatrix?.map((item: any) => (
+            {previewCapabilityMatrix.map((item: any) => (
               <XStack
                 key={item.capability}
                 alignItems="center"
@@ -1309,7 +1509,7 @@ export default function ProfileScreen() {
                   {item.capability.replace(/_/g, " ")}
                 </Text>
                 <Text fontSize={12} fontFamily="$body" color="$colorMuted">
-                  {item.effectiveProvider} · {item.billingOwner === "user" ? "BYOK" : "Memora"}
+                  {item.label}
                 </Text>
               </XStack>
             ))}
@@ -1379,6 +1579,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 14,
+    borderWidth: 1,
+  },
+  modelChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 12,
     borderWidth: 1,
   },
   avatar: {

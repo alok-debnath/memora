@@ -277,75 +277,46 @@ async function extractImageWithFallback(
     conversationId?: string;
   },
 ): Promise<AttachmentExtractionResult> {
-  const preferredProvider = analytics
-    ? (
-        await resolveAiRoute(analytics.ctx, {
-          userId: analytics.userId,
-          feature: "attachment_extraction",
-        })
-      ).provider
-    : "google";
+  const route = analytics
+    ? await resolveAiRoute(analytics.ctx, {
+        userId: analytics.userId,
+        feature: "attachment_extraction",
+      })
+    : null;
+  const preferredProvider = route?.provider ?? "google";
 
   if (preferredProvider === "openai") {
-    const openAiFirst = await extractImageWithOpenAI(accessToken, driveFileId, filename, analytics);
-    if (openAiFirst) {
-      return {
-        processingStatus: "completed",
-        extractedContent: openAiFirst,
-        extractionMethod: "openai",
-      };
-    }
+    const extracted = await extractImageWithOpenAI(accessToken, driveFileId, filename, analytics);
+    return extracted
+      ? {
+          processingStatus: "completed",
+          extractedContent: extracted,
+          extractionMethod: "openai",
+        }
+      : {
+          processingStatus: "failed",
+          processingError: "OpenAI vision extraction failed for this attachment.",
+        };
   }
 
   try {
-    const geminiText = await extractImageWithGemini(accessToken, driveFileId, filename, analytics);
-    if (geminiText?.trim()) {
-      return {
-        processingStatus: "completed",
-        extractedContent: geminiText.trim(),
-        extractionMethod: "gemini",
-      };
-    }
-  } catch (geminiError) {
-    const openAiFallback = await extractImageWithOpenAI(
-      accessToken,
-      driveFileId,
-      filename,
-      analytics,
-    );
-    if (openAiFallback) {
-      return {
-        processingStatus: "completed",
-        extractedContent: openAiFallback,
-        extractionMethod: "openai",
-      };
-    }
-
+    const extracted = await extractImageWithGemini(accessToken, driveFileId, filename, analytics);
+    return extracted?.trim()
+      ? {
+          processingStatus: "completed",
+          extractedContent: extracted.trim(),
+          extractionMethod: "gemini",
+        }
+      : {
+          processingStatus: "failed",
+          processingError: "Google vision extraction returned no content.",
+        };
+  } catch (error) {
     return {
       processingStatus: "failed",
-      processingError:
-        geminiError instanceof Error ? geminiError.message : "Image extraction failed",
+      processingError: error instanceof Error ? error.message : "Image extraction failed",
     };
   }
-
-  const openAiFallback = await extractImageWithOpenAI(
-    accessToken,
-    driveFileId,
-    filename,
-    analytics,
-  );
-  if (openAiFallback) {
-    return {
-      processingStatus: "completed",
-      extractedContent: openAiFallback,
-      extractionMethod: "openai",
-    };
-  }
-
-  return {
-    processingStatus: "failed",
-    processingError: "Could not analyze image attachment",
-  };
 }
 
 async function extractImageWithOpenAI(

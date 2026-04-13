@@ -88,9 +88,17 @@ export async function runSemanticSearch(
   let isCached = false;
 
   const queryHash = normalizeSearchQueryHash(rawQuery);
+  const embeddingStatus: {
+    isRebuilding: boolean;
+  } = await ctx.runQuery(internal.aiProviders.getEmbeddingStatusInternal, {
+    userId: args.userId,
+  });
 
   await Promise.allSettled([
     (async () => {
+      if (embeddingStatus.isRebuilding) {
+        return;
+      }
       try {
         const cached = await ctx.runQuery(internal.memories.getQueryCache, {
           userId: args.userId,

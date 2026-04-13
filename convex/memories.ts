@@ -1470,6 +1470,7 @@ export const listWithoutEmbeddings = internalQuery({
 
     return memories.map((m) => ({
       _id: m._id,
+      userId: m.userId,
       title: m.title,
       content: m.content,
       people: m.people,
@@ -1511,6 +1512,56 @@ export const listForReembedding = internalQuery({
 
     return {
       batch,
+      hasMore: !result.isDone,
+      nextCursor: result.continueCursor,
+    };
+  },
+});
+
+export const countActiveForEmbeddingRebuild = internalQuery({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const memories = await ctx.db
+      .query("memories")
+      .withIndex("by_user_status", (q) => q.eq("userId", args.userId).eq("status", "active"))
+      .take(10_000);
+    return memories.length;
+  },
+});
+
+export const listActiveForEmbeddingRebuild = internalQuery({
+  args: {
+    userId: v.id("users"),
+    limit: v.optional(v.float64()),
+    cursor: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const batchSize = args.limit ? Math.min(args.limit, 50) : 25;
+    const result = await ctx.db
+      .query("memories")
+      .withIndex("by_user_status", (q) => q.eq("userId", args.userId).eq("status", "active"))
+      .paginate({
+        numItems: batchSize,
+        cursor: (args.cursor ?? null) as string | null,
+      });
+    return {
+      batch: result.page.map((m) => ({
+        _id: m._id,
+        userId: m.userId,
+        title: m.title,
+        content: m.content,
+        people: m.people,
+        locations: m.locations,
+        lifeArea: m.lifeArea,
+        entryKind: m.entryKind,
+        topicIds: m.topicIds ?? [],
+        primaryTopicId: m.primaryTopicId,
+        embeddingFingerprint: m.embeddingFingerprint,
+        embeddingState: m.embeddingState,
+        embedding: m.embedding,
+      })),
       hasMore: !result.isDone,
       nextCursor: result.continueCursor,
     };
@@ -1769,5 +1820,26 @@ export const setQueryCache = internalMutation({
         lastUsedAt: Date.now(),
       });
     }
+  },
+});
+
+export const clearQueryCacheForUser = internalMutation({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const batch = await ctx.db
+      .query("searchQueryCache")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .take(100);
+    for (const entry of batch) {
+      await ctx.db.delete(entry._id);
+    }
+    if (batch.length === 100) {
+      await ctx.scheduler.runAfter(0, internal.memories.clearQueryCacheForUser, {
+        userId: args.userId,
+      });
+    }
+    return { deleted: batch.length };
   },
 });

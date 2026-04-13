@@ -6,6 +6,7 @@ import { action, type ActionCtx } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import {
   extractTextContent,
+  getEmbeddingFingerprintForUser,
   OPENAI_CHAT_MODEL,
   safeJsonParse,
   trackedChatCompletion,
@@ -345,7 +346,7 @@ async function buildMemoryEmbedding(args: {
   entryKind?: string;
   chatTurnId?: Id<"chatMessages">;
 }) {
-  return await trackedEmbedText(args.ctx, {
+  const embedding = await trackedEmbedText(args.ctx, {
     userId: args.userId,
     feature: args.feature,
     stage: "embedding",
@@ -362,6 +363,8 @@ async function buildMemoryEmbedding(args: {
       ? { chatTurnId: args.chatTurnId, chatMessageId: args.chatTurnId }
       : undefined,
   });
+  const embeddingFingerprint = await getEmbeddingFingerprintForUser(args.ctx, args.userId);
+  return { embedding, embeddingFingerprint };
 }
 
 export const processMemory = action({
@@ -393,32 +396,44 @@ export const processMemory = action({
         title?: string;
         content?: string;
       }> = [];
-      const queryEmbedding = await trackedEmbedText(ctx, {
-        userId: memory.userId,
-        feature: "memory_processing",
-        stage: "conflict_prefetch",
-        visibility: "background",
-        input: args.content.slice(0, 4000),
-        metadata: { stage: "conflict_prefetch" },
-        link: args.sourceChatTurnId
-          ? { chatTurnId: args.sourceChatTurnId, chatMessageId: args.sourceChatTurnId }
-          : undefined,
-      });
-      const semanticallySimilar = await ctx.vectorSearch("memories", "by_embedding", {
-        vector: queryEmbedding,
-        limit: 8,
-        filter: (q) => q.eq("userId", memory.userId),
-      });
-
-      const similarIds = semanticallySimilar
-        .filter((result) => result._id !== args.memoryId && result._score > 0.65)
-        .map((result) => result._id);
-
-      if (similarIds.length > 0) {
-        candidates = await ctx.runQuery(internal.memories.listByIdsInternal, {
+      const embeddingStatus: { isRebuilding: boolean } = await ctx.runQuery(
+        internal.aiProviders.getEmbeddingStatusInternal,
+        { userId: memory.userId },
+      );
+      if (!embeddingStatus.isRebuilding) {
+        const queryEmbedding = await trackedEmbedText(ctx, {
           userId: memory.userId,
-          ids: similarIds.slice(0, 8),
+          feature: "memory_processing",
+          stage: "conflict_prefetch",
+          visibility: "background",
+          input: args.content.slice(0, 4000),
+          metadata: { stage: "conflict_prefetch" },
+          link: args.sourceChatTurnId
+            ? { chatTurnId: args.sourceChatTurnId, chatMessageId: args.sourceChatTurnId }
+            : undefined,
         });
+        const semanticallySimilar = await ctx.vectorSearch("memories", "by_embedding", {
+          vector: queryEmbedding,
+          limit: 8,
+          filter: (q) => q.eq("userId", memory.userId),
+        });
+
+        const similarIds = semanticallySimilar
+          .filter((result) => result._id !== args.memoryId && result._score > 0.65)
+          .map((result) => result._id);
+
+        if (similarIds.length > 0) {
+          candidates = await ctx.runQuery(internal.memories.listByIdsInternal, {
+            userId: memory.userId,
+            ids: similarIds.slice(0, 8),
+          });
+        } else {
+          candidates = await ctx.runQuery(internal.memories.searchByKeyword, {
+            userId: memory.userId,
+            query: args.content,
+            limit: 8,
+          });
+        }
       } else {
         candidates = await ctx.runQuery(internal.memories.searchByKeyword, {
           userId: memory.userId,
@@ -462,7 +477,7 @@ export const processMemory = action({
         ...normalized,
         title: normalizedTitle,
       };
-      const embedding = await buildMemoryEmbedding({
+      const { embedding, embeddingFingerprint } = await buildMemoryEmbedding({
         ctx,
         userId: memory.userId,
         feature: "memory_processing",
@@ -487,6 +502,7 @@ export const processMemory = action({
         sentimentScore: normalizedForWrite.sentimentScore,
         extractedActions: normalizedForWrite.extractedActions,
         embedding,
+        embeddingFingerprint,
       });
 
       const shouldReassignTopics =
@@ -504,6 +520,7 @@ export const processMemory = action({
           title: normalizedForWrite.title ?? args.title,
           content: args.content,
           embedding,
+          embeddingFingerprint,
         });
       }
     } catch {
@@ -537,6 +554,7 @@ export const captureMemory = action({
     const fallback = fallbackStructuredData(args.content);
     let structured = fallback;
     let embedding: number[] | undefined;
+    let embeddingFingerprint: string | undefined;
 
     {
       const userTz = args.currentTimezone?.trim() || session.timezone || "UTC";
@@ -552,32 +570,44 @@ export const captureMemory = action({
             title?: string;
             content?: string;
           }> = [];
-          const queryEmbedding = await trackedEmbedText(ctx, {
-            userId: session._id,
-            feature: "memory_capture",
-            stage: "conflict_prefetch",
-            visibility: "background",
-            input: args.content.slice(0, 4000),
-            metadata: { stage: "conflict_prefetch" },
-            link: args.sourceChatTurnId
-              ? { chatTurnId: args.sourceChatTurnId, chatMessageId: args.sourceChatTurnId }
-              : undefined,
-          });
-          const semanticallySimilar = await ctx.vectorSearch("memories", "by_embedding", {
-            vector: queryEmbedding,
-            limit: 8,
-            filter: (q) => q.eq("userId", session._id),
-          });
-
-          const similarIds = semanticallySimilar
-            .filter((result) => result._score > 0.65)
-            .map((result) => result._id);
-
-          if (similarIds.length > 0) {
-            candidates = await ctx.runQuery(internal.memories.listByIdsInternal, {
+          const embeddingStatus: { isRebuilding: boolean } = await ctx.runQuery(
+            internal.aiProviders.getEmbeddingStatusInternal,
+            { userId: session._id },
+          );
+          if (!embeddingStatus.isRebuilding) {
+            const queryEmbedding = await trackedEmbedText(ctx, {
               userId: session._id,
-              ids: similarIds.slice(0, 8),
+              feature: "memory_capture",
+              stage: "conflict_prefetch",
+              visibility: "background",
+              input: args.content.slice(0, 4000),
+              metadata: { stage: "conflict_prefetch" },
+              link: args.sourceChatTurnId
+                ? { chatTurnId: args.sourceChatTurnId, chatMessageId: args.sourceChatTurnId }
+                : undefined,
             });
+            const semanticallySimilar = await ctx.vectorSearch("memories", "by_embedding", {
+              vector: queryEmbedding,
+              limit: 8,
+              filter: (q) => q.eq("userId", session._id),
+            });
+
+            const similarIds = semanticallySimilar
+              .filter((result) => result._score > 0.65)
+              .map((result) => result._id);
+
+            if (similarIds.length > 0) {
+              candidates = await ctx.runQuery(internal.memories.listByIdsInternal, {
+                userId: session._id,
+                ids: similarIds.slice(0, 8),
+              });
+            } else {
+              candidates = await ctx.runQuery(internal.memories.searchByKeyword, {
+                userId: session._id,
+                query: args.content,
+                limit: 8,
+              });
+            }
           } else {
             candidates = await ctx.runQuery(internal.memories.searchByKeyword, {
               userId: session._id,
@@ -622,7 +652,7 @@ export const captureMemory = action({
       }
 
       try {
-        embedding = await buildMemoryEmbedding({
+        const result = await buildMemoryEmbedding({
           ctx,
           userId: session._id,
           feature: "memory_capture",
@@ -634,6 +664,8 @@ export const captureMemory = action({
           entryKind: structured.entryKind,
           chatTurnId: args.sourceChatTurnId,
         });
+        embedding = result.embedding;
+        embeddingFingerprint = result.embeddingFingerprint;
       } catch {
         embedding = undefined;
       }
@@ -675,6 +707,7 @@ export const captureMemory = action({
         sentimentScore: structured.sentimentScore,
         extractedActions: structured.extractedActions,
         embedding,
+        embeddingFingerprint,
       });
 
       if (embedding) {
@@ -684,6 +717,7 @@ export const captureMemory = action({
           title: structured.title || fallback.title || "New Memory",
           content: args.content,
           embedding,
+          embeddingFingerprint,
         });
       }
     } else {

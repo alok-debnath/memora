@@ -41,18 +41,26 @@ export const detectConflicts = action({
     // closely related memories, not just vaguely similar ones
     let semanticallySimilar: Array<{ _id: Id<"memories">; _score: number }> = [];
     try {
-      const embedding =
-        args.embedding ??
-        (await trackedEmbedText(ctx, {
+      const embeddingStatus: { isRebuilding: boolean } = await ctx.runQuery(
+        internal.aiProviders.getEmbeddingStatusInternal,
+        {
           userId: session._id,
-          feature: "conflict_detection",
-          input: args.content.slice(0, 4000),
-        }));
-      semanticallySimilar = await ctx.vectorSearch("memories", "by_embedding", {
-        vector: embedding,
-        limit: 8,
-        filter: (q) => q.eq("userId", session._id),
-      });
+        },
+      );
+      if (!embeddingStatus.isRebuilding) {
+        const embedding =
+          args.embedding ??
+          (await trackedEmbedText(ctx, {
+            userId: session._id,
+            feature: "conflict_detection",
+            input: args.content.slice(0, 4000),
+          }));
+        semanticallySimilar = await ctx.vectorSearch("memories", "by_embedding", {
+          vector: embedding,
+          limit: 8,
+          filter: (q) => q.eq("userId", session._id),
+        });
+      }
     } catch {
       // Fall back to keyword candidates if embeddings fail.
     }

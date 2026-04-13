@@ -30,11 +30,18 @@ import { integrationAccentColors, statAccentColors, statusAccentColors } from "@
 import { withAlpha } from "@/components/ui/themeHelpers";
 
 type RangeKey = "7d" | "30d" | "90d";
+type SpendSource = "combined" | "memora" | "user_byok";
 
 const RANGE_OPTIONS = [
   { value: "7d" as const, label: "7D" },
   { value: "30d" as const, label: "30D" },
   { value: "90d" as const, label: "90D" },
+];
+
+const SPEND_SOURCE_OPTIONS = [
+  { value: "combined" as const, label: "Combined" },
+  { value: "memora" as const, label: "Memora" },
+  { value: "user_byok" as const, label: "Your key" },
 ];
 
 function formatCompactNumber(value: number) {
@@ -96,6 +103,11 @@ function formatFeatureLabel(feature: string) {
 function formatStageLabel(stage: string | null | undefined) {
   if (!stage) return "unspecified";
   return stage.replace(/_/g, " ");
+}
+
+function formatBilledToLabel(source: string | null | undefined) {
+  if (source === "combined") return "Combined";
+  return source === "user_byok" ? "Your key" : "Memora";
 }
 
 function KPI({
@@ -348,6 +360,7 @@ export default function AnalyticsScreen() {
   const { token } = useAuth();
   const { width: windowWidth } = useWindowDimensions();
   const [range, setRange] = useState<RangeKey>("7d");
+  const [spendSource, setSpendSource] = useState<SpendSource>("combined");
   const [detailPanel, setDetailPanel] = useState<"none" | "models" | "events" | "features">("none");
   const isCompact = windowWidth < 720;
   const contentWidth = Math.min(windowWidth - 32, 1040);
@@ -355,23 +368,23 @@ export default function AnalyticsScreen() {
     ? Math.max(150, Math.floor((contentWidth - 10) / 2))
     : Math.max(200, Math.floor((contentWidth - 30) / 4));
 
-  const overview = useQuery(api.analytics.overview, token ? { token, range } : "skip");
-  const aiBreakdown = useQuery(api.analytics.aiBreakdown, token ? { token, range } : "skip") ?? [];
+  const overview = useQuery(api.analytics.overview, token ? { token, range, spendSource } : "skip");
+  const aiBreakdown =
+    useQuery(api.analytics.aiBreakdown, token ? { token, range, spendSource } : "skip") ?? [];
   const aiFeatureBreakdown =
-    useQuery(api.analytics.aiFeatureBreakdown, token ? { token, range } : "skip") ?? [];
+    useQuery(api.analytics.aiFeatureBreakdown, token ? { token, range, spendSource } : "skip") ??
+    [];
   const detailMeta = getDetailPanelMeta(detailPanel);
   const recentEventsResult = useQuery(
     api.analytics.recentEvents,
-    token ? { token, paginationOpts: { numItems: 10, cursor: null } } : "skip",
+    token ? { token, range, spendSource, paginationOpts: { numItems: 10, cursor: null } } : "skip",
   );
   const recentEvents = recentEventsResult?.page ?? [];
 
   const summaryLine = useMemo(() => {
     if (!overview) return "Loading telemetry and history…";
-    return `${formatCompactNumber(overview.rangeTotals.aiActions ?? 0)} AI actions, ${formatCompactNumber(
-      overview.rangeTotals.aiRequests ?? 0,
-    )} backend ops, ${formatUsdMicros(overview.rangeTotals.aiCostUsdMicros)} spend.`;
-  }, [overview]);
+    return `${formatBilledToLabel(spendSource)}: ${formatCompactNumber(overview.rangeTotals.aiRequests ?? 0)} backend ops, ${formatUsdMicros(overview.rangeTotals.aiCostUsdMicros)} estimated cost.`;
+  }, [overview, spendSource]);
 
   const topModels = useMemo(() => aiBreakdown.slice(0, 5), [aiBreakdown]);
   const topBackgroundFeature = useMemo(
@@ -454,12 +467,23 @@ export default function AnalyticsScreen() {
               label={`${Math.round((overview?.rangeTotals.searchCacheHitRate ?? 0) * 100)}% search cache hit`}
               color={statusAccentColors.info}
             />
+            <Badge
+              label={`${formatBilledToLabel(spendSource)} spend view`}
+              color={integrationAccentColors.openai}
+            />
           </XStack>
         </Card>
       </Animated.View>
 
       <Animated.View entering={FadeInUp.delay(80).duration(360)}>
-        <SegmentedControl options={RANGE_OPTIONS} value={range} onChange={setRange} />
+        <YStack gap={10}>
+          <SegmentedControl options={RANGE_OPTIONS} value={range} onChange={setRange} />
+          <SegmentedControl
+            options={SPEND_SOURCE_OPTIONS}
+            value={spendSource}
+            onChange={(value) => setSpendSource(value as SpendSource)}
+          />
+        </YStack>
       </Animated.View>
 
       <XStack flexWrap="wrap" gap={10} alignItems="flex-start">
@@ -669,8 +693,8 @@ export default function AnalyticsScreen() {
               ) : null}
             </XStack>
             <Text fontSize={13} fontFamily="$body" color="$colorMuted">
-              Choose a detailed view here. It opens as a popup so the content is immediately
-              visible.
+              Choose a detailed view here. Costs and usage below are filtered to{" "}
+              {formatBilledToLabel(spendSource).toLowerCase()} traffic.
             </Text>
             <XStack gap={8} flexWrap="wrap">
               <DetailToggle
@@ -787,7 +811,8 @@ export default function AnalyticsScreen() {
                     </Text>
                     <Text fontSize={12} color="$colorMuted">
                       {formatFeatureLabel(item.feature)} · {formatStageLabel(item.stage)} ·{" "}
-                      {formatCompactNumber(item.requests)} calls
+                      {formatBilledToLabel(item.billedTo)} · {formatCompactNumber(item.requests)}{" "}
+                      calls
                     </Text>
                   </YStack>
                   <Text fontSize={13} fontWeight="700" color="$color">
@@ -944,6 +969,7 @@ export default function AnalyticsScreen() {
                           <Text fontSize={12} color="$colorMuted">
                             {formatStageLabel(item.stage)} ·{" "}
                             {item.visibility === "user_visible" ? "user visible" : "background"} ·{" "}
+                            {formatBilledToLabel(item.billedTo)} ·{" "}
                             {formatCompactNumber(item.requests)} calls
                           </Text>
                         </YStack>
@@ -999,7 +1025,8 @@ export default function AnalyticsScreen() {
                           {item.model}
                         </Text>
                         <Text fontSize={12} color="$colorMuted">
-                          {formatFeatureLabel(item.feature)} · {formatStageLabel(item.stage)}
+                          {formatFeatureLabel(item.feature)} · {formatStageLabel(item.stage)} ·{" "}
+                          {formatBilledToLabel(item.billedTo)}
                         </Text>
                       </YStack>
                       <YStack alignItems="flex-end">
@@ -1043,6 +1070,7 @@ export default function AnalyticsScreen() {
                         </Text>
                         <Text fontSize={12} color="$colorMuted">
                           {formatFeatureLabel(event.feature)} · {formatStageLabel(event.stage)} ·{" "}
+                          {formatBilledToLabel(event.billedTo)} ·{" "}
                           {new Date(event.occurredAt).toLocaleString()}
                         </Text>
                       </YStack>

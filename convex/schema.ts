@@ -15,8 +15,12 @@ import {
   auditActionValidator,
   aiProviderValidator,
   aiCapabilityValidator,
+  aiBilledToValidator,
   aiCredentialSourceValidator,
   aiBillingOwnerValidator,
+  aiPriceDisplayModeValidator,
+  aiPricingOperationValidator,
+  embeddingRebuildStatusValidator,
 } from "./lib/validators";
 
 export default defineSchema({
@@ -64,6 +68,7 @@ export default defineSchema({
     nextDueAt: v.optional(v.string()),
     capsuleUnlockDate: v.optional(v.string()),
     embedding: v.optional(v.array(v.float64())),
+    embeddingFingerprint: v.optional(v.string()),
     embeddingState: v.union(v.literal("missing"), v.literal("ready")),
     shareToken: v.optional(v.string()),
     isPublic: v.optional(v.boolean()),
@@ -153,6 +158,16 @@ export default defineSchema({
     totalAiOutputTokens: v.number(),
     totalAiAudioSeconds: v.number(),
     totalAiCostUsdMicros: v.number(),
+    totalAiMemoraRequests: v.optional(v.number()),
+    totalAiMemoraInputTokens: v.optional(v.number()),
+    totalAiMemoraOutputTokens: v.optional(v.number()),
+    totalAiMemoraAudioSeconds: v.optional(v.number()),
+    totalAiMemoraCostUsdMicros: v.optional(v.number()),
+    totalAiByokRequests: v.optional(v.number()),
+    totalAiByokInputTokens: v.optional(v.number()),
+    totalAiByokOutputTokens: v.optional(v.number()),
+    totalAiByokAudioSeconds: v.optional(v.number()),
+    totalAiByokCostUsdMicros: v.optional(v.number()),
     totalAiActions: v.optional(v.number()),
     totalBackgroundAiOperations: v.optional(v.number()),
     totalSearches: v.optional(v.number()),
@@ -186,6 +201,16 @@ export default defineSchema({
     aiOutputTokens: v.number(),
     aiAudioSeconds: v.number(),
     aiCostUsdMicros: v.number(),
+    aiMemoraRequests: v.optional(v.number()),
+    aiMemoraInputTokens: v.optional(v.number()),
+    aiMemoraOutputTokens: v.optional(v.number()),
+    aiMemoraAudioSeconds: v.optional(v.number()),
+    aiMemoraCostUsdMicros: v.optional(v.number()),
+    aiByokRequests: v.optional(v.number()),
+    aiByokInputTokens: v.optional(v.number()),
+    aiByokOutputTokens: v.optional(v.number()),
+    aiByokAudioSeconds: v.optional(v.number()),
+    aiByokCostUsdMicros: v.optional(v.number()),
     aiActions: v.optional(v.number()),
     backgroundAiOperations: v.optional(v.number()),
     searches: v.optional(v.number()),
@@ -214,6 +239,7 @@ export default defineSchema({
     visibility: v.optional(v.union(v.literal("user_visible"), v.literal("background"))),
     credentialSource: v.optional(aiCredentialSourceValidator),
     billingOwner: v.optional(aiBillingOwnerValidator),
+    billedTo: v.optional(aiBilledToValidator),
     requests: v.number(),
     errors: v.number(),
     inputTokens: v.number(),
@@ -221,6 +247,16 @@ export default defineSchema({
     totalTokens: v.number(),
     audioSeconds: v.number(),
     costUsdMicros: v.number(),
+    memoraRequests: v.optional(v.number()),
+    memoraInputTokens: v.optional(v.number()),
+    memoraOutputTokens: v.optional(v.number()),
+    memoraAudioSeconds: v.optional(v.number()),
+    memoraCostUsdMicros: v.optional(v.number()),
+    byokRequests: v.optional(v.number()),
+    byokInputTokens: v.optional(v.number()),
+    byokOutputTokens: v.optional(v.number()),
+    byokAudioSeconds: v.optional(v.number()),
+    byokCostUsdMicros: v.optional(v.number()),
     updatedAt: v.number(),
   })
     .index("by_user", ["userId"])
@@ -244,6 +280,7 @@ export default defineSchema({
     visibility: v.optional(v.union(v.literal("user_visible"), v.literal("background"))),
     credentialSource: v.optional(aiCredentialSourceValidator),
     billingOwner: v.optional(aiBillingOwnerValidator),
+    billedTo: v.optional(aiBilledToValidator),
     routingReason: v.optional(v.string()),
     status: v.union(v.literal("success"), v.literal("error")),
     latencyMs: v.optional(v.number()),
@@ -253,6 +290,10 @@ export default defineSchema({
     audioSeconds: v.optional(v.number()),
     costUsdMicros: v.optional(v.number()),
     costAvailability: v.union(v.literal("estimated"), v.literal("exact"), v.literal("unavailable")),
+    priceDisplayMode: v.optional(aiPriceDisplayModeValidator),
+    pricingOperation: v.optional(aiPricingOperationValidator),
+    pricingVersion: v.optional(v.string()),
+    pricingReason: v.optional(v.string()),
     metadata: v.optional(v.record(v.string(), v.string())),
   })
     .index("by_user", ["userId"])
@@ -260,6 +301,23 @@ export default defineSchema({
     .index("by_user_chat_turn_occurred_at", ["userId", "chatTurnId", "occurredAt"])
     .index("by_occurred_at", ["occurredAt"])
     .index("by_analytics_subject_id_and_occurred_at", ["analyticsSubjectId", "occurredAt"]),
+
+  aiModelPricing: defineTable({
+    provider: v.string(),
+    model: v.string(),
+    operation: aiPricingOperationValidator,
+    inputUsdPer1M: v.optional(v.number()),
+    outputUsdPer1M: v.optional(v.number()),
+    cachedInputUsdPer1M: v.optional(v.number()),
+    audioUsdPerMinute: v.optional(v.number()),
+    imageUsdPerUnit: v.optional(v.number()),
+    priceDisplayMode: aiPriceDisplayModeValidator,
+    pricingSource: v.string(),
+    effectiveFrom: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_provider_and_model", ["provider", "model"])
+    .index("by_provider_model_and_operation", ["provider", "model", "operation"]),
 
   userTopics: defineTable({
     userId: v.id("users"),
@@ -269,6 +327,7 @@ export default defineSchema({
     icon: v.string(),
     color: v.string(),
     centroid: v.array(v.float64()),
+    embeddingFingerprint: v.optional(v.string()),
     memoryCount: v.number(),
     relatedTopics: v.array(
       v.object({
@@ -548,6 +607,16 @@ export default defineSchema({
     userId: v.id("users"),
     byokEnabled: v.boolean(),
     preferredProvider: aiProviderValidator,
+    capabilityModels: v.optional(v.record(v.string(), v.string())),
+    providerModels: v.optional(v.record(v.string(), v.record(v.string(), v.string()))),
+    targetEmbeddingFingerprint: v.optional(v.string()),
+    lastReadyEmbeddingFingerprint: v.optional(v.string()),
+    embeddingRebuildStatus: v.optional(embeddingRebuildStatusValidator),
+    embeddingRebuildStartedAt: v.optional(v.number()),
+    embeddingRebuildUpdatedAt: v.optional(v.number()),
+    embeddingRebuildProcessed: v.optional(v.number()),
+    embeddingRebuildTotal: v.optional(v.number()),
+    embeddingRebuildError: v.optional(v.string()),
     updatedAt: v.number(),
   }).index("by_user", ["userId"]),
 

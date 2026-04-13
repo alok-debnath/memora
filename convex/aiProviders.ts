@@ -1,50 +1,193 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { aiCapabilityValidator, aiProviderValidator } from "./lib/validators";
+import type { Id } from "./_generated/dataModel";
+import {
+  aiCapabilityValidator,
+  aiProviderValidator,
+  embeddingRebuildStatusValidator,
+} from "./lib/validators";
 import { requireAdmin, resolveUser } from "./lib/withAuth";
 import {
   AI_CAPABILITIES,
   AI_PROVIDERS,
   DEFAULT_ROUTING,
   FEATURE_TO_CAPABILITY,
+  USER_VISIBLE_AI_CAPABILITIES,
+  buildEmbeddingFingerprint,
+  getSelectedProviderModel,
+  getProviderDefaultModel,
+  getProviderModels,
+  isEmbeddingRebuildActive,
+  normalizeProviderModelSelections,
   supportsCapability,
+  supportsProviderModelCapability,
   type AiCapability,
+  type AiProviderModelSelections,
+  type EmbeddingRebuildStatus,
 } from "./lib/ai";
 
-function isProviderConfigured(provider: "openai" | "google") {
+type Provider = "openai" | "google";
+
+type PreferenceState = {
+  userId: Id<"users">;
+  byokEnabled: boolean;
+  preferredProvider: Provider;
+  capabilityModels?: Partial<Record<AiCapability, string>>;
+  providerModels?: AiProviderModelSelections;
+  targetEmbeddingFingerprint?: string;
+  lastReadyEmbeddingFingerprint?: string;
+  embeddingRebuildStatus?: EmbeddingRebuildStatus;
+  embeddingRebuildStartedAt?: number;
+  embeddingRebuildUpdatedAt?: number;
+  embeddingRebuildProcessed?: number;
+  embeddingRebuildTotal?: number;
+  embeddingRebuildError?: string;
+  updatedAt: number;
+};
+
+function isProviderConfigured(provider: Provider) {
   if (provider === "openai") {
     return Boolean(process.env.OPENAI_API_KEY ?? process.env.CONVEX_OPENAI_API_KEY);
   }
   return Boolean(process.env.GEMINI_API_KEY);
 }
 
-function buildCapabilityMatrix(args: {
-  preferredProvider: "openai" | "google";
-  byokEnabled: boolean;
-  connectedProviders: Set<"openai" | "google">;
-  routing: Record<AiCapability, { provider: "openai" | "google"; model: string; enabled: boolean }>;
+function getSupportedCapabilitiesForProvider(provider: Provider) {
+  return USER_VISIBLE_AI_CAPABILITIES.filter((capability) =>
+    supportsCapability(provider, capability),
+  );
+}
+
+function getProviderDefaultModels(provider: Provider) {
+  return Object.fromEntries(
+    USER_VISIBLE_AI_CAPABILITIES.map((capability) => [
+      capability,
+      getProviderDefaultModel(provider, capability),
+    ]).filter(([, model]) => Boolean(model)),
+  ) as Partial<Record<AiCapability, string>>;
+}
+
+function isUserVisibleCapability(
+  capability: AiCapability,
+): capability is (typeof USER_VISIBLE_AI_CAPABILITIES)[number] {
+  return USER_VISIBLE_AI_CAPABILITIES.includes(
+    capability as (typeof USER_VISIBLE_AI_CAPABILITIES)[number],
+  );
+}
+
+function getProviderAvailableModels(provider: Provider) {
+  return getProviderModels(provider)
+    .filter((model) => model.capabilities.some(isUserVisibleCapability))
+    .map((model) => ({
+      id: model.id,
+      label: model.label,
+      capabilities: model.capabilities.filter(isUserVisibleCapability),
+    }));
+}
+
+function getDefaultPreferenceState(userId: Id<"users">): PreferenceState {
+  return {
+    userId,
+    byokEnabled: false,
+    preferredProvider: "openai",
+    capabilityModels: {},
+    providerModels: {},
+    embeddingRebuildStatus: "idle",
+    embeddingRebuildProcessed: 0,
+    updatedAt: 0,
+  };
+}
+
+function getSelectedModelForCapability(args: {
+  provider: Provider;
+  preferredProvider: Provider;
+  capabilityModels?: Partial<Record<AiCapability, string>>;
+  providerModels?: AiProviderModelSelections;
+  capability: AiCapability;
 }) {
-  return AI_CAPABILITIES.map((capability) => {
-    const adminRoute = args.routing[capability];
-    const preferredProviderSupported = supportsCapability(args.preferredProvider, capability);
+  return (
+    getSelectedProviderModel({
+      provider: args.provider,
+      preferredProvider: args.preferredProvider,
+      capability: args.capability,
+      capabilityModels: args.capabilityModels,
+      providerModels: args.providerModels,
+    }) ?? ""
+  );
+}
+
+function getEffectiveEmbeddingRoute(args: {
+  preferredProvider: Provider;
+  byokEnabled: boolean;
+  capabilityModels?: Partial<Record<AiCapability, string>>;
+  providerModels?: AiProviderModelSelections;
+  routing: Record<AiCapability, { provider: Provider; model: string; enabled: boolean }>;
+}) {
+  if (args.byokEnabled) {
+    return {
+      provider: args.preferredProvider,
+      model: getSelectedModelForCapability({
+        provider: args.preferredProvider,
+        preferredProvider: args.preferredProvider,
+        capabilityModels: args.capabilityModels,
+        providerModels: args.providerModels,
+        capability: "embeddings",
+      }),
+    };
+  }
+  return {
+    provider: args.routing.embeddings.provider,
+    model: args.routing.embeddings.model,
+  };
+}
+
+function buildActiveByokCapabilities(args: {
+  preferredProvider: Provider;
+  byokEnabled: boolean;
+  connectedProviders: Set<Provider>;
+  capabilityModels?: Partial<Record<AiCapability, string>>;
+  providerModels?: AiProviderModelSelections;
+  embeddingRebuildStatus?: EmbeddingRebuildStatus;
+}) {
+  const embeddingRebuildActive = isEmbeddingRebuildActive(args.embeddingRebuildStatus);
+
+  return USER_VISIBLE_AI_CAPABILITIES.map((capability) => {
     const hasPreferredKey = args.connectedProviders.has(args.preferredProvider);
-    const usesByok =
-      args.byokEnabled && preferredProviderSupported && hasPreferredKey && adminRoute.enabled;
+    const selectedModel = getSelectedModelForCapability({
+      provider: args.preferredProvider,
+      preferredProvider: args.preferredProvider,
+      capabilityModels: args.capabilityModels,
+      providerModels: args.providerModels,
+      capability,
+    });
+    const providerModelSupported =
+      Boolean(selectedModel) &&
+      supportsProviderModelCapability(args.preferredProvider, selectedModel, capability);
+    const isEmbeddingBlocked = capability === "embeddings" && embeddingRebuildActive;
+    const active =
+      args.byokEnabled && hasPreferredKey && providerModelSupported && !isEmbeddingBlocked;
+    const available = hasPreferredKey && providerModelSupported && !isEmbeddingBlocked;
+
     return {
       capability,
-      effectiveProvider: usesByok ? args.preferredProvider : adminRoute.provider,
-      model: adminRoute.model,
-      billingOwner: (usesByok ? "user" : "platform") as "platform" | "user",
-      source: (usesByok ? "user_byok" : "platform") as "platform" | "user_byok",
-      reason: usesByok
-        ? "byok"
-        : args.byokEnabled && !preferredProviderSupported
-          ? "provider_unsupported_for_capability"
-          : args.byokEnabled && !hasPreferredKey
-            ? "missing_user_key"
-            : "admin_default",
-      enabled: adminRoute.enabled,
+      provider: args.preferredProvider,
+      model: selectedModel,
+      active,
+      available,
+      reason: isEmbeddingBlocked
+        ? "rebuilding_embeddings"
+        : active
+          ? "byok"
+          : !args.byokEnabled
+            ? "byok_disabled"
+            : !hasPreferredKey
+              ? "missing_user_key"
+              : !selectedModel
+                ? "missing_model_selection"
+                : !providerModelSupported
+                  ? "model_unsupported_for_capability"
+                  : "ready",
     };
   });
 }
@@ -60,7 +203,7 @@ export const getRoutingInternal = internalQuery({
       ]),
     ) as Record<
       AiCapability,
-      { capability: AiCapability; provider: "openai" | "google"; model: string; enabled: boolean }
+      { capability: AiCapability; provider: Provider; model: string; enabled: boolean }
     >;
     for (const row of rows) {
       routing[row.capability] = {
@@ -88,13 +231,31 @@ export const getUserProviderStateInternal = internalQuery({
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .take(10);
     return {
-      preference: preference ?? {
-        userId: args.userId,
-        byokEnabled: false,
-        preferredProvider: "openai" as const,
-        updatedAt: 0,
-      },
+      preference: preference ?? getDefaultPreferenceState(args.userId),
       secrets,
+    };
+  },
+});
+
+export const getEmbeddingStatusInternal = internalQuery({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const preference = await ctx.db
+      .query("userAiProviderPreferences")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .unique();
+    return {
+      embeddingRebuildStatus: preference?.embeddingRebuildStatus ?? "idle",
+      targetEmbeddingFingerprint: preference?.targetEmbeddingFingerprint,
+      lastReadyEmbeddingFingerprint: preference?.lastReadyEmbeddingFingerprint,
+      embeddingRebuildProcessed: preference?.embeddingRebuildProcessed,
+      embeddingRebuildTotal: preference?.embeddingRebuildTotal,
+      embeddingRebuildStartedAt: preference?.embeddingRebuildStartedAt,
+      embeddingRebuildUpdatedAt: preference?.embeddingRebuildUpdatedAt,
+      embeddingRebuildError: preference?.embeddingRebuildError,
+      isRebuilding: isEmbeddingRebuildActive(preference?.embeddingRebuildStatus),
     };
   },
 });
@@ -161,33 +322,185 @@ export const saveProviderSecretInternal = internalMutation({
   },
 });
 
+export const updateEmbeddingRebuildStateInternal = internalMutation({
+  args: {
+    userId: v.id("users"),
+    embeddingRebuildStatus: v.optional(embeddingRebuildStatusValidator),
+    targetEmbeddingFingerprint: v.optional(v.string()),
+    lastReadyEmbeddingFingerprint: v.optional(v.string()),
+    embeddingRebuildStartedAt: v.optional(v.number()),
+    embeddingRebuildUpdatedAt: v.optional(v.number()),
+    embeddingRebuildProcessed: v.optional(v.number()),
+    embeddingRebuildTotal: v.optional(v.number()),
+    embeddingRebuildError: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("userAiProviderPreferences")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .unique();
+    if (!existing) {
+      return null;
+    }
+    await ctx.db.patch(existing._id, {
+      ...(args.embeddingRebuildStatus !== undefined
+        ? { embeddingRebuildStatus: args.embeddingRebuildStatus }
+        : {}),
+      ...(args.targetEmbeddingFingerprint !== undefined
+        ? { targetEmbeddingFingerprint: args.targetEmbeddingFingerprint }
+        : {}),
+      ...(args.lastReadyEmbeddingFingerprint !== undefined
+        ? { lastReadyEmbeddingFingerprint: args.lastReadyEmbeddingFingerprint }
+        : {}),
+      ...(args.embeddingRebuildStartedAt !== undefined
+        ? { embeddingRebuildStartedAt: args.embeddingRebuildStartedAt }
+        : {}),
+      ...(args.embeddingRebuildUpdatedAt !== undefined
+        ? { embeddingRebuildUpdatedAt: args.embeddingRebuildUpdatedAt }
+        : {}),
+      ...(args.embeddingRebuildProcessed !== undefined
+        ? { embeddingRebuildProcessed: args.embeddingRebuildProcessed }
+        : {}),
+      ...(args.embeddingRebuildTotal !== undefined
+        ? { embeddingRebuildTotal: args.embeddingRebuildTotal }
+        : {}),
+      ...(args.embeddingRebuildError !== undefined
+        ? { embeddingRebuildError: args.embeddingRebuildError }
+        : {}),
+      updatedAt: Date.now(),
+    });
+    return existing._id;
+  },
+});
+
 export const setByokPreference = mutation({
   args: {
     preferredProvider: aiProviderValidator,
     byokEnabled: v.boolean(),
+    capabilityModels: v.optional(v.record(v.string(), v.string())),
+    providerModels: v.optional(v.record(v.string(), v.record(v.string(), v.string()))),
   },
   handler: async (ctx, args) => {
     const user = await resolveUser(ctx);
+    const routing: Record<AiCapability, { provider: Provider; model: string; enabled: boolean }> =
+      await ctx.runQuery(internal.aiProviders.getRoutingInternal, {});
     const existing = await ctx.db
       .query("userAiProviderPreferences")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .unique();
+    const secrets = await ctx.db
+      .query("userAiProviderSecrets")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .take(10);
+    const current = existing ?? getDefaultPreferenceState(user._id);
+    const currentProviderModels = normalizeProviderModelSelections({
+      preferredProvider: current.preferredProvider,
+      capabilityModels: current.capabilityModels,
+      providerModels: current.providerModels,
+    });
+    const nextProviderModels = {
+      ...currentProviderModels,
+      ...(args.providerModels ?? {}),
+      ...(args.capabilityModels
+        ? {
+            [args.preferredProvider]: {
+              ...(currentProviderModels[args.preferredProvider] ?? {}),
+              ...((args.providerModels ?? {})[args.preferredProvider] ?? {}),
+              ...args.capabilityModels,
+            },
+          }
+        : {}),
+    } as AiProviderModelSelections;
+    const currentEmbeddingRoute = getEffectiveEmbeddingRoute({
+      preferredProvider: current.preferredProvider,
+      byokEnabled: current.byokEnabled,
+      providerModels: currentProviderModels,
+      routing,
+    });
+    const nextEmbeddingRoute = getEffectiveEmbeddingRoute({
+      preferredProvider: args.preferredProvider,
+      byokEnabled: args.byokEnabled,
+      providerModels: nextProviderModels,
+      routing,
+    });
+
+    if (
+      !supportsProviderModelCapability(
+        nextEmbeddingRoute.provider,
+        nextEmbeddingRoute.model,
+        "embeddings",
+      )
+    ) {
+      throw new Error(
+        `${nextEmbeddingRoute.provider} model ${nextEmbeddingRoute.model} is not verified for embeddings.`,
+      );
+    }
+
+    if (args.byokEnabled && !secrets.some((secret) => secret.provider === args.preferredProvider)) {
+      throw new Error(`Add a ${args.preferredProvider} API key before enabling BYOK.`);
+    }
+
+    const currentEmbeddingFingerprint = buildEmbeddingFingerprint(
+      currentEmbeddingRoute.provider,
+      currentEmbeddingRoute.model,
+    );
+    const nextEmbeddingFingerprint = buildEmbeddingFingerprint(
+      nextEmbeddingRoute.provider,
+      nextEmbeddingRoute.model,
+    );
+    const embeddingRouteChanged = currentEmbeddingFingerprint !== nextEmbeddingFingerprint;
+
+    if (
+      embeddingRouteChanged &&
+      isEmbeddingRebuildActive(current.embeddingRebuildStatus ?? "idle")
+    ) {
+      throw new Error("Embedding rebuild is already in progress. Wait for it to finish first.");
+    }
+
     const now = Date.now();
+    const nextPreference = {
+      preferredProvider: args.preferredProvider,
+      byokEnabled: args.byokEnabled,
+      providerModels: nextProviderModels,
+      updatedAt: now,
+      ...(embeddingRouteChanged
+        ? {
+            targetEmbeddingFingerprint: nextEmbeddingFingerprint,
+            lastReadyEmbeddingFingerprint:
+              current.lastReadyEmbeddingFingerprint ?? currentEmbeddingFingerprint,
+            embeddingRebuildStatus: "queued" as const,
+            embeddingRebuildStartedAt: now,
+            embeddingRebuildUpdatedAt: now,
+            embeddingRebuildProcessed: 0,
+            embeddingRebuildTotal: await ctx.runQuery(
+              internal.memories.countActiveForEmbeddingRebuild,
+              { userId: user._id },
+            ),
+            embeddingRebuildError: undefined,
+          }
+        : {}),
+    };
+
     if (existing) {
-      await ctx.db.patch(existing._id, {
-        preferredProvider: args.preferredProvider,
-        byokEnabled: args.byokEnabled,
-        updatedAt: now,
-      });
+      await ctx.db.patch(existing._id, nextPreference);
     } else {
       await ctx.db.insert("userAiProviderPreferences", {
         userId: user._id,
-        preferredProvider: args.preferredProvider,
-        byokEnabled: args.byokEnabled,
-        updatedAt: now,
+        ...nextPreference,
+        ...(embeddingRouteChanged ? {} : { embeddingRebuildStatus: "idle" as const }),
       });
     }
-    return { success: true };
+
+    if (embeddingRouteChanged) {
+      await ctx.scheduler.runAfter(0, internal.memories.clearQueryCacheForUser, {
+        userId: user._id,
+      });
+      await ctx.scheduler.runAfter(0, internal.actions.backfillEmbeddings.rebuildUserEmbeddings, {
+        userId: user._id,
+      });
+    }
+
+    return { success: true, embeddingRouteChanged };
   },
 });
 
@@ -215,14 +528,11 @@ export const getSettings = query({
   handler: async (
     ctx,
   ): Promise<{
-    preference: {
-      userId: string;
-      byokEnabled: boolean;
-      preferredProvider: "openai" | "google";
-      updatedAt: number;
+    preference: Omit<PreferenceState, "capabilityModels" | "providerModels"> & {
+      providerModels: AiProviderModelSelections;
     };
     providers: Array<{
-      provider: "openai" | "google";
+      provider: Provider;
       configured: boolean;
       maskedKeySuffix?: string;
       baseUrl?: string;
@@ -231,39 +541,35 @@ export const getSettings = query({
       lastValidationMessage?: string;
       platformConfigured: boolean;
       supportedCapabilities: Array<
-        "chat" | "structured_text" | "embeddings" | "vision" | "transcription" | "image_generation"
+        "chat" | "structured_text" | "embeddings" | "vision" | "transcription"
       >;
+      availableModels: Array<{
+        id: string;
+        label: string;
+        capabilities: Array<"chat" | "structured_text" | "embeddings" | "vision" | "transcription">;
+      }>;
+      defaultModels: Partial<Record<AiCapability, string>>;
+      savedModels: Partial<Record<AiCapability, string>>;
     }>;
-    capabilityMatrix: Array<{
-      capability:
-        | "chat"
-        | "structured_text"
-        | "embeddings"
-        | "vision"
-        | "transcription"
-        | "image_generation";
-      effectiveProvider: "openai" | "google";
-      model: string;
-      billingOwner: "platform" | "user";
-      source: "platform" | "user_byok";
-      reason: string;
+    activeByok: {
       enabled: boolean;
-    }>;
+      provider: Provider;
+      configured: boolean;
+      capabilities: Array<{
+        capability: "chat" | "structured_text" | "embeddings" | "vision" | "transcription";
+        provider: Provider;
+        model: string;
+        active: boolean;
+        available: boolean;
+        reason: string;
+      }>;
+    };
   }> => {
     const user = await resolveUser(ctx);
-    const routing: Record<
-      AiCapability,
-      { provider: "openai" | "google"; model: string; enabled: boolean }
-    > = await ctx.runQuery(internal.aiProviders.getRoutingInternal, {});
     const state: {
-      preference: {
-        userId: string;
-        byokEnabled: boolean;
-        preferredProvider: "openai" | "google";
-        updatedAt: number;
-      };
+      preference: PreferenceState;
       secrets: Array<{
-        provider: "openai" | "google";
+        provider: Provider;
         maskedKeySuffix: string;
         baseUrl?: string;
         lastValidatedAt?: number;
@@ -273,14 +579,34 @@ export const getSettings = query({
     } = await ctx.runQuery(internal.aiProviders.getUserProviderStateInternal, {
       userId: user._id,
     });
-    const connectedProviders = new Set<"openai" | "google">(
-      state.secrets.map((secret: { provider: "openai" | "google" }) => secret.provider),
+    const normalizedProviderModels = normalizeProviderModelSelections({
+      preferredProvider: state.preference.preferredProvider,
+      capabilityModels: state.preference.capabilityModels,
+      providerModels: state.preference.providerModels,
+    });
+    const connectedProviders = new Set<Provider>(
+      state.secrets.map((secret: { provider: Provider }) => secret.provider),
     );
+
     return {
-      preference: state.preference,
+      preference: {
+        userId: state.preference.userId,
+        byokEnabled: state.preference.byokEnabled,
+        preferredProvider: state.preference.preferredProvider,
+        providerModels: normalizedProviderModels,
+        targetEmbeddingFingerprint: state.preference.targetEmbeddingFingerprint,
+        lastReadyEmbeddingFingerprint: state.preference.lastReadyEmbeddingFingerprint,
+        embeddingRebuildStatus: state.preference.embeddingRebuildStatus,
+        embeddingRebuildStartedAt: state.preference.embeddingRebuildStartedAt,
+        embeddingRebuildUpdatedAt: state.preference.embeddingRebuildUpdatedAt,
+        embeddingRebuildProcessed: state.preference.embeddingRebuildProcessed,
+        embeddingRebuildTotal: state.preference.embeddingRebuildTotal,
+        embeddingRebuildError: state.preference.embeddingRebuildError,
+        updatedAt: state.preference.updatedAt,
+      },
       providers: AI_PROVIDERS.map((provider) => {
         const secret = state.secrets.find(
-          (entry: { provider: "openai" | "google" }) => entry.provider === provider,
+          (entry: { provider: Provider }) => entry.provider === provider,
         );
         return {
           provider,
@@ -291,17 +617,25 @@ export const getSettings = query({
           lastValidationStatus: secret?.lastValidationStatus,
           lastValidationMessage: secret?.lastValidationMessage,
           platformConfigured: isProviderConfigured(provider),
-          supportedCapabilities: AI_CAPABILITIES.filter((capability) =>
-            supportsCapability(provider, capability),
-          ),
+          supportedCapabilities: getSupportedCapabilitiesForProvider(provider),
+          availableModels: getProviderAvailableModels(provider),
+          defaultModels: getProviderDefaultModels(provider),
+          savedModels: normalizedProviderModels[provider] ?? {},
         };
       }),
-      capabilityMatrix: buildCapabilityMatrix({
-        preferredProvider: state.preference.preferredProvider,
-        byokEnabled: state.preference.byokEnabled,
-        connectedProviders,
-        routing,
-      }),
+      activeByok: {
+        enabled: state.preference.byokEnabled,
+        provider: state.preference.preferredProvider,
+        configured: connectedProviders.has(state.preference.preferredProvider),
+        capabilities: buildActiveByokCapabilities({
+          preferredProvider: state.preference.preferredProvider,
+          byokEnabled: state.preference.byokEnabled,
+          capabilityModels: state.preference.capabilityModels,
+          providerModels: normalizedProviderModels,
+          connectedProviders,
+          embeddingRebuildStatus: state.preference.embeddingRebuildStatus,
+        }),
+      },
     };
   },
 });
@@ -312,25 +646,17 @@ export const getAdminRouting = query({
     ctx,
   ): Promise<
     Array<{
-      capability:
-        | "chat"
-        | "structured_text"
-        | "embeddings"
-        | "vision"
-        | "transcription"
-        | "image_generation";
-      provider: "openai" | "google";
+      capability: "chat" | "structured_text" | "embeddings" | "vision" | "transcription";
+      provider: Provider;
       model: string;
       enabled: boolean;
-      supportedProviders: Array<"openai" | "google">;
+      supportedProviders: Array<Provider>;
     }>
   > => {
     await requireAdmin(ctx);
-    const routing: Record<
-      AiCapability,
-      { provider: "openai" | "google"; model: string; enabled: boolean }
-    > = await ctx.runQuery(internal.aiProviders.getRoutingInternal, {});
-    return AI_CAPABILITIES.map((capability) => ({
+    const routing: Record<AiCapability, { provider: Provider; model: string; enabled: boolean }> =
+      await ctx.runQuery(internal.aiProviders.getRoutingInternal, {});
+    return USER_VISIBLE_AI_CAPABILITIES.map((capability) => ({
       capability,
       ...routing[capability],
       supportedProviders: AI_PROVIDERS.filter((provider) =>
@@ -350,8 +676,10 @@ export const setAdminRouting = mutation({
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
-    if (!supportsCapability(args.provider, args.capability)) {
-      throw new Error(`${args.provider} does not support ${args.capability}.`);
+    if (!supportsProviderModelCapability(args.provider, args.model, args.capability)) {
+      throw new Error(
+        `${args.provider} model ${args.model} is not verified for ${args.capability}.`,
+      );
     }
     const existing = await ctx.db
       .query("aiRoutingConfig")
@@ -376,9 +704,7 @@ export const getProviderHealth = query({
       provider,
       platformConfigured: isProviderConfigured(provider),
       userKeys: usersWithKeys.filter((row) => row.provider === provider).length,
-      supportedCapabilities: AI_CAPABILITIES.filter((capability) =>
-        supportsCapability(provider, capability),
-      ),
+      supportedCapabilities: getSupportedCapabilitiesForProvider(provider),
       features: Object.entries(FEATURE_TO_CAPABILITY)
         .filter(([, capability]) => supportsCapability(provider, capability))
         .map(([feature]) => feature),

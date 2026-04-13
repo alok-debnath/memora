@@ -1,9 +1,11 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
-import { internalMutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
 import { requireAdmin, resolveUser } from "./lib/withAuth";
+import { aiBilledToValidator } from "./lib/validators";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RAW_EVENT_RETENTION_MS = 90 * DAY_MS;
@@ -20,6 +22,9 @@ const productEventValidator = v.union(
 
 const rangeValidator = v.optional(
   v.union(v.literal("7d"), v.literal("30d"), v.literal("90d"), v.literal("365d"), v.literal("all")),
+);
+const spendSourceValidator = v.optional(
+  v.union(v.literal("combined"), v.literal("memora"), v.literal("user_byok")),
 );
 
 function getDayKey(timestamp: number) {
@@ -45,6 +50,7 @@ type SummaryDoc = Doc<"userAnalyticsSummary">;
 type DailyDoc = Doc<"userAnalyticsDaily">;
 type ModelDailyDoc = Doc<"userAnalyticsModelDaily">;
 type AiVisibility = "user_visible" | "background";
+type AiBilledTo = "memora" | "user_byok";
 
 const searchFeatureValidator = v.union(
   v.literal("memory_search"),
@@ -52,6 +58,74 @@ const searchFeatureValidator = v.union(
   v.literal("deep_search"),
   v.literal("conflict_detection"),
 );
+
+function getEmptyAiSplitTotals() {
+  return {
+    requests: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    audioSeconds: 0,
+    costUsdMicros: 0,
+  };
+}
+
+function getBilledToSplit(row: {
+  billedTo?: AiBilledTo;
+  credentialSource?: "platform" | "user_byok";
+  billingOwner?: "platform" | "user";
+}): AiBilledTo {
+  if (row.billedTo) {
+    return row.billedTo;
+  }
+  return row.credentialSource === "user_byok" || row.billingOwner === "user"
+    ? "user_byok"
+    : "memora";
+}
+
+function getRequestedTotals(args: {
+  memoraRequests?: number;
+  memoraInputTokens?: number;
+  memoraOutputTokens?: number;
+  memoraAudioSeconds?: number;
+  memoraCostUsdMicros?: number;
+  byokRequests?: number;
+  byokInputTokens?: number;
+  byokOutputTokens?: number;
+  byokAudioSeconds?: number;
+  byokCostUsdMicros?: number;
+  combinedRequests: number;
+  combinedInputTokens: number;
+  combinedOutputTokens: number;
+  combinedAudioSeconds: number;
+  combinedCostUsdMicros: number;
+  spendSource?: "combined" | "memora" | "user_byok";
+}) {
+  if (args.spendSource === "memora") {
+    return {
+      requests: args.memoraRequests ?? 0,
+      inputTokens: args.memoraInputTokens ?? 0,
+      outputTokens: args.memoraOutputTokens ?? 0,
+      audioSeconds: args.memoraAudioSeconds ?? 0,
+      costUsdMicros: args.memoraCostUsdMicros ?? 0,
+    };
+  }
+  if (args.spendSource === "user_byok") {
+    return {
+      requests: args.byokRequests ?? 0,
+      inputTokens: args.byokInputTokens ?? 0,
+      outputTokens: args.byokOutputTokens ?? 0,
+      audioSeconds: args.byokAudioSeconds ?? 0,
+      costUsdMicros: args.byokCostUsdMicros ?? 0,
+    };
+  }
+  return {
+    requests: args.combinedRequests,
+    inputTokens: args.combinedInputTokens,
+    outputTokens: args.combinedOutputTokens,
+    audioSeconds: args.combinedAudioSeconds,
+    costUsdMicros: args.combinedCostUsdMicros,
+  };
+}
 
 async function ensureAnalyticsSubjectId(
   ctx: Pick<MutationCtx, "db">,
@@ -110,6 +184,16 @@ async function ensureSummary(
     totalAiOutputTokens: 0,
     totalAiAudioSeconds: 0,
     totalAiCostUsdMicros: 0,
+    totalAiMemoraRequests: 0,
+    totalAiMemoraInputTokens: 0,
+    totalAiMemoraOutputTokens: 0,
+    totalAiMemoraAudioSeconds: 0,
+    totalAiMemoraCostUsdMicros: 0,
+    totalAiByokRequests: 0,
+    totalAiByokInputTokens: 0,
+    totalAiByokOutputTokens: 0,
+    totalAiByokAudioSeconds: 0,
+    totalAiByokCostUsdMicros: 0,
     totalAiActions: 0,
     totalBackgroundAiOperations: 0,
     totalSearches: 0,
@@ -160,6 +244,16 @@ async function getOrCreateDaily(
     aiOutputTokens: 0,
     aiAudioSeconds: 0,
     aiCostUsdMicros: 0,
+    aiMemoraRequests: 0,
+    aiMemoraInputTokens: 0,
+    aiMemoraOutputTokens: 0,
+    aiMemoraAudioSeconds: 0,
+    aiMemoraCostUsdMicros: 0,
+    aiByokRequests: 0,
+    aiByokInputTokens: 0,
+    aiByokOutputTokens: 0,
+    aiByokAudioSeconds: 0,
+    aiByokCostUsdMicros: 0,
     aiActions: 0,
     backgroundAiOperations: 0,
     searches: 0,
@@ -192,6 +286,7 @@ async function getOrCreateModelDaily(
     visibility?: AiVisibility;
     credentialSource?: "platform" | "user_byok";
     billingOwner?: "platform" | "user";
+    billedTo?: AiBilledTo;
   },
 ): Promise<ModelDailyDoc> {
   const rows = await ctx.db
@@ -212,7 +307,8 @@ async function getOrCreateModelDaily(
         row.stage === args.stage &&
         row.visibility === args.visibility &&
         row.credentialSource === args.credentialSource &&
-        row.billingOwner === args.billingOwner,
+        row.billingOwner === args.billingOwner &&
+        getBilledToSplit(row) === (args.billedTo ?? "memora"),
     ) ?? null;
   if (existing) {
     return existing;
@@ -230,6 +326,7 @@ async function getOrCreateModelDaily(
     visibility: args.visibility,
     credentialSource: args.credentialSource,
     billingOwner: args.billingOwner,
+    billedTo: args.billedTo,
     requests: 0,
     errors: 0,
     inputTokens: 0,
@@ -237,6 +334,16 @@ async function getOrCreateModelDaily(
     totalTokens: 0,
     audioSeconds: 0,
     costUsdMicros: 0,
+    memoraRequests: 0,
+    memoraInputTokens: 0,
+    memoraOutputTokens: 0,
+    memoraAudioSeconds: 0,
+    memoraCostUsdMicros: 0,
+    byokRequests: 0,
+    byokInputTokens: 0,
+    byokOutputTokens: 0,
+    byokAudioSeconds: 0,
+    byokCostUsdMicros: 0,
     updatedAt: now,
   });
   const created = await ctx.db.get(id);
@@ -433,6 +540,7 @@ export const recordAiUsage = internalMutation({
     visibility: v.optional(v.union(v.literal("user_visible"), v.literal("background"))),
     credentialSource: v.optional(v.union(v.literal("platform"), v.literal("user_byok"))),
     billingOwner: v.optional(v.union(v.literal("platform"), v.literal("user"))),
+    billedTo: v.optional(aiBilledToValidator),
     routingReason: v.optional(v.string()),
     status: v.union(v.literal("success"), v.literal("error")),
     latencyMs: v.optional(v.number()),
@@ -442,6 +550,19 @@ export const recordAiUsage = internalMutation({
     audioSeconds: v.optional(v.number()),
     costUsdMicros: v.optional(v.number()),
     costAvailability: v.union(v.literal("estimated"), v.literal("exact"), v.literal("unavailable")),
+    priceDisplayMode: v.optional(
+      v.union(v.literal("estimated"), v.literal("exact"), v.literal("unavailable")),
+    ),
+    pricingOperation: v.optional(
+      v.union(
+        v.literal("chat_completion"),
+        v.literal("embedding"),
+        v.literal("transcription"),
+        v.literal("image_generation"),
+      ),
+    ),
+    pricingVersion: v.optional(v.string()),
+    pricingReason: v.optional(v.string()),
     metadata: v.optional(v.record(v.string(), v.string())),
   },
   handler: async (ctx, args) => {
@@ -451,6 +572,7 @@ export const recordAiUsage = internalMutation({
     const summary = await ensureSummary(ctx, args.userId);
     const daily = await getOrCreateDaily(ctx, args.userId, dayKey);
     const visibility: AiVisibility = args.visibility ?? "background";
+    const billedTo = args.billedTo ?? getBilledToSplit(args);
     const modelDaily = await getOrCreateModelDaily(ctx, {
       userId: args.userId,
       dayKey,
@@ -462,6 +584,7 @@ export const recordAiUsage = internalMutation({
       visibility,
       credentialSource: args.credentialSource,
       billingOwner: args.billingOwner,
+      billedTo,
     });
 
     const inputTokens = Math.max(0, Math.floor(args.inputTokens ?? 0));
@@ -486,6 +609,7 @@ export const recordAiUsage = internalMutation({
       visibility,
       credentialSource: args.credentialSource,
       billingOwner: args.billingOwner,
+      billedTo,
       routingReason: args.routingReason,
       status: args.status,
       latencyMs: args.latencyMs,
@@ -495,8 +619,24 @@ export const recordAiUsage = internalMutation({
       audioSeconds: audioSeconds || undefined,
       costUsdMicros: costUsdMicros || undefined,
       costAvailability: args.costAvailability,
+      priceDisplayMode: args.priceDisplayMode,
+      pricingOperation: args.pricingOperation,
+      pricingVersion: args.pricingVersion,
+      pricingReason: args.pricingReason,
       metadata: args.metadata,
     });
+
+    const isMemora = billedTo === "memora";
+    const summaryMemoraRequests = summary.totalAiMemoraRequests ?? 0;
+    const summaryMemoraInputTokens = summary.totalAiMemoraInputTokens ?? 0;
+    const summaryMemoraOutputTokens = summary.totalAiMemoraOutputTokens ?? 0;
+    const summaryMemoraAudioSeconds = summary.totalAiMemoraAudioSeconds ?? 0;
+    const summaryMemoraCostUsdMicros = summary.totalAiMemoraCostUsdMicros ?? 0;
+    const summaryByokRequests = summary.totalAiByokRequests ?? 0;
+    const summaryByokInputTokens = summary.totalAiByokInputTokens ?? 0;
+    const summaryByokOutputTokens = summary.totalAiByokOutputTokens ?? 0;
+    const summaryByokAudioSeconds = summary.totalAiByokAudioSeconds ?? 0;
+    const summaryByokCostUsdMicros = summary.totalAiByokCostUsdMicros ?? 0;
 
     await ctx.db.patch(summary._id, {
       analyticsSubjectId,
@@ -506,12 +646,33 @@ export const recordAiUsage = internalMutation({
       totalAiOutputTokens: summary.totalAiOutputTokens + outputTokens,
       totalAiAudioSeconds: summary.totalAiAudioSeconds + audioSeconds,
       totalAiCostUsdMicros: summary.totalAiCostUsdMicros + costUsdMicros,
+      totalAiMemoraRequests: summaryMemoraRequests + (isMemora ? 1 : 0),
+      totalAiMemoraInputTokens: summaryMemoraInputTokens + (isMemora ? inputTokens : 0),
+      totalAiMemoraOutputTokens: summaryMemoraOutputTokens + (isMemora ? outputTokens : 0),
+      totalAiMemoraAudioSeconds: summaryMemoraAudioSeconds + (isMemora ? audioSeconds : 0),
+      totalAiMemoraCostUsdMicros: summaryMemoraCostUsdMicros + (isMemora ? costUsdMicros : 0),
+      totalAiByokRequests: summaryByokRequests + (!isMemora ? 1 : 0),
+      totalAiByokInputTokens: summaryByokInputTokens + (!isMemora ? inputTokens : 0),
+      totalAiByokOutputTokens: summaryByokOutputTokens + (!isMemora ? outputTokens : 0),
+      totalAiByokAudioSeconds: summaryByokAudioSeconds + (!isMemora ? audioSeconds : 0),
+      totalAiByokCostUsdMicros: summaryByokCostUsdMicros + (!isMemora ? costUsdMicros : 0),
       totalAiActions: (summary.totalAiActions ?? 0) + (visibility === "user_visible" ? 1 : 0),
       totalBackgroundAiOperations:
         (summary.totalBackgroundAiOperations ?? 0) + (visibility === "background" ? 1 : 0),
       lastActivityAt: now,
       updatedAt: now,
     });
+
+    const dailyMemoraRequests = daily.aiMemoraRequests ?? 0;
+    const dailyMemoraInputTokens = daily.aiMemoraInputTokens ?? 0;
+    const dailyMemoraOutputTokens = daily.aiMemoraOutputTokens ?? 0;
+    const dailyMemoraAudioSeconds = daily.aiMemoraAudioSeconds ?? 0;
+    const dailyMemoraCostUsdMicros = daily.aiMemoraCostUsdMicros ?? 0;
+    const dailyByokRequests = daily.aiByokRequests ?? 0;
+    const dailyByokInputTokens = daily.aiByokInputTokens ?? 0;
+    const dailyByokOutputTokens = daily.aiByokOutputTokens ?? 0;
+    const dailyByokAudioSeconds = daily.aiByokAudioSeconds ?? 0;
+    const dailyByokCostUsdMicros = daily.aiByokCostUsdMicros ?? 0;
 
     await ctx.db.patch(daily._id, {
       analyticsSubjectId,
@@ -521,6 +682,16 @@ export const recordAiUsage = internalMutation({
       aiOutputTokens: daily.aiOutputTokens + outputTokens,
       aiAudioSeconds: daily.aiAudioSeconds + audioSeconds,
       aiCostUsdMicros: daily.aiCostUsdMicros + costUsdMicros,
+      aiMemoraRequests: dailyMemoraRequests + (isMemora ? 1 : 0),
+      aiMemoraInputTokens: dailyMemoraInputTokens + (isMemora ? inputTokens : 0),
+      aiMemoraOutputTokens: dailyMemoraOutputTokens + (isMemora ? outputTokens : 0),
+      aiMemoraAudioSeconds: dailyMemoraAudioSeconds + (isMemora ? audioSeconds : 0),
+      aiMemoraCostUsdMicros: dailyMemoraCostUsdMicros + (isMemora ? costUsdMicros : 0),
+      aiByokRequests: dailyByokRequests + (!isMemora ? 1 : 0),
+      aiByokInputTokens: dailyByokInputTokens + (!isMemora ? inputTokens : 0),
+      aiByokOutputTokens: dailyByokOutputTokens + (!isMemora ? outputTokens : 0),
+      aiByokAudioSeconds: dailyByokAudioSeconds + (!isMemora ? audioSeconds : 0),
+      aiByokCostUsdMicros: dailyByokCostUsdMicros + (!isMemora ? costUsdMicros : 0),
       aiActions: (daily.aiActions ?? 0) + (visibility === "user_visible" ? 1 : 0),
       backgroundAiOperations:
         (daily.backgroundAiOperations ?? 0) + (visibility === "background" ? 1 : 0),
@@ -533,6 +704,7 @@ export const recordAiUsage = internalMutation({
       visibility,
       credentialSource: args.credentialSource,
       billingOwner: args.billingOwner,
+      billedTo,
       requests: modelDaily.requests + 1,
       errors: modelDaily.errors + (args.status === "error" ? 1 : 0),
       inputTokens: modelDaily.inputTokens + inputTokens,
@@ -540,6 +712,16 @@ export const recordAiUsage = internalMutation({
       totalTokens: modelDaily.totalTokens + totalTokens,
       audioSeconds: modelDaily.audioSeconds + audioSeconds,
       costUsdMicros: modelDaily.costUsdMicros + costUsdMicros,
+      memoraRequests: (modelDaily.memoraRequests ?? 0) + (isMemora ? 1 : 0),
+      memoraInputTokens: (modelDaily.memoraInputTokens ?? 0) + (isMemora ? inputTokens : 0),
+      memoraOutputTokens: (modelDaily.memoraOutputTokens ?? 0) + (isMemora ? outputTokens : 0),
+      memoraAudioSeconds: (modelDaily.memoraAudioSeconds ?? 0) + (isMemora ? audioSeconds : 0),
+      memoraCostUsdMicros: (modelDaily.memoraCostUsdMicros ?? 0) + (isMemora ? costUsdMicros : 0),
+      byokRequests: (modelDaily.byokRequests ?? 0) + (!isMemora ? 1 : 0),
+      byokInputTokens: (modelDaily.byokInputTokens ?? 0) + (!isMemora ? inputTokens : 0),
+      byokOutputTokens: (modelDaily.byokOutputTokens ?? 0) + (!isMemora ? outputTokens : 0),
+      byokAudioSeconds: (modelDaily.byokAudioSeconds ?? 0) + (!isMemora ? audioSeconds : 0),
+      byokCostUsdMicros: (modelDaily.byokCostUsdMicros ?? 0) + (!isMemora ? costUsdMicros : 0),
       updatedAt: now,
     });
     return null;
@@ -561,10 +743,12 @@ export const overview = query({
   args: {
     token: v.string(),
     range: rangeValidator,
+    spendSource: spendSourceValidator,
   },
   handler: async (ctx, args) => {
     const { userId } = await resolveUser(ctx, args.token);
     const range = args.range ?? "30d";
+    const spendSource = args.spendSource ?? "combined";
     const summary = await ctx.db
       .query("userAnalyticsSummary")
       .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -615,16 +799,39 @@ export const overview = query({
       }
     }
 
-    const topModel = [...modelRows].sort((a, b) => b.costUsdMicros - a.costUsdMicros)[0] ?? null;
+    const filteredModelRows = modelRows.filter(
+      (row) => spendSource === "combined" || getBilledToSplit(row) === spendSource,
+    );
+    const topModel =
+      [...filteredModelRows].sort((a, b) => b.costUsdMicros - a.costUsdMicros)[0] ?? null;
     const totals = dailyRows.reduce(
       (acc, row) => {
-        acc.aiRequests += row.aiRequests;
+        const split = getRequestedTotals({
+          memoraRequests: row.aiMemoraRequests,
+          memoraInputTokens: row.aiMemoraInputTokens,
+          memoraOutputTokens: row.aiMemoraOutputTokens,
+          memoraAudioSeconds: row.aiMemoraAudioSeconds,
+          memoraCostUsdMicros: row.aiMemoraCostUsdMicros,
+          byokRequests: row.aiByokRequests,
+          byokInputTokens: row.aiByokInputTokens,
+          byokOutputTokens: row.aiByokOutputTokens,
+          byokAudioSeconds: row.aiByokAudioSeconds,
+          byokCostUsdMicros: row.aiByokCostUsdMicros,
+          combinedRequests: row.aiRequests,
+          combinedInputTokens: row.aiInputTokens,
+          combinedOutputTokens: row.aiOutputTokens,
+          combinedAudioSeconds: row.aiAudioSeconds,
+          combinedCostUsdMicros: row.aiCostUsdMicros,
+          spendSource,
+        });
+        acc.aiRequests += split.requests;
         acc.aiActions += row.aiActions ?? 0;
         acc.backgroundAiOperations += row.backgroundAiOperations ?? 0;
         acc.aiErrors += row.aiErrors;
-        acc.aiInputTokens += row.aiInputTokens;
-        acc.aiOutputTokens += row.aiOutputTokens;
-        acc.aiCostUsdMicros += row.aiCostUsdMicros;
+        acc.aiInputTokens += split.inputTokens;
+        acc.aiOutputTokens += split.outputTokens;
+        acc.aiAudioSeconds += split.audioSeconds;
+        acc.aiCostUsdMicros += split.costUsdMicros;
         acc.attachmentsUploaded += row.attachmentUploads;
         acc.attachmentBytesUploaded += row.attachmentBytesUploaded;
         acc.memoriesCreated += row.memoryCreates;
@@ -647,6 +854,7 @@ export const overview = query({
         aiErrors: 0,
         aiInputTokens: 0,
         aiOutputTokens: 0,
+        aiAudioSeconds: 0,
         aiCostUsdMicros: 0,
         attachmentsUploaded: 0,
         attachmentBytesUploaded: 0,
@@ -667,14 +875,19 @@ export const overview = query({
     return {
       trackingStartedAt: summary?.trackingStartedAt ?? null,
       lastActivityAt: summary?.lastActivityAt ?? null,
+      spendSource,
       totals: {
         totalMemories: memoryStats?.totalMemories ?? 0,
         totalReminders: memoryStats?.totalReminders ?? 0,
         totalDiaryEntries: diaryEntries.length,
         totalAiRequests: summary?.totalAiRequests ?? 0,
+        totalAiMemoraRequests: summary?.totalAiMemoraRequests ?? 0,
+        totalAiByokRequests: summary?.totalAiByokRequests ?? 0,
         totalAiActions: summary?.totalAiActions ?? 0,
         totalBackgroundAiOperations: summary?.totalBackgroundAiOperations ?? 0,
         totalAiCostUsdMicros: summary?.totalAiCostUsdMicros ?? 0,
+        totalAiMemoraCostUsdMicros: summary?.totalAiMemoraCostUsdMicros ?? 0,
+        totalAiByokCostUsdMicros: summary?.totalAiByokCostUsdMicros ?? 0,
         totalSearches: summary?.totalSearches ?? 0,
         totalDeepSearches: summary?.totalDeepSearches ?? 0,
         totalSearchCacheHits: summary?.totalSearchCacheHits ?? 0,
@@ -700,6 +913,7 @@ export const overview = query({
             feature: topModel.feature,
             stage: topModel.stage ?? null,
             visibility: topModel.visibility ?? "background",
+            billedTo: getBilledToSplit(topModel),
             requests: topModel.requests,
             costUsdMicros: topModel.costUsdMicros,
             totalTokens: topModel.totalTokens,
@@ -710,12 +924,22 @@ export const overview = query({
         memoryCreates: row.memoryCreates,
         diaryEntries: row.diaryEntries,
         chatMessages: row.chatMessages,
-        aiRequests: row.aiRequests,
+        aiRequests:
+          spendSource === "memora"
+            ? (row.aiMemoraRequests ?? 0)
+            : spendSource === "user_byok"
+              ? (row.aiByokRequests ?? 0)
+              : row.aiRequests,
         aiActions: row.aiActions ?? 0,
         backgroundAiOperations: row.backgroundAiOperations ?? 0,
         searches: row.searches ?? 0,
         vectorSearches: row.vectorSearches ?? 0,
-        aiCostUsdMicros: row.aiCostUsdMicros,
+        aiCostUsdMicros:
+          spendSource === "memora"
+            ? (row.aiMemoraCostUsdMicros ?? 0)
+            : spendSource === "user_byok"
+              ? (row.aiByokCostUsdMicros ?? 0)
+              : row.aiCostUsdMicros,
         attachmentBytesUploaded: row.attachmentBytesUploaded,
       })),
     };
@@ -726,10 +950,12 @@ export const aiBreakdown = query({
   args: {
     token: v.string(),
     range: rangeValidator,
+    spendSource: spendSourceValidator,
   },
   handler: async (ctx, args) => {
     const { userId } = await resolveUser(ctx, args.token);
     const range = args.range ?? "30d";
+    const spendSource = args.spendSource ?? "combined";
     const rows = filterDailyByRange(
       await ctx.db
         .query("userAnalyticsModelDaily")
@@ -737,7 +963,7 @@ export const aiBreakdown = query({
         .order("desc")
         .take(Math.max(getRangeDays(range) * 10, 60)),
       range,
-    );
+    ).filter((row) => spendSource === "combined" || getBilledToSplit(row) === spendSource);
     const grouped = new Map<
       string,
       {
@@ -747,6 +973,7 @@ export const aiBreakdown = query({
         feature: string;
         stage?: string;
         visibility: AiVisibility;
+        billedTo: AiBilledTo;
         requests: number;
         errors: number;
         inputTokens: number;
@@ -765,6 +992,7 @@ export const aiBreakdown = query({
         row.feature,
         row.stage ?? "",
         row.visibility ?? "background",
+        getBilledToSplit(row),
       ].join("|");
       const current = grouped.get(key) ?? {
         provider: row.provider,
@@ -773,6 +1001,7 @@ export const aiBreakdown = query({
         feature: row.feature,
         stage: row.stage,
         visibility: row.visibility ?? "background",
+        billedTo: getBilledToSplit(row),
         requests: 0,
         errors: 0,
         inputTokens: 0,
@@ -801,10 +1030,12 @@ export const aiFeatureBreakdown = query({
   args: {
     token: v.string(),
     range: rangeValidator,
+    spendSource: spendSourceValidator,
   },
   handler: async (ctx, args) => {
     const { userId } = await resolveUser(ctx, args.token);
     const range = args.range ?? "30d";
+    const spendSource = args.spendSource ?? "combined";
     const rows = filterDailyByRange(
       await ctx.db
         .query("userAnalyticsModelDaily")
@@ -812,13 +1043,14 @@ export const aiFeatureBreakdown = query({
         .order("desc")
         .take(Math.max(getRangeDays(range) * 10, 60)),
       range,
-    );
+    ).filter((row) => spendSource === "combined" || getBilledToSplit(row) === spendSource);
     const grouped = new Map<
       string,
       {
         feature: string;
         stage: string;
         visibility: AiVisibility;
+        billedTo: AiBilledTo;
         requests: number;
         errors: number;
         inputTokens: number;
@@ -832,11 +1064,13 @@ export const aiFeatureBreakdown = query({
     for (const row of rows) {
       const stage = row.stage ?? row.operation;
       const visibility = row.visibility ?? "background";
-      const key = [row.feature, stage, visibility].join("|");
+      const billedTo = getBilledToSplit(row);
+      const key = [row.feature, stage, visibility, billedTo].join("|");
       const current = grouped.get(key) ?? {
         feature: row.feature,
         stage,
         visibility,
+        billedTo,
         requests: 0,
         errors: 0,
         inputTokens: 0,
@@ -865,15 +1099,27 @@ export const aiFeatureBreakdown = query({
 export const recentEvents = query({
   args: {
     token: v.string(),
+    range: rangeValidator,
+    spendSource: spendSourceValidator,
     paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
     const { userId } = await resolveUser(ctx, args.token);
-    return await ctx.db
+    const range = args.range ?? "30d";
+    const spendSource = args.spendSource ?? "combined";
+    const result = await ctx.db
       .query("userAiUsageEvents")
       .withIndex("by_user_occurred_at", (q) => q.eq("userId", userId))
       .order("desc")
       .paginate(args.paginationOpts);
+    return {
+      ...result,
+      page: result.page.filter(
+        (row) =>
+          row.dayKey >= getDayKey(Date.now() - (getRangeDays(range) - 1) * DAY_MS) &&
+          (spendSource === "combined" || getBilledToSplit(row) === spendSource),
+      ),
+    };
   },
 });
 
@@ -899,6 +1145,7 @@ export const chatTurnBreakdown = query({
         feature: string;
         stage: string;
         visibility: AiVisibility;
+        billedTo: AiBilledTo;
         providers: string[];
         models: string[];
         requests: number;
@@ -919,6 +1166,7 @@ export const chatTurnBreakdown = query({
         feature: string;
         stage?: string;
         visibility: AiVisibility;
+        billedTo: AiBilledTo;
         requests: number;
         errors: number;
         totalTokens: number;
@@ -949,6 +1197,7 @@ export const chatTurnBreakdown = query({
       const isSearch = row.provider === "memora" && row.operation === "search";
       const visibility = row.visibility ?? "background";
       const stage = row.stage ?? row.operation;
+      const billedTo = getBilledToSplit(row);
       const rowLatency = row.latencyMs ?? 0;
       const rowTotalTokens = row.totalTokens ?? 0;
       const rowCost = row.costUsdMicros ?? 0;
@@ -974,11 +1223,12 @@ export const chatTurnBreakdown = query({
         totalLatencyMs += rowLatency;
       }
 
-      const featureKey = [row.feature, stage, visibility].join("|");
+      const featureKey = [row.feature, stage, visibility, billedTo].join("|");
       const featureCurrent = featureGroups.get(featureKey) ?? {
         feature: row.feature,
         stage,
         visibility,
+        billedTo,
         providers: [],
         models: [],
         requests: 0,
@@ -1011,6 +1261,7 @@ export const chatTurnBreakdown = query({
         row.feature,
         stage,
         visibility,
+        billedTo,
       ].join("|");
       const modelCurrent = modelGroups.get(modelKey) ?? {
         provider: row.provider,
@@ -1019,6 +1270,7 @@ export const chatTurnBreakdown = query({
         feature: row.feature,
         stage,
         visibility,
+        billedTo,
         requests: 0,
         errors: 0,
         totalTokens: 0,
@@ -1084,6 +1336,7 @@ export const chatTurnBreakdown = query({
         feature: row.feature,
         stage: row.stage ?? row.operation,
         visibility: row.visibility ?? "background",
+        billedTo: getBilledToSplit(row),
         status: row.status,
         latencyMs: row.latencyMs ?? 0,
         totalTokens: row.totalTokens ?? 0,
@@ -1131,6 +1384,10 @@ export const adminOverview = query({
         acc.subjects = subjects.size;
         acc.aiRequests += row.aiRequests;
         acc.aiCostUsdMicros += row.aiCostUsdMicros;
+        acc.memoraAiRequests += row.aiMemoraRequests ?? 0;
+        acc.memoraAiCostUsdMicros += row.aiMemoraCostUsdMicros ?? 0;
+        acc.byokAiRequests += row.aiByokRequests ?? 0;
+        acc.byokAiCostUsdMicros += row.aiByokCostUsdMicros ?? 0;
         acc.searches += row.searches ?? 0;
         acc.deepSearches += row.deepSearches ?? 0;
         acc.vectorSearches += row.vectorSearches ?? 0;
@@ -1141,6 +1398,10 @@ export const adminOverview = query({
         subjects: subjects.size,
         aiRequests: 0,
         aiCostUsdMicros: 0,
+        memoraAiRequests: 0,
+        memoraAiCostUsdMicros: 0,
+        byokAiRequests: 0,
+        byokAiCostUsdMicros: 0,
         searches: 0,
         deepSearches: 0,
         vectorSearches: 0,
@@ -1161,6 +1422,104 @@ export const adminRecentEvents = query({
       .withIndex("by_occurred_at")
       .order("desc")
       .paginate(args.paginationOpts);
+  },
+});
+
+export const resetAiAnalytics = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    await ctx.scheduler.runAfter(0, internal.analytics.resetAiAnalyticsBatch, {});
+    return { success: true };
+  },
+});
+
+export const resetAiAnalyticsBatch = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    let processed = 0;
+
+    const usageEvents = await ctx.db.query("userAiUsageEvents").take(200);
+    for (const row of usageEvents) {
+      await ctx.db.delete(row._id);
+      processed += 1;
+    }
+    if (usageEvents.length > 0) {
+      await ctx.scheduler.runAfter(0, internal.analytics.resetAiAnalyticsBatch, {});
+      return { processed, stage: "usage_events" };
+    }
+
+    const modelDailyRows = await ctx.db.query("userAnalyticsModelDaily").take(200);
+    for (const row of modelDailyRows) {
+      await ctx.db.delete(row._id);
+      processed += 1;
+    }
+    if (modelDailyRows.length > 0) {
+      await ctx.scheduler.runAfter(0, internal.analytics.resetAiAnalyticsBatch, {});
+      return { processed, stage: "model_daily" };
+    }
+
+    const dailyRows = await ctx.db.query("userAnalyticsDaily").take(200);
+    for (const row of dailyRows) {
+      await ctx.db.patch(row._id, {
+        aiRequests: 0,
+        aiErrors: 0,
+        aiInputTokens: 0,
+        aiOutputTokens: 0,
+        aiAudioSeconds: 0,
+        aiCostUsdMicros: 0,
+        aiMemoraRequests: 0,
+        aiMemoraInputTokens: 0,
+        aiMemoraOutputTokens: 0,
+        aiMemoraAudioSeconds: 0,
+        aiMemoraCostUsdMicros: 0,
+        aiByokRequests: 0,
+        aiByokInputTokens: 0,
+        aiByokOutputTokens: 0,
+        aiByokAudioSeconds: 0,
+        aiByokCostUsdMicros: 0,
+        aiActions: 0,
+        backgroundAiOperations: 0,
+        updatedAt: Date.now(),
+      });
+      processed += 1;
+    }
+    if (dailyRows.length > 0) {
+      await ctx.scheduler.runAfter(0, internal.analytics.resetAiAnalyticsBatch, {});
+      return { processed, stage: "daily" };
+    }
+
+    const summaryRows = await ctx.db.query("userAnalyticsSummary").take(200);
+    for (const row of summaryRows) {
+      await ctx.db.patch(row._id, {
+        totalAiRequests: 0,
+        totalAiErrors: 0,
+        totalAiInputTokens: 0,
+        totalAiOutputTokens: 0,
+        totalAiAudioSeconds: 0,
+        totalAiCostUsdMicros: 0,
+        totalAiMemoraRequests: 0,
+        totalAiMemoraInputTokens: 0,
+        totalAiMemoraOutputTokens: 0,
+        totalAiMemoraAudioSeconds: 0,
+        totalAiMemoraCostUsdMicros: 0,
+        totalAiByokRequests: 0,
+        totalAiByokInputTokens: 0,
+        totalAiByokOutputTokens: 0,
+        totalAiByokAudioSeconds: 0,
+        totalAiByokCostUsdMicros: 0,
+        totalAiActions: 0,
+        totalBackgroundAiOperations: 0,
+        updatedAt: Date.now(),
+      });
+      processed += 1;
+    }
+    if (summaryRows.length > 0) {
+      await ctx.scheduler.runAfter(0, internal.analytics.resetAiAnalyticsBatch, {});
+      return { processed, stage: "summary" };
+    }
+
+    return { processed, stage: "done" };
   },
 });
 

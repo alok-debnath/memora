@@ -188,6 +188,8 @@ export const exportAllData = query({
           ? {
               byokEnabled: aiProviderPreference.byokEnabled,
               preferredProvider: aiProviderPreference.preferredProvider,
+              capabilityModels: aiProviderPreference.capabilityModels,
+              providerModels: aiProviderPreference.providerModels,
             }
           : null,
         configuredProviders: aiProviderSecrets.map((secret) => ({

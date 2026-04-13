@@ -44,6 +44,7 @@ export const updateEmbedding = internalMutation({
   args: {
     memoryId: v.id("memories"),
     embedding: v.array(v.float64()),
+    embeddingFingerprint: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const memory = await ctx.db.get(args.memoryId);
@@ -55,6 +56,7 @@ export const updateEmbedding = internalMutation({
     }
     await ctx.db.patch(args.memoryId, {
       embedding: args.embedding,
+      ...(args.embeddingFingerprint ? { embeddingFingerprint: args.embeddingFingerprint } : {}),
       embeddingState: deriveEmbeddingState(args.embedding),
     });
   },
@@ -94,6 +96,7 @@ export const updateAIFields = internalMutation({
     sentimentScore: v.optional(v.float64()),
     extractedActions: v.optional(extractedActionsValidator),
     embedding: v.optional(v.array(v.float64())),
+    embeddingFingerprint: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const memory = await ctx.db.get(args.memoryId);

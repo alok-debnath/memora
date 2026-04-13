@@ -5,7 +5,12 @@ import { action, internalAction } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import { OPENAI_CHAT_MODEL, trackedChatCompletion, trackedEmbedText } from "../lib/openai";
+import {
+  getEmbeddingFingerprintForUser,
+  OPENAI_CHAT_MODEL,
+  trackedChatCompletion,
+  trackedEmbedText,
+} from "../lib/openai";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -346,6 +351,7 @@ export const assignTopicsToMemory = internalAction({
     title: v.string(),
     content: v.string(),
     embedding: v.array(v.float64()),
+    embeddingFingerprint: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const topics: TopicRecord[] = await ctx.runQuery(internal.userTopics.listWithCentroids, {
@@ -380,6 +386,7 @@ export const assignTopicsToMemory = internalAction({
         userId: args.userId,
         ...topicData,
         centroid: args.embedding,
+        embeddingFingerprint: args.embeddingFingerprint,
         incrementExistingCount: false,
       });
     } else if (bestMatch.similarity >= AUTO_ASSIGN_THRESHOLD) {
@@ -450,6 +457,7 @@ export const assignTopicsToMemory = internalAction({
             userId: args.userId,
             ...result.topicData,
             centroid: args.embedding,
+            embeddingFingerprint: args.embeddingFingerprint,
             incrementExistingCount: false,
           });
         }
@@ -629,10 +637,13 @@ export const handleManageTopic = internalAction({
             input: [memory.title ?? "", memory.content ?? ""].filter(Boolean).join("\n\n"),
             metadata: { stage: "retag_memory" },
           }));
+        const embeddingFingerprint =
+          memory.embeddingFingerprint ?? (await getEmbeddingFingerprintForUser(ctx, args.userId));
         targetTopicId = await ctx.runMutation(internal.userTopics.createTopic, {
           userId: args.userId,
           ...requestedTopic,
           centroid: embedding,
+          embeddingFingerprint,
           incrementExistingCount: false,
         });
       }

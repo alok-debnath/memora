@@ -11,12 +11,7 @@ import {
   getGoogleDriveAccessToken,
   type AttachmentExtractionResult,
 } from "../lib/attachmentExtraction";
-import {
-  extractTextContent,
-  getOpenAIClientForFeature,
-  OPENAI_CHAT_MODEL,
-  trackedChatCompletion,
-} from "../lib/openai";
+import { extractTextContent, resolveAiRoute, trackedChatCompletion } from "../lib/openai";
 import { runSemanticSearch } from "../lib/semanticSearch";
 import { normalizeSearchQueryHash } from "../lib/search";
 import { normalizeMemoryFields } from "../lib/aiNormalization";
@@ -100,7 +95,7 @@ type CardFlowAttachment = {
 };
 
 type CardFlowSummary = {
-  assistantProvider: "openai";
+  assistantProvider: "openai" | "google";
   turns: number;
   cardCount: number;
   pathMode: "cached" | "fresh";
@@ -137,7 +132,7 @@ type CardFlowStep =
   | {
       kind: "reasoning";
       turns: number;
-      assistantProvider: "openai";
+      assistantProvider: "openai" | "google";
     }
   | {
       kind: "result";
@@ -146,7 +141,7 @@ type CardFlowStep =
 
 type CardFlowPayload = {
   chatTurnId?: string;
-  assistantProvider: "openai";
+  assistantProvider: "openai" | "google";
   toolSequence: string[];
   searches: CardFlowSearch[];
   attachments: CardFlowAttachment[];
@@ -1062,13 +1057,10 @@ export const chat = action({
     if (!session) {
       throw new Error("Unauthorized");
     }
-    const client = await getOpenAIClientForFeature(ctx, {
+    const chatRoute = await resolveAiRoute(ctx, {
       userId: session._id,
       feature: "memory_chat",
     });
-    if (!client) {
-      throw new Error("AI chat is not configured.");
-    }
 
     const effectiveTimezone = args.currentTimezone?.trim() || session.timezone || "UTC";
     const hasDirectAttachments = (args.attachments?.length ?? 0) > 0;
@@ -1223,7 +1215,7 @@ export const chat = action({
       steps.push({
         kind: "reasoning",
         turns,
-        assistantProvider: "openai",
+        assistantProvider: chatRoute.provider,
       });
       steps.push({
         kind: "result",
@@ -1232,12 +1224,12 @@ export const chat = action({
 
       return {
         chatTurnId: String(chatMessageId),
-        assistantProvider: "openai",
+        assistantProvider: chatRoute.provider,
         toolSequence,
         searches,
         attachments,
         summary: {
-          assistantProvider: "openai",
+          assistantProvider: chatRoute.provider,
           turns,
           cardCount,
           pathMode,
@@ -1248,510 +1240,724 @@ export const chat = action({
     };
     let aiResponse = "I'm having trouble connecting right now. Please try again in a moment.";
 
-    if (client) {
-      try {
-        let recentMemoriesCache: MemoryDoc[] | undefined;
-        const getRecentMemoriesCache = async (): Promise<MemoryDoc[]> => {
-          if (!recentMemoriesCache) {
-            recentMemoriesCache = await listMemoriesForAI(ctx, session._id, 100);
-          }
-          return recentMemoriesCache ?? [];
-        };
-
-        await setStreamingStatus({
-          phase: "analyzing",
-          toolName: "planner",
-          detail: "Understanding request and loading relevant context",
-          source: "chat",
-          events: [{ label: "Context", value: "recent chat + memories" }],
-          step: 1,
-          totalSteps: 4,
-        });
-
-        const conversation: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-          {
-            role: "system",
-            content: buildSystemPrompt(
-              effectiveTimezone,
-              args.currentTime ?? new Date().toISOString(),
-            ),
-          },
-          ...recentChat,
-          ...(legacyAttachments.length > 0
-            ? [
-                {
-                  role: "system" as const,
-                  content: `Attachment metadata for the latest user message: ${JSON.stringify(
-                    legacyAttachments,
-                  )}`,
-                },
-              ]
-            : []),
-          ...(extractedChatAttachments.length > 0
-            ? [
-                {
-                  role: "system" as const,
-                  content: buildAttachmentContextMessage(extractedChatAttachments),
-                },
-              ]
-            : []),
-          {
-            role: "user" as const,
-            content: args.message,
-          },
-        ];
-
-        const initialGrounding = await buildGroundingContext(ctx, {
-          token: args.token,
-          message: args.message,
-          userId: session._id,
-          recentMemories: await getRecentMemoriesCache(),
-          skipInitialGroundingSearch: shouldSkipInitialGroundingForCreate,
-          chatTurnId: chatMessageId,
-        });
-        const flowSearches: CardFlowSearch[] = [];
-        const flowToolSequence: string[] = [];
-        const appendFlowTool = (toolName: string) => {
-          if (flowToolSequence[flowToolSequence.length - 1] !== toolName) {
-            flowToolSequence.push(toolName);
-          }
-        };
-
-        if (initialGrounding.shouldGround) {
-          flowSearches.push({
-            source: "grounding",
-            query: args.message,
-            resultCount: initialGrounding.searchCount,
-            cacheState: initialGrounding.isCached ? "cached" : "fresh",
-            searchMode: initialGrounding.isCached ? "semantic_cached" : "semantic_fresh",
-          });
-          conversation.splice(conversation.length - 1, 0, {
-            role: "system",
-            content: [
-              "Authoritative DB grounding for the latest user request follows.",
-              "Treat this as current stored data from Convex, not guesswork.",
-              initialGrounding.shouldPreferUpdate
-                ? "This request appears to modify an existing item. Prefer update_memory. Do not create a new item unless you explicitly determine there is no existing match."
-                : "This request is related to stored personal data. Answer only from DB-backed context or by calling tools again if needed.",
-              `Matched memories: ${JSON.stringify(initialGrounding.searchResults)}`,
-              `Recent memories: ${JSON.stringify(initialGrounding.recentMemories)}`,
-              'CRITICAL: If you use any of the above memories to answer, you MUST call surface_cards with their IDs. If for some reason you cannot call the tool, you MUST append `<!--MEMORA_USED_IDS:["id1"]-->` as the last line of your response.',
-            ].join("\n"),
-          });
+    try {
+      let recentMemoriesCache: MemoryDoc[] | undefined;
+      const getRecentMemoriesCache = async (): Promise<MemoryDoc[]> => {
+        if (!recentMemoriesCache) {
+          recentMemoriesCache = await listMemoriesForAI(ctx, session._id, 100);
         }
+        return recentMemoriesCache ?? [];
+      };
 
+      await setStreamingStatus({
+        phase: "analyzing",
+        toolName: "planner",
+        detail: "Understanding request and loading relevant context",
+        source: "chat",
+        events: [{ label: "Context", value: "recent chat + memories" }],
+        step: 1,
+        totalSteps: 4,
+      });
+
+      const conversation: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+        {
+          role: "system",
+          content: buildSystemPrompt(
+            effectiveTimezone,
+            args.currentTime ?? new Date().toISOString(),
+          ),
+        },
+        ...recentChat,
+        ...(legacyAttachments.length > 0
+          ? [
+              {
+                role: "system" as const,
+                content: `Attachment metadata for the latest user message: ${JSON.stringify(
+                  legacyAttachments,
+                )}`,
+              },
+            ]
+          : []),
+        ...(extractedChatAttachments.length > 0
+          ? [
+              {
+                role: "system" as const,
+                content: buildAttachmentContextMessage(extractedChatAttachments),
+              },
+            ]
+          : []),
+        {
+          role: "user" as const,
+          content: args.message,
+        },
+      ];
+
+      const initialGrounding = await buildGroundingContext(ctx, {
+        token: args.token,
+        message: args.message,
+        userId: session._id,
+        recentMemories: await getRecentMemoriesCache(),
+        skipInitialGroundingSearch: shouldSkipInitialGroundingForCreate,
+        chatTurnId: chatMessageId,
+      });
+      const flowSearches: CardFlowSearch[] = [];
+      const flowToolSequence: string[] = [];
+      const appendFlowTool = (toolName: string) => {
+        if (flowToolSequence[flowToolSequence.length - 1] !== toolName) {
+          flowToolSequence.push(toolName);
+        }
+      };
+
+      if (initialGrounding.shouldGround) {
+        flowSearches.push({
+          source: "grounding",
+          query: args.message,
+          resultCount: initialGrounding.searchCount,
+          cacheState: initialGrounding.isCached ? "cached" : "fresh",
+          searchMode: initialGrounding.isCached ? "semantic_cached" : "semantic_fresh",
+        });
+        conversation.splice(conversation.length - 1, 0, {
+          role: "system",
+          content: [
+            "Authoritative DB grounding for the latest user request follows.",
+            "Treat this as current stored data from Convex, not guesswork.",
+            initialGrounding.shouldPreferUpdate
+              ? "This request appears to modify an existing item. Prefer update_memory. Do not create a new item unless you explicitly determine there is no existing match."
+              : "This request is related to stored personal data. Answer only from DB-backed context or by calling tools again if needed.",
+            `Matched memories: ${JSON.stringify(initialGrounding.searchResults)}`,
+            `Recent memories: ${JSON.stringify(initialGrounding.recentMemories)}`,
+            'CRITICAL: If you use any of the above memories to answer, you MUST call surface_cards with their IDs. If for some reason you cannot call the tool, you MUST append `<!--MEMORA_USED_IDS:["id1"]-->` as the last line of your response.',
+          ].join("\n"),
+        });
+      }
+
+      await setStreamingStatus({
+        query: initialGrounding.shouldGround ? args.message : undefined,
+        phase: initialGrounding.shouldGround ? "grounding" : "thinking",
+        toolName: initialGrounding.shouldGround ? "memory_grounding" : "planner",
+        detail: initialGrounding.shouldGround
+          ? `Checked stored context${initialGrounding.searchCount ? ` (${initialGrounding.searchCount} match${initialGrounding.searchCount === 1 ? "" : "es"})` : ""}`
+          : "Preparing assistant response",
+        source: initialGrounding.shouldGround ? "memories" : "chat",
+        cacheState: initialGrounding.shouldGround
+          ? initialGrounding.isCached
+            ? "cached"
+            : "fresh"
+          : undefined,
+        resultCount: initialGrounding.shouldGround ? initialGrounding.searchCount : undefined,
+        previewItems: initialGrounding.shouldGround
+          ? toPreviewItems(initialGrounding.searchResults, "Stored memory")
+          : undefined,
+        events: initialGrounding.shouldGround
+          ? [
+              { label: "Scope", value: "personal facts and reminders" },
+              { label: "Policy", value: "DB grounded" },
+            ]
+          : undefined,
+        step: 2,
+        totalSteps: 4,
+      });
+
+      let finalText = "";
+      let pendingDeletionItems: Array<{
+        id: string;
+        title: string;
+        content: string;
+        entry_kind: string;
+      }> = [];
+      const pendingCardIds = new Set<string>();
+      let pendingSearchIsCached = false;
+      let surfaceCardsCalled = false;
+      let writeToolCalled = false; // true once update_memory or create_memory actually executes
+      let writeFallbackMessage: string | null = null;
+      // Candidate memory ID+title pairs collected from search/list — used as minimal context for forced surface_cards
+      let surfaceCandidates: Array<{ id: string; title: string }> = [];
+
+      // Keep grounding hits as fallback candidates only. Final surfaced cards
+      // should come from explicit surface_cards tool calls whenever possible.
+      if (initialGrounding.shouldGround) {
+        pendingSearchIsCached = initialGrounding.isCached;
+        if (initialGrounding.searchResults.length > 0) {
+          surfaceCandidates = initialGrounding.searchResults.map((mem) => ({
+            id: String(mem.id),
+            title: mem.title ?? "",
+          }));
+        }
+      }
+      const createdMemoriesByDedupeKey = new Map<string, { id: Id<"memories">; title: string }>();
+
+      let finalIteration = 0;
+      for (let iteration = 0; iteration < 4; iteration += 1) {
+        finalIteration = iteration;
         await setStreamingStatus({
-          query: initialGrounding.shouldGround ? args.message : undefined,
-          phase: initialGrounding.shouldGround ? "grounding" : "thinking",
-          toolName: initialGrounding.shouldGround ? "memory_grounding" : "planner",
-          detail: initialGrounding.shouldGround
-            ? `Checked stored context${initialGrounding.searchCount ? ` (${initialGrounding.searchCount} match${initialGrounding.searchCount === 1 ? "" : "es"})` : ""}`
-            : "Preparing assistant response",
-          source: initialGrounding.shouldGround ? "memories" : "chat",
-          cacheState: initialGrounding.shouldGround
-            ? initialGrounding.isCached
-              ? "cached"
-              : "fresh"
-            : undefined,
-          resultCount: initialGrounding.shouldGround ? initialGrounding.searchCount : undefined,
-          previewItems: initialGrounding.shouldGround
-            ? toPreviewItems(initialGrounding.searchResults, "Stored memory")
-            : undefined,
-          events: initialGrounding.shouldGround
-            ? [
-                { label: "Scope", value: "personal facts and reminders" },
-                { label: "Policy", value: "DB grounded" },
-              ]
-            : undefined,
+          phase: "thinking",
+          toolName: "planner",
+          detail:
+            iteration === 0
+              ? "Choosing the next backend operation"
+              : "Continuing multi-step reasoning",
+          source: "chat",
           step: 2,
           totalSteps: 4,
         });
+        const response = await trackedChatCompletion(ctx, {
+          userId: session._id,
+          feature: "memory_chat",
+          stage: "planner",
+          visibility: "user_visible",
+          link: analyticsLink,
+          request: {
+            model: chatRoute.model,
+            messages: conversation,
+            tools: TOOLS,
+            tool_choice: "auto",
+            temperature: 0.3,
+            max_completion_tokens: 2048,
+          },
+        });
 
-        let finalText = "";
-        let pendingDeletionItems: Array<{
-          id: string;
-          title: string;
-          content: string;
-          entry_kind: string;
-        }> = [];
-        const pendingCardIds = new Set<string>();
-        let pendingSearchIsCached = false;
-        let surfaceCardsCalled = false;
-        let writeToolCalled = false; // true once update_memory or create_memory actually executes
-        let writeFallbackMessage: string | null = null;
-        // Candidate memory ID+title pairs collected from search/list — used as minimal context for forced surface_cards
-        let surfaceCandidates: Array<{ id: string; title: string }> = [];
-
-        // Keep grounding hits as fallback candidates only. Final surfaced cards
-        // should come from explicit surface_cards tool calls whenever possible.
-        if (initialGrounding.shouldGround) {
-          pendingSearchIsCached = initialGrounding.isCached;
-          if (initialGrounding.searchResults.length > 0) {
-            surfaceCandidates = initialGrounding.searchResults.map((mem) => ({
-              id: String(mem.id),
-              title: mem.title ?? "",
-            }));
-          }
+        const choice = response.choices[0]?.message;
+        if (!choice) {
+          break;
         }
-        const createdMemoriesByDedupeKey = new Map<string, { id: Id<"memories">; title: string }>();
 
-        let finalIteration = 0;
-        for (let iteration = 0; iteration < 4; iteration += 1) {
-          finalIteration = iteration;
+        const content = extractTextContent(choice.content);
+        if (!choice.tool_calls?.length) {
+          // Conditional Forced Turn Fallback:
+          // If grounding/search was active but the AI forgot the mandatory <!--MEMORA_USED_IDS--> comment,
+          // we force one final turn to collect them. This handles broad lists and edge cases.
+          if (
+            content &&
+            (initialGrounding.shouldGround || surfaceCandidates.length > 0) &&
+            !surfaceCardsCalled &&
+            !content.includes("<!--MEMORA_USED_IDS:") &&
+            iteration < 3
+          ) {
+            conversation.push({ role: "assistant", content });
+            conversation.push({
+              role: "user",
+              content:
+                'You answered the user but forgot to provide the memory IDs you used. You MUST append <!--MEMORA_USED_IDS:["id1", "id2"]--> as the final line of your response with the IDs of the memories you drew on.',
+            });
+            continue;
+          }
+          finalText = content || finalText;
+          break;
+        }
+
+        conversation.push({
+          role: "assistant",
+          content,
+          tool_calls: choice.tool_calls,
+        });
+
+        for (const toolCall of choice.tool_calls) {
+          if (toolCall.type !== "function") {
+            continue;
+          }
+
+          const fnName = toolCall.function.name;
+          appendFlowTool(fnName);
+          const fnArgs = JSON.parse(toolCall.function.arguments || "{}") as Record<string, unknown>;
+          const toolDetails: Record<string, StreamingStatus> = {
+            search_memories: {
+              phase: "searching",
+              detail: `Searching memories${typeof fnArgs.query === "string" && fnArgs.query.trim() ? ` for "${String(fnArgs.query).trim()}"` : ""}`,
+              source: "memories",
+              events: [
+                {
+                  label: "Scope",
+                  value: "title, content, people, locations, topics",
+                },
+                { label: "Mode", value: "semantic + keyword" },
+              ],
+              query: typeof fnArgs.query === "string" ? String(fnArgs.query) : undefined,
+            },
+            search_documents: {
+              phase: "searching",
+              detail: `Searching documents${typeof fnArgs.query === "string" && fnArgs.query.trim() ? ` for "${String(fnArgs.query).trim()}"` : ""}`,
+              source: "documents",
+              events: [
+                {
+                  label: "Scope",
+                  value: "filename, summary, extracted text, key details",
+                },
+                { label: "Mode", value: "vector + keyword" },
+              ],
+              query: typeof fnArgs.query === "string" ? String(fnArgs.query) : undefined,
+            },
+            create_memory: {
+              phase: "writing",
+              detail: "Saving a new memory",
+              source: "memories",
+              events: [{ label: "Operation", value: "insert" }],
+            },
+            update_memory: {
+              phase: "writing",
+              detail: "Updating an existing memory or reminder",
+              source: "memories",
+              events: [{ label: "Operation", value: "update" }],
+            },
+            sync_reminder: {
+              phase: "writing",
+              detail: "Triggering Google Calendar sync for a reminder",
+              source: "integrations",
+              events: [{ label: "Operation", value: "manual reminder sync" }],
+            },
+            remove_reminder_sync: {
+              phase: "writing",
+              detail: "Removing Google Calendar sync for a reminder",
+              source: "integrations",
+              events: [{ label: "Operation", value: "remove reminder sync" }],
+            },
+            propose_deletion: {
+              phase: "searching",
+              detail: "Finding items to delete for confirmation",
+              source: "memories",
+              events: [{ label: "Operation", value: "find matches only" }],
+            },
+            list_deleted_memories: {
+              phase: "loading",
+              detail: "Loading deleted memories",
+              source: "memories",
+              events: [{ label: "Status", value: "deleted" }],
+            },
+            restore_memory: {
+              phase: "writing",
+              detail: "Restoring a deleted memory",
+              source: "memories",
+              events: [{ label: "Operation", value: "restore" }],
+            },
+            list_memories: {
+              phase: "loading",
+              detail: "Listing stored memories",
+              source: "memories",
+              events: [{ label: "Status", value: "active" }],
+            },
+            get_stats: {
+              phase: "analyzing",
+              detail: "Computing memory statistics",
+              source: "memories",
+              events: [{ label: "Analysis", value: "counts and trends" }],
+            },
+            analyze_memories: {
+              phase: "analyzing",
+              detail: "Analyzing memory patterns",
+              source: "memories",
+              events: [{ label: "Analysis", value: "pattern scan" }],
+            },
+            history: {
+              phase: "loading",
+              detail: "Loading edit history",
+              source: "memory_history",
+              events: [{ label: "Scope", value: "snapshots and undo" }],
+            },
+            manage_topics: {
+              phase: "writing",
+              detail: "Updating topic organization",
+              source: "topics",
+              events: [
+                {
+                  label: "Operation",
+                  value: String(fnArgs.operation || "update"),
+                },
+              ],
+            },
+            surface_cards: {
+              phase: "finalizing",
+              detail: "Preparing memory cards for the UI",
+              source: "ui",
+              events: [{ label: "Operation", value: "surface cards" }],
+            },
+          };
+          const streamingDetail = toolDetails[fnName] ?? {
+            phase: "working",
+            detail: `Running ${fnName}`,
+            source: "backend",
+          };
           await setStreamingStatus({
-            phase: "thinking",
-            toolName: "planner",
-            detail:
-              iteration === 0
-                ? "Choosing the next backend operation"
-                : "Continuing multi-step reasoning",
-            source: "chat",
-            step: 2,
+            query: streamingDetail.query,
+            phase: streamingDetail.phase,
+            toolName: fnName,
+            detail: streamingDetail.detail,
+            source: streamingDetail.source,
+            cacheState: undefined,
+            resultCount: undefined,
+            previewItems: undefined,
+            events: streamingDetail.events,
+            step: 3,
             totalSteps: 4,
           });
-          const response = await trackedChatCompletion(ctx, {
-            userId: session._id,
-            feature: "memory_chat",
-            stage: "planner",
-            visibility: "user_visible",
-            link: analyticsLink,
-            request: {
-              model: OPENAI_CHAT_MODEL,
-              messages: conversation,
-              tools: TOOLS,
-              tool_choice: "auto",
-              temperature: 0.3,
-              max_completion_tokens: 2048,
-            },
-          });
+          let result = JSON.stringify({ error: "Unknown tool" });
 
-          const choice = response.choices[0]?.message;
-          if (!choice) {
-            break;
-          }
-
-          const content = extractTextContent(choice.content);
-          if (!choice.tool_calls?.length) {
-            // Conditional Forced Turn Fallback:
-            // If grounding/search was active but the AI forgot the mandatory <!--MEMORA_USED_IDS--> comment,
-            // we force one final turn to collect them. This handles broad lists and edge cases.
-            if (
-              content &&
-              (initialGrounding.shouldGround || surfaceCandidates.length > 0) &&
-              !surfaceCardsCalled &&
-              !content.includes("<!--MEMORA_USED_IDS:") &&
-              iteration < 3
-            ) {
-              conversation.push({ role: "assistant", content });
-              conversation.push({
-                role: "user",
-                content:
-                  'You answered the user but forgot to provide the memory IDs you used. You MUST append <!--MEMORA_USED_IDS:["id1", "id2"]--> as the final line of your response with the IDs of the memories you drew on.',
-              });
-              continue;
-            }
-            finalText = content || finalText;
-            break;
-          }
-
-          conversation.push({
-            role: "assistant",
-            content,
-            tool_calls: choice.tool_calls,
-          });
-
-          for (const toolCall of choice.tool_calls) {
-            if (toolCall.type !== "function") {
-              continue;
-            }
-
-            const fnName = toolCall.function.name;
-            appendFlowTool(fnName);
-            const fnArgs = JSON.parse(toolCall.function.arguments || "{}") as Record<
-              string,
-              unknown
-            >;
-            const toolDetails: Record<string, StreamingStatus> = {
-              search_memories: {
-                phase: "searching",
-                detail: `Searching memories${typeof fnArgs.query === "string" && fnArgs.query.trim() ? ` for "${String(fnArgs.query).trim()}"` : ""}`,
-                source: "memories",
-                events: [
-                  {
-                    label: "Scope",
-                    value: "title, content, people, locations, topics",
-                  },
-                  { label: "Mode", value: "semantic + keyword" },
-                ],
-                query: typeof fnArgs.query === "string" ? String(fnArgs.query) : undefined,
-              },
-              search_documents: {
-                phase: "searching",
-                detail: `Searching documents${typeof fnArgs.query === "string" && fnArgs.query.trim() ? ` for "${String(fnArgs.query).trim()}"` : ""}`,
-                source: "documents",
-                events: [
-                  {
-                    label: "Scope",
-                    value: "filename, summary, extracted text, key details",
-                  },
-                  { label: "Mode", value: "vector + keyword" },
-                ],
-                query: typeof fnArgs.query === "string" ? String(fnArgs.query) : undefined,
-              },
-              create_memory: {
-                phase: "writing",
-                detail: "Saving a new memory",
-                source: "memories",
-                events: [{ label: "Operation", value: "insert" }],
-              },
-              update_memory: {
-                phase: "writing",
-                detail: "Updating an existing memory or reminder",
-                source: "memories",
-                events: [{ label: "Operation", value: "update" }],
-              },
-              sync_reminder: {
-                phase: "writing",
-                detail: "Triggering Google Calendar sync for a reminder",
-                source: "integrations",
-                events: [{ label: "Operation", value: "manual reminder sync" }],
-              },
-              remove_reminder_sync: {
-                phase: "writing",
-                detail: "Removing Google Calendar sync for a reminder",
-                source: "integrations",
-                events: [{ label: "Operation", value: "remove reminder sync" }],
-              },
-              propose_deletion: {
-                phase: "searching",
-                detail: "Finding items to delete for confirmation",
-                source: "memories",
-                events: [{ label: "Operation", value: "find matches only" }],
-              },
-              list_deleted_memories: {
-                phase: "loading",
-                detail: "Loading deleted memories",
-                source: "memories",
-                events: [{ label: "Status", value: "deleted" }],
-              },
-              restore_memory: {
-                phase: "writing",
-                detail: "Restoring a deleted memory",
-                source: "memories",
-                events: [{ label: "Operation", value: "restore" }],
-              },
-              list_memories: {
-                phase: "loading",
-                detail: "Listing stored memories",
-                source: "memories",
-                events: [{ label: "Status", value: "active" }],
-              },
-              get_stats: {
-                phase: "analyzing",
-                detail: "Computing memory statistics",
-                source: "memories",
-                events: [{ label: "Analysis", value: "counts and trends" }],
-              },
-              analyze_memories: {
-                phase: "analyzing",
-                detail: "Analyzing memory patterns",
-                source: "memories",
-                events: [{ label: "Analysis", value: "pattern scan" }],
-              },
-              history: {
-                phase: "loading",
-                detail: "Loading edit history",
-                source: "memory_history",
-                events: [{ label: "Scope", value: "snapshots and undo" }],
-              },
-              manage_topics: {
-                phase: "writing",
-                detail: "Updating topic organization",
-                source: "topics",
-                events: [
-                  {
-                    label: "Operation",
-                    value: String(fnArgs.operation || "update"),
-                  },
-                ],
-              },
-              surface_cards: {
-                phase: "finalizing",
-                detail: "Preparing memory cards for the UI",
-                source: "ui",
-                events: [{ label: "Operation", value: "surface cards" }],
-              },
-            };
-            const streamingDetail = toolDetails[fnName] ?? {
-              phase: "working",
-              detail: `Running ${fnName}`,
-              source: "backend",
-            };
+          if (fnName === "search_memories") {
+            const searchQuery = String(fnArgs.query || "");
             await setStreamingStatus({
-              query: streamingDetail.query,
-              phase: streamingDetail.phase,
-              toolName: fnName,
-              detail: streamingDetail.detail,
-              source: streamingDetail.source,
-              cacheState: undefined,
-              resultCount: undefined,
-              previewItems: undefined,
-              events: streamingDetail.events,
+              query: searchQuery,
+              phase: "searching",
+              toolName: "search_memories",
+              detail: searchQuery.trim()
+                ? `Searching memories for "${searchQuery.trim()}"`
+                : "Searching memories",
+              source: "memories",
+              events: [
+                {
+                  label: "Scope",
+                  value: "title, content, people, locations, topics",
+                },
+                { label: "Mode", value: "semantic + keyword" },
+              ],
               step: 3,
               totalSteps: 4,
             });
-            let result = JSON.stringify({ error: "Unknown tool" });
-
-            if (fnName === "search_memories") {
-              const searchQuery = String(fnArgs.query || "");
+            try {
+              const searchQueryHash = normalizeSearchQueryHash(searchQuery);
+              const userMessageHash = normalizeSearchQueryHash(args.message);
+              const searchRes =
+                initialGrounding.shouldGround &&
+                searchQueryHash.length > 0 &&
+                searchQueryHash === userMessageHash
+                  ? {
+                      results: initialGrounding.searchResults,
+                      count: initialGrounding.searchCount,
+                      isCached: initialGrounding.isCached,
+                      searchMode: initialGrounding.isCached
+                        ? ("semantic_cached" as const)
+                        : ("semantic_fresh" as const),
+                    }
+                  : await searchMemories(ctx, {
+                      token: args.token,
+                      query: searchQuery,
+                      userId: session._id,
+                      recentMemories: await getRecentMemoriesCache(),
+                    });
+              pendingSearchIsCached = searchRes.isCached ?? false;
+              flowSearches.push({
+                source: "tool",
+                query: searchQuery.trim() || undefined,
+                resultCount: searchRes.count,
+                cacheState:
+                  searchRes.searchMode === "semantic_cached"
+                    ? "cached"
+                    : searchRes.searchMode === "semantic_fresh"
+                      ? "fresh"
+                      : undefined,
+                searchMode: searchRes.searchMode,
+              });
+              surfaceCandidates = searchRes.results.map((r: { id: string; title?: string }) => ({
+                id: String(r.id),
+                title: r.title ?? "",
+              }));
               await setStreamingStatus({
-                query: searchQuery,
+                query: searchQuery.trim() || undefined,
                 phase: "searching",
                 toolName: "search_memories",
-                detail: searchQuery.trim()
-                  ? `Searching memories for "${searchQuery.trim()}"`
-                  : "Searching memories",
+                detail:
+                  searchRes.count > 0
+                    ? `Found ${searchRes.count} matching ${searchRes.count === 1 ? "memory" : "memories"}`
+                    : "No matching memories found",
                 source: "memories",
+                cacheState:
+                  searchRes.searchMode === "semantic_cached"
+                    ? "cached"
+                    : searchRes.searchMode === "semantic_fresh"
+                      ? "fresh"
+                      : undefined,
+                resultCount: searchRes.count,
+                previewItems: toPreviewItems(searchRes.results, "Stored memory"),
                 events: [
                   {
                     label: "Scope",
                     value: "title, content, people, locations, topics",
                   },
-                  { label: "Mode", value: "semantic + keyword" },
+                  {
+                    label: "Ranking",
+                    value:
+                      searchRes.searchMode === "recent_only"
+                        ? "recent memory list"
+                        : "semantic + keyword fusion",
+                  },
+                  {
+                    label: "Cache",
+                    value:
+                      searchRes.searchMode === "semantic_cached"
+                        ? "embedding cache hit"
+                        : searchRes.searchMode === "semantic_fresh"
+                          ? "fresh semantic search"
+                          : "no query text",
+                  },
                 ],
                 step: 3,
                 totalSteps: 4,
               });
-              try {
-                const searchQueryHash = normalizeSearchQueryHash(searchQuery);
-                const userMessageHash = normalizeSearchQueryHash(args.message);
-                const searchRes =
-                  initialGrounding.shouldGround &&
-                  searchQueryHash.length > 0 &&
-                  searchQueryHash === userMessageHash
-                    ? {
-                        results: initialGrounding.searchResults,
-                        count: initialGrounding.searchCount,
-                        isCached: initialGrounding.isCached,
-                        searchMode: initialGrounding.isCached
-                          ? ("semantic_cached" as const)
-                          : ("semantic_fresh" as const),
-                      }
-                    : await searchMemories(ctx, {
-                        token: args.token,
-                        query: searchQuery,
-                        userId: session._id,
-                        recentMemories: await getRecentMemoriesCache(),
-                      });
-                pendingSearchIsCached = searchRes.isCached ?? false;
-                flowSearches.push({
-                  source: "tool",
-                  query: searchQuery.trim() || undefined,
-                  resultCount: searchRes.count,
-                  cacheState:
-                    searchRes.searchMode === "semantic_cached"
-                      ? "cached"
-                      : searchRes.searchMode === "semantic_fresh"
-                        ? "fresh"
-                        : undefined,
-                  searchMode: searchRes.searchMode,
-                });
-                surfaceCandidates = searchRes.results.map((r: { id: string; title?: string }) => ({
-                  id: String(r.id),
-                  title: r.title ?? "",
-                }));
-                await setStreamingStatus({
-                  query: searchQuery.trim() || undefined,
-                  phase: "searching",
-                  toolName: "search_memories",
-                  detail:
-                    searchRes.count > 0
-                      ? `Found ${searchRes.count} matching ${searchRes.count === 1 ? "memory" : "memories"}`
-                      : "No matching memories found",
-                  source: "memories",
-                  cacheState:
-                    searchRes.searchMode === "semantic_cached"
-                      ? "cached"
-                      : searchRes.searchMode === "semantic_fresh"
-                        ? "fresh"
-                        : undefined,
-                  resultCount: searchRes.count,
-                  previewItems: toPreviewItems(searchRes.results, "Stored memory"),
-                  events: [
-                    {
-                      label: "Scope",
-                      value: "title, content, people, locations, topics",
-                    },
-                    {
-                      label: "Ranking",
-                      value:
-                        searchRes.searchMode === "recent_only"
-                          ? "recent memory list"
-                          : "semantic + keyword fusion",
-                    },
-                    {
-                      label: "Cache",
-                      value:
-                        searchRes.searchMode === "semantic_cached"
-                          ? "embedding cache hit"
-                          : searchRes.searchMode === "semantic_fresh"
-                            ? "fresh semantic search"
-                            : "no query text",
-                    },
-                  ],
-                  step: 3,
-                  totalSteps: 4,
-                });
-                result = JSON.stringify(searchRes);
-              } finally {
-                await setStreamingStatus({
-                  phase: "thinking",
-                  toolName: "planner",
-                  detail: "Processing search results",
-                  source: "chat",
-                  step: 3,
-                  totalSteps: 4,
+              result = JSON.stringify(searchRes);
+            } finally {
+              await setStreamingStatus({
+                phase: "thinking",
+                toolName: "planner",
+                detail: "Processing search results",
+                source: "chat",
+                step: 3,
+                totalSteps: 4,
+              });
+            }
+          } else if (fnName === "create_memory") {
+            const shouldForceUpdate = shouldPreferUpdatingExisting(args.message);
+            const referentialUpdate = isReferentialUpdate(args.message);
+            let forcedUpdateTargetId: string | undefined;
+            let forcedUpdateTargetLabel: string | undefined;
+            let existingMatchesCount = 0;
+            let existingMatchesPreview: ReturnType<typeof toMemorySummary>[] = [];
+
+            if (shouldForceUpdate) {
+              const existingMatches =
+                initialGrounding.shouldPreferUpdate && initialGrounding.shouldGround
+                  ? {
+                      results: initialGrounding.searchResults,
+                      count: initialGrounding.searchCount,
+                    }
+                  : await searchMemories(ctx, {
+                      token: args.token,
+                      query: args.message,
+                      userId: session._id,
+                      recentMemories: await getRecentMemoriesCache(),
+                    });
+              existingMatchesCount = existingMatches.count;
+              existingMatchesPreview = existingMatches.results;
+
+              const bestSearchMatch = existingMatches.results[0];
+              const latestReferencedId = latestReferencedMemoryIds[0];
+
+              if (referentialUpdate && latestReferencedId) {
+                forcedUpdateTargetId = latestReferencedId;
+                forcedUpdateTargetLabel = "recently referenced memory";
+              } else if (bestSearchMatch?.id) {
+                forcedUpdateTargetId = String(bestSearchMatch.id);
+                forcedUpdateTargetLabel = bestSearchMatch.title ?? "matched memory";
+              } else if (latestReferencedId) {
+                forcedUpdateTargetId = latestReferencedId;
+                forcedUpdateTargetLabel = "recently referenced memory";
+              }
+            }
+
+            const normalized = normalizeAiMemoryWriteFields(fnArgs);
+            const normalizedTitle =
+              normalized.entryKind === "reminder" && normalized.schedule?.dueAt
+                ? getReminderTitleWithoutSchedule(
+                    normalized.title ||
+                      (typeof fnArgs.title === "string" ? fnArgs.title : undefined),
+                    normalized.content ||
+                      (typeof fnArgs.content === "string" ? fnArgs.content : ""),
+                  )
+                : normalized.title;
+            const normalizedForWrite = {
+              ...normalized,
+              title: normalizedTitle,
+            };
+            const contentToSave =
+              normalizedForWrite.content ||
+              (typeof fnArgs.content === "string" ? fnArgs.content.trim() : "") ||
+              (typeof fnArgs.title === "string" ? fnArgs.title.trim() : "");
+            const dedupeKey = buildCreateMemoryDedupeKey({
+              title:
+                normalizedForWrite.title ||
+                (typeof fnArgs.title === "string" ? fnArgs.title : undefined),
+              content: contentToSave,
+            });
+            const existingCreated = createdMemoriesByDedupeKey.get(dedupeKey);
+            const schedulingFields = hasExplicitSchedulingFields(fnArgs)
+              ? toStoredMemoryFields(normalizedForWrite)
+              : {};
+            const memoryUpdatePatch = {
+              ...(normalizedForWrite.title ? { title: normalizedForWrite.title } : {}),
+              ...(normalizedForWrite.people ? { people: normalizedForWrite.people } : {}),
+              ...(normalizedForWrite.locations ? { locations: normalizedForWrite.locations } : {}),
+              ...(normalizedForWrite.contextTags
+                ? { contextTags: normalizedForWrite.contextTags }
+                : {}),
+              ...schedulingFields,
+              ...(typeof normalizedForWrite.importance === "string"
+                ? {
+                    importance: normalizedForWrite.importance as
+                      | "critical"
+                      | "high"
+                      | "normal"
+                      | "low",
+                  }
+                : {}),
+              ...(typeof normalizedForWrite.lifeArea === "string"
+                ? {
+                    lifeArea: normalizedForWrite.lifeArea as
+                      | "career"
+                      | "family"
+                      | "health"
+                      | "finance"
+                      | "social"
+                      | "hobbies"
+                      | "education"
+                      | "travel"
+                      | "self-care"
+                      | "relationships",
+                  }
+                : {}),
+              ...(typeof normalizedForWrite.sentimentScore === "number"
+                ? { sentimentScore: normalizedForWrite.sentimentScore }
+                : {}),
+              ...(Array.isArray(normalizedForWrite.linkedUrls)
+                ? { linkedUrls: normalizedForWrite.linkedUrls }
+                : {}),
+              ...(Array.isArray(normalizedForWrite.extractedActions)
+                ? { extractedActions: normalizedForWrite.extractedActions }
+                : {}),
+            };
+            const updateExistingPatch = {
+              ...(normalizedForWrite.content ? { content: normalizedForWrite.content } : {}),
+              ...memoryUpdatePatch,
+            };
+
+            if (forcedUpdateTargetId) {
+              await ctx.runMutation(api.memories.update, {
+                token: args.token,
+                id: forcedUpdateTargetId as Id<"memories">,
+                sourceChatTurnId: chatMessageId,
+                ...updateExistingPatch,
+              });
+              recentMemoriesCache = undefined;
+              pendingCardIds.add(forcedUpdateTargetId);
+              if (args.attachments && args.attachments.length > 0) {
+                await ctx.runMutation(internal.attachments.linkChatAttachmentsToMemory, {
+                  chatMessageId,
+                  memoryId: forcedUpdateTargetId as Id<"memories">,
                 });
               }
-            } else if (fnName === "create_memory") {
-              const shouldForceUpdate = shouldPreferUpdatingExisting(args.message);
-              const referentialUpdate = isReferentialUpdate(args.message);
-              let forcedUpdateTargetId: string | undefined;
-              let forcedUpdateTargetLabel: string | undefined;
-              let existingMatchesCount = 0;
-              let existingMatchesPreview: ReturnType<typeof toMemorySummary>[] = [];
-
-              if (shouldForceUpdate) {
-                const existingMatches =
-                  initialGrounding.shouldPreferUpdate && initialGrounding.shouldGround
-                    ? {
-                        results: initialGrounding.searchResults,
-                        count: initialGrounding.searchCount,
-                      }
-                    : await searchMemories(ctx, {
-                        token: args.token,
-                        query: args.message,
-                        userId: session._id,
-                        recentMemories: await getRecentMemoriesCache(),
-                      });
-                existingMatchesCount = existingMatches.count;
-                existingMatchesPreview = existingMatches.results;
-
-                const bestSearchMatch = existingMatches.results[0];
-                const latestReferencedId = latestReferencedMemoryIds[0];
-
-                if (referentialUpdate && latestReferencedId) {
-                  forcedUpdateTargetId = latestReferencedId;
-                  forcedUpdateTargetLabel = "recently referenced memory";
-                } else if (bestSearchMatch?.id) {
-                  forcedUpdateTargetId = String(bestSearchMatch.id);
-                  forcedUpdateTargetLabel = bestSearchMatch.title ?? "matched memory";
-                } else if (latestReferencedId) {
-                  forcedUpdateTargetId = latestReferencedId;
-                  forcedUpdateTargetLabel = "recently referenced memory";
-                }
+              await setStreamingStatus({
+                phase: "writing",
+                toolName: "create_memory",
+                detail: "Applied edit to existing memory (duplicate prevented)",
+                source: "memories",
+                resultCount: existingMatchesCount || undefined,
+                previewItems:
+                  existingMatchesPreview.length > 0
+                    ? toPreviewItems(existingMatchesPreview, "Stored memory")
+                    : undefined,
+                events: [
+                  { label: "Policy", value: "prefer update over duplicate" },
+                  { label: "Target", value: forcedUpdateTargetId },
+                  ...(forcedUpdateTargetLabel
+                    ? [
+                        {
+                          label: "Resolution",
+                          value: forcedUpdateTargetLabel,
+                        },
+                      ]
+                    : []),
+                ],
+                step: 3,
+                totalSteps: 4,
+              });
+              writeToolCalled = true;
+              result = JSON.stringify({
+                success: true,
+                updated_existing: true,
+                memory_id: forcedUpdateTargetId,
+              });
+            } else if (existingCreated) {
+              if (Object.keys(memoryUpdatePatch).length > 0) {
+                await ctx.runMutation(api.memories.update, {
+                  token: args.token,
+                  id: existingCreated.id,
+                  sourceChatTurnId: chatMessageId,
+                  ...memoryUpdatePatch,
+                });
+                recentMemoriesCache = undefined;
               }
+              pendingCardIds.add(String(existingCreated.id));
+              if (args.attachments && args.attachments.length > 0) {
+                await ctx.runMutation(internal.attachments.linkChatAttachmentsToMemory, {
+                  chatMessageId,
+                  memoryId: existingCreated.id as Id<"memories">,
+                });
+              }
+              await setStreamingStatus({
+                phase: "writing",
+                toolName: "create_memory",
+                detail: "Reused an equivalent memory instead of creating a duplicate",
+                source: "memories",
+                previewItems: [truncateStatusText(existingCreated.title)],
+                events: [
+                  { label: "Operation", value: "deduplicated" },
+                  { label: "Target", value: String(existingCreated.id) },
+                ],
+                step: 3,
+                totalSteps: 4,
+              });
+              result = JSON.stringify({
+                success: true,
+                deduped: true,
+                memory: {
+                  id: existingCreated.id,
+                  title: existingCreated.title,
+                },
+              });
+            } else {
+              const created = await ctx.runAction(api.actions.processMemory.captureMemory, {
+                token: args.token,
+                content: contentToSave,
+                currentTime: args.currentTime,
+                currentTimezone: effectiveTimezone,
+                sourceChatTurnId: chatMessageId,
+              });
 
+              if (Object.keys(memoryUpdatePatch).length > 0) {
+                await ctx.runMutation(api.memories.update, {
+                  token: args.token,
+                  id: created.memoryId,
+                  sourceChatTurnId: chatMessageId,
+                  ...memoryUpdatePatch,
+                });
+              }
+              recentMemoriesCache = undefined;
+
+              const resolvedTitle =
+                normalizedForWrite.title || created.structured.title || "New Memory";
+              createdMemoriesByDedupeKey.set(dedupeKey, {
+                id: created.memoryId,
+                title: resolvedTitle,
+              });
+              pendingCardIds.add(String(created.memoryId));
+              if (args.attachments && args.attachments.length > 0) {
+                await ctx.runMutation(internal.attachments.linkChatAttachmentsToMemory, {
+                  chatMessageId,
+                  memoryId: created.memoryId as Id<"memories">,
+                });
+              }
+              await setStreamingStatus({
+                phase: "writing",
+                toolName: "create_memory",
+                detail: "Saved a new memory entry",
+                source: "memories",
+                previewItems: [truncateStatusText(resolvedTitle)],
+                events: [
+                  {
+                    label: "Kind",
+                    value: normalizedForWrite.entryKind === "reminder" ? "reminder" : "memory",
+                  },
+                  { label: "Target", value: String(created.memoryId) },
+                ],
+                step: 3,
+                totalSteps: 4,
+              });
+              writeToolCalled = true;
+              result = JSON.stringify({
+                success: true,
+                memory: {
+                  id: created.memoryId,
+                  title: resolvedTitle,
+                },
+              });
+            }
+          } else if (fnName === "update_memory") {
+            try {
               const normalized = normalizeAiMemoryWriteFields(fnArgs);
               const normalizedTitle =
                 normalized.entryKind === "reminder" && normalized.schedule?.dueAt
@@ -1766,22 +1972,37 @@ export const chat = action({
                 ...normalized,
                 title: normalizedTitle,
               };
-              const contentToSave =
-                normalizedForWrite.content ||
-                (typeof fnArgs.content === "string" ? fnArgs.content.trim() : "") ||
-                (typeof fnArgs.title === "string" ? fnArgs.title.trim() : "");
-              const dedupeKey = buildCreateMemoryDedupeKey({
-                title:
-                  normalizedForWrite.title ||
-                  (typeof fnArgs.title === "string" ? fnArgs.title : undefined),
-                content: contentToSave,
-              });
-              const existingCreated = createdMemoriesByDedupeKey.get(dedupeKey);
               const schedulingFields = hasExplicitSchedulingFields(fnArgs)
                 ? toStoredMemoryFields(normalizedForWrite)
                 : {};
-              const memoryUpdatePatch = {
+              const explicitMemoryId =
+                typeof fnArgs.memory_id === "string" ? fnArgs.memory_id.trim() : "";
+              let targetMemoryId = explicitMemoryId;
+              if (!targetMemoryId && latestReferencedMemoryIds.length > 0) {
+                targetMemoryId = latestReferencedMemoryIds[0];
+              }
+              if (!targetMemoryId) {
+                const resolvedFallback = await resolveMemoryReference(ctx, {
+                  token: args.token,
+                  userId: session._id,
+                  reference: args.message,
+                  recentMemories: await getRecentMemoriesCache(),
+                });
+                if (resolvedFallback) {
+                  targetMemoryId = String(resolvedFallback);
+                }
+              }
+              if (!targetMemoryId) {
+                throw new Error(
+                  "Couldn't determine which memory to update. Please specify the memory or reminder.",
+                );
+              }
+              await ctx.runMutation(api.memories.update, {
+                token: args.token,
+                id: targetMemoryId as Id<"memories">,
+                sourceChatTurnId: chatMessageId,
                 ...(normalizedForWrite.title ? { title: normalizedForWrite.title } : {}),
+                ...(normalizedForWrite.content ? { content: normalizedForWrite.content } : {}),
                 ...(normalizedForWrite.people ? { people: normalizedForWrite.people } : {}),
                 ...(normalizedForWrite.locations
                   ? { locations: normalizedForWrite.locations }
@@ -1790,761 +2011,490 @@ export const chat = action({
                   ? { contextTags: normalizedForWrite.contextTags }
                   : {}),
                 ...schedulingFields,
-                ...(typeof normalizedForWrite.importance === "string"
-                  ? {
-                      importance: normalizedForWrite.importance as
-                        | "critical"
-                        | "high"
-                        | "normal"
-                        | "low",
-                    }
-                  : {}),
-                ...(typeof normalizedForWrite.lifeArea === "string"
-                  ? {
-                      lifeArea: normalizedForWrite.lifeArea as
-                        | "career"
-                        | "family"
-                        | "health"
-                        | "finance"
-                        | "social"
-                        | "hobbies"
-                        | "education"
-                        | "travel"
-                        | "self-care"
-                        | "relationships",
-                    }
-                  : {}),
-                ...(typeof normalizedForWrite.sentimentScore === "number"
-                  ? { sentimentScore: normalizedForWrite.sentimentScore }
-                  : {}),
-                ...(Array.isArray(normalizedForWrite.linkedUrls)
-                  ? { linkedUrls: normalizedForWrite.linkedUrls }
-                  : {}),
-                ...(Array.isArray(normalizedForWrite.extractedActions)
-                  ? { extractedActions: normalizedForWrite.extractedActions }
-                  : {}),
-              };
-              const updateExistingPatch = {
-                ...(normalizedForWrite.content ? { content: normalizedForWrite.content } : {}),
-                ...memoryUpdatePatch,
-              };
-
-              if (forcedUpdateTargetId) {
-                await ctx.runMutation(api.memories.update, {
-                  token: args.token,
-                  id: forcedUpdateTargetId as Id<"memories">,
-                  sourceChatTurnId: chatMessageId,
-                  ...updateExistingPatch,
-                });
-                recentMemoriesCache = undefined;
-                pendingCardIds.add(forcedUpdateTargetId);
-                if (args.attachments && args.attachments.length > 0) {
-                  await ctx.runMutation(internal.attachments.linkChatAttachmentsToMemory, {
-                    chatMessageId,
-                    memoryId: forcedUpdateTargetId as Id<"memories">,
-                  });
-                }
-                await setStreamingStatus({
-                  phase: "writing",
-                  toolName: "create_memory",
-                  detail: "Applied edit to existing memory (duplicate prevented)",
-                  source: "memories",
-                  resultCount: existingMatchesCount || undefined,
-                  previewItems:
-                    existingMatchesPreview.length > 0
-                      ? toPreviewItems(existingMatchesPreview, "Stored memory")
-                      : undefined,
-                  events: [
-                    { label: "Policy", value: "prefer update over duplicate" },
-                    { label: "Target", value: forcedUpdateTargetId },
-                    ...(forcedUpdateTargetLabel
-                      ? [
-                          {
-                            label: "Resolution",
-                            value: forcedUpdateTargetLabel,
-                          },
-                        ]
-                      : []),
-                  ],
-                  step: 3,
-                  totalSteps: 4,
-                });
-                writeToolCalled = true;
-                result = JSON.stringify({
-                  success: true,
-                  updated_existing: true,
-                  memory_id: forcedUpdateTargetId,
-                });
-              } else if (existingCreated) {
-                if (Object.keys(memoryUpdatePatch).length > 0) {
-                  await ctx.runMutation(api.memories.update, {
-                    token: args.token,
-                    id: existingCreated.id,
-                    sourceChatTurnId: chatMessageId,
-                    ...memoryUpdatePatch,
-                  });
-                  recentMemoriesCache = undefined;
-                }
-                pendingCardIds.add(String(existingCreated.id));
-                if (args.attachments && args.attachments.length > 0) {
-                  await ctx.runMutation(internal.attachments.linkChatAttachmentsToMemory, {
-                    chatMessageId,
-                    memoryId: existingCreated.id as Id<"memories">,
-                  });
-                }
-                await setStreamingStatus({
-                  phase: "writing",
-                  toolName: "create_memory",
-                  detail: "Reused an equivalent memory instead of creating a duplicate",
-                  source: "memories",
-                  previewItems: [truncateStatusText(existingCreated.title)],
-                  events: [
-                    { label: "Operation", value: "deduplicated" },
-                    { label: "Target", value: String(existingCreated.id) },
-                  ],
-                  step: 3,
-                  totalSteps: 4,
-                });
-                result = JSON.stringify({
-                  success: true,
-                  deduped: true,
-                  memory: {
-                    id: existingCreated.id,
-                    title: existingCreated.title,
-                  },
-                });
-              } else {
-                const created = await ctx.runAction(api.actions.processMemory.captureMemory, {
-                  token: args.token,
-                  content: contentToSave,
-                  currentTime: args.currentTime,
-                  currentTimezone: effectiveTimezone,
-                  sourceChatTurnId: chatMessageId,
-                });
-
-                if (Object.keys(memoryUpdatePatch).length > 0) {
-                  await ctx.runMutation(api.memories.update, {
-                    token: args.token,
-                    id: created.memoryId,
-                    sourceChatTurnId: chatMessageId,
-                    ...memoryUpdatePatch,
-                  });
-                }
-                recentMemoriesCache = undefined;
-
-                const resolvedTitle =
-                  normalizedForWrite.title || created.structured.title || "New Memory";
-                createdMemoriesByDedupeKey.set(dedupeKey, {
-                  id: created.memoryId,
-                  title: resolvedTitle,
-                });
-                pendingCardIds.add(String(created.memoryId));
-                if (args.attachments && args.attachments.length > 0) {
-                  await ctx.runMutation(internal.attachments.linkChatAttachmentsToMemory, {
-                    chatMessageId,
-                    memoryId: created.memoryId as Id<"memories">,
-                  });
-                }
-                await setStreamingStatus({
-                  phase: "writing",
-                  toolName: "create_memory",
-                  detail: "Saved a new memory entry",
-                  source: "memories",
-                  previewItems: [truncateStatusText(resolvedTitle)],
-                  events: [
-                    {
-                      label: "Kind",
-                      value: normalizedForWrite.entryKind === "reminder" ? "reminder" : "memory",
-                    },
-                    { label: "Target", value: String(created.memoryId) },
-                  ],
-                  step: 3,
-                  totalSteps: 4,
-                });
-                writeToolCalled = true;
-                result = JSON.stringify({
-                  success: true,
-                  memory: {
-                    id: created.memoryId,
-                    title: resolvedTitle,
-                  },
-                });
-              }
-            } else if (fnName === "update_memory") {
-              try {
-                const normalized = normalizeAiMemoryWriteFields(fnArgs);
-                const normalizedTitle =
-                  normalized.entryKind === "reminder" && normalized.schedule?.dueAt
-                    ? getReminderTitleWithoutSchedule(
-                        normalized.title ||
-                          (typeof fnArgs.title === "string" ? fnArgs.title : undefined),
-                        normalized.content ||
-                          (typeof fnArgs.content === "string" ? fnArgs.content : ""),
-                      )
-                    : normalized.title;
-                const normalizedForWrite = {
-                  ...normalized,
-                  title: normalizedTitle,
-                };
-                const schedulingFields = hasExplicitSchedulingFields(fnArgs)
-                  ? toStoredMemoryFields(normalizedForWrite)
-                  : {};
-                const explicitMemoryId =
-                  typeof fnArgs.memory_id === "string" ? fnArgs.memory_id.trim() : "";
-                let targetMemoryId = explicitMemoryId;
-                if (!targetMemoryId && latestReferencedMemoryIds.length > 0) {
-                  targetMemoryId = latestReferencedMemoryIds[0];
-                }
-                if (!targetMemoryId) {
-                  const resolvedFallback = await resolveMemoryReference(ctx, {
-                    token: args.token,
-                    userId: session._id,
-                    reference: args.message,
-                    recentMemories: await getRecentMemoriesCache(),
-                  });
-                  if (resolvedFallback) {
-                    targetMemoryId = String(resolvedFallback);
-                  }
-                }
-                if (!targetMemoryId) {
-                  throw new Error(
-                    "Couldn't determine which memory to update. Please specify the memory or reminder.",
-                  );
-                }
-                await ctx.runMutation(api.memories.update, {
-                  token: args.token,
-                  id: targetMemoryId as Id<"memories">,
-                  sourceChatTurnId: chatMessageId,
-                  ...(normalizedForWrite.title ? { title: normalizedForWrite.title } : {}),
-                  ...(normalizedForWrite.content ? { content: normalizedForWrite.content } : {}),
-                  ...(normalizedForWrite.people ? { people: normalizedForWrite.people } : {}),
-                  ...(normalizedForWrite.locations
-                    ? { locations: normalizedForWrite.locations }
-                    : {}),
-                  ...(normalizedForWrite.contextTags
-                    ? { contextTags: normalizedForWrite.contextTags }
-                    : {}),
-                  ...schedulingFields,
-                });
-                recentMemoriesCache = undefined;
-                pendingCardIds.add(targetMemoryId);
-                if (args.attachments && args.attachments.length > 0) {
-                  await ctx.runMutation(internal.attachments.linkChatAttachmentsToMemory, {
-                    chatMessageId,
-                    memoryId: targetMemoryId as Id<"memories">,
-                  });
-                }
-                await setStreamingStatus({
-                  phase: "writing",
-                  toolName: "update_memory",
-                  detail: "Updated the selected memory",
-                  source: "memories",
-                  previewItems: [
-                    truncateStatusText(
-                      normalizedForWrite.title ||
-                        (typeof fnArgs.content === "string" ? fnArgs.content : undefined) ||
-                        "Updated memory",
-                    ),
-                  ],
-                  events: [
-                    { label: "Operation", value: "update committed" },
-                    { label: "Target", value: targetMemoryId },
-                    ...(explicitMemoryId
-                      ? []
-                      : [
-                          {
-                            label: "Resolution",
-                            value: "resolved from chat context",
-                          },
-                        ]),
-                  ],
-                  step: 3,
-                  totalSteps: 4,
-                });
-                writeToolCalled = true;
-                result = JSON.stringify({
-                  success: true,
-                  memory_id: targetMemoryId,
-                });
-              } catch (error) {
-                result = JSON.stringify({
-                  error: error instanceof Error ? error.message : "Failed to update memory",
-                });
-              }
-            } else if (fnName === "sync_reminder") {
-              try {
-                const explicitMemoryId =
-                  typeof fnArgs.memory_id === "string" ? fnArgs.memory_id.trim() : "";
-                const requestedQuery = typeof fnArgs.query === "string" ? fnArgs.query.trim() : "";
-                let targetMemoryId = explicitMemoryId;
-
-                if (!targetMemoryId && latestReferencedMemoryIds.length > 0) {
-                  targetMemoryId = latestReferencedMemoryIds[0];
-                }
-                if (!targetMemoryId) {
-                  const resolvedFallback = await resolveMemoryReference(ctx, {
-                    token: args.token,
-                    userId: session._id,
-                    reference: requestedQuery || args.message,
-                    recentMemories: await getRecentMemoriesCache(),
-                  });
-                  if (resolvedFallback) {
-                    targetMemoryId = String(resolvedFallback);
-                  }
-                }
-                if (!targetMemoryId) {
-                  throw new Error(
-                    "Couldn't determine which reminder to sync. Please specify the reminder.",
-                  );
-                }
-
-                const syncResult = await ctx.runMutation(api.integrations.triggerReminderSync, {
-                  token: args.token,
+              });
+              recentMemoriesCache = undefined;
+              pendingCardIds.add(targetMemoryId);
+              if (args.attachments && args.attachments.length > 0) {
+                await ctx.runMutation(internal.attachments.linkChatAttachmentsToMemory, {
+                  chatMessageId,
                   memoryId: targetMemoryId as Id<"memories">,
                 });
-                pendingCardIds.add(targetMemoryId);
-
-                await setStreamingStatus({
-                  phase: "writing",
-                  toolName: "sync_reminder",
-                  detail: syncResult.queued
-                    ? syncResult.reason === "in_flight"
-                      ? "Reminder sync is already in progress"
-                      : "Triggered Google Calendar sync for reminder"
-                    : "Google Calendar sync was not triggered",
-                  source: "integrations",
-                  events: [
-                    { label: "Operation", value: "manual reminder sync" },
-                    { label: "Target", value: targetMemoryId },
-                    ...(typeof syncResult.reason === "string"
-                      ? [{ label: "Result", value: syncResult.reason }]
-                      : []),
-                  ],
-                  step: 3,
-                  totalSteps: 4,
-                });
-                if (syncResult.queued) {
-                  writeToolCalled = true;
-                  writeFallbackMessage = syncResult.message;
-                }
-                result = JSON.stringify({
-                  success: !!syncResult.queued,
-                  memory_id: targetMemoryId,
-                  ...syncResult,
-                });
-              } catch (error) {
-                result = JSON.stringify({
-                  error: error instanceof Error ? error.message : "Failed to trigger reminder sync",
-                });
               }
-            } else if (fnName === "remove_reminder_sync") {
-              try {
-                const explicitMemoryId =
-                  typeof fnArgs.memory_id === "string" ? fnArgs.memory_id.trim() : "";
-                const requestedQuery = typeof fnArgs.query === "string" ? fnArgs.query.trim() : "";
-                let targetMemoryId = explicitMemoryId;
-
-                if (!targetMemoryId && latestReferencedMemoryIds.length > 0) {
-                  targetMemoryId = latestReferencedMemoryIds[0];
-                }
-                if (!targetMemoryId) {
-                  const resolvedFallback = await resolveMemoryReference(ctx, {
-                    token: args.token,
-                    userId: session._id,
-                    reference: requestedQuery || args.message,
-                    recentMemories: await getRecentMemoriesCache(),
-                  });
-                  if (resolvedFallback) {
-                    targetMemoryId = String(resolvedFallback);
-                  }
-                }
-                if (!targetMemoryId) {
-                  throw new Error(
-                    "Couldn't determine which reminder to unsync. Please specify the reminder.",
-                  );
-                }
-
-                const unsyncResult = await ctx.runMutation(api.integrations.removeReminderSync, {
-                  token: args.token,
-                  memoryId: targetMemoryId as Id<"memories">,
-                });
-                pendingCardIds.add(targetMemoryId);
-
-                await setStreamingStatus({
-                  phase: "writing",
-                  toolName: "remove_reminder_sync",
-                  detail: unsyncResult.removed
-                    ? "Removed Google Calendar sync for reminder"
-                    : "Google Calendar sync removal did not apply",
-                  source: "integrations",
-                  events: [
-                    { label: "Operation", value: "remove reminder sync" },
-                    { label: "Target", value: targetMemoryId },
-                    { label: "Result", value: unsyncResult.reason },
-                  ],
-                  step: 3,
-                  totalSteps: 4,
-                });
-                if (unsyncResult.removed) {
-                  writeToolCalled = true;
-                  writeFallbackMessage = unsyncResult.message;
-                }
-                result = JSON.stringify({
-                  success: !!unsyncResult.removed,
-                  memory_id: targetMemoryId,
-                  ...unsyncResult,
-                });
-              } catch (error) {
-                result = JSON.stringify({
-                  error: error instanceof Error ? error.message : "Failed to remove reminder sync",
-                });
-              }
-            } else if (fnName === "propose_deletion") {
-              const entryKind = typeof fnArgs.entry_kind === "string" ? fnArgs.entry_kind : "any";
-              const deletionQuery = String(fnArgs.query || "");
-              const searchResult =
-                initialGrounding.shouldGround &&
-                deletionQuery.trim().toLowerCase() === args.message.trim().toLowerCase()
-                  ? {
-                      results: initialGrounding.searchResults,
-                      count: initialGrounding.searchCount,
-                    }
-                  : await searchMemories(ctx, {
-                      token: args.token,
-                      query: deletionQuery,
-                      userId: session._id,
-                      recentMemories: await getRecentMemoriesCache(),
-                    });
-
-              let matchedItems = searchResult.results;
-              if (entryKind === "reminder") {
-                matchedItems = matchedItems.filter((m: any) => m.entry_kind === "reminder");
-              } else if (entryKind === "memory") {
-                matchedItems = matchedItems.filter((m: any) => m.entry_kind !== "reminder");
-              }
-
-              const newItems = matchedItems.map((m: any) => ({
-                id: String(m.id),
-                title: String(m.title || "Untitled"),
-                content: String(m.content || ""),
-                entry_kind: String(m.entry_kind || "memory"),
-              }));
-              // Accumulate across multiple propose_deletion calls (e.g. one for memories, one for reminders)
-              const existingIds = new Set(pendingDeletionItems.map((i) => i.id));
-              pendingDeletionItems = [
-                ...pendingDeletionItems,
-                ...newItems.filter((i) => !existingIds.has(i.id)),
-              ];
               await setStreamingStatus({
-                query: typeof fnArgs.query === "string" ? fnArgs.query : undefined,
-                phase: "searching",
-                toolName: "propose_deletion",
-                detail:
-                  pendingDeletionItems.length > 0
-                    ? `Prepared ${pendingDeletionItems.length} item${pendingDeletionItems.length === 1 ? "" : "s"} for delete confirmation`
-                    : "No matching items found for deletion",
+                phase: "writing",
+                toolName: "update_memory",
+                detail: "Updated the selected memory",
                 source: "memories",
-                resultCount: pendingDeletionItems.length,
-                previewItems: pendingDeletionItems
-                  .slice(0, 3)
-                  .map((item) => truncateStatusText(item.title || item.content || "Stored memory")),
+                previewItems: [
+                  truncateStatusText(
+                    normalizedForWrite.title ||
+                      (typeof fnArgs.content === "string" ? fnArgs.content : undefined) ||
+                      "Updated memory",
+                  ),
+                ],
                 events: [
-                  { label: "Mode", value: "proposal only" },
-                  { label: "Filter", value: entryKind },
+                  { label: "Operation", value: "update committed" },
+                  { label: "Target", value: targetMemoryId },
+                  ...(explicitMemoryId
+                    ? []
+                    : [
+                        {
+                          label: "Resolution",
+                          value: "resolved from chat context",
+                        },
+                      ]),
                 ],
                 step: 3,
                 totalSteps: 4,
               });
-
-              result = JSON.stringify(
-                pendingDeletionItems.length > 0
-                  ? {
-                      found: pendingDeletionItems.length,
-                      message: `Found ${pendingDeletionItems.length} item(s). They are being shown to the user for confirmation. Do NOT delete them yourself — wait for the user to confirm in the app.`,
-                    }
-                  : { found: 0, message: "No matching items found." },
-              );
-            } else if (fnName === "list_deleted_memories") {
-              try {
-                const limit = typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 50) : 20;
-                const deleted = await ctx.runQuery(api.memories.listDeleted, {
-                  token: args.token,
-                  limit,
-                });
-                await setStreamingStatus({
-                  phase: "loading",
-                  toolName: "list_deleted_memories",
-                  detail: `Loaded ${deleted.length} deleted ${deleted.length === 1 ? "memory" : "memories"}`,
-                  source: "memories",
-                  resultCount: deleted.length,
-                  previewItems: toPreviewItems(deleted, "Deleted memory"),
-                  events: [
-                    { label: "Status", value: "deleted" },
-                    { label: "Limit", value: `${limit}` },
-                  ],
-                  step: 3,
-                  totalSteps: 4,
-                });
-                result = JSON.stringify({
-                  deleted_memories: deleted.map((memory: MemoryDoc) => ({
-                    ...toMemorySummary(memory),
-                    deletedAt: memory.deletedAt ? new Date(memory.deletedAt).toISOString() : null,
-                  })),
-                  count: deleted.length,
-                });
-              } catch (error) {
-                result = JSON.stringify({
-                  error: error instanceof Error ? error.message : "Failed to list deleted memories",
-                });
-              }
-            } else if (fnName === "restore_memory") {
-              try {
-                await ctx.runMutation(api.memories.restore, {
-                  token: args.token,
-                  id: fnArgs.memory_id as Id<"memories">,
-                });
-                recentMemoriesCache = undefined;
-                pendingCardIds.add(String(fnArgs.memory_id as string));
-                await setStreamingStatus({
-                  phase: "writing",
-                  toolName: "restore_memory",
-                  detail: "Restored the deleted memory",
-                  source: "memories",
-                  events: [
-                    { label: "Operation", value: "restore" },
-                    { label: "Target", value: String(fnArgs.memory_id) },
-                  ],
-                  step: 3,
-                  totalSteps: 4,
-                });
-                result = JSON.stringify({ success: true });
-              } catch (error) {
-                result = JSON.stringify({
-                  error: error instanceof Error ? error.message : "Failed to restore memory",
-                });
-              }
-            } else if (fnName === "list_memories") {
-              const memories = await getRecentMemoriesCache();
-              const limit = typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 50) : 20;
-              const ordered = fnArgs.sort === "oldest" ? [...memories].reverse() : memories;
-              const listed = ordered.slice(0, limit);
-              surfaceCandidates = listed.map((m: MemoryDoc) => ({
-                id: String(m._id),
-                title: m.title ?? "",
-              }));
-              await setStreamingStatus({
-                phase: "loading",
-                toolName: "list_memories",
-                detail: `Loaded ${listed.length} of ${memories.length} stored memories`,
-                source: "memories",
-                resultCount: memories.length,
-                previewItems: toPreviewItems(listed, "Stored memory"),
-                events: [
-                  {
-                    label: "Sort",
-                    value: fnArgs.sort === "oldest" ? "oldest first" : "newest first",
-                  },
-                  { label: "Limit", value: `${limit}` },
-                ],
-                step: 3,
-                totalSteps: 4,
-              });
+              writeToolCalled = true;
               result = JSON.stringify({
-                memories: listed.map((memory: MemoryDoc) => toMemoryCompact(memory)),
-                count: memories.length,
+                success: true,
+                memory_id: targetMemoryId,
               });
-            } else if (fnName === "get_stats") {
-              const memories = await getRecentMemoriesCache();
-              let withReminders = 0;
-              let recurring = 0;
-
-              for (const memory of memories) {
-                if (isReminder(memory)) withReminders += 1;
-                if (getMemorySchedule(memory)?.isRecurring) recurring += 1;
-              }
-
-              const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-              const recentCount = memories.filter(
-                (memory: MemoryDoc) => memory._creationTime >= weekAgo,
-              ).length;
-              await setStreamingStatus({
-                phase: "analyzing",
-                toolName: "get_stats",
-                detail: `Computed stats across ${memories.length} stored memories`,
-                source: "memories",
-                resultCount: memories.length,
-                events: [
-                  { label: "Reminders", value: `${withReminders}` },
-                  { label: "Recurring", value: `${recurring}` },
-                  { label: "Recent 7d", value: `${recentCount}` },
-                ],
-                step: 3,
-                totalSteps: 4,
-              });
+            } catch (error) {
               result = JSON.stringify({
-                total: memories.length,
-                withReminders,
-                recurring,
-                recentCount,
+                error: error instanceof Error ? error.message : "Failed to update memory",
               });
-            } else if (fnName === "analyze_memories") {
-              const memories = await getRecentMemoriesCache();
-              const limit = typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 50) : 50;
-              await setStreamingStatus({
-                phase: "analyzing",
-                toolName: "analyze_memories",
-                detail: `Preparing ${Math.min(limit, memories.length)} memories for analysis`,
-                source: "memories",
-                resultCount: memories.length,
-                previewItems: toPreviewItems(memories.slice(0, limit), "Stored memory"),
-                events: [
-                  { label: "Limit", value: `${limit}` },
-                  { label: "Scope", value: "active memories only" },
-                ],
-                step: 3,
-                totalSteps: 4,
-              });
-              result = JSON.stringify({
-                memories: memories
-                  .slice(0, limit)
-                  .map((memory: MemoryDoc) => toMemoryCompact(memory)),
-                count: memories.length,
-              });
-            } else if (fnName === "history") {
-              if (fnArgs.action === "list") {
-                const history = await ctx.runQuery(api.history.listSnapshots, {
-                  token: args.token,
-                  ...(typeof fnArgs.memory_id === "string"
-                    ? { memoryId: fnArgs.memory_id as Id<"memories"> }
-                    : {}),
-                  ...(typeof fnArgs.limit === "number"
-                    ? { limit: Math.min(fnArgs.limit, 20) }
-                    : { limit: 10 }),
-                });
-                await setStreamingStatus({
-                  phase: "loading",
-                  toolName: "history",
-                  detail: `Loaded ${history.length} history snapshot${history.length === 1 ? "" : "s"}`,
-                  source: "memory_history",
-                  resultCount: history.length,
-                  events: [
-                    { label: "Action", value: "list" },
-                    {
-                      label: "Scope",
-                      value:
-                        typeof fnArgs.memory_id === "string" ? "single memory" : "recent changes",
-                    },
-                  ],
-                  step: 3,
-                  totalSteps: 4,
-                });
-                result = JSON.stringify({
-                  history,
-                });
-              } else if (fnArgs.action === "undo") {
-                const undoResult = await ctx.runMutation(api.history.undo, {
-                  token: args.token,
-                  ...(typeof fnArgs.memory_id === "string"
-                    ? { memoryId: fnArgs.memory_id as Id<"memories"> }
-                    : {}),
-                });
-                result = JSON.stringify(undoResult);
-                recentMemoriesCache = undefined;
-                await setStreamingStatus({
-                  phase: "writing",
-                  toolName: "history",
-                  detail: "Reverted the latest edit",
-                  source: "memory_history",
-                  events: [
-                    { label: "Action", value: "undo" },
-                    {
-                      label: "Target",
-                      value:
-                        typeof fnArgs.memory_id === "string"
-                          ? fnArgs.memory_id
-                          : "latest edited memory",
-                    },
-                  ],
-                  step: 3,
-                  totalSteps: 4,
-                });
-                if (undoResult && typeof (undoResult as any).memoryId === "string") {
-                  pendingCardIds.add(String((undoResult as any).memoryId));
-                } else if (typeof fnArgs.memory_id === "string") {
-                  pendingCardIds.add(fnArgs.memory_id);
-                }
-              } else if (fnArgs.action === "restore") {
-                const restoreResult = await ctx.runMutation(api.history.restore, {
-                  token: args.token,
-                  historyId: fnArgs.history_id as Id<"memoryHistory">,
-                });
-                result = JSON.stringify(restoreResult);
-                recentMemoriesCache = undefined;
-                await setStreamingStatus({
-                  phase: "writing",
-                  toolName: "history",
-                  detail: "Restored a historical snapshot",
-                  source: "memory_history",
-                  events: [
-                    { label: "Action", value: "restore" },
-                    { label: "History ID", value: String(fnArgs.history_id) },
-                  ],
-                  step: 3,
-                  totalSteps: 4,
-                });
-                if (restoreResult && typeof (restoreResult as any).memoryId === "string") {
-                  pendingCardIds.add(String((restoreResult as any).memoryId));
-                }
+            }
+          } else if (fnName === "sync_reminder") {
+            try {
+              const explicitMemoryId =
+                typeof fnArgs.memory_id === "string" ? fnArgs.memory_id.trim() : "";
+              const requestedQuery = typeof fnArgs.query === "string" ? fnArgs.query.trim() : "";
+              let targetMemoryId = explicitMemoryId;
+
+              if (!targetMemoryId && latestReferencedMemoryIds.length > 0) {
+                targetMemoryId = latestReferencedMemoryIds[0];
               }
-            } else if (fnName === "manage_topics") {
-              if (fnArgs.operation === "retag_memory") {
-                const resolvedMemoryId = await resolveMemoryReference(ctx, {
+              if (!targetMemoryId) {
+                const resolvedFallback = await resolveMemoryReference(ctx, {
                   token: args.token,
                   userId: session._id,
-                  reference: typeof fnArgs.memory_id === "string" ? fnArgs.memory_id : undefined,
+                  reference: requestedQuery || args.message,
                   recentMemories: await getRecentMemoriesCache(),
                 });
-
-                if (!resolvedMemoryId) {
-                  result = JSON.stringify({
-                    success: false,
-                    message: "Couldn't identify which memory to retag.",
-                  });
-                  conversation.push({
-                    role: "tool",
-                    tool_call_id: toolCall.id,
-                    content: result,
-                  });
-                  continue;
+                if (resolvedFallback) {
+                  targetMemoryId = String(resolvedFallback);
                 }
-
-                result = JSON.stringify(
-                  await ctx.runAction(internal.actions.manageTopics.handleManageTopic, {
-                    userId: session._id,
-                    operation: "retag_memory",
-                    memoryId: resolvedMemoryId,
-                    topicName:
-                      typeof fnArgs.topic_name === "string" ? fnArgs.topic_name : undefined,
-                  }),
+              }
+              if (!targetMemoryId) {
+                throw new Error(
+                  "Couldn't determine which reminder to sync. Please specify the reminder.",
                 );
-                pendingCardIds.add(String(resolvedMemoryId));
-                await setStreamingStatus({
-                  phase: "writing",
-                  toolName: "manage_topics",
-                  detail: "Retagged the selected memory",
-                  source: "topics",
-                  events: [
-                    { label: "Operation", value: "retag_memory" },
-                    {
-                      label: "Topic",
-                      value:
-                        typeof fnArgs.topic_name === "string"
-                          ? fnArgs.topic_name
-                          : "selected topic",
-                    },
-                  ],
-                  step: 3,
-                  totalSteps: 4,
+              }
+
+              const syncResult = await ctx.runMutation(api.integrations.triggerReminderSync, {
+                token: args.token,
+                memoryId: targetMemoryId as Id<"memories">,
+              });
+              pendingCardIds.add(targetMemoryId);
+
+              await setStreamingStatus({
+                phase: "writing",
+                toolName: "sync_reminder",
+                detail: syncResult.queued
+                  ? syncResult.reason === "in_flight"
+                    ? "Reminder sync is already in progress"
+                    : "Triggered Google Calendar sync for reminder"
+                  : "Google Calendar sync was not triggered",
+                source: "integrations",
+                events: [
+                  { label: "Operation", value: "manual reminder sync" },
+                  { label: "Target", value: targetMemoryId },
+                  ...(typeof syncResult.reason === "string"
+                    ? [{ label: "Result", value: syncResult.reason }]
+                    : []),
+                ],
+                step: 3,
+                totalSteps: 4,
+              });
+              if (syncResult.queued) {
+                writeToolCalled = true;
+                writeFallbackMessage = syncResult.message;
+              }
+              result = JSON.stringify({
+                success: !!syncResult.queued,
+                memory_id: targetMemoryId,
+                ...syncResult,
+              });
+            } catch (error) {
+              result = JSON.stringify({
+                error: error instanceof Error ? error.message : "Failed to trigger reminder sync",
+              });
+            }
+          } else if (fnName === "remove_reminder_sync") {
+            try {
+              const explicitMemoryId =
+                typeof fnArgs.memory_id === "string" ? fnArgs.memory_id.trim() : "";
+              const requestedQuery = typeof fnArgs.query === "string" ? fnArgs.query.trim() : "";
+              let targetMemoryId = explicitMemoryId;
+
+              if (!targetMemoryId && latestReferencedMemoryIds.length > 0) {
+                targetMemoryId = latestReferencedMemoryIds[0];
+              }
+              if (!targetMemoryId) {
+                const resolvedFallback = await resolveMemoryReference(ctx, {
+                  token: args.token,
+                  userId: session._id,
+                  reference: requestedQuery || args.message,
+                  recentMemories: await getRecentMemoriesCache(),
+                });
+                if (resolvedFallback) {
+                  targetMemoryId = String(resolvedFallback);
+                }
+              }
+              if (!targetMemoryId) {
+                throw new Error(
+                  "Couldn't determine which reminder to unsync. Please specify the reminder.",
+                );
+              }
+
+              const unsyncResult = await ctx.runMutation(api.integrations.removeReminderSync, {
+                token: args.token,
+                memoryId: targetMemoryId as Id<"memories">,
+              });
+              pendingCardIds.add(targetMemoryId);
+
+              await setStreamingStatus({
+                phase: "writing",
+                toolName: "remove_reminder_sync",
+                detail: unsyncResult.removed
+                  ? "Removed Google Calendar sync for reminder"
+                  : "Google Calendar sync removal did not apply",
+                source: "integrations",
+                events: [
+                  { label: "Operation", value: "remove reminder sync" },
+                  { label: "Target", value: targetMemoryId },
+                  { label: "Result", value: unsyncResult.reason },
+                ],
+                step: 3,
+                totalSteps: 4,
+              });
+              if (unsyncResult.removed) {
+                writeToolCalled = true;
+                writeFallbackMessage = unsyncResult.message;
+              }
+              result = JSON.stringify({
+                success: !!unsyncResult.removed,
+                memory_id: targetMemoryId,
+                ...unsyncResult,
+              });
+            } catch (error) {
+              result = JSON.stringify({
+                error: error instanceof Error ? error.message : "Failed to remove reminder sync",
+              });
+            }
+          } else if (fnName === "propose_deletion") {
+            const entryKind = typeof fnArgs.entry_kind === "string" ? fnArgs.entry_kind : "any";
+            const deletionQuery = String(fnArgs.query || "");
+            const searchResult =
+              initialGrounding.shouldGround &&
+              deletionQuery.trim().toLowerCase() === args.message.trim().toLowerCase()
+                ? {
+                    results: initialGrounding.searchResults,
+                    count: initialGrounding.searchCount,
+                  }
+                : await searchMemories(ctx, {
+                    token: args.token,
+                    query: deletionQuery,
+                    userId: session._id,
+                    recentMemories: await getRecentMemoriesCache(),
+                  });
+
+            let matchedItems = searchResult.results;
+            if (entryKind === "reminder") {
+              matchedItems = matchedItems.filter((m: any) => m.entry_kind === "reminder");
+            } else if (entryKind === "memory") {
+              matchedItems = matchedItems.filter((m: any) => m.entry_kind !== "reminder");
+            }
+
+            const newItems = matchedItems.map((m: any) => ({
+              id: String(m.id),
+              title: String(m.title || "Untitled"),
+              content: String(m.content || ""),
+              entry_kind: String(m.entry_kind || "memory"),
+            }));
+            // Accumulate across multiple propose_deletion calls (e.g. one for memories, one for reminders)
+            const existingIds = new Set(pendingDeletionItems.map((i) => i.id));
+            pendingDeletionItems = [
+              ...pendingDeletionItems,
+              ...newItems.filter((i) => !existingIds.has(i.id)),
+            ];
+            await setStreamingStatus({
+              query: typeof fnArgs.query === "string" ? fnArgs.query : undefined,
+              phase: "searching",
+              toolName: "propose_deletion",
+              detail:
+                pendingDeletionItems.length > 0
+                  ? `Prepared ${pendingDeletionItems.length} item${pendingDeletionItems.length === 1 ? "" : "s"} for delete confirmation`
+                  : "No matching items found for deletion",
+              source: "memories",
+              resultCount: pendingDeletionItems.length,
+              previewItems: pendingDeletionItems
+                .slice(0, 3)
+                .map((item) => truncateStatusText(item.title || item.content || "Stored memory")),
+              events: [
+                { label: "Mode", value: "proposal only" },
+                { label: "Filter", value: entryKind },
+              ],
+              step: 3,
+              totalSteps: 4,
+            });
+
+            result = JSON.stringify(
+              pendingDeletionItems.length > 0
+                ? {
+                    found: pendingDeletionItems.length,
+                    message: `Found ${pendingDeletionItems.length} item(s). They are being shown to the user for confirmation. Do NOT delete them yourself — wait for the user to confirm in the app.`,
+                  }
+                : { found: 0, message: "No matching items found." },
+            );
+          } else if (fnName === "list_deleted_memories") {
+            try {
+              const limit = typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 50) : 20;
+              const deleted = await ctx.runQuery(api.memories.listDeleted, {
+                token: args.token,
+                limit,
+              });
+              await setStreamingStatus({
+                phase: "loading",
+                toolName: "list_deleted_memories",
+                detail: `Loaded ${deleted.length} deleted ${deleted.length === 1 ? "memory" : "memories"}`,
+                source: "memories",
+                resultCount: deleted.length,
+                previewItems: toPreviewItems(deleted, "Deleted memory"),
+                events: [
+                  { label: "Status", value: "deleted" },
+                  { label: "Limit", value: `${limit}` },
+                ],
+                step: 3,
+                totalSteps: 4,
+              });
+              result = JSON.stringify({
+                deleted_memories: deleted.map((memory: MemoryDoc) => ({
+                  ...toMemorySummary(memory),
+                  deletedAt: memory.deletedAt ? new Date(memory.deletedAt).toISOString() : null,
+                })),
+                count: deleted.length,
+              });
+            } catch (error) {
+              result = JSON.stringify({
+                error: error instanceof Error ? error.message : "Failed to list deleted memories",
+              });
+            }
+          } else if (fnName === "restore_memory") {
+            try {
+              await ctx.runMutation(api.memories.restore, {
+                token: args.token,
+                id: fnArgs.memory_id as Id<"memories">,
+              });
+              recentMemoriesCache = undefined;
+              pendingCardIds.add(String(fnArgs.memory_id as string));
+              await setStreamingStatus({
+                phase: "writing",
+                toolName: "restore_memory",
+                detail: "Restored the deleted memory",
+                source: "memories",
+                events: [
+                  { label: "Operation", value: "restore" },
+                  { label: "Target", value: String(fnArgs.memory_id) },
+                ],
+                step: 3,
+                totalSteps: 4,
+              });
+              result = JSON.stringify({ success: true });
+            } catch (error) {
+              result = JSON.stringify({
+                error: error instanceof Error ? error.message : "Failed to restore memory",
+              });
+            }
+          } else if (fnName === "list_memories") {
+            const memories = await getRecentMemoriesCache();
+            const limit = typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 50) : 20;
+            const ordered = fnArgs.sort === "oldest" ? [...memories].reverse() : memories;
+            const listed = ordered.slice(0, limit);
+            surfaceCandidates = listed.map((m: MemoryDoc) => ({
+              id: String(m._id),
+              title: m.title ?? "",
+            }));
+            await setStreamingStatus({
+              phase: "loading",
+              toolName: "list_memories",
+              detail: `Loaded ${listed.length} of ${memories.length} stored memories`,
+              source: "memories",
+              resultCount: memories.length,
+              previewItems: toPreviewItems(listed, "Stored memory"),
+              events: [
+                {
+                  label: "Sort",
+                  value: fnArgs.sort === "oldest" ? "oldest first" : "newest first",
+                },
+                { label: "Limit", value: `${limit}` },
+              ],
+              step: 3,
+              totalSteps: 4,
+            });
+            result = JSON.stringify({
+              memories: listed.map((memory: MemoryDoc) => toMemoryCompact(memory)),
+              count: memories.length,
+            });
+          } else if (fnName === "get_stats") {
+            const memories = await getRecentMemoriesCache();
+            let withReminders = 0;
+            let recurring = 0;
+
+            for (const memory of memories) {
+              if (isReminder(memory)) withReminders += 1;
+              if (getMemorySchedule(memory)?.isRecurring) recurring += 1;
+            }
+
+            const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+            const recentCount = memories.filter(
+              (memory: MemoryDoc) => memory._creationTime >= weekAgo,
+            ).length;
+            await setStreamingStatus({
+              phase: "analyzing",
+              toolName: "get_stats",
+              detail: `Computed stats across ${memories.length} stored memories`,
+              source: "memories",
+              resultCount: memories.length,
+              events: [
+                { label: "Reminders", value: `${withReminders}` },
+                { label: "Recurring", value: `${recurring}` },
+                { label: "Recent 7d", value: `${recentCount}` },
+              ],
+              step: 3,
+              totalSteps: 4,
+            });
+            result = JSON.stringify({
+              total: memories.length,
+              withReminders,
+              recurring,
+              recentCount,
+            });
+          } else if (fnName === "analyze_memories") {
+            const memories = await getRecentMemoriesCache();
+            const limit = typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, 50) : 50;
+            await setStreamingStatus({
+              phase: "analyzing",
+              toolName: "analyze_memories",
+              detail: `Preparing ${Math.min(limit, memories.length)} memories for analysis`,
+              source: "memories",
+              resultCount: memories.length,
+              previewItems: toPreviewItems(memories.slice(0, limit), "Stored memory"),
+              events: [
+                { label: "Limit", value: `${limit}` },
+                { label: "Scope", value: "active memories only" },
+              ],
+              step: 3,
+              totalSteps: 4,
+            });
+            result = JSON.stringify({
+              memories: memories
+                .slice(0, limit)
+                .map((memory: MemoryDoc) => toMemoryCompact(memory)),
+              count: memories.length,
+            });
+          } else if (fnName === "history") {
+            if (fnArgs.action === "list") {
+              const history = await ctx.runQuery(api.history.listSnapshots, {
+                token: args.token,
+                ...(typeof fnArgs.memory_id === "string"
+                  ? { memoryId: fnArgs.memory_id as Id<"memories"> }
+                  : {}),
+                ...(typeof fnArgs.limit === "number"
+                  ? { limit: Math.min(fnArgs.limit, 20) }
+                  : { limit: 10 }),
+              });
+              await setStreamingStatus({
+                phase: "loading",
+                toolName: "history",
+                detail: `Loaded ${history.length} history snapshot${history.length === 1 ? "" : "s"}`,
+                source: "memory_history",
+                resultCount: history.length,
+                events: [
+                  { label: "Action", value: "list" },
+                  {
+                    label: "Scope",
+                    value:
+                      typeof fnArgs.memory_id === "string" ? "single memory" : "recent changes",
+                  },
+                ],
+                step: 3,
+                totalSteps: 4,
+              });
+              result = JSON.stringify({
+                history,
+              });
+            } else if (fnArgs.action === "undo") {
+              const undoResult = await ctx.runMutation(api.history.undo, {
+                token: args.token,
+                ...(typeof fnArgs.memory_id === "string"
+                  ? { memoryId: fnArgs.memory_id as Id<"memories"> }
+                  : {}),
+              });
+              result = JSON.stringify(undoResult);
+              recentMemoriesCache = undefined;
+              await setStreamingStatus({
+                phase: "writing",
+                toolName: "history",
+                detail: "Reverted the latest edit",
+                source: "memory_history",
+                events: [
+                  { label: "Action", value: "undo" },
+                  {
+                    label: "Target",
+                    value:
+                      typeof fnArgs.memory_id === "string"
+                        ? fnArgs.memory_id
+                        : "latest edited memory",
+                  },
+                ],
+                step: 3,
+                totalSteps: 4,
+              });
+              if (undoResult && typeof (undoResult as any).memoryId === "string") {
+                pendingCardIds.add(String((undoResult as any).memoryId));
+              } else if (typeof fnArgs.memory_id === "string") {
+                pendingCardIds.add(fnArgs.memory_id);
+              }
+            } else if (fnArgs.action === "restore") {
+              const restoreResult = await ctx.runMutation(api.history.restore, {
+                token: args.token,
+                historyId: fnArgs.history_id as Id<"memoryHistory">,
+              });
+              result = JSON.stringify(restoreResult);
+              recentMemoriesCache = undefined;
+              await setStreamingStatus({
+                phase: "writing",
+                toolName: "history",
+                detail: "Restored a historical snapshot",
+                source: "memory_history",
+                events: [
+                  { label: "Action", value: "restore" },
+                  { label: "History ID", value: String(fnArgs.history_id) },
+                ],
+                step: 3,
+                totalSteps: 4,
+              });
+              if (restoreResult && typeof (restoreResult as any).memoryId === "string") {
+                pendingCardIds.add(String((restoreResult as any).memoryId));
+              }
+            }
+          } else if (fnName === "manage_topics") {
+            if (fnArgs.operation === "retag_memory") {
+              const resolvedMemoryId = await resolveMemoryReference(ctx, {
+                token: args.token,
+                userId: session._id,
+                reference: typeof fnArgs.memory_id === "string" ? fnArgs.memory_id : undefined,
+                recentMemories: await getRecentMemoriesCache(),
+              });
+
+              if (!resolvedMemoryId) {
+                result = JSON.stringify({
+                  success: false,
+                  message: "Couldn't identify which memory to retag.",
                 });
                 conversation.push({
                   role: "tool",
@@ -2557,159 +2507,183 @@ export const chat = action({
               result = JSON.stringify(
                 await ctx.runAction(internal.actions.manageTopics.handleManageTopic, {
                   userId: session._id,
-                  operation: fnArgs.operation as
-                    | "list"
-                    | "rename"
-                    | "merge"
-                    | "recolor"
-                    | "trigger_reanalysis"
-                    | "retag_memory",
-                  topicSlug: typeof fnArgs.topic_slug === "string" ? fnArgs.topic_slug : undefined,
-                  targetSlug:
-                    typeof fnArgs.target_slug === "string" ? fnArgs.target_slug : undefined,
-                  newName: typeof fnArgs.new_name === "string" ? fnArgs.new_name : undefined,
-                  newIcon: typeof fnArgs.new_icon === "string" ? fnArgs.new_icon : undefined,
-                  newColor: typeof fnArgs.new_color === "string" ? fnArgs.new_color : undefined,
-                  memoryId:
-                    typeof fnArgs.memory_id === "string"
-                      ? (fnArgs.memory_id as Id<"memories">)
-                      : undefined,
+                  operation: "retag_memory",
+                  memoryId: resolvedMemoryId,
                   topicName: typeof fnArgs.topic_name === "string" ? fnArgs.topic_name : undefined,
                 }),
               );
+              pendingCardIds.add(String(resolvedMemoryId));
               await setStreamingStatus({
-                phase: fnArgs.operation === "list" ? "loading" : "writing",
+                phase: "writing",
                 toolName: "manage_topics",
-                detail:
-                  fnArgs.operation === "list"
-                    ? "Loaded topic organization"
-                    : `Completed topic operation: ${String(fnArgs.operation || "update")}`,
+                detail: "Retagged the selected memory",
                 source: "topics",
                 events: [
+                  { label: "Operation", value: "retag_memory" },
                   {
-                    label: "Operation",
-                    value: String(fnArgs.operation || "update"),
+                    label: "Topic",
+                    value:
+                      typeof fnArgs.topic_name === "string" ? fnArgs.topic_name : "selected topic",
                   },
                 ],
                 step: 3,
                 totalSteps: 4,
               });
-            } else if (fnName === "surface_cards") {
-              const ids = Array.isArray(fnArgs.ids) ? (fnArgs.ids as string[]) : [];
-              for (const id of ids) pendingCardIds.add(id);
-              surfaceCardsCalled = true;
-              await setStreamingStatus({
-                phase: "finalizing",
-                toolName: "surface_cards",
-                detail:
-                  ids.length > 0
-                    ? `Preparing ${ids.length} memory card${ids.length === 1 ? "" : "s"}`
-                    : "No memory cards needed for this reply",
-                source: "ui",
-                resultCount: ids.length,
-                events: [{ label: "Operation", value: "surface cards" }],
-                step: 3,
-                totalSteps: 4,
+              conversation.push({
+                role: "tool",
+                tool_call_id: toolCall.id,
+                content: result,
               });
-              result = JSON.stringify({ success: true });
+              continue;
             }
 
-            conversation.push({
-              role: "tool",
-              tool_call_id: toolCall.id,
-              content: result,
+            result = JSON.stringify(
+              await ctx.runAction(internal.actions.manageTopics.handleManageTopic, {
+                userId: session._id,
+                operation: fnArgs.operation as
+                  | "list"
+                  | "rename"
+                  | "merge"
+                  | "recolor"
+                  | "trigger_reanalysis"
+                  | "retag_memory",
+                topicSlug: typeof fnArgs.topic_slug === "string" ? fnArgs.topic_slug : undefined,
+                targetSlug: typeof fnArgs.target_slug === "string" ? fnArgs.target_slug : undefined,
+                newName: typeof fnArgs.new_name === "string" ? fnArgs.new_name : undefined,
+                newIcon: typeof fnArgs.new_icon === "string" ? fnArgs.new_icon : undefined,
+                newColor: typeof fnArgs.new_color === "string" ? fnArgs.new_color : undefined,
+                memoryId:
+                  typeof fnArgs.memory_id === "string"
+                    ? (fnArgs.memory_id as Id<"memories">)
+                    : undefined,
+                topicName: typeof fnArgs.topic_name === "string" ? fnArgs.topic_name : undefined,
+              }),
+            );
+            await setStreamingStatus({
+              phase: fnArgs.operation === "list" ? "loading" : "writing",
+              toolName: "manage_topics",
+              detail:
+                fnArgs.operation === "list"
+                  ? "Loaded topic organization"
+                  : `Completed topic operation: ${String(fnArgs.operation || "update")}`,
+              source: "topics",
+              events: [
+                {
+                  label: "Operation",
+                  value: String(fnArgs.operation || "update"),
+                },
+              ],
+              step: 3,
+              totalSteps: 4,
             });
+          } else if (fnName === "surface_cards") {
+            const ids = Array.isArray(fnArgs.ids) ? (fnArgs.ids as string[]) : [];
+            for (const id of ids) pendingCardIds.add(id);
+            surfaceCardsCalled = true;
+            await setStreamingStatus({
+              phase: "finalizing",
+              toolName: "surface_cards",
+              detail:
+                ids.length > 0
+                  ? `Preparing ${ids.length} memory card${ids.length === 1 ? "" : "s"}`
+                  : "No memory cards needed for this reply",
+              source: "ui",
+              resultCount: ids.length,
+              events: [{ label: "Operation", value: "surface cards" }],
+              step: 3,
+              totalSteps: 4,
+            });
+            result = JSON.stringify({ success: true });
           }
 
-          // If AI called surface_cards, we're done. Preserve the original answer if already set.
-          if (surfaceCardsCalled) {
-            if (!finalText) finalText = content;
-            break;
-          }
+          conversation.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: result,
+          });
         }
 
-        let resolvedText = finalText?.trim();
-        if (!resolvedText) {
-          if (writeToolCalled) {
-            resolvedText = writeFallbackMessage || "Done — I updated that.";
-          } else if (pendingDeletionItems.length > 0) {
-            resolvedText = "I found matching items. Please confirm below.";
-          } else if (pendingCardIds.size > 0) {
-            resolvedText = "Here are the matching memories.";
-          } else {
-            resolvedText = "I processed that, but I couldn't generate a clear reply.";
-          }
+        // If AI called surface_cards, we're done. Preserve the original answer if already set.
+        if (surfaceCardsCalled) {
+          if (!finalText) finalText = content;
+          break;
         }
-
-        // Precision-Grounded Auto-Surfacing (Final ID Extraction)
-        if (
-          !surfaceCardsCalled &&
-          (initialGrounding.shouldGround || surfaceCandidates.length > 0)
-        ) {
-          const usedIdsMatch = resolvedText.match(/<!--MEMORA_USED_IDS:\[(.*?)\]-->/);
-          if (usedIdsMatch?.[1]) {
-            try {
-              const idsText = usedIdsMatch[1];
-              const cleanedIds = idsText
-                .replace(/["'\[\]\s]/g, "")
-                .split(",")
-                .filter(Boolean);
-              for (const id of cleanedIds) {
-                pendingCardIds.add(id);
-              }
-              // Strip the comment from the displayed text
-              resolvedText = resolvedText.replace(/<!--MEMORA_USED_IDS:\[.*?\]-->/, "").trim();
-            } catch {
-              // Fail-safe: don't crash
-            }
-          }
-        }
-
-        await setStreamingStatus({
-          phase: "finalizing",
-          toolName: "reply",
-          detail: "Preparing final answer",
-          source: "assistant",
-          resultCount: pendingCardIds.size,
-          events: [{ label: "Cards", value: `${pendingCardIds.size}` }],
-          step: 4,
-          totalSteps: 4,
-        });
-
-        let appendedComments = "";
-        if (pendingDeletionItems.length > 0) {
-          appendedComments += `\n<!--MEMORA_DELETION_PROPOSAL:${JSON.stringify(pendingDeletionItems)}-->`;
-        }
-        if (pendingCardIds.size > 0) {
-          appendedComments += `\n<!--MEMORA_CARD_IDS:${JSON.stringify({
-            ids: Array.from(pendingCardIds),
-            isCached: pendingSearchIsCached,
-            turns: finalIteration + 1,
-            flow: buildCardFlowPayload({
-              turns: finalIteration + 1,
-              cardCount: pendingCardIds.size,
-              pathMode: pendingSearchIsCached ? "cached" : "fresh",
-              searches: flowSearches,
-              toolSequence: flowToolSequence,
-              attachments: flowAttachments,
-            }) satisfies CardFlowPayload,
-          })}-->`;
-        }
-
-        aiResponse = resolvedText + appendedComments;
-        await ctx.runMutation(internal.chat.clearSearchStatus, {
-          userId: session._id,
-        });
-      } catch {
-        await ctx.runMutation(internal.chat.clearSearchStatus, {
-          userId: session._id,
-        });
-        aiResponse = "I'm having trouble connecting right now. Please try again in a moment.";
       }
-    } else {
+
+      let resolvedText = finalText?.trim();
+      if (!resolvedText) {
+        if (writeToolCalled) {
+          resolvedText = writeFallbackMessage || "Done — I updated that.";
+        } else if (pendingDeletionItems.length > 0) {
+          resolvedText = "I found matching items. Please confirm below.";
+        } else if (pendingCardIds.size > 0) {
+          resolvedText = "Here are the matching memories.";
+        } else {
+          resolvedText = "I processed that, but I couldn't generate a clear reply.";
+        }
+      }
+
+      // Precision-Grounded Auto-Surfacing (Final ID Extraction)
+      if (!surfaceCardsCalled && (initialGrounding.shouldGround || surfaceCandidates.length > 0)) {
+        const usedIdsMatch = resolvedText.match(/<!--MEMORA_USED_IDS:\[(.*?)\]-->/);
+        if (usedIdsMatch?.[1]) {
+          try {
+            const idsText = usedIdsMatch[1];
+            const cleanedIds = idsText
+              .replace(/["'\[\]\s]/g, "")
+              .split(",")
+              .filter(Boolean);
+            for (const id of cleanedIds) {
+              pendingCardIds.add(id);
+            }
+            // Strip the comment from the displayed text
+            resolvedText = resolvedText.replace(/<!--MEMORA_USED_IDS:\[.*?\]-->/, "").trim();
+          } catch {
+            // Fail-safe: don't crash
+          }
+        }
+      }
+
+      await setStreamingStatus({
+        phase: "finalizing",
+        toolName: "reply",
+        detail: "Preparing final answer",
+        source: "assistant",
+        resultCount: pendingCardIds.size,
+        events: [{ label: "Cards", value: `${pendingCardIds.size}` }],
+        step: 4,
+        totalSteps: 4,
+      });
+
+      let appendedComments = "";
+      if (pendingDeletionItems.length > 0) {
+        appendedComments += `\n<!--MEMORA_DELETION_PROPOSAL:${JSON.stringify(pendingDeletionItems)}-->`;
+      }
+      if (pendingCardIds.size > 0) {
+        appendedComments += `\n<!--MEMORA_CARD_IDS:${JSON.stringify({
+          ids: Array.from(pendingCardIds),
+          isCached: pendingSearchIsCached,
+          turns: finalIteration + 1,
+          flow: buildCardFlowPayload({
+            turns: finalIteration + 1,
+            cardCount: pendingCardIds.size,
+            pathMode: pendingSearchIsCached ? "cached" : "fresh",
+            searches: flowSearches,
+            toolSequence: flowToolSequence,
+            attachments: flowAttachments,
+          }) satisfies CardFlowPayload,
+        })}-->`;
+      }
+
+      aiResponse = resolvedText + appendedComments;
       await ctx.runMutation(internal.chat.clearSearchStatus, {
         userId: session._id,
       });
+    } catch {
+      await ctx.runMutation(internal.chat.clearSearchStatus, {
+        userId: session._id,
+      });
+      aiResponse = "I'm having trouble connecting right now. Please try again in a moment.";
     }
 
     await ctx.runMutation(internal.chat.send, {

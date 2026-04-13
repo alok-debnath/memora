@@ -139,6 +139,7 @@ export const createTopic = internalMutation({
     icon: v.string(),
     color: v.string(),
     centroid: v.array(v.float64()),
+    embeddingFingerprint: v.optional(v.string()),
     incrementExistingCount: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -163,6 +164,7 @@ export const createTopic = internalMutation({
         );
         await ctx.db.patch(normalizedMatch._id, {
           centroid: nextCentroid,
+          ...(args.embeddingFingerprint ? { embeddingFingerprint: args.embeddingFingerprint } : {}),
           memoryCount: nextCount,
           updatedAt: Date.now(),
         });
@@ -184,6 +186,7 @@ export const createTopic = internalMutation({
       icon: args.icon,
       color: args.color,
       centroid: args.centroid,
+      embeddingFingerprint: args.embeddingFingerprint,
       memoryCount: 0,
       relatedTopics: [],
       isArchived: false,
@@ -197,6 +200,7 @@ export const updateCentroidAndCount = internalMutation({
   args: {
     topicId: v.id("userTopics"),
     newCentroid: v.array(v.float64()),
+    embeddingFingerprint: v.optional(v.string()),
     delta: v.number(),
   },
   handler: async (ctx, args) => {
@@ -204,9 +208,42 @@ export const updateCentroidAndCount = internalMutation({
     if (!topic) return;
     await ctx.db.patch(args.topicId, {
       centroid: args.newCentroid,
+      ...(args.embeddingFingerprint ? { embeddingFingerprint: args.embeddingFingerprint } : {}),
       memoryCount: Math.max(0, topic.memoryCount + args.delta),
       updatedAt: Date.now(),
     });
+  },
+});
+
+export const replaceUserTopicCentroids = internalMutation({
+  args: {
+    userId: v.id("users"),
+    embeddingFingerprint: v.string(),
+    centroids: v.array(
+      v.object({
+        topicId: v.id("userTopics"),
+        centroid: v.array(v.float64()),
+        memoryCount: v.number(),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const centroidMap = new Map(args.centroids.map((entry) => [entry.topicId, entry] as const));
+    const topics = await ctx.db
+      .query("userTopics")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .take(200);
+    for (const topic of topics) {
+      const next = centroidMap.get(topic._id);
+      if (next) {
+        await ctx.db.patch(topic._id, {
+          centroid: next.centroid,
+          memoryCount: next.memoryCount,
+          embeddingFingerprint: args.embeddingFingerprint,
+          updatedAt: Date.now(),
+        });
+      }
+    }
   },
 });
 
