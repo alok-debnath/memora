@@ -1,10 +1,17 @@
 import { Feather } from "@expo/vector-icons";
 import { reloadAppAsync } from "expo";
 import React, { useState } from "react";
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useColorScheme,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useAppTheme } from "@/hooks/useAppTheme";
-import { withAlpha } from "@/components/ui/themeHelpers";
 import { logDevError } from "@/lib/devLog";
 
 export type ErrorFallbackProps = {
@@ -14,18 +21,21 @@ export type ErrorFallbackProps = {
 
 export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
   const insets = useSafeAreaInsets();
-  const theme = useAppTheme();
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === "dark";
 
+  // Static palette — this component renders OUTSIDE TamaguiProvider so
+  // useAppTheme/useTheme would throw. Use hardcoded system-aware values.
   const palette = {
-    background: theme.background.val,
-    backgroundSecondary: theme.backgroundStrong.val,
-    text: theme.color.val,
-    textSecondary: theme.colorMuted.val,
-    link: theme.primary.val,
-    buttonText: theme.textInverse.val,
-    divider: theme.borderSubtle?.val ?? withAlpha(theme.color.val, "1A"),
-    shadow: theme.shadowColor.val,
-    overlay: withAlpha(theme.shadowColor.val, "80"),
+    background: isDark ? "#0F0F0F" : "#FFFFFF",
+    backgroundSecondary: isDark ? "#1C1C1E" : "#F2F2F7",
+    text: isDark ? "#F5F5F5" : "#1C1C1E",
+    textSecondary: isDark ? "#8E8E93" : "#6C6C70",
+    link: "#C98522",
+    buttonText: "#FFFFFF",
+    divider: isDark ? "#38383A" : "#C6C6C8",
+    shadow: "#000000",
+    overlay: "rgba(0,0,0,0.5)",
   };
 
   const [isModalVisible, setIsModalVisible] = useState(false);

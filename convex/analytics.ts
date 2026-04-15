@@ -1411,6 +1411,143 @@ export const adminOverview = query({
   },
 });
 
+/**
+ * Admin-only system-wide analytics overview.
+ * Aggregates across all userAnalyticsSummary + userMemoryStats rows.
+ * Uses .take() to stay within transaction limits (designed for systems with up to ~2 000 users).
+ */
+export const adminSystemOverview = query({
+  args: {
+    range: rangeValidator,
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    totalUsers: number;
+    activeUsersInRange: number;
+    range: string;
+    // Content
+    totalMemories: number;
+    totalReminders: number;
+    totalDiaryEntries: number;
+    totalChatMessages: number;
+    totalAttachmentUploads: number;
+    // AI — all time (from summaries)
+    allTimeAiRequests: number;
+    allTimeAiCostUsdMicros: number;
+    allTimeMemoraAiCostUsdMicros: number;
+    allTimeByokAiCostUsdMicros: number;
+    allTimeAiInputTokens: number;
+    allTimeAiOutputTokens: number;
+    allTimeSearches: number;
+    // AI — in range (from daily rows)
+    rangeAiRequests: number;
+    rangeAiCostUsdMicros: number;
+    rangeMemoraAiCostUsdMicros: number;
+    rangeByokAiCostUsdMicros: number;
+    rangeSearches: number;
+    rangeDeepSearches: number;
+    // Users by key metric
+    byokUserCount: number;
+  }> => {
+    await requireAdmin(ctx);
+    const range = args.range ?? "30d";
+
+    // ── All-time cross-user sums from summary table ──────────────────────────
+    const summaries = await ctx.db.query("userAnalyticsSummary").take(2000);
+    const memoryStats = await ctx.db.query("userMemoryStats").take(2000);
+
+    let totalMemories = 0;
+    let totalReminders = 0;
+    for (const ms of memoryStats) {
+      totalMemories += ms.totalMemories;
+      totalReminders += ms.totalReminders;
+    }
+
+    let allTimeAiRequests = 0;
+    let allTimeAiCostUsdMicros = 0;
+    let allTimeMemoraAiCostUsdMicros = 0;
+    let allTimeByokAiCostUsdMicros = 0;
+    let allTimeAiInputTokens = 0;
+    let allTimeAiOutputTokens = 0;
+    let allTimeSearches = 0;
+    let totalDiaryEntries = 0;
+    let totalChatMessages = 0;
+    let totalAttachmentUploads = 0;
+
+    for (const s of summaries) {
+      allTimeAiRequests += s.totalAiRequests;
+      allTimeAiCostUsdMicros += s.totalAiCostUsdMicros;
+      allTimeMemoraAiCostUsdMicros += s.totalAiMemoraCostUsdMicros ?? 0;
+      allTimeByokAiCostUsdMicros += s.totalAiByokCostUsdMicros ?? 0;
+      allTimeAiInputTokens += s.totalAiInputTokens;
+      allTimeAiOutputTokens += s.totalAiOutputTokens;
+      allTimeSearches += s.totalSearches ?? 0;
+      totalDiaryEntries += s.totalDiaryEntries;
+      totalChatMessages += s.totalChatMessages;
+      totalAttachmentUploads += s.totalAttachmentUploads;
+    }
+
+    // ── Range sums from daily table ──────────────────────────────────────────
+    const dailyRows = filterDailyByRange(
+      await ctx.db.query("userAnalyticsDaily").order("desc").take(5000),
+      range,
+    );
+
+    let rangeAiRequests = 0;
+    let rangeAiCostUsdMicros = 0;
+    let rangeMemoraAiCostUsdMicros = 0;
+    let rangeByokAiCostUsdMicros = 0;
+    let rangeSearches = 0;
+    let rangeDeepSearches = 0;
+    const activeSubjectsInRange = new Set<string>();
+
+    for (const row of dailyRows) {
+      rangeAiRequests += row.aiRequests;
+      rangeAiCostUsdMicros += row.aiCostUsdMicros;
+      rangeMemoraAiCostUsdMicros += row.aiMemoraCostUsdMicros ?? 0;
+      rangeByokAiCostUsdMicros += row.aiByokCostUsdMicros ?? 0;
+      rangeSearches += row.searches ?? 0;
+      rangeDeepSearches += row.deepSearches ?? 0;
+      if (row.analyticsSubjectId) activeSubjectsInRange.add(row.analyticsSubjectId);
+    }
+
+    // ── BYOK users: count userAiProviderPreferences with byokEnabled = true ──
+    const byokPrefs = await ctx.db.query("userAiProviderPreferences").take(2000);
+    const byokUserCount = byokPrefs.filter((p) => p.byokEnabled).length;
+
+    // ── Total users ──────────────────────────────────────────────────────────
+    const users = await ctx.db.query("users").take(2000);
+    const totalUsers = users.filter((u) => !u.deletedAt && !u.anonymizedAt).length;
+
+    return {
+      totalUsers,
+      activeUsersInRange: activeSubjectsInRange.size,
+      range,
+      totalMemories,
+      totalReminders,
+      totalDiaryEntries,
+      totalChatMessages,
+      totalAttachmentUploads,
+      allTimeAiRequests,
+      allTimeAiCostUsdMicros,
+      allTimeMemoraAiCostUsdMicros,
+      allTimeByokAiCostUsdMicros,
+      allTimeAiInputTokens,
+      allTimeAiOutputTokens,
+      allTimeSearches,
+      rangeAiRequests,
+      rangeAiCostUsdMicros,
+      rangeMemoraAiCostUsdMicros,
+      rangeByokAiCostUsdMicros,
+      rangeSearches,
+      rangeDeepSearches,
+      byokUserCount,
+    };
+  },
+});
+
 export const adminRecentEvents = query({
   args: {
     paginationOpts: paginationOptsValidator,

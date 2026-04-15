@@ -67,6 +67,18 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
   });
 };
 
+export const getAdminStatus = query({
+  args: {},
+  handler: async (ctx): Promise<{ isAdmin: boolean }> => {
+    try {
+      const user = await resolveUser(ctx);
+      return { isAdmin: (user.userType ?? "user") === "admin" };
+    } catch {
+      return { isAdmin: false };
+    }
+  },
+});
+
 export const me = query({
   args: { token: v.optional(v.string()) },
   handler: async (ctx) => {

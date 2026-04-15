@@ -5,7 +5,9 @@ import { router } from "expo-router";
 import Animated, { FadeInUp } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { XStack, YStack, Text } from "tamagui";
+import { useQuery } from "convex/react";
 
+import { api } from "@/convex/_generated/api";
 import { navigationAccentColors } from "@/constants/colors";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { PressableScale } from "@/components/ui/PressableScale";
@@ -74,10 +76,22 @@ const menuItems: MenuItem[] = [
   },
 ];
 
+const adminItem: MenuItem = {
+  icon: "shield",
+  label: "Admin Console",
+  description: "AI routing, model config, and platform settings",
+  route: "/admin",
+  color: navigationAccentColors.admin,
+};
+
 export default function MoreScreen() {
   const theme = useAppTheme();
-  const totalRoutes = menuItems.length;
   const tabBarPadding = useTabBarBottomPadding();
+  const adminStatus = useQuery(api.auth.getAdminStatus);
+  const isAdmin = adminStatus?.isAdmin === true;
+
+  const visibleItems = isAdmin ? [...menuItems, adminItem] : menuItems;
+  const totalRoutes = visibleItems.length;
 
   return (
     <SafeAreaView
@@ -125,6 +139,7 @@ export default function MoreScreen() {
             <XStack gap={10} marginTop={16} flexWrap="wrap">
               <Badge label={`${totalRoutes} sections`} color={theme.primary.val} />
               <Badge label="Fast actions" tone="neutral" />
+              {isAdmin && <Badge label="Admin" color={navigationAccentColors.admin} />}
             </XStack>
           </Card>
         </Animated.View>
@@ -133,7 +148,7 @@ export default function MoreScreen() {
           contentContainerStyle={{ gap: 10, paddingBottom: tabBarPadding }}
           showsVerticalScrollIndicator={false}
         >
-          {menuItems.map((item, i) => (
+          {visibleItems.map((item, i) => (
             <Animated.View key={item.route} entering={FadeInUp.delay(i * 60).duration(400)}>
               <PressableScale
                 onPress={() => router.push(item.route as never)}
@@ -152,9 +167,30 @@ export default function MoreScreen() {
                       <Feather name={item.icon} size={22} color={item.color} />
                     </YStack>
                     <YStack flex={1}>
-                      <Text fontSize={16} fontFamily="$body" fontWeight="600" color="$color">
-                        {item.label}
-                      </Text>
+                      <XStack alignItems="center" gap={8}>
+                        <Text fontSize={16} fontFamily="$body" fontWeight="600" color="$color">
+                          {item.label}
+                        </Text>
+                        {item.route === "/admin" && (
+                          <YStack
+                            backgroundColor={navigationAccentColors.admin + "20"}
+                            borderRadius={6}
+                            paddingHorizontal={7}
+                            paddingVertical={2}
+                          >
+                            <Text
+                              fontSize={9}
+                              fontFamily="$body"
+                              fontWeight="700"
+                              color={navigationAccentColors.admin}
+                              textTransform="uppercase"
+                              letterSpacing={0.8}
+                            >
+                              Admin
+                            </Text>
+                          </YStack>
+                        )}
+                      </XStack>
                       <Text fontSize={13} fontFamily="$body" color="$colorMuted" marginTop={2}>
                         {item.description}
                       </Text>

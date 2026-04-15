@@ -29,6 +29,7 @@ export const navigationAccentColors = {
   statistics: "#EC4899",
   data: "#D97706",
   profile: "#8B5CF6",
+  admin: "#E11D48",
 } as const;
 
 export const statusAccentColors = {
