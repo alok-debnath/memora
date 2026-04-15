@@ -45,6 +45,75 @@ export const runMemoryPerformanceMigrations = migrations.runner([
   internal.migrations.backfillUserMemoryStats,
 ]);
 
+export const backfillUserAnalyticsSummary = migrations.define({
+  table: "userAnalyticsSummary",
+  batchSize: 50,
+  migrateOne: async (ctx, doc) => {
+    if (doc.totalAiMemoraCostUsdMicros === undefined && doc.totalAiCostUsdMicros > 0) {
+      return {
+        totalAiMemoraRequests: doc.totalAiRequests,
+        totalAiMemoraInputTokens: doc.totalAiInputTokens,
+        totalAiMemoraOutputTokens: doc.totalAiOutputTokens,
+        totalAiMemoraAudioSeconds: doc.totalAiAudioSeconds,
+        totalAiMemoraCostUsdMicros: doc.totalAiCostUsdMicros,
+        totalAiByokRequests: 0,
+        totalAiByokInputTokens: 0,
+        totalAiByokOutputTokens: 0,
+        totalAiByokAudioSeconds: 0,
+        totalAiByokCostUsdMicros: 0,
+      };
+    }
+  },
+});
+
+export const backfillUserAnalyticsDaily = migrations.define({
+  table: "userAnalyticsDaily",
+  batchSize: 100,
+  migrateOne: async (ctx, doc) => {
+    if (doc.aiMemoraCostUsdMicros === undefined && doc.aiCostUsdMicros > 0) {
+      return {
+        aiMemoraRequests: doc.aiRequests,
+        aiMemoraInputTokens: doc.aiInputTokens,
+        aiMemoraOutputTokens: doc.aiOutputTokens,
+        aiMemoraAudioSeconds: doc.aiAudioSeconds,
+        aiMemoraCostUsdMicros: doc.aiCostUsdMicros,
+        aiByokRequests: 0,
+        aiByokInputTokens: 0,
+        aiByokOutputTokens: 0,
+        aiByokAudioSeconds: 0,
+        aiByokCostUsdMicros: 0,
+      };
+    }
+  },
+});
+
+export const backfillUserAnalyticsModelDaily = migrations.define({
+  table: "userAnalyticsModelDaily",
+  batchSize: 100,
+  migrateOne: async (ctx, doc) => {
+    if (doc.memoraCostUsdMicros === undefined && doc.costUsdMicros > 0) {
+      return {
+        memoraRequests: doc.requests,
+        memoraInputTokens: doc.inputTokens,
+        memoraOutputTokens: doc.outputTokens,
+        memoraAudioSeconds: doc.audioSeconds,
+        memoraCostUsdMicros: doc.costUsdMicros,
+        byokRequests: 0,
+        byokInputTokens: 0,
+        byokOutputTokens: 0,
+        byokAudioSeconds: 0,
+        byokCostUsdMicros: 0,
+      };
+    }
+  },
+});
+
+export const runAnalyticsBackfill = migrations.runner([
+  internal.migrations.backfillUserAnalyticsSummary,
+  internal.migrations.backfillUserAnalyticsDaily,
+  internal.migrations.backfillUserAnalyticsModelDaily,
+]);
+
 async function repairTopicMetadataForUser(
   ctx: Pick<ActionCtx, "runQuery" | "runMutation">,
   userId: Id<"users">,
