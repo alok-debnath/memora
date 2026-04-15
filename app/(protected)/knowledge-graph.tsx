@@ -358,6 +358,7 @@ export default function KnowledgeGraphScreen() {
   return (
     <MorePageScaffold
       title="Knowledge Graph"
+      staticHeader
       scrollProps={{ contentContainerStyle: { gap: 12, paddingBottom: 32 } }}
     >
       {/* ── Header ── */}

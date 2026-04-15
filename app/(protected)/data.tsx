@@ -329,7 +329,7 @@ export default function DataScreen() {
   // ── render ────────────────────────────────────────────────────────────────
 
   return (
-    <MorePageScaffold title="Data">
+    <MorePageScaffold title="Data" staticHeader>
       {/* Header card */}
       <Card style={{ padding: 18, borderRadius: 26 }}>
         <YStack gap={14}>

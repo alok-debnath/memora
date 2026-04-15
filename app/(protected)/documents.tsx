@@ -206,7 +206,12 @@ export default function FilesScreen() {
   );
 
   return (
-    <MorePageScaffold title="Files" noScroll onContentTopPadding={setContentTopPadding}>
+    <MorePageScaffold
+      title="Files"
+      noScroll
+      staticHeader
+      onContentTopPadding={setContentTopPadding}
+    >
       <FlatList
         data={attachments}
         renderItem={renderItem}

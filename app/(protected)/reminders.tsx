@@ -108,7 +108,7 @@ export default function RemindersScreen() {
   ];
 
   return (
-    <MorePageScaffold title="Reminders">
+    <MorePageScaffold title="Reminders" staticHeader>
       <Animated.View entering={FadeInUp.duration(400)}>
         <Card
           style={{

@@ -72,7 +72,7 @@ export default function TimelineScreen() {
   const sectionCount = Object.keys(groups).length;
 
   return (
-    <MorePageScaffold title="Timeline">
+    <MorePageScaffold title="Timeline" staticHeader>
       <Animated.View entering={FadeInUp.duration(400)}>
         <Card
           style={{

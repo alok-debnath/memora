@@ -945,7 +945,7 @@ export default function AdminScreen() {
   // ── Loading ────────────────────────────────────────────────────────────────
   if (adminStatus === undefined) {
     return (
-      <MorePageScaffold title="Admin">
+      <MorePageScaffold title="Admin" staticHeader>
         <YStack flex={1} alignItems="center" justifyContent="center" paddingTop={80}>
           <ActivityIndicator color={ACCENT} size="large" />
         </YStack>
@@ -956,7 +956,7 @@ export default function AdminScreen() {
   // ── Access guard ───────────────────────────────────────────────────────────
   if (!adminStatus.isAdmin) {
     return (
-      <MorePageScaffold title="Admin">
+      <MorePageScaffold title="Admin" staticHeader>
         <Animated.View entering={FadeInUp.duration(400)}>
           <Card style={{ padding: 24, borderRadius: 24, marginTop: 16 }}>
             <YStack alignItems="center" gap={14}>
@@ -1000,7 +1000,7 @@ export default function AdminScreen() {
 
   // ── Admin UI ───────────────────────────────────────────────────────────────
   return (
-    <MorePageScaffold title="Admin" noScroll>
+    <MorePageScaffold title="Admin" staticHeader noScroll>
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}

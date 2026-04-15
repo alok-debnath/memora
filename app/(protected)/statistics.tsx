@@ -432,7 +432,11 @@ export default function AnalyticsScreen() {
   }, [overview]);
 
   return (
-    <MorePageScaffold title="Analytics" scrollProps={{ contentContainerStyle: { gap: 18 } }}>
+    <MorePageScaffold
+      title="Analytics"
+      staticHeader
+      scrollProps={{ contentContainerStyle: { gap: 18 } }}
+    >
       <Animated.View entering={FadeInUp.duration(360)}>
         <Card
           style={{

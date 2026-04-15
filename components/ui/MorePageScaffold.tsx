@@ -82,6 +82,11 @@ type MorePageScaffoldProps = {
   externalOnScroll?: ReturnType<typeof useAnimatedScrollHandler>;
   /** The top padding needed for content below the header. Passed to a callback so the caller can apply it. */
   onContentTopPadding?: (padding: number) => void;
+  /**
+   * When true, the back pill and title pill are permanently fixed at their
+   * full size — no collapse/shrink animation on scroll.
+   */
+  staticHeader?: boolean;
 };
 
 export function MorePageScaffold({
@@ -91,6 +96,7 @@ export function MorePageScaffold({
   noScroll,
   externalOnScroll,
   onContentTopPadding,
+  staticHeader,
 }: MorePageScaffoldProps) {
   const router = useRouter();
   const theme = useAppTheme();
@@ -131,6 +137,8 @@ export function MorePageScaffold({
       context.lastY = Math.max(event.contentOffset.y, 0);
     },
     onScroll: (event, context) => {
+      // When staticHeader is on, keep collapse value permanently at 0.
+      if (staticHeader) return;
       const currentY = Math.max(event.contentOffset.y, 0);
       const previousY = context.lastY ?? currentY;
       const deltaY = currentY - previousY;
@@ -142,6 +150,7 @@ export function MorePageScaffold({
   });
 
   const backPillStyle = useAnimatedStyle(() => {
+    if (staticHeader) return { transform: [] };
     const offset = headerCollapse.value;
     const scale = interpolate(offset, [0, HEADER_COLLAPSE_RANGE], [1, 0.68], Extrapolation.CLAMP);
     return {
@@ -155,6 +164,7 @@ export function MorePageScaffold({
   });
 
   const titlePillStyle = useAnimatedStyle(() => {
+    if (staticHeader) return { transform: [] };
     const offset = headerCollapse.value;
     const scale = interpolate(offset, [0, HEADER_COLLAPSE_RANGE], [1, 0.7], Extrapolation.CLAMP);
     const shrink = 1 - scale;
@@ -174,6 +184,7 @@ export function MorePageScaffold({
   });
 
   const ambientStyle = useAnimatedStyle(() => {
+    if (staticHeader) return { opacity: 0.95, transform: [{ scale: 1 }] };
     const offset = headerCollapse.value;
     return {
       opacity: interpolate(offset, [0, HEADER_COLLAPSE_RANGE * 0.67], [0.95, 0.5]),

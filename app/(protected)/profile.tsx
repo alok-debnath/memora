@@ -611,7 +611,11 @@ export default function ProfileScreen() {
   });
 
   return (
-    <MorePageScaffold title="Profile" scrollProps={{ contentContainerStyle: styles.content }}>
+    <MorePageScaffold
+      title="Profile"
+      staticHeader
+      scrollProps={{ contentContainerStyle: styles.content }}
+    >
       <Animated.View entering={FadeInUp.duration(400)}>
         <Card style={{ ...styles.profileCard, padding: 18, borderRadius: 26 }}>
           <XStack alignItems="flex-start" justifyContent="space-between" gap={14}>
