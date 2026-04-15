@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
-import { useRouter } from "expo-router";
+import { useAppRouter as useRouter } from "@/hooks/useAppRouter";
 import React, { useState } from "react";
 import { Platform, View } from "react-native";
 import { YStack, Text } from "tamagui";

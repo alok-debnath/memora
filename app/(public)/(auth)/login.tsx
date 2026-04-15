@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { router } from "expo-router";
+import { appRouter as router } from "@/lib/appRouter";
 import { YStack, XStack, Text } from "tamagui";
 
 import { AuthShell } from "@/components/auth/AuthShell";

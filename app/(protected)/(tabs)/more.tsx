@@ -1,7 +1,7 @@
 import React from "react";
 import { ScrollView } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { appRouter as router } from "@/lib/appRouter";
 import Animated, { FadeInUp } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { XStack, YStack, Text } from "tamagui";

@@ -1,7 +1,8 @@
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
-import { Tabs, useRouter, usePathname, Slot } from "expo-router";
+import { Tabs, usePathname, Slot } from "expo-router";
+import { useAppRouter as useRouter } from "@/hooks/useAppRouter";
 import { Feather } from "@expo/vector-icons";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import React, { useEffect, useRef } from "react";

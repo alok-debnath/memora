@@ -1,4 +1,4 @@
-import { Redirect, Stack, usePathname, useRouter } from "expo-router";
+import { Redirect, Stack, usePathname } from "expo-router";
 import { ActivityIndicator, Pressable } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { Text, XStack, YStack, useTheme } from "tamagui";
@@ -10,6 +10,7 @@ import { useAppTheme } from "@/hooks/useAppTheme";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
 import { ProtectedSheetHost } from "@/components/sheets/ProtectedSheetHost";
 import { useUIStore } from "@/store/ui";
+import { useAppRouter as useRouter } from "@/hooks/useAppRouter";
 
 const NAV_ITEMS = [
   {

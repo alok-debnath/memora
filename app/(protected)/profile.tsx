@@ -3,7 +3,7 @@ import { Platform, Switch, Alert, TextInput, Pressable, StyleSheet } from "react
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { Feather } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { appRouter as router } from "@/lib/appRouter";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInUp } from "react-native-reanimated";
 import AsyncStorage from "@react-native-async-storage/async-storage";

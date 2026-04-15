@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
+import { useAppRouter as useRouter } from "@/hooks/useAppRouter";
 import React, { useState } from "react";
 import { View } from "react-native";
 import { YStack, Text } from "tamagui";
