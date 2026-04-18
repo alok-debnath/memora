@@ -503,6 +503,19 @@ export const processMemory = action({
         embeddingFingerprint,
       });
 
+      const finalImportance = normalizedForWrite.importance ?? memory.importance;
+      const finalEntryKind = normalizedForWrite.entryKind ?? memory.entryKind;
+      if (
+        (finalImportance === "critical" || finalImportance === "high") &&
+        finalEntryKind === "memory" &&
+        !memory.reviewOptOut
+      ) {
+        await ctx.runMutation(internal.review.internalAddToReview, {
+          memoryId: args.memoryId,
+          userId: memory.userId,
+        });
+      }
+
       const shouldReassignTopics =
         !isSameValue(memory.embedding, embedding) ||
         !isSameValue(memory.title, normalizedForWrite.title ?? memory.title) ||

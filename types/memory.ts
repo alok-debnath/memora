@@ -41,6 +41,7 @@ export interface MemoryNote {
   recurrenceType?: MemoryRecurrenceType;
   capsuleUnlockDate?: string;
   isPublic?: boolean;
+  reviewOptOut?: boolean;
   googleEventId?: string;
   googleSyncStatus?: "pending" | "synced" | "failed";
   googleSyncMessage?: string;

@@ -80,6 +80,7 @@ const toMemoryNote = (m: Record<string, unknown>): MemoryNote => ({
     ?.recurrenceType,
   capsuleUnlockDate: m.capsuleUnlockDate as string | undefined,
   isPublic: m.isPublic as boolean | undefined,
+  reviewOptOut: m.reviewOptOut as boolean | undefined,
   googleEventId: m.googleEventId as string | undefined,
   googleSyncStatus: m.googleSyncStatus as MemoryNote["googleSyncStatus"] | undefined,
   googleSyncMessage: m.googleSyncMessage as string | undefined,
@@ -841,7 +842,11 @@ export default function HomeScreen() {
                         void handleDelete(raw._id);
                       }}
                       onShare={() => handleShare(raw._id)}
-                      onAddToReview={() => token && addToReview({ token, memoryId: raw._id })}
+                      onAddToReview={
+                        raw.reviewOptOut
+                          ? undefined
+                          : () => token && addToReview({ token, memoryId: raw._id })
+                      }
                       onComplete={() => token && completeMemory({ token, id: raw._id })}
                       onTriggerSync={() => handleTriggerReminderSync(raw._id)}
                       onRemoveSync={() => handleRemoveReminderSync(raw._id)}

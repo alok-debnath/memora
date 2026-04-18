@@ -72,6 +72,7 @@ export default defineSchema({
     embeddingState: v.union(v.literal("missing"), v.literal("ready")),
     shareToken: v.optional(v.string()),
     isPublic: v.optional(v.boolean()),
+    reviewOptOut: v.optional(v.boolean()),
     /** Encryption version used (for migration tracking) */
     encryptionVersion: v.optional(v.number()),
     /**

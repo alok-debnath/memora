@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { Doc } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { resolveUser } from "./lib/withAuth";
 
 export const list = query({
@@ -56,6 +56,38 @@ export const getDue = query({
       }
     }
     return result;
+  },
+});
+
+export const internalAddToReview = internalMutation({
+  args: { memoryId: v.id("memories"), userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("reviewCards")
+      .withIndex("by_memory", (q) => q.eq("memoryId", args.memoryId))
+      .first();
+    if (existing) return existing._id;
+    return await ctx.db.insert("reviewCards", {
+      userId: args.userId,
+      memoryId: args.memoryId,
+      nextReviewAt: new Date().toISOString(),
+      intervalDays: 1,
+      easeFactor: 2.5,
+      repetitions: 0,
+    });
+  },
+});
+
+export const internalRemoveFromReview = internalMutation({
+  args: { memoryId: v.id("memories"), userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const card = await ctx.db
+      .query("reviewCards")
+      .withIndex("by_memory", (q) => q.eq("memoryId", args.memoryId))
+      .first();
+    if (card && card.userId === args.userId) {
+      await ctx.db.delete(card._id);
+    }
   },
 });
 

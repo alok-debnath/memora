@@ -831,6 +831,7 @@ export const update = mutation({
     nextDueAt: v.optional(v.union(v.string(), v.null())),
     capsuleUnlockDate: v.optional(v.union(v.string(), v.null())),
     sourceChatTurnId: v.optional(v.id("chatMessages")),
+    reviewOptOut: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const user = await resolveUser(ctx, args.token);
@@ -941,6 +942,30 @@ export const update = mutation({
         currentTime: new Date().toISOString(),
         sourceChatTurnId: args.sourceChatTurnId,
       });
+    }
+
+    if ("reviewOptOut" in finalPatch) {
+      const effectiveEntryKind =
+        (typeof finalPatch.entryKind === "string" ? finalPatch.entryKind : undefined) ??
+        memory.entryKind;
+      const effectiveImportance =
+        (typeof finalPatch.importance === "string" ? finalPatch.importance : undefined) ??
+        memory.importance;
+      if (finalPatch.reviewOptOut === true) {
+        await ctx.runMutation(internal.review.internalRemoveFromReview, {
+          memoryId: args.id,
+          userId,
+        });
+      } else if (
+        finalPatch.reviewOptOut === false &&
+        effectiveEntryKind === "memory" &&
+        (effectiveImportance === "critical" || effectiveImportance === "high")
+      ) {
+        await ctx.runMutation(internal.review.internalAddToReview, {
+          memoryId: args.id,
+          userId,
+        });
+      }
     }
   },
 });
