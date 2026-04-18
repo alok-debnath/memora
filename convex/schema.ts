@@ -662,5 +662,57 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_user", ["userId"]),
 
+  adminActionLogs: defineTable({
+    actorUserId: v.id("users"),
+    action: v.string(),
+    targetType: v.string(),
+    targetId: v.optional(v.string()),
+    metadata: v.optional(v.record(v.string(), v.string())),
+    createdAt: v.number(),
+  })
+    .index("by_created_at", ["createdAt"])
+    .index("by_actor_and_created_at", ["actorUserId", "createdAt"]),
+
+  adminUserWatchlist: defineTable({
+    userId: v.id("users"),
+    status: v.union(v.literal("watch"), v.literal("clear")),
+    reason: v.optional(v.string()),
+    updatedBy: v.id("users"),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_status_and_updated_at", ["status", "updatedAt"]),
+
+  adminAlertRules: defineTable({
+    key: v.string(),
+    title: v.string(),
+    description: v.optional(v.string()),
+    metricKey: v.string(),
+    comparison: v.union(v.literal("gt"), v.literal("lt")),
+    threshold: v.number(),
+    severity: v.union(v.literal("info"), v.literal("warning"), v.literal("critical")),
+    enabled: v.boolean(),
+    updatedBy: v.id("users"),
+    updatedAt: v.number(),
+  })
+    .index("by_key", ["key"])
+    .index("by_enabled_and_updated_at", ["enabled", "updatedAt"]),
+
+  adminAlertIncidents: defineTable({
+    ruleKey: v.string(),
+    metricKey: v.string(),
+    severity: v.union(v.literal("info"), v.literal("warning"), v.literal("critical")),
+    status: v.union(v.literal("open"), v.literal("acknowledged"), v.literal("resolved")),
+    value: v.number(),
+    threshold: v.number(),
+    triggeredAt: v.number(),
+    acknowledgedAt: v.optional(v.number()),
+    resolvedAt: v.optional(v.number()),
+    lastEvaluatedAt: v.number(),
+    metadata: v.optional(v.record(v.string(), v.string())),
+  })
+    .index("by_status_and_triggered_at", ["status", "triggeredAt"])
+    .index("by_rule_and_triggered_at", ["ruleKey", "triggeredAt"]),
+
   ...authTables,
 });

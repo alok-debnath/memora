@@ -71,6 +71,7 @@ function GlassPill({
 type MorePageScaffoldProps = {
   title: string;
   children: React.ReactNode;
+  backHref?: string;
   scrollProps?: Omit<ScrollViewProps, "children">;
   /**
    * When true, renders children directly in a View instead of a ScrollView.
@@ -92,6 +93,7 @@ type MorePageScaffoldProps = {
 export function MorePageScaffold({
   title,
   children,
+  backHref,
   scrollProps,
   noScroll,
   externalOnScroll,
@@ -107,12 +109,17 @@ export function MorePageScaffold({
   const contentTopPadding = headerTop + HEADER_HEIGHT + CONTENT_TOP_GAP;
 
   const handleBackPress = React.useCallback(() => {
+    if (backHref) {
+      router.replace(backHref as never);
+      return;
+    }
+
     if (router.canGoBack()) {
       router.back();
       return;
     }
     router.replace("/");
-  }, [router]);
+  }, [backHref, router]);
 
   const handleTitlePillLayout = React.useCallback(
     (event: LayoutChangeEvent) => {
@@ -430,10 +437,10 @@ const styles = StyleSheet.create({
   },
   titleWrap: {
     position: "absolute",
-    left: 84,
-    right: 16,
+    left: 72,
+    right: 72,
     top: 0,
-    alignItems: "flex-end",
+    alignItems: "center",
   },
   titlePillFullWidth: {
     width: "100%",

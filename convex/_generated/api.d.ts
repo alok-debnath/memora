@@ -18,6 +18,7 @@ import type * as actions_processDiary from "../actions/processDiary.js";
 import type * as actions_processMemory from "../actions/processMemory.js";
 import type * as actions_semanticSearch from "../actions/semanticSearch.js";
 import type * as actions_transcribeAudio from "../actions/transcribeAudio.js";
+import type * as admin from "../admin.js";
 import type * as aiPricing from "../aiPricing.js";
 import type * as aiProviders from "../aiProviders.js";
 import type * as analytics from "../analytics.js";
@@ -76,6 +77,7 @@ declare const fullApi: ApiFromModules<{
   "actions/processMemory": typeof actions_processMemory;
   "actions/semanticSearch": typeof actions_semanticSearch;
   "actions/transcribeAudio": typeof actions_transcribeAudio;
+  admin: typeof admin;
   aiPricing: typeof aiPricing;
   aiProviders: typeof aiProviders;
   analytics: typeof analytics;
