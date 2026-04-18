@@ -46,6 +46,10 @@ Convex agent skills for common tasks can be installed by running `bun x convex a
 - `docs/`: project-specific implementation notes.
 - `android/`, `ios/`: native Expo prebuild output.
 
+## Git Conventions
+
+- Never add a co-author trailer to commit messages.
+
 ## Project Conventions
 
 - Public routes live under `app/(public)` and authenticated flows live under `app/(protected)`.
