@@ -125,6 +125,7 @@ export default function SignupScreen() {
           loading={isLoading}
           icon="user-plus"
           variant="gradient"
+          fullWidth
           style={{ marginTop: 2 }}
         />
 

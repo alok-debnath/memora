@@ -85,6 +85,7 @@ export default function ForgotPasswordScreen() {
               onPress={() => router.replace("/(public)/(auth)/login")}
               icon="arrow-left"
               variant="gradient"
+              fullWidth
             />
           </YStack>
         ) : (
@@ -108,6 +109,7 @@ export default function ForgotPasswordScreen() {
               loading={loading}
               disabled={!email.trim()}
               variant="gradient"
+              fullWidth
             />
 
             <AppButton

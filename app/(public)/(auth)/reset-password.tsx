@@ -97,6 +97,7 @@ export default function ResetPasswordScreen() {
               onPress={() => router.replace("/(public)/(auth)/login")}
               icon="log-in"
               variant="gradient"
+              fullWidth
             />
           </YStack>
         ) : (
@@ -150,6 +151,7 @@ export default function ResetPasswordScreen() {
               loading={loading}
               disabled={!newPassword.trim()}
               variant="gradient"
+              fullWidth
             />
 
             <AppButton

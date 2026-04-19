@@ -10,6 +10,11 @@ Convex agent skills for common tasks can be installed by running `bun x convex a
 
 # Memora Agent Guide
 
+## Maintaining This File
+
+- Keep this file focused on durable rules and conventions, not facts that can be discovered from the codebase.
+- If a new rule is a meaningful architectural or workflow decision for future agents, ask whether it should be added here.
+
 ## Project Snapshot
 
 - Single Expo React Native app at the repo root.
@@ -48,7 +53,9 @@ Convex agent skills for common tasks can be installed by running `bun x convex a
 
 ## Git Conventions
 
+- Never auto-commit or run git write commands unless the user explicitly asks.
 - Never add a co-author trailer to commit messages.
+- Use `.worktrees/` (project-local, gitignored) for git worktrees when worktrees are needed.
 
 ## Project Conventions
 
@@ -57,3 +64,11 @@ Convex agent skills for common tasks can be installed by running `bun x convex a
 - Follow `docs/ui-styling.md` for UI work; Tamagui is the primary styling system.
 - Prefer Bun commands in this repo; do not treat it as a monorepo.
 - For Convex work, treat generated types and `convex/_generated/ai/guidelines.md` as the source of truth.
+
+## Theming and UI Enforcement
+
+- For app UI, prefer theme tokens and semantic colors from `useAppTheme()` over raw color literals.
+- Keep gradients and reusable brand/accent colors centralized in `constants/colors.ts`.
+- In shared UI/auth components, avoid introducing ad-hoc hex colors when an existing token or centralized color exists.
+- Prefer existing shared primitives (`components/ui`) for buttons, inputs, cards, and notices before building screen-local variants.
+- Use `StyleSheet` only where it adds clear value (animation helpers, absolute fills, React Native interop, or platform edge cases), consistent with `docs/ui-styling.md`.

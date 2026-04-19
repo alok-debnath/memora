@@ -79,6 +79,7 @@ export default function LoginScreen() {
           loading={isLoading}
           icon="log-in"
           variant="gradient"
+          fullWidth
           style={{ marginTop: 2 }}
         />
 
