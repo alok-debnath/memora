@@ -395,5 +395,3 @@ export const ContextMenu = React.forwardRef<ContextMenuHandle, ContextMenuProps>
     );
   },
 );
-
-const styles = StyleSheet.create({});

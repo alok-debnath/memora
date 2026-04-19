@@ -67,6 +67,13 @@ export const integrationAccentColors = {
   pdfExtract: statusAccentColors.neutral,
 } as const;
 
+export const onboardingBackdropColors = {
+  capture: "#3E2410",
+  organize: "#122844",
+  recall: "#3C2716",
+  private: "#231A3D",
+} as const;
+
 export default {
   primary: amber,
   gradients: brandGradients,

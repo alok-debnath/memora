@@ -208,7 +208,7 @@ function TabPill({
             fontSize={10}
             fontFamily="$body"
             fontWeight="700"
-            color={active ? "white" : "$colorMuted"}
+            color={active ? "$textInverse" : "$colorMuted"}
           >
             {count}
           </Text>

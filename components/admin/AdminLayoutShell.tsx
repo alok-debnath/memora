@@ -144,7 +144,11 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
                         paddingVertical={9}
                         borderRadius={12}
                         borderWidth={1}
-                        borderColor={active ? navigationAccentColors.admin : "#00000022"}
+                        borderColor={
+                          active
+                            ? navigationAccentColors.admin
+                            : withAlpha(theme.shadowColor.val, "22")
+                        }
                         backgroundColor={
                           active ? navigationAccentColors.admin + "18" : "transparent"
                         }
@@ -298,7 +302,7 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
                     paddingVertical={9}
                     borderRadius={12}
                     borderWidth={1}
-                    borderColor="#00000022"
+                    borderColor={withAlpha(theme.shadowColor.val, "22")}
                   >
                     <Feather name="refresh-cw" size={13} color={statusAccentColors.neutral} />
                     <Text fontSize={12} fontFamily="$body" fontWeight="600" color="$colorMuted">

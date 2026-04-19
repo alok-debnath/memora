@@ -165,6 +165,7 @@ function TimelineChart({
   barColor: string;
   lineColor: string;
 }) {
+  const theme = useAppTheme();
   const width = Math.max(280, data.length * 24);
   const height = 184;
   const chartTop = 16;
@@ -197,7 +198,9 @@ function TimelineChart({
     data[0] ?? { dayKey: "", primaryValue: 0, secondaryValue: 0 },
   );
   const gridValues = [0.25, 0.5, 0.75, 1];
-  const axisColor = "#7A7A7A";
+  const axisColor = withAlpha(theme.color.val, "7A");
+  const gridStroke = withAlpha(theme.color.val, "2E");
+  const dotStroke = withAlpha(theme.background.val, "F0");
 
   return (
     <Svg width={width} height={height}>
@@ -216,7 +219,7 @@ function TimelineChart({
             y1={y}
             x2={width}
             y2={y}
-            stroke="#B8B8B8"
+            stroke={gridStroke}
             strokeOpacity={value === 1 ? 0.2 : 0.1}
             strokeDasharray="4 6"
           />
@@ -276,7 +279,7 @@ function TimelineChart({
           cy={point.y}
           r={data[index]?.dayKey === peakLine.dayKey && data[index]?.secondaryValue > 0 ? 4.5 : 3}
           fill={lineColor}
-          stroke="#FFFFFF"
+          stroke={dotStroke}
           strokeWidth={1.5}
         />
       ))}
@@ -285,7 +288,7 @@ function TimelineChart({
         y1={chartBottom}
         x2={width}
         y2={chartBottom}
-        stroke="#B8B8B8"
+        stroke={gridStroke}
         strokeOpacity={0.12}
       />
     </Svg>

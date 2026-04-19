@@ -18,6 +18,7 @@ import Animated, {
 import { XStack, YStack, Text } from "tamagui";
 
 import { AppButton } from "@/components/ui/AppButton";
+import { withAlpha } from "@/components/ui/themeHelpers";
 import { FontFamily } from "@/constants/fonts";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
@@ -305,19 +306,19 @@ function LiquidGlassTabBar({
     BAR_BOTTOM_MARGIN;
   const containerHeight = BAR_H + bottomInset + FADE_H;
   const fadeColors = React.useMemo(() => {
-    // Multi-stop ease-in curve to eliminate banding
-    const c = isDark ? "0,0,0" : "255,255,255";
+    // Multi-stop ease-in curve to eliminate banding while staying theme-derived
+    const bg = theme.background.val;
     return [
-      `rgba(${c},0)`,
-      `rgba(${c},0.05)`,
-      `rgba(${c},0.13)`,
-      `rgba(${c},0.25)`,
-      `rgba(${c},0.42)`,
-      `rgba(${c},0.60)`,
-      `rgba(${c},0.75)`,
-      `rgba(${c},0.85)`,
+      withAlpha(bg, "00"),
+      withAlpha(bg, "0D"),
+      withAlpha(bg, "21"),
+      withAlpha(bg, "40"),
+      withAlpha(bg, "6B"),
+      withAlpha(bg, "99"),
+      withAlpha(bg, "BF"),
+      withAlpha(bg, "D9"),
     ] as string[];
-  }, [isDark]);
+  }, [theme.background.val]);
 
   return (
     <View

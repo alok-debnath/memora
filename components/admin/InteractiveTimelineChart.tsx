@@ -14,7 +14,9 @@ import Animated, { FadeInUp } from "react-native-reanimated";
 import { Text, XStack, YStack } from "tamagui";
 
 import { PressableScale } from "@/components/ui/PressableScale";
+import { withAlpha } from "@/components/ui/themeHelpers";
 import { statusAccentColors } from "@/constants/colors";
+import { useAppTheme } from "@/hooks/useAppTheme";
 
 function formatCompact(value: number) {
   return new Intl.NumberFormat(undefined, {
@@ -53,6 +55,7 @@ export function InteractiveTimelineChart({
   compareLineColor?: string;
   onSelectPoint?: (point: TimelinePoint | null) => void;
 }) {
+  const theme = useAppTheme();
   const [selectedIndex, setSelectedIndex] = React.useState<number>(Math.max(points.length - 1, 0));
   const [windowSize, setWindowSize] = React.useState<7 | 14 | "all">("all");
   const [showPrimary, setShowPrimary] = React.useState(true);
@@ -117,6 +120,11 @@ export function InteractiveTimelineChart({
       : "";
 
   const selectedLinePoint = linePoints[selectedIndex] ?? null;
+  const gridStroke = withAlpha(theme.color.val, "2E");
+  const axisColor = withAlpha(theme.color.val, "7A");
+  const dotStroke = withAlpha(theme.background.val, "F0");
+  const inactiveChipBorder = withAlpha(theme.shadowColor.val, "22");
+  const inactiveDot = withAlpha(statusAccentColors.neutral, "77");
 
   return (
     <Animated.View entering={FadeInUp.duration(320)}>
@@ -136,12 +144,16 @@ export function InteractiveTimelineChart({
             color={barColor}
             label={primaryLabel}
             onPress={() => setShowPrimary((current) => !current)}
+            inactiveBorder={inactiveChipBorder}
+            inactiveDotColor={inactiveDot}
           />
           <ToggleChip
             active={showSecondary}
             color={lineColor}
             label={secondaryLabel}
             onPress={() => setShowSecondary((current) => !current)}
+            inactiveBorder={inactiveChipBorder}
+            inactiveDotColor={inactiveDot}
           />
           {hasCompare ? (
             <ToggleChip
@@ -149,17 +161,30 @@ export function InteractiveTimelineChart({
               color={compareLineColor}
               label={compareLabel}
               onPress={() => setShowCompare((current) => !current)}
+              inactiveBorder={inactiveChipBorder}
+              inactiveDotColor={inactiveDot}
             />
           ) : null}
         </XStack>
 
         <XStack gap={8}>
-          <RangeChip label="7" active={windowSize === 7} onPress={() => setWindowSize(7)} />
-          <RangeChip label="14" active={windowSize === 14} onPress={() => setWindowSize(14)} />
+          <RangeChip
+            label="7"
+            active={windowSize === 7}
+            onPress={() => setWindowSize(7)}
+            inactiveBorder={inactiveChipBorder}
+          />
+          <RangeChip
+            label="14"
+            active={windowSize === 14}
+            onPress={() => setWindowSize(14)}
+            inactiveBorder={inactiveChipBorder}
+          />
           <RangeChip
             label="All"
             active={windowSize === "all"}
             onPress={() => setWindowSize("all")}
+            inactiveBorder={inactiveChipBorder}
           />
         </XStack>
 
@@ -207,7 +232,7 @@ export function InteractiveTimelineChart({
                   y1={y}
                   x2={width}
                   y2={y}
-                  stroke="#B8B8B8"
+                  stroke={gridStroke}
                   strokeOpacity={0.11}
                   strokeDasharray="4 6"
                 />
@@ -245,7 +270,7 @@ export function InteractiveTimelineChart({
                       x={index * step + step / 2}
                       y={height - 16}
                       fontSize={10}
-                      fill="#7B7B7B"
+                      fill={axisColor}
                       textAnchor="middle"
                     >
                       {point.label}
@@ -286,7 +311,7 @@ export function InteractiveTimelineChart({
                       cy={point.y}
                       r={isSelected ? 5 : 3.5}
                       fill={lineColor}
-                      stroke="#FFFFFF"
+                      stroke={dotStroke}
                       strokeWidth={1.5}
                       onPress={() => setSelectedIndex(index)}
                     />
@@ -317,11 +342,15 @@ function ToggleChip({
   color,
   label,
   onPress,
+  inactiveBorder,
+  inactiveDotColor,
 }: {
   active: boolean;
   color: string;
   label: string;
   onPress: () => void;
+  inactiveBorder: string;
+  inactiveDotColor: string;
 }) {
   return (
     <PressableScale onPress={onPress}>
@@ -332,14 +361,14 @@ function ToggleChip({
         paddingVertical={7}
         borderRadius={10}
         borderWidth={1}
-        borderColor={active ? color : "#00000022"}
+        borderColor={active ? color : inactiveBorder}
         backgroundColor={active ? color + "1A" : "transparent"}
       >
         <YStack
           width={7}
           height={7}
           borderRadius={99}
-          backgroundColor={active ? color : "#99999977"}
+          backgroundColor={active ? color : inactiveDotColor}
         />
         <Text
           fontSize={11}
@@ -357,10 +386,12 @@ function RangeChip({
   label,
   active,
   onPress,
+  inactiveBorder,
 }: {
   label: string;
   active: boolean;
   onPress: () => void;
+  inactiveBorder: string;
 }) {
   return (
     <PressableScale onPress={onPress}>
@@ -372,7 +403,7 @@ function RangeChip({
         paddingVertical={6}
         borderRadius={10}
         borderWidth={1}
-        borderColor={active ? statusAccentColors.info : "#00000022"}
+        borderColor={active ? statusAccentColors.info : inactiveBorder}
         backgroundColor={active ? statusAccentColors.info + "14" : "transparent"}
       >
         <Text

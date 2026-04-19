@@ -28,7 +28,12 @@ import { Text, XStack, YStack } from "tamagui";
 
 import { AppButton } from "@/components/ui/AppButton";
 import { withAlpha } from "@/components/ui/themeHelpers";
-import { brandGradients, integrationAccentColors, statAccentColors } from "@/constants/colors";
+import {
+  brandGradients,
+  integrationAccentColors,
+  onboardingBackdropColors,
+  statAccentColors,
+} from "@/constants/colors";
 import { FontFamily } from "@/constants/fonts";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -53,7 +58,7 @@ const SLIDES: IntroSlide[] = [
     body: "Speak or type and keep moving. Memora turns quick thoughts into clean entries you can return to.",
     icon: "mic",
     accent: brandGradients.ember[1],
-    bg: "#3E2410",
+    bg: onboardingBackdropColors.capture,
   },
   {
     id: "organize",
@@ -62,7 +67,7 @@ const SLIDES: IntroSlide[] = [
     body: "People, places, moods, and actions are extracted automatically so each memory stays structured.",
     icon: "cpu",
     accent: statAccentColors.memories,
-    bg: "#122844",
+    bg: onboardingBackdropColors.organize,
   },
   {
     id: "recall",
@@ -71,7 +76,7 @@ const SLIDES: IntroSlide[] = [
     body: "Use natural language to jump to the right memory instead of searching folder by folder.",
     icon: "search",
     accent: brandGradients.golden[0],
-    bg: "#3C2716",
+    bg: onboardingBackdropColors.recall,
   },
   {
     id: "private",
@@ -80,7 +85,7 @@ const SLIDES: IntroSlide[] = [
     body: "Your data is used to run Memora, not sold as advertising data. See our Privacy Policy for details.",
     icon: "lock",
     accent: integrationAccentColors.reasoning,
-    bg: "#231A3D",
+    bg: onboardingBackdropColors.private,
   },
 ];
 

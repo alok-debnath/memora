@@ -213,7 +213,7 @@ function LargeScreenModal({
           opacity: opacityAnim,
           transform: [{ scale: scaleAnim }, { translateY: translateYAnim }],
           // Shadow (kept on the outer view so overflow:hidden doesn't clip it)
-          shadowColor: "#000",
+          shadowColor,
           shadowOffset: { width: 0, height: 12 },
           shadowOpacity: 0.18,
           shadowRadius: 28,
