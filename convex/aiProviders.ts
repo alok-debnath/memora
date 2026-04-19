@@ -397,6 +397,7 @@ export const setByokPreference = mutation({
       .query("userAiProviderSecrets")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .take(10);
+    const connectedProviders = new Set<Provider>(secrets.map((secret) => secret.provider));
     const current = existing ?? getDefaultPreferenceState(user._id);
     const currentProviderModels = normalizeProviderModelSelections({
       preferredProvider: current.preferredProvider,
@@ -416,15 +417,18 @@ export const setByokPreference = mutation({
           }
         : {}),
     } as AiProviderModelSelections;
+    const currentHasPreferredKey = connectedProviders.has(current.preferredProvider);
+    const nextHasPreferredKey = connectedProviders.has(args.preferredProvider);
+
     const currentEmbeddingRoute = getEffectiveEmbeddingRoute({
       preferredProvider: current.preferredProvider,
-      byokEnabled: current.byokEnabled,
+      byokEnabled: current.byokEnabled && currentHasPreferredKey,
       providerModels: currentProviderModels,
       routing,
     });
     const nextEmbeddingRoute = getEffectiveEmbeddingRoute({
       preferredProvider: args.preferredProvider,
-      byokEnabled: args.byokEnabled,
+      byokEnabled: args.byokEnabled && nextHasPreferredKey,
       providerModels: nextProviderModels,
       routing,
     });
@@ -439,10 +443,6 @@ export const setByokPreference = mutation({
       throw new Error(
         `${nextEmbeddingRoute.provider} model ${nextEmbeddingRoute.model} is not verified for embeddings.`,
       );
-    }
-
-    if (args.byokEnabled && !secrets.some((secret) => secret.provider === args.preferredProvider)) {
-      throw new Error(`Add a ${args.preferredProvider} API key before enabling BYOK.`);
     }
 
     const currentEmbeddingFingerprint = buildEmbeddingFingerprint(

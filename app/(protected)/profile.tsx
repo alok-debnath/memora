@@ -563,6 +563,7 @@ export default function ProfileScreen() {
   const selectedAiConfig = aiProviderSettings?.providers?.find(
     (provider: any) => provider.provider === selectedAiProvider,
   );
+  const isByokEnabled = aiProviderSettings?.preference?.byokEnabled ?? false;
   const embeddingRebuildActive =
     aiProviderSettings?.preference?.embeddingRebuildStatus &&
     aiProviderSettings.preference.embeddingRebuildStatus !== "idle" &&
@@ -1229,16 +1230,6 @@ export default function ProfileScreen() {
                 Use one provider for supported AI capabilities and skip Memora pricing on those
                 requests.
               </Text>
-              <Text
-                fontSize={12}
-                fontFamily="$body"
-                marginTop={4}
-                lineHeight={18}
-                color="$colorMuted"
-              >
-                Image generation is hidden until Memora actually ships an image feature. Server
-                transcription remains optional fallback behind the scenes.
-              </Text>
               {embeddingRebuildActive ? (
                 <Text
                   fontSize={12}
@@ -1254,7 +1245,7 @@ export default function ProfileScreen() {
               ) : null}
             </YStack>
             <Switch
-              value={aiProviderSettings?.preference?.byokEnabled ?? false}
+              value={isByokEnabled}
               onValueChange={(value) => void handleToggleByok(value)}
               disabled={isUpdatingByok}
               trackColor={{
@@ -1265,259 +1256,271 @@ export default function ProfileScreen() {
             />
           </XStack>
 
-          <YStack height={StyleSheet.hairlineWidth} backgroundColor="$borderColor" marginTop={14} />
+          {isByokEnabled ? (
+            <>
+              <YStack
+                height={StyleSheet.hairlineWidth}
+                backgroundColor="$borderColor"
+                marginTop={14}
+              />
 
-          <XStack gap={10} marginTop={14}>
-            {(["openai", "google"] as const).map((provider) => {
-              const isActive = selectedAiProvider === provider;
-              return (
-                <PressableScale
-                  key={provider}
-                  onPress={() => setSelectedAiProvider(provider)}
+              <XStack gap={10} marginTop={14}>
+                {(["openai", "google"] as const).map((provider) => {
+                  const isActive = selectedAiProvider === provider;
+                  return (
+                    <PressableScale
+                      key={provider}
+                      onPress={() => setSelectedAiProvider(provider)}
+                      style={[
+                        styles.providerChip,
+                        {
+                          borderColor: isActive ? theme.primary.val : theme.borderColor.val,
+                          backgroundColor: isActive
+                            ? theme.primary.val + "14"
+                            : theme.background.val,
+                        },
+                      ]}
+                    >
+                      <Text
+                        fontSize={13}
+                        fontFamily="$body"
+                        fontWeight="600"
+                        color={isActive ? theme.primary.val : theme.color.val}
+                      >
+                        {provider === "openai" ? "OpenAI" : "Google"}
+                      </Text>
+                    </PressableScale>
+                  );
+                })}
+              </XStack>
+
+              <YStack gap={6} marginTop={16}>
+                <Text
+                  fontSize={12}
+                  fontFamily="$heading"
+                  fontWeight="600"
+                  textTransform="uppercase"
+                  letterSpacing={0.8}
+                  marginLeft={4}
+                  color="$colorMuted"
+                >
+                  API Key
+                </Text>
+                <TextInput
+                  value={aiApiKey}
+                  onChangeText={setAiApiKey}
+                  placeholder={`Paste your ${selectedAiProvider === "openai" ? "OpenAI" : "Google"} API key`}
+                  placeholderTextColor={theme.colorMuted.val}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  secureTextEntry
                   style={[
-                    styles.providerChip,
+                    styles.input,
                     {
-                      borderColor: isActive ? theme.primary.val : theme.borderColor.val,
-                      backgroundColor: isActive ? theme.primary.val + "14" : theme.background.val,
+                      backgroundColor: theme.secondary.val,
+                      color: theme.color.val,
+                      borderColor: theme.borderColor.val,
                     },
                   ]}
-                >
-                  <Text
-                    fontSize={13}
-                    fontFamily="$body"
-                    fontWeight="600"
-                    color={isActive ? theme.primary.val : theme.color.val}
-                  >
-                    {provider === "openai" ? "OpenAI" : "Google"}
-                  </Text>
-                </PressableScale>
-              );
-            })}
-          </XStack>
-
-          <YStack gap={6} marginTop={16}>
-            <Text
-              fontSize={12}
-              fontFamily="$heading"
-              fontWeight="600"
-              textTransform="uppercase"
-              letterSpacing={0.8}
-              marginLeft={4}
-              color="$colorMuted"
-            >
-              API Key
-            </Text>
-            <TextInput
-              value={aiApiKey}
-              onChangeText={setAiApiKey}
-              placeholder={`Paste your ${selectedAiProvider === "openai" ? "OpenAI" : "Google"} API key`}
-              placeholderTextColor={theme.colorMuted.val}
-              autoCapitalize="none"
-              autoCorrect={false}
-              secureTextEntry
-              style={[
-                styles.input,
-                {
-                  backgroundColor: theme.secondary.val,
-                  color: theme.color.val,
-                  borderColor: theme.borderColor.val,
-                },
-              ]}
-            />
-          </YStack>
-
-          {selectedAiProvider === "openai" ? (
-            <YStack gap={6} marginTop={12}>
-              <Text
-                fontSize={12}
-                fontFamily="$heading"
-                fontWeight="600"
-                textTransform="uppercase"
-                letterSpacing={0.8}
-                marginLeft={4}
-                color="$colorMuted"
-              >
-                Base URL
-              </Text>
-              <TextInput
-                value={aiBaseUrl}
-                onChangeText={setAiBaseUrl}
-                placeholder="Optional custom OpenAI-compatible base URL"
-                placeholderTextColor={theme.colorMuted.val}
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: theme.secondary.val,
-                    color: theme.color.val,
-                    borderColor: theme.borderColor.val,
-                  },
-                ]}
-              />
-            </YStack>
-          ) : null}
-
-          <YStack gap={10} marginTop={16}>
-            <Text
-              fontSize={12}
-              fontFamily="$heading"
-              fontWeight="600"
-              textTransform="uppercase"
-              letterSpacing={0.8}
-              marginLeft={4}
-              color="$colorMuted"
-            >
-              Models
-            </Text>
-            {selectedAiConfig?.supportedCapabilities?.map((capability: string) => {
-              const matchingModels =
-                selectedAiConfig?.availableModels?.filter((model: any) =>
-                  model.capabilities.includes(capability),
-                ) ?? [];
-              return (
-                <YStack key={capability} gap={8}>
-                  <Text fontSize={13} fontFamily="$body" color="$color">
-                    {formatCapabilityLabel(capability)}
-                  </Text>
-                  <XStack flexWrap="wrap" gap={8}>
-                    {matchingModels.map((model: any) => {
-                      const isSelected = aiCapabilityModels[capability] === model.id;
-                      const isLocked = capability === "embeddings" && embeddingRebuildActive;
-                      return (
-                        <PressableScale
-                          key={`${capability}-${model.id}`}
-                          onPress={
-                            isLocked
-                              ? undefined
-                              : () =>
-                                  setAiCapabilityModels((current) => ({
-                                    ...current,
-                                    [capability]: model.id,
-                                  }))
-                          }
-                          style={[
-                            styles.modelChip,
-                            {
-                              borderColor: isSelected ? theme.primary.val : theme.borderColor.val,
-                              backgroundColor: isSelected
-                                ? theme.primary.val + "14"
-                                : theme.background.val,
-                              opacity: isLocked ? 0.55 : 1,
-                            },
-                          ]}
-                        >
-                          <Text
-                            fontSize={12}
-                            fontFamily="$body"
-                            fontWeight="600"
-                            color={isSelected ? theme.primary.val : theme.color.val}
-                          >
-                            {model.id}
-                          </Text>
-                        </PressableScale>
-                      );
-                    })}
-                  </XStack>
-                </YStack>
-              );
-            })}
-          </YStack>
-
-          <XStack gap={10} marginTop={16}>
-            <GradientButton
-              title={isSavingAiKey ? "Saving..." : "Save Key"}
-              onPress={() => void handleSaveAiKey()}
-              icon="key"
-              style={{ flex: 1 }}
-            />
-            <GradientButton
-              title="Delete"
-              onPress={() => void handleDeleteAiKey()}
-              icon="trash-2"
-              style={{ flex: 1 }}
-            />
-          </XStack>
-
-          <YStack
-            marginTop={16}
-            padding={14}
-            borderRadius={18}
-            borderWidth={1}
-            borderColor={theme.borderColor.val}
-            backgroundColor={theme.background.val}
-            gap={8}
-          >
-            <XStack alignItems="center" justifyContent="space-between">
-              <Text fontSize={14} fontFamily="$body" fontWeight="600" color="$color">
-                {selectedAiProvider === "openai" ? "OpenAI" : "Google"} status
-              </Text>
-              {selectedAiConfig?.configured ? (
-                <Badge
-                  label={`••••${selectedAiConfig.maskedKeySuffix ?? ""}`}
-                  color={theme.primary.val}
-                  small
                 />
-              ) : (
-                <Badge label="No key" color={theme.borderColor.val} small />
-              )}
-            </XStack>
-            <Text fontSize={12} fontFamily="$body" lineHeight={18} color="$colorMuted">
-              {selectedAiConfig?.lastValidationStatus === "valid"
-                ? (selectedAiConfig.lastValidationMessage ?? "Last validation succeeded.")
-                : (selectedAiConfig?.lastValidationMessage ??
-                  "Your key is encrypted server-side and only used to execute your AI requests.")}
-            </Text>
-            {aiProviderSettings?.preference?.embeddingRebuildStatus === "failed" ? (
-              <Text fontSize={12} fontFamily="$body" lineHeight={18} color="$destructive">
-                {aiProviderSettings?.preference?.embeddingRebuildError ||
-                  "Embedding rebuild failed. Search will keep using the last ready vectors."}
-              </Text>
-            ) : null}
-            <Text fontSize={12} fontFamily="$body" lineHeight={18} color="$colorMuted">
-              Last 30 days: Memora{" "}
-              {formatUsdMicros(aiUsageOverview?.totals?.totalAiMemoraCostUsdMicros ?? 0)} /{" "}
-              {aiUsageOverview?.totals?.totalAiMemoraRequests ?? 0} ops, your key{" "}
-              {formatUsdMicros(aiUsageOverview?.totals?.totalAiByokCostUsdMicros ?? 0)} /{" "}
-              {aiUsageOverview?.totals?.totalAiByokRequests ?? 0} ops.
-            </Text>
-            <PressableScale onPress={() => router.push("/(protected)/statistics")}>
-              <XStack
-                alignItems="center"
-                gap={8}
-                paddingHorizontal={12}
-                paddingVertical={10}
-                borderRadius={14}
+              </YStack>
+
+              {selectedAiProvider === "openai" ? (
+                <YStack gap={6} marginTop={12}>
+                  <Text
+                    fontSize={12}
+                    fontFamily="$heading"
+                    fontWeight="600"
+                    textTransform="uppercase"
+                    letterSpacing={0.8}
+                    marginLeft={4}
+                    color="$colorMuted"
+                  >
+                    Base URL
+                  </Text>
+                  <TextInput
+                    value={aiBaseUrl}
+                    onChangeText={setAiBaseUrl}
+                    placeholder="Optional custom OpenAI-compatible base URL"
+                    placeholderTextColor={theme.colorMuted.val}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: theme.secondary.val,
+                        color: theme.color.val,
+                        borderColor: theme.borderColor.val,
+                      },
+                    ]}
+                  />
+                </YStack>
+              ) : null}
+
+              <YStack gap={10} marginTop={16}>
+                <Text
+                  fontSize={12}
+                  fontFamily="$heading"
+                  fontWeight="600"
+                  textTransform="uppercase"
+                  letterSpacing={0.8}
+                  marginLeft={4}
+                  color="$colorMuted"
+                >
+                  Models
+                </Text>
+                {selectedAiConfig?.supportedCapabilities?.map((capability: string) => {
+                  const matchingModels =
+                    selectedAiConfig?.availableModels?.filter((model: any) =>
+                      model.capabilities.includes(capability),
+                    ) ?? [];
+                  return (
+                    <YStack key={capability} gap={8}>
+                      <Text fontSize={13} fontFamily="$body" color="$color">
+                        {formatCapabilityLabel(capability)}
+                      </Text>
+                      <XStack flexWrap="wrap" gap={8}>
+                        {matchingModels.map((model: any) => {
+                          const isSelected = aiCapabilityModels[capability] === model.id;
+                          const isLocked = capability === "embeddings" && embeddingRebuildActive;
+                          return (
+                            <PressableScale
+                              key={`${capability}-${model.id}`}
+                              onPress={
+                                isLocked
+                                  ? undefined
+                                  : () =>
+                                      setAiCapabilityModels((current) => ({
+                                        ...current,
+                                        [capability]: model.id,
+                                      }))
+                              }
+                              style={[
+                                styles.modelChip,
+                                {
+                                  borderColor: isSelected
+                                    ? theme.primary.val
+                                    : theme.borderColor.val,
+                                  backgroundColor: isSelected
+                                    ? theme.primary.val + "14"
+                                    : theme.background.val,
+                                  opacity: isLocked ? 0.55 : 1,
+                                },
+                              ]}
+                            >
+                              <Text
+                                fontSize={12}
+                                fontFamily="$body"
+                                fontWeight="600"
+                                color={isSelected ? theme.primary.val : theme.color.val}
+                              >
+                                {model.id}
+                              </Text>
+                            </PressableScale>
+                          );
+                        })}
+                      </XStack>
+                    </YStack>
+                  );
+                })}
+              </YStack>
+
+              <XStack gap={10} marginTop={16}>
+                <GradientButton
+                  title={isSavingAiKey ? "Saving..." : "Save Key"}
+                  onPress={() => void handleSaveAiKey()}
+                  icon="key"
+                  style={{ flex: 1 }}
+                />
+                <GradientButton
+                  title="Delete"
+                  onPress={() => void handleDeleteAiKey()}
+                  icon="trash-2"
+                  style={{ flex: 1 }}
+                />
+              </XStack>
+
+              <YStack
+                marginTop={16}
+                padding={14}
+                borderRadius={18}
                 borderWidth={1}
                 borderColor={theme.borderColor.val}
-                backgroundColor={theme.card.val}
-                alignSelf="flex-start"
+                backgroundColor={theme.background.val}
+                gap={8}
               >
-                <Feather name="bar-chart-2" size={14} color={theme.primary.val} />
-                <Text fontSize={12} fontFamily="$body" fontWeight="600" color="$color">
-                  View AI usage
+                <XStack alignItems="center" justifyContent="space-between">
+                  <Text fontSize={14} fontFamily="$body" fontWeight="600" color="$color">
+                    {selectedAiProvider === "openai" ? "OpenAI" : "Google"} status
+                  </Text>
+                  {selectedAiConfig?.configured ? (
+                    <Badge
+                      label={`••••${selectedAiConfig.maskedKeySuffix ?? ""}`}
+                      color={theme.primary.val}
+                      small
+                    />
+                  ) : (
+                    <Badge label="No key" color={theme.borderColor.val} small />
+                  )}
+                </XStack>
+                <Text fontSize={12} fontFamily="$body" lineHeight={18} color="$colorMuted">
+                  {selectedAiConfig?.lastValidationStatus === "valid"
+                    ? (selectedAiConfig.lastValidationMessage ?? "Last validation succeeded.")
+                    : (selectedAiConfig?.lastValidationMessage ??
+                      "Your key is encrypted server-side and only used to execute your AI requests.")}
                 </Text>
-              </XStack>
-            </PressableScale>
-          </YStack>
+                {aiProviderSettings?.preference?.embeddingRebuildStatus === "failed" ? (
+                  <Text fontSize={12} fontFamily="$body" lineHeight={18} color="$destructive">
+                    {aiProviderSettings?.preference?.embeddingRebuildError ||
+                      "Embedding rebuild failed. Search will keep using the last ready vectors."}
+                  </Text>
+                ) : null}
+                <Text fontSize={12} fontFamily="$body" lineHeight={18} color="$colorMuted">
+                  Last 30 days: Memora{" "}
+                  {formatUsdMicros(aiUsageOverview?.totals?.totalAiMemoraCostUsdMicros ?? 0)} /{" "}
+                  {aiUsageOverview?.totals?.totalAiMemoraRequests ?? 0} ops, your key{" "}
+                  {formatUsdMicros(aiUsageOverview?.totals?.totalAiByokCostUsdMicros ?? 0)} /{" "}
+                  {aiUsageOverview?.totals?.totalAiByokRequests ?? 0} ops.
+                </Text>
+                <PressableScale onPress={() => router.push("/(protected)/statistics")}>
+                  <XStack
+                    alignItems="center"
+                    gap={8}
+                    paddingHorizontal={12}
+                    paddingVertical={10}
+                    borderRadius={14}
+                    borderWidth={1}
+                    borderColor={theme.borderColor.val}
+                    backgroundColor={theme.card.val}
+                    alignSelf="flex-start"
+                  >
+                    <Feather name="bar-chart-2" size={14} color={theme.primary.val} />
+                    <Text fontSize={12} fontFamily="$body" fontWeight="600" color="$color">
+                      View AI usage
+                    </Text>
+                  </XStack>
+                </PressableScale>
+              </YStack>
 
-          <YStack marginTop={16} gap={8}>
-            {previewCapabilityMatrix.map((item: any) => (
-              <XStack
-                key={item.capability}
-                alignItems="center"
-                justifyContent="space-between"
-                paddingVertical={6}
-              >
-                <Text fontSize={13} fontFamily="$body" color="$color">
-                  {item.capability.replace(/_/g, " ")}
-                </Text>
-                <Text fontSize={12} fontFamily="$body" color="$colorMuted">
-                  {item.label}
-                </Text>
-              </XStack>
-            ))}
-          </YStack>
+              <YStack marginTop={16} gap={8}>
+                {previewCapabilityMatrix.map((item: any) => (
+                  <XStack
+                    key={item.capability}
+                    alignItems="center"
+                    justifyContent="space-between"
+                    paddingVertical={6}
+                  >
+                    <Text fontSize={13} fontFamily="$body" color="$color">
+                      {item.capability.replace(/_/g, " ")}
+                    </Text>
+                    <Text fontSize={12} fontFamily="$body" color="$colorMuted">
+                      {item.label}
+                    </Text>
+                  </XStack>
+                ))}
+              </YStack>
+            </>
+          ) : null}
         </Card>
       </Animated.View>
 

@@ -437,10 +437,10 @@ const styles = StyleSheet.create({
   },
   titleWrap: {
     position: "absolute",
-    left: 72,
-    right: 72,
+    left: 84,
+    right: 16,
     top: 0,
-    alignItems: "center",
+    alignItems: "flex-end",
   },
   titlePillFullWidth: {
     width: "100%",
