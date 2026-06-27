@@ -2,7 +2,7 @@ import React from "react";
 import { Platform, Switch, Alert, TextInput, Pressable, StyleSheet } from "react-native";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { Feather } from "@expo/vector-icons";
+import { Feather, type FeatherIconName } from "@/lib/icons";
 import { appRouter as router } from "@/lib/appRouter";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInUp } from "react-native-reanimated";
@@ -83,7 +83,7 @@ function IntegrationFeatureRow({
   onValueChange,
 }: {
   theme: ReturnType<typeof useAppTheme>;
-  icon: keyof typeof Feather.glyphMap;
+  icon: FeatherIconName;
   title: string;
   description: string;
   value: boolean;

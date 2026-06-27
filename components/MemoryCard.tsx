@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable, Platform, StyleSheet } from "react-native";
-import { Feather, FontAwesome5 } from "@expo/vector-icons";
+import { Feather, FontAwesome5 } from "@/lib/icons";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -307,6 +307,7 @@ export const CardBody = React.memo(function CardBody({
                 >
                   <FontAwesome5
                     name="google-drive"
+                    iconStyle="brand"
                     size={11}
                     color={integrationAccentColors.googleDrive}
                   />

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { ScrollView, View, useWindowDimensions } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import { useQuery } from "convex/react";
 import Svg, {
   Circle,

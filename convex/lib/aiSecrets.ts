@@ -1,3 +1,5 @@
+/// <reference types="node" />
+
 "use node";
 
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";

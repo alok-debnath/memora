@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import { TextInput, Pressable } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,

@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Feather, type FeatherIconName } from "@/lib/icons";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
   interpolate,
@@ -21,27 +21,26 @@ type AuthShellProps = {
   title: string;
   subtitle?: string;
   children: React.ReactNode;
-  accentIcon?: keyof typeof Feather.glyphMap;
+  accentIcon?: FeatherIconName;
 };
 
-const VALUE_POINTS: Array<{ icon: keyof typeof Feather.glyphMap; label: string; detail: string }> =
-  [
-    {
-      icon: "mic",
-      label: "Capture Fast",
-      detail: "Voice or text entries in seconds.",
-    },
-    {
-      icon: "search",
-      label: "Recall Clearly",
-      detail: "Find memories with natural language.",
-    },
-    {
-      icon: "shield",
-      label: "Private by Default",
-      detail: "Built with privacy-first defaults.",
-    },
-  ];
+const VALUE_POINTS: Array<{ icon: FeatherIconName; label: string; detail: string }> = [
+  {
+    icon: "mic",
+    label: "Capture Fast",
+    detail: "Voice or text entries in seconds.",
+  },
+  {
+    icon: "search",
+    label: "Recall Clearly",
+    detail: "Find memories with natural language.",
+  },
+  {
+    icon: "shield",
+    label: "Private by Default",
+    detail: "Built with privacy-first defaults.",
+  },
+];
 
 export function AuthShell({ title, subtitle, children, accentIcon = "zap" }: AuthShellProps) {
   const theme = useAppTheme();

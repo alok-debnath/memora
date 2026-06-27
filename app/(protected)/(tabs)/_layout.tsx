@@ -3,8 +3,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Tabs, usePathname, Slot } from "expo-router";
 import { useAppRouter as useRouter } from "@/hooks/useAppRouter";
-import { Feather } from "@expo/vector-icons";
-import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import { Feather } from "@/lib/icons";
 import React, { useEffect, useRef } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -105,6 +104,12 @@ type TabItemProps = {
   mutedColor: string;
 };
 
+type LiquidGlassTabBarProps = Parameters<
+  NonNullable<React.ComponentProps<typeof Tabs>["tabBar"]>
+>[0] & {
+  onPressAdd: () => void;
+};
+
 function TabItem({ icon, title, isFocused, onPress, primaryColor, mutedColor }: TabItemProps) {
   const scale = useSharedValue(1);
   const labelOpacity = useSharedValue(isFocused ? 1 : 0);
@@ -203,11 +208,7 @@ const ROUTE_DISPLAY_INDEX: Record<string, number> = {
 
 // ─── LiquidGlassTabBar ────────────────────────────────────────────────────────
 
-function LiquidGlassTabBar({
-  state,
-  navigation,
-  onPressAdd,
-}: BottomTabBarProps & { onPressAdd: () => void }) {
+function LiquidGlassTabBar({ state, navigation, onPressAdd }: LiquidGlassTabBarProps) {
   const insets = useSafeAreaInsets();
   const theme = useAppTheme();
   const resolvedMode = useThemeStore((s) => s.resolvedMode);

@@ -1,3 +1,5 @@
+/// <reference types="node" />
+
 "use node";
 
 import OpenAI from "openai";

@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { Card } from "./ui/Card";
 import { Badge } from "./ui/Badge";

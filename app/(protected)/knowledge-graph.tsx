@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { ScrollView, Pressable } from "react-native";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import Svg, { Circle, Line, G, Text as SvgText } from "react-native-svg";
 import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
 import { useWindowDimensions } from "react-native";

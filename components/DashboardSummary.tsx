@@ -1,5 +1,5 @@
 import React from "react";
-import { Feather } from "@expo/vector-icons";
+import { Feather, type FeatherIconName } from "@/lib/icons";
 import Animated, { FadeInUp } from "react-native-reanimated";
 import { XStack, YStack, Text } from "tamagui";
 import { Card } from "./ui/Card";
@@ -7,7 +7,7 @@ import { useAppTheme } from "@/hooks/useAppTheme";
 import { statAccentColors } from "@/constants/colors";
 
 interface StatCardProps {
-  icon: keyof typeof Feather.glyphMap;
+  icon: FeatherIconName;
   label: string;
   value: number;
   color: string;

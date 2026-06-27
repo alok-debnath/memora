@@ -1,6 +1,6 @@
 import { Redirect, Stack, usePathname } from "expo-router";
 import { ActivityIndicator, Pressable } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import { Text, XStack, YStack, useTheme } from "tamagui";
 import { SafeAreaView } from "react-native-safe-area-context";
 

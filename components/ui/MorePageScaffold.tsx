@@ -10,7 +10,7 @@ import {
 } from "react-native";
 
 import { LinearGradient } from "expo-linear-gradient";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import { useRouter } from "expo-router";
 import Animated, {
   Extrapolation,

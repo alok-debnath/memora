@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Pressable, TextInput } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import * as Haptics from "expo-haptics";
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from "expo-speech-recognition";
 import Animated, {

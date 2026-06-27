@@ -9,7 +9,6 @@ import {
   DMSans_700Bold,
   useFonts,
 } from "@expo-google-fonts/dm-sans";
-import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -22,6 +21,7 @@ import { useColorScheme } from "react-native";
 import { TamaguiProvider } from "tamagui";
 import { PortalProvider } from "react-native-teleport";
 
+import { ConvexBetterAuthProvider } from "@/components/auth/ConvexBetterAuthProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useThemeStore } from "@/store/theme";
 import { useAuthState, AuthContext } from "@/hooks/useAuth";

@@ -40,7 +40,7 @@ import Animated, {
   runOnJS,
 } from "react-native-reanimated";
 import { BlurView } from "expo-blur";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useThemeStore } from "@/store/theme";

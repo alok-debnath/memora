@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Platform, TextInput, ScrollView, Pressable, ActivityIndicator } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeInUp } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";

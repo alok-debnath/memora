@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Platform, Share } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import * as Haptics from "expo-haptics";
 import { useAction, useMutation, useQuery } from "convex/react";
 import Animated, {

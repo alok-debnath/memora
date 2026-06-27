@@ -1,7 +1,7 @@
 import React from "react";
 import { View, ScrollView, Pressable, StyleSheet, Animated } from "react-native";
 import { Image } from "expo-image";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import { useColors } from "@/hooks/useColors";
 import { Text } from "tamagui";
 import type { PendingAttachment } from "@/hooks/useFileAttachments";
@@ -205,7 +205,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     alignItems: "center",
     justifyContent: "center",
   },

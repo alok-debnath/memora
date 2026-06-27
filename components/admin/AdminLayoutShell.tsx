@@ -2,7 +2,7 @@ import React from "react";
 import { ScrollView, StyleSheet } from "react-native";
 import { usePathname } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import Animated, { FadeInUp } from "react-native-reanimated";
 import { Text, XStack, YStack } from "tamagui";
 

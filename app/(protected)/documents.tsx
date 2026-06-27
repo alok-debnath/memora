@@ -2,7 +2,7 @@ import React, { useState, useCallback } from "react";
 import { FlatList, Pressable, StyleSheet, RefreshControl, View, Dimensions } from "react-native";
 import { Image } from "expo-image";
 import { XStack, YStack, Text } from "tamagui";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";

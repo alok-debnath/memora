@@ -1,7 +1,7 @@
 import React, { useCallback } from "react";
 import { Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Image } from "expo-image";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import { Text, XStack, YStack } from "tamagui";
 import { BaseSheet } from "@/components/ui/BaseSheet";
 import { SheetHeader } from "@/components/ui/SheetHeader";

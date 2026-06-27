@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { ScrollView } from "react-native";
 import Animated, { FadeInRight } from "react-native-reanimated";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import { Text, XStack, YStack } from "tamagui";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";

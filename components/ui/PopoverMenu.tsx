@@ -7,7 +7,7 @@ import {
   StyleSheet,
   useWindowDimensions,
 } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import { XStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { Portal } from "react-native-teleport";

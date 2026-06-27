@@ -1,5 +1,5 @@
 import React from "react";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { PressableScale } from "./ui/PressableScale";
 import { XStack, YStack, Text } from "tamagui";

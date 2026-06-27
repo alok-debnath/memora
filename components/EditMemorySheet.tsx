@@ -18,7 +18,7 @@ import dayjs from "dayjs";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import * as Haptics from "expo-haptics";
-import { Feather, FontAwesome5 } from "@expo/vector-icons";
+import { Feather, FontAwesome5 } from "@/lib/icons";
 import * as Speech from "expo-speech";
 import { useAction, useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -780,6 +780,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                 >
                   <FontAwesome5
                     name="google-drive"
+                    iconStyle="brand"
                     size={12}
                     color={integrationAccentColors.googleDrive}
                   />

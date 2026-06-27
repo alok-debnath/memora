@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import { useColors } from "@/hooks/useColors";
 import { PopoverMenu, type PopoverMenuItem } from "./ui/PopoverMenu";
 

@@ -186,14 +186,14 @@ function LargeScreenModal({
       {/* Dimmed backdrop – only visible for the top-most modal */}
       <Animated.View
         style={[
-          StyleSheet.absoluteFillObject,
+          StyleSheet.absoluteFill,
           { zIndex: backdropZ, backgroundColor: withAlpha(shadowColor, "80") },
           { opacity: backdropAnim },
         ]}
         pointerEvents={open && depth === 0 ? "auto" : "none"}
       >
         <Pressable
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
           onPress={dismissOnOverlayPress ? () => onOpenChange(false) : undefined}
         />
       </Animated.View>

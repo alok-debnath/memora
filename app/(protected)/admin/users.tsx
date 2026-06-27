@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { ActivityIndicator, ScrollView } from "react-native";
 import Animated, { FadeInUp } from "react-native-reanimated";
 import { useMutation, useQuery } from "convex/react";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import { Text, XStack, YStack } from "tamagui";
 
 import { api } from "@/convex/_generated/api";

@@ -1,12 +1,12 @@
 import React from "react";
 import { type ViewStyle } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Feather, type FeatherIconName } from "@/lib/icons";
 import { AppButton } from "@/components/ui/AppButton";
 
 interface GradientButtonProps {
   title: string;
   onPress: () => void;
-  icon?: keyof typeof Feather.glyphMap;
+  icon?: FeatherIconName;
   style?: ViewStyle;
   loading?: boolean;
   disabled?: boolean;

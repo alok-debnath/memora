@@ -6,7 +6,7 @@ import {
   useWindowDimensions,
   type ListRenderItemInfo,
 } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Feather, type FeatherIconName } from "@/lib/icons";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
@@ -45,7 +45,7 @@ type IntroSlide = {
   kicker: string;
   title: string;
   body: string;
-  icon: keyof typeof Feather.glyphMap;
+  icon: FeatherIconName;
   accent: string;
   bg: string;
 };
@@ -372,10 +372,7 @@ export function OnboardingScreen() {
       edges={["top", "bottom"]}
     >
       <YStack flex={1} backgroundColor="$background">
-        <Animated.View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFillObject, backgroundStyle]}
-        />
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, backgroundStyle]} />
         <LinearGradient
           pointerEvents="none"
           colors={

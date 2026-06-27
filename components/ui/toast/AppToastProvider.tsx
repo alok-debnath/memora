@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import { createContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PanResponder, Platform, Pressable, StyleSheet, useWindowDimensions } from "react-native";
 import { createPortal } from "react-dom";

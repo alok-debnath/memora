@@ -1,5 +1,5 @@
 import React from "react";
-import { Feather } from "@expo/vector-icons";
+import { Feather, type FeatherIconName } from "@/lib/icons";
 import { XStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { getStatusColors, withAlpha, type StatusTone } from "@/components/ui/themeHelpers";
@@ -9,7 +9,7 @@ interface BadgeProps {
   tone?: StatusTone;
   color?: string;
   small?: boolean;
-  icon?: keyof typeof Feather.glyphMap;
+  icon?: FeatherIconName;
 }
 
 export function Badge({ label, tone = "accent", color, small, icon }: BadgeProps) {

@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 
 export type AdminRouteItem = {
   href: string;

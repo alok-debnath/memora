@@ -1,6 +1,6 @@
 import React from "react";
 import { ScrollView } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Feather, type FeatherIconName } from "@/lib/icons";
 import { appRouter as router } from "@/lib/appRouter";
 import Animated, { FadeInUp } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -17,7 +17,7 @@ import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
 
 interface MenuItem {
-  icon: keyof typeof Feather.glyphMap;
+  icon: FeatherIconName;
   label: string;
   description: string;
   route: string;

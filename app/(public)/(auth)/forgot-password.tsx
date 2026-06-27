@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import * as Linking from "expo-linking";
 import { useAppRouter as useRouter } from "@/hooks/useAppRouter";
 import React, { useState } from "react";

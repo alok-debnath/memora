@@ -7,11 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "memora",
     "userInterfaceStyle": "automatic",
-    "splash": {
-      "image": "./assets/images/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#E8911B"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.alokdebnath.memora",
@@ -46,7 +41,16 @@
         }
       ],
       "expo-secure-store",
-      "expo-image"
+      "expo-image",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#E8911B"
+        }
+      ],
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true

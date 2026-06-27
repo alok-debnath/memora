@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 import { Pressable } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Feather, type FeatherIconName } from "@/lib/icons";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 
 export interface PickerOption {
   value: string;
   label: string;
-  icon?: keyof typeof Feather.glyphMap;
+  icon?: FeatherIconName;
   color?: string;
 }
 

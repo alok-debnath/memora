@@ -1,6 +1,6 @@
 import React from "react";
 import { ActivityIndicator, type StyleProp, type ViewStyle } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Feather, type FeatherIconName } from "@/lib/icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { XStack, Text } from "tamagui";
 
@@ -16,7 +16,7 @@ type AppButtonSize = "sm" | "md" | "lg";
 type AppButtonProps = {
   title: string;
   onPress: () => void;
-  icon?: keyof typeof Feather.glyphMap;
+  icon?: FeatherIconName;
   variant?: AppButtonVariant;
   size?: AppButtonSize;
   loading?: boolean;

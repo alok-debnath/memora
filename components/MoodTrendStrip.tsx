@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from "react";
 import { ScrollView, Pressable } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { moodColors } from "@/constants/colors";

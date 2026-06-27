@@ -12,10 +12,10 @@ import {
 import Clipboard from "@react-native-clipboard/clipboard";
 import { XStack, YStack, Text, TooltipSimple } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { Feather, FontAwesome5 } from "@expo/vector-icons";
+import { Feather, FontAwesome5 } from "@/lib/icons";
 import * as Haptics from "expo-haptics";
 import * as Speech from "expo-speech";
-import Markdown from "react-native-markdown-display";
+import { Markdown } from "@believer/react-native-markdown-display";
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -1057,6 +1057,7 @@ function SearchResultRow({
             >
               <FontAwesome5
                 name="google-drive"
+                iconStyle="brand"
                 size={12}
                 color={integrationAccentColors.googleDrive}
               />
@@ -1165,6 +1166,7 @@ function SearchResultRow({
                   >
                     <FontAwesome5
                       name="google-drive"
+                      iconStyle="brand"
                       size={10}
                       color={integrationAccentColors.googleDrive}
                     />

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Pressable } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import { useMutation, useQuery } from "convex/react";
 import { Text, XStack, YStack } from "tamagui";
 import Animated, { FadeInDown } from "react-native-reanimated";

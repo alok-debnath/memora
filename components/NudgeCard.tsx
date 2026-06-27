@@ -1,5 +1,5 @@
 import React from "react";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import Animated, { FadeInRight } from "react-native-reanimated";
 import { PressableScale } from "./ui/PressableScale";
 import { XStack, YStack, Text } from "tamagui";

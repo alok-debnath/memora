@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Platform, ScrollView, StyleSheet, View } from "react-native";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/lib/icons";
 import * as Haptics from "expo-haptics";
 import Animated, {
   FadeIn,

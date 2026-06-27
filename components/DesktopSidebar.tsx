@@ -1,5 +1,5 @@
 import React from "react";
-import { Feather } from "@expo/vector-icons";
+import { Feather, type FeatherIconName } from "@/lib/icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { YStack, XStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -10,7 +10,7 @@ import { SurfaceCard } from "./ui/SurfaceCard";
 import { brandGradients } from "@/constants/colors";
 
 interface NavItem {
-  icon: keyof typeof Feather.glyphMap;
+  icon: FeatherIconName;
   label: string;
   key: string;
 }

@@ -1,10 +1,10 @@
 import React from "react";
-import { Feather } from "@expo/vector-icons";
+import { Feather, type FeatherIconName } from "@/lib/icons";
 import { YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 
 interface EmptyStateProps {
-  icon: keyof typeof Feather.glyphMap;
+  icon: FeatherIconName;
   title: string;
   description: string;
 }

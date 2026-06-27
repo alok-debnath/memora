@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import type { FeatherIconName } from "@/lib/icons";
 
 export type Mood =
   | "happy"
@@ -26,7 +26,7 @@ export type LifeArea =
   | "self-care"
   | "relationships";
 
-export const moodIcons: Record<Mood, keyof typeof Feather.glyphMap> = {
+export const moodIcons: Record<Mood, FeatherIconName> = {
   happy: "smile",
   sad: "frown",
   anxious: "alert-circle",
