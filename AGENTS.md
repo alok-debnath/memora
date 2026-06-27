@@ -54,6 +54,7 @@ Convex agent skills for common tasks can be installed by running `bun x convex a
 ## Git Conventions
 
 - Never auto-commit or run git write commands unless the user explicitly asks.
+- When the user asks for a commit, write a detailed commit message with a clear subject and explanatory body.
 - Never add a co-author trailer to commit messages.
 - Use `.worktrees/` (project-local, gitignored) for git worktrees when worktrees are needed.
 

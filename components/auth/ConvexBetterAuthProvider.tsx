@@ -3,11 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AuthTokenFetcher } from "convex/browser";
 import { ConvexProviderWithAuth } from "convex/react";
 
-import { nativeAuthClient, webAuthClient } from "@/lib/auth-client";
+import { authClient } from "@/lib/auth-client";
 
-// Keep this wrapper local until @convex-dev/better-auth exports React client
-// types that correctly accept the current Better Auth client instances.
-type SupportedAuthClient = typeof webAuthClient | typeof nativeAuthClient;
+// Keep this wrapper local until @convex-dev/better-auth exports a stable
+// React client interface that matches the current Better Auth instances.
+type SupportedAuthClient = typeof authClient;
 
 type ProviderProps = {
   children: ReactNode;
@@ -19,7 +19,14 @@ type ProviderProps = {
   initialToken?: string | null;
 };
 
-function hasCrossDomain(authClient: SupportedAuthClient): authClient is typeof webAuthClient {
+function hasCrossDomain(authClient: SupportedAuthClient): authClient is SupportedAuthClient & {
+  crossDomain: {
+    oneTimeToken: {
+      verify(args: { token: string }): Promise<{ data?: { session?: { token: string } } }>;
+    };
+  };
+  updateSession(): void;
+} {
   return "crossDomain" in authClient && "updateSession" in authClient;
 }
 
@@ -60,8 +67,8 @@ function useBetterAuth(authClient: SupportedAuthClient, initialToken?: string | 
 
             pendingTokenRef.current = authClient.convex
               .token({ fetchOptions: { throw: false } })
-              .then(({ data }) => {
-                const token = data?.token || null;
+              .then((result) => {
+                const token = "data" in result ? (result.data?.token ?? null) : null;
                 setCachedToken(token);
                 return token;
               })
