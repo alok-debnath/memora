@@ -1,10 +1,11 @@
 import { BlurView } from "expo-blur";
+import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from "expo-glass-effect";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Tabs, usePathname, Slot } from "expo-router";
 import { useAppRouter as useRouter } from "@/hooks/useAppRouter";
 import { Feather } from "@/lib/icons";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useId, useMemo, useRef } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
@@ -17,6 +18,7 @@ import Animated, {
 import { XStack, YStack, Text } from "tamagui";
 
 import { AppButton } from "@/components/ui/AppButton";
+import { useBackdropBlurHost } from "@/components/ui/BackdropBlurProvider";
 import { withAlpha } from "@/components/ui/themeHelpers";
 import { FontFamily } from "@/constants/fonts";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -48,6 +50,8 @@ const NAV_ITEMS = [
     icon: "more-horizontal" as const,
   },
 ] as const;
+
+type NavItemName = (typeof NAV_ITEMS)[number]["name"];
 
 // ─── Bar geometry ─────────────────────────────────────────────────────────────
 
@@ -104,10 +108,22 @@ type TabItemProps = {
   mutedColor: string;
 };
 
-type LiquidGlassTabBarProps = Parameters<
-  NonNullable<React.ComponentProps<typeof Tabs>["tabBar"]>
->[0] & {
+type FloatingTabBarProps = {
+  activeRouteName: NavItemName;
+  onNavigate: (routeName: NavItemName) => void;
   onPressAdd: () => void;
+  androidBlurTarget?: React.RefObject<View | null>;
+};
+
+type TabBarSurfaceProps = {
+  glassColor: string;
+  overlayColor: string;
+  androidFallbackColor: string;
+  blurIntensity: number;
+  isAndroid: boolean;
+  isDark: boolean;
+  useLiquidGlass: boolean;
+  androidBlurTarget?: React.RefObject<View | null>;
 };
 
 function TabItem({ icon, title, isFocused, onPress, primaryColor, mutedColor }: TabItemProps) {
@@ -206,20 +222,89 @@ const ROUTE_DISPLAY_INDEX: Record<string, number> = {
   more: 3,
 };
 
-// ─── LiquidGlassTabBar ────────────────────────────────────────────────────────
+function TabBarSurface({
+  glassColor,
+  overlayColor,
+  androidFallbackColor,
+  blurIntensity,
+  isAndroid,
+  isDark,
+  useLiquidGlass,
+  androidBlurTarget,
+}: TabBarSurfaceProps) {
+  const theme = useAppTheme();
 
-function LiquidGlassTabBar({ state, navigation, onPressAdd }: LiquidGlassTabBarProps) {
+  if (Platform.OS === "web") {
+    return (
+      <View
+        style={[
+          StyleSheet.absoluteFill,
+          // @ts-ignore – web-only CSS property
+          {
+            backgroundColor: glassColor,
+            backdropFilter: "blur(28px)",
+          },
+        ]}
+      />
+    );
+  }
+
+  if (useLiquidGlass) {
+    return (
+      <GlassView
+        style={StyleSheet.absoluteFill}
+        glassEffectStyle={{ style: "regular", animate: true, animationDuration: 0.28 }}
+        colorScheme={isDark ? "dark" : "light"}
+        isInteractive={false}
+      />
+    );
+  }
+
+  return (
+    <>
+      <BlurView
+        style={StyleSheet.absoluteFill}
+        intensity={blurIntensity}
+        tint={isDark ? "dark" : "light"}
+        blurMethod={isAndroid && androidBlurTarget ? "dimezisBlurViewSdk31Plus" : undefined}
+        blurTarget={isAndroid ? androidBlurTarget : undefined}
+        blurReductionFactor={isAndroid && androidBlurTarget ? 3.5 : undefined}
+      />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: glassColor }]} />
+      <View
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            backgroundColor: isAndroid ? androidFallbackColor : overlayColor,
+          },
+        ]}
+      />
+    </>
+  );
+}
+
+function useIsNativeLiquidGlassEnabled() {
+  return Platform.OS === "ios" && isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
+}
+
+// ─── FloatingTabBar ───────────────────────────────────────────────────────────
+
+function FloatingTabBar({
+  activeRouteName,
+  onNavigate,
+  onPressAdd,
+  androidBlurTarget,
+}: FloatingTabBarProps) {
   const insets = useSafeAreaInsets();
   const theme = useAppTheme();
   const resolvedMode = useThemeStore((s) => s.resolvedMode);
   const isDark = resolvedMode === "dark";
-  const isWeb = Platform.OS === "web";
+  const isAndroid = Platform.OS === "android";
+  const useLiquidGlass = useIsNativeLiquidGlassEnabled();
 
   const primaryColor = theme.primary.val;
   const mutedColor = theme.colorMuted.val;
 
-  // Active route name (stable key, immune to __fab shifting raw indices)
-  const activeRouteName = state.routes[state.index]?.name ?? "";
   const displayIndex = ROUTE_DISPLAY_INDEX[activeRouteName] ?? 0;
 
   // Sliding active indicator
@@ -268,9 +353,9 @@ function LiquidGlassTabBar({ state, navigation, onPressAdd }: LiquidGlassTabBarP
 
   useEffect(() => {
     barY.value = withSpring(0, ANIM.entrance);
-    barOpacity.value = withTiming(1, { duration: 280 });
+    barOpacity.value = useLiquidGlass ? 1 : withTiming(1, { duration: 280 });
     isMounted.current = true;
-  }, []);
+  }, [barOpacity, barY, useLiquidGlass]);
 
   // Single animated style merges entrance + pulse transforms so they don't clobber each other
   const barEntranceStyle = useAnimatedStyle(() => ({
@@ -278,24 +363,27 @@ function LiquidGlassTabBar({ state, navigation, onPressAdd }: LiquidGlassTabBarP
     opacity: barOpacity.value,
   }));
 
-  const glassColor = isDark ? theme.backgroundStrong.val + "D9" : theme.backgroundStrong.val + "D1";
-  const overlayColor = isDark ? theme.background.val + "47" : theme.background.val + "61";
-  const borderColor = isDark ? theme.borderColor.val + "5C" : theme.borderColor.val + "47";
-  const indicatorBg = primaryColor + "22"; // ~13% opacity tint
+  const glassColor = isDark
+    ? withAlpha(theme.backgroundStrong.val, "52")
+    : withAlpha(theme.card.val, "40");
+  const overlayColor = isDark
+    ? withAlpha(theme.background.val, "1C")
+    : withAlpha(theme.background.val, "16");
+  const borderColor = isDark
+    ? withAlpha(theme.borderColor.val, "70")
+    : withAlpha(theme.borderColor.val, "52");
+  const indicatorBg = isDark ? withAlpha(primaryColor, "2E") : withAlpha(primaryColor, "24");
+  const blurIntensity = isDark ? 16 : 14;
+  const androidFallbackColor = isDark
+    ? withAlpha(theme.backgroundStrong.val, "47")
+    : withAlpha(theme.card.val, "3D");
 
-  const handleTabPress = (routeName: string) => {
+  const handleTabPress = (routeName: NavItemName) => {
     if (Platform.OS !== "web") {
-      Haptics.selectionAsync();
+      void Haptics.selectionAsync();
     }
-    const route = state.routes.find((r) => r.name === routeName);
-    if (!route) return;
-    const event = navigation.emit({
-      type: "tabPress",
-      target: route.key,
-      canPreventDefault: true,
-    });
-    if (activeRouteName !== routeName && !event.defaultPrevented) {
-      navigation.navigate(routeName);
+    if (activeRouteName !== routeName) {
+      onNavigate(routeName);
     }
   };
 
@@ -343,46 +431,34 @@ function LiquidGlassTabBar({ state, navigation, onPressAdd }: LiquidGlassTabBarP
         pointerEvents="none"
       />
       <Animated.View
-        style={[styles.outerContainer, { shadowColor: theme.shadowColor.val }, barEntranceStyle]}
+        style={[
+          styles.outerContainer,
+          {
+            shadowColor: theme.shadowColor.val,
+            shadowOpacity: isDark ? 0.24 : 0.12,
+            shadowRadius: isDark ? 22 : 18,
+            shadowOffset: { width: 0, height: 4 },
+            elevation: isDark ? 12 : 9,
+          },
+          barEntranceStyle,
+        ]}
       >
         <View style={styles.innerContainer}>
-          {/* Glass background */}
-          {isWeb ? (
-            // Web: CSS backdrop-filter blur
-            <View
-              style={[
-                StyleSheet.absoluteFill,
-                // @ts-ignore – web-only CSS property
-                {
-                  backgroundColor: glassColor,
-                  backdropFilter: "blur(28px)",
-                },
-              ]}
-            />
-          ) : Platform.OS === "ios" ? (
-            // iOS: BlurView renders beautifully
-            <>
-              <BlurView
-                style={StyleSheet.absoluteFill}
-                intensity={isDark ? 90 : 78}
-                tint={isDark ? "dark" : "light"}
-              />
-              <View style={[StyleSheet.absoluteFill, { backgroundColor: overlayColor }]} />
-            </>
-          ) : (
-            // Android: BlurView is unreliable — use high-opacity solid background
-            <View
-              style={[
-                StyleSheet.absoluteFill,
-                {
-                  backgroundColor: theme.backgroundStrong.val + "F7",
-                },
-              ]}
-            />
-          )}
+          <TabBarSurface
+            glassColor={glassColor}
+            overlayColor={overlayColor}
+            androidFallbackColor={androidFallbackColor}
+            blurIntensity={blurIntensity}
+            isAndroid={isAndroid}
+            isDark={isDark}
+            useLiquidGlass={useLiquidGlass}
+            androidBlurTarget={androidBlurTarget}
+          />
 
           {/* Border highlight */}
-          <View style={[StyleSheet.absoluteFill, styles.border, { borderColor }]} />
+          {!useLiquidGlass ? (
+            <View style={[StyleSheet.absoluteFill, styles.border, { borderColor }]} />
+          ) : null}
 
           {/* Sliding active indicator pill */}
           <Animated.View
@@ -426,11 +502,73 @@ function LiquidGlassTabBar({ state, navigation, onPressAdd }: LiquidGlassTabBarP
   );
 }
 
+function routeNameFromPathname(pathname: string): NavItemName {
+  if (pathname === "/" || pathname === "/index" || pathname.startsWith("/index/")) return "index";
+  if (pathname === "/diary" || pathname.startsWith("/diary/")) return "diary";
+  if (pathname === "/review" || pathname.startsWith("/review/")) return "review";
+  if (pathname === "/more" || pathname.startsWith("/more/")) return "more";
+  return "index";
+}
+
+type MobileTabBarOverlayProps = {
+  activeRouteName: NavItemName;
+  onNavigate: (routeName: NavItemName) => void;
+  onPressAdd: () => void;
+};
+
+function MobileTabBarOverlay({
+  activeRouteName,
+  onNavigate,
+  onPressAdd,
+}: MobileTabBarOverlayProps) {
+  const host = useBackdropBlurHost();
+  const overlayId = useId();
+
+  const overlayNode = useMemo(
+    () => (
+      <FloatingTabBar
+        activeRouteName={activeRouteName}
+        onNavigate={onNavigate}
+        onPressAdd={onPressAdd}
+        androidBlurTarget={host?.blurTargetRef}
+      />
+    ),
+    [activeRouteName, host?.blurTargetRef, onNavigate, onPressAdd],
+  );
+
+  useEffect(() => {
+    if (!host) return;
+    host.setOverlay(overlayId, overlayNode);
+    return () => host.removeOverlay(overlayId);
+  }, [host, overlayId, overlayNode]);
+
+  if (host) return null;
+  return overlayNode;
+}
+
 // ─── Custom floating pill layout (mobile + web) ───────────────────────────────
 
 function CustomTabLayout() {
   const theme = useAppTheme();
+  const router = useRouter();
+  const pathname = usePathname();
   const openCommand = useUIStore((s) => s.openCommand);
+  const activeRouteName = routeNameFromPathname(pathname);
+
+  const handleNavigate = React.useCallback(
+    (routeName: NavItemName) => {
+      const path = routeName === "index" ? "/" : `/${routeName}`;
+      (router.navigate as (href: string) => void)(path);
+    },
+    [router],
+  );
+
+  const handlePressAdd = React.useCallback(() => {
+    if (Platform.OS !== "web") {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    openCommand();
+  }, [openCommand]);
 
   return (
     <>
@@ -449,17 +587,7 @@ function CustomTabLayout() {
             height: 0,
           },
         }}
-        tabBar={(props) => (
-          <LiquidGlassTabBar
-            {...props}
-            onPressAdd={() => {
-              if (Platform.OS !== "web") {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              }
-              openCommand();
-            }}
-          />
-        )}
+        tabBar={() => null}
       >
         {NAV_ITEMS.map((item) => (
           <Tabs.Screen key={item.name} name={item.name} options={{ title: item.title }} />
@@ -467,6 +595,11 @@ function CustomTabLayout() {
         {/* __fab.tsx exists for file-system routing but is not a nav tab */}
         <Tabs.Screen name="__fab" options={{ href: null }} />
       </Tabs>
+      <MobileTabBarOverlay
+        activeRouteName={activeRouteName}
+        onNavigate={handleNavigate}
+        onPressAdd={handlePressAdd}
+      />
     </>
   );
 }
