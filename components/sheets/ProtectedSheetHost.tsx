@@ -8,6 +8,7 @@ import { UnifiedCommandPanel } from "@/components/UnifiedCommandPanel";
 import { EditMemorySheet } from "@/components/EditMemorySheet";
 import { FilePreviewSheet } from "@/components/sheets/FilePreviewSheet";
 import { HomeOverviewSheet } from "@/components/sheets/HomeOverviewSheet";
+import { TurnBreakdownSheet } from "@/components/sheets/TurnBreakdownSheet";
 
 export function ProtectedSheetHost() {
   const { token } = useAuth();
@@ -56,6 +57,7 @@ export function ProtectedSheetHost() {
       ) : null}
       <HomeOverviewSheet />
       <FilePreviewSheet />
+      <TurnBreakdownSheet />
     </>
   );
 }

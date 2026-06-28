@@ -1,23 +1,28 @@
-import React, { useState, useRef, useCallback } from "react";
-import { TextInput, Pressable, ScrollView, Platform, Alert, Switch } from "react-native";
+import React, { useState, useRef, useCallback, useEffect } from "react";
+import { TextInput, Platform, Alert, Switch } from "react-native";
+import {
+  BottomSheetBackdrop,
+  BottomSheetView,
+  BottomSheetModal,
+  BottomSheetScrollView,
+  BottomSheetTextInput,
+  TouchableOpacity as BottomSheetTouchableOpacity,
+} from "@gorhom/bottom-sheet";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { Feather } from "@/lib/icons";
 import * as Haptics from "expo-haptics";
-import Animated, { FadeIn, useAnimatedStyle } from "react-native-reanimated";
-import {
-  KeyboardStickyView,
-  useReanimatedKeyboardAnimation,
-} from "react-native-keyboard-controller";
+import Animated, { FadeIn } from "react-native-reanimated";
+import { useAction } from "convex/react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
+import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
 import { FontFamily } from "@/constants/fonts";
-import { AIChatPanel } from "./AIChatPanel";
-import { BaseSheet } from "./ui/BaseSheet";
+import { AIChatPanel, AIChatPanelFooter, useAIChatController } from "./AIChatPanel";
 import { PressableScale } from "./ui/PressableScale";
 import { SegmentedControl } from "./ui/SegmentedControl";
+import { GradientButton } from "./ui/GradientButton";
 import { statusAccentColors } from "@/constants/colors";
 
 // ---------------------------------------------------------------------------
@@ -94,7 +99,6 @@ function TemplateCard({
 }
 
 function TipsCard() {
-  const theme = useAppTheme();
   return (
     <YStack
       backgroundColor="$card"
@@ -135,6 +139,10 @@ interface UnifiedCommandPanelProps {
 
 export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelProps) {
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const isLargeScreen = useIsLargeScreen();
+  const modalRef = useRef<BottomSheetModal>(null);
+  const presentedRef = useRef(false);
   const { token } = useAuth();
   const [activeTab, setActiveTab] = useState<"chat" | "note">("chat");
   const [chatInputMode, setChatInputMode] = useState<"voice" | "keyboard">("voice");
@@ -144,11 +152,13 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
   const [isSaving, setIsSaving] = useState(false);
   const [timeCapsuleEnabled, setTimeCapsuleEnabled] = useState(false);
   const [capsuleDate, setCapsuleDate] = useState("");
-  const insets = useSafeAreaInsets();
-  const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
-  const keyboardSpacerStyle = useAnimatedStyle(() => ({
-    height: Math.abs(keyboardHeight.value),
-  }));
+  const [chatFooterHeight, setChatFooterHeight] = useState(0);
+  const chatController = useAIChatController({
+    token,
+    chatInputMode,
+    setChatInputMode,
+    autoVoiceOutput,
+  });
 
   const noteInputRef = useRef<TextInput>(null);
 
@@ -198,60 +208,87 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
     setTimeout(() => noteInputRef.current?.focus(), 200);
   };
 
-  // ---- Render ----
+  const handleDismiss = useCallback(() => {
+    presentedRef.current = false;
+    onClose();
+  }, [onClose]);
 
-  return (
-    <BaseSheet
-      sheetId="unifiedCommand"
-      open={visible}
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-    >
-      {/* ── Header ── */}
-      <XStack
-        alignItems="center"
-        justifyContent="space-between"
-        paddingHorizontal={16}
-        paddingVertical={12}
-        borderBottomWidth={0.5}
-        borderBottomColor="$borderColor"
-      >
-        <XStack alignItems="center" gap={10} flex={1}>
+  const renderBackdrop = useCallback(
+    (props: React.ComponentProps<typeof BottomSheetBackdrop>) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        pressBehavior="close"
+      />
+    ),
+    [],
+  );
+
+  useEffect(() => {
+    if (visible && !presentedRef.current) {
+      modalRef.current?.present();
+      presentedRef.current = true;
+      return;
+    }
+
+    if (!visible && presentedRef.current) {
+      modalRef.current?.dismiss();
+    }
+  }, [visible]);
+
+  const sharedHeader = (
+    <YStack paddingHorizontal={16} paddingTop={10} paddingBottom={10} gap={12}>
+      <XStack alignItems="center" justifyContent="space-between" gap={12}>
+        <XStack flex={1} alignItems="center" gap={12}>
           <XStack
-            width={36}
-            height={36}
-            borderRadius={12}
+            width={40}
+            height={40}
+            borderRadius={20}
             alignItems="center"
             justifyContent="center"
             backgroundColor={theme.primary.val + "15"}
           >
-            <Feather name="cpu" size={18} color={theme.primary.val} />
+            <Feather
+              name={activeTab === "chat" ? "cpu" : "edit-3"}
+              size={18}
+              color={theme.primary.val}
+            />
           </XStack>
-          <YStack>
-            <Text fontSize={16} fontFamily="$body" fontWeight="600" color="$color">
+          <YStack flex={1} minWidth={0} gap={2}>
+            <Text
+              fontSize={18}
+              fontFamily="$body"
+              fontWeight="700"
+              color="$color"
+              numberOfLines={1}
+            >
               Memora
             </Text>
-            <Text fontSize={12} fontFamily="$body" marginTop={1} color="$colorMuted">
-              {activeTab === "chat" ? "Ask anything about your memories" : "Create a new memory"}
+            <Text fontSize={13} lineHeight={18} color="$colorMuted" numberOfLines={2}>
+              {activeTab === "chat"
+                ? "Ask anything about your memories"
+                : "Capture a memory quickly"}
             </Text>
           </YStack>
         </XStack>
-        <XStack alignItems="center" gap={4}>
-          {activeTab === "chat" && (
+        <XStack alignItems="center" gap={6}>
+          {activeTab === "chat" ? (
             <>
-              <Pressable
+              <BottomSheetTouchableOpacity
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   setAutoVoiceOutput((v) => !v);
                 }}
                 style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 17,
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
                   alignItems: "center",
                   justifyContent: "center",
-                  backgroundColor: autoVoiceOutput ? theme.primary.val + "15" : theme.secondary.val,
+                  backgroundColor: autoVoiceOutput ? theme.primary.val + "15" : theme.card.val,
+                  borderWidth: 1,
+                  borderColor: theme.borderColor.val,
                 }}
               >
                 <Feather
@@ -259,15 +296,18 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
                   size={16}
                   color={autoVoiceOutput ? theme.primary.val : theme.colorMuted.val}
                 />
-              </Pressable>
-              <Pressable
+              </BottomSheetTouchableOpacity>
+              <BottomSheetTouchableOpacity
                 onPress={() => setChatInputMode(chatInputMode === "voice" ? "keyboard" : "voice")}
                 style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 17,
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
                   alignItems: "center",
                   justifyContent: "center",
+                  backgroundColor: theme.card.val,
+                  borderWidth: 1,
+                  borderColor: theme.borderColor.val,
                 }}
               >
                 <Feather
@@ -275,274 +315,341 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
                   size={16}
                   color={theme.colorMuted.val}
                 />
-              </Pressable>
+              </BottomSheetTouchableOpacity>
             </>
-          )}
+          ) : null}
           <PressableScale onPress={onClose}>
             <YStack
-              width={38}
-              height={38}
-              borderRadius={14}
+              width={36}
+              height={36}
+              borderRadius={18}
               alignItems="center"
               justifyContent="center"
-              backgroundColor="$background"
+              backgroundColor="$card"
               borderWidth={1}
               borderColor="$borderColor"
             >
-              <Feather name="x" size={18} color={theme.color.val} />
+              <Feather name="x" size={16} color={theme.color.val} />
             </YStack>
           </PressableScale>
         </XStack>
       </XStack>
 
-      {/* ── Main Tabs ── */}
-      <YStack paddingHorizontal={16} paddingVertical={10}>
-        <SegmentedControl
-          options={[
-            {
-              value: "chat" as const,
-              label: "AI Chat",
-              icon: (
-                <Feather
-                  name="cpu"
-                  size={14}
-                  color={activeTab === "chat" ? theme.color.val : theme.colorMuted.val}
-                />
-              ),
-            },
-            {
-              value: "note" as const,
-              label: "New Memory",
-              icon: (
-                <Feather
-                  name="edit-3"
-                  size={14}
-                  color={activeTab === "note" ? theme.color.val : theme.colorMuted.val}
-                />
-              ),
-            },
-          ]}
-          value={activeTab}
-          onChange={setActiveTab}
-        />
-      </YStack>
-
-      {/* ── Content ── */}
-      {activeTab === "chat" ? (
-        <AIChatPanel
-          token={token}
-          chatInputMode={chatInputMode}
-          setChatInputMode={setChatInputMode}
-          autoVoiceOutput={autoVoiceOutput}
-        />
-      ) : (
-        /* ── New Memory Tab ── */
-        <YStack flex={1}>
-          {/* Sub-tabs */}
-          <YStack paddingHorizontal={16} paddingBottom={8}>
-            <SegmentedControl
-              options={[
-                {
-                  value: "type" as const,
-                  label: "Type",
-                  icon: (
-                    <Feather
-                      name="edit-3"
-                      size={14}
-                      color={noteSubTab === "type" ? theme.color.val : theme.colorMuted.val}
-                    />
-                  ),
-                },
-                {
-                  value: "template" as const,
-                  label: "Template",
-                  icon: (
-                    <Feather
-                      name="grid"
-                      size={14}
-                      color={noteSubTab === "template" ? theme.color.val : theme.colorMuted.val}
-                    />
-                  ),
-                },
-              ]}
-              value={noteSubTab}
-              onChange={setNoteSubTab}
-            />
-          </YStack>
-
-          <ScrollView
-            contentContainerStyle={{ padding: 16, paddingTop: 8, gap: 16 }}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            {/* Time Capsule Toggle */}
-            <XStack
-              alignItems="center"
-              justifyContent="space-between"
-              paddingVertical={4}
-              borderBottomWidth={0.5}
-              borderBottomColor="$borderColor"
-            >
-              <XStack alignItems="center" gap={12}>
-                <Feather
-                  name="lock"
-                  size={18}
-                  color={timeCapsuleEnabled ? theme.primary.val : theme.colorMuted.val}
-                />
-                <YStack>
-                  <Text fontSize={15} fontFamily="$body" fontWeight="600" color="$color">
-                    Time Capsule
-                  </Text>
-                  <Text fontSize={12} fontFamily="$body" marginTop={1} color="$colorMuted">
-                    Lock until a future date
-                  </Text>
-                </YStack>
-              </XStack>
-              <Switch
-                value={timeCapsuleEnabled}
-                onValueChange={setTimeCapsuleEnabled}
-                trackColor={{
-                  false: theme.borderColor.val,
-                  true: theme.primary.val + "60",
-                }}
-                thumbColor={timeCapsuleEnabled ? theme.primary.val : theme.colorMuted.val}
+      <SegmentedControl
+        options={[
+          {
+            value: "chat" as const,
+            label: "AI Chat",
+            icon: (
+              <Feather
+                name="cpu"
+                size={14}
+                color={activeTab === "chat" ? theme.color.val : theme.colorMuted.val}
               />
-            </XStack>
+            ),
+          },
+          {
+            value: "note" as const,
+            label: "New Memory",
+            icon: (
+              <Feather
+                name="edit-3"
+                size={14}
+                color={activeTab === "note" ? theme.color.val : theme.colorMuted.val}
+              />
+            ),
+          },
+        ]}
+        value={activeTab}
+        onChange={setActiveTab}
+      />
+    </YStack>
+  );
 
-            {/* Date picker when time capsule is on */}
-            {timeCapsuleEnabled && (
-              <Animated.View entering={FadeIn.duration(200)}>
-                <XStack
-                  alignItems="center"
-                  paddingHorizontal={14}
-                  paddingVertical={12}
-                  borderRadius={12}
-                  borderWidth={0.5}
-                  borderColor="$borderColor"
-                  backgroundColor="$secondary"
-                  gap={8}
-                >
-                  {Platform.OS === "web" ? (
-                    <input
-                      type="date"
-                      value={capsuleDate}
-                      onChange={(e: any) => setCapsuleDate(e.target.value)}
-                      min={new Date().toISOString().split("T")[0]}
-                      style={{
-                        flex: 1,
-                        border: "none",
-                        background: "transparent",
-                        color: theme.color.val,
-                        fontSize: 14,
-                        fontFamily: "Inter, sans-serif",
-                        outline: "none",
-                      }}
-                    />
-                  ) : (
-                    <TextInput
-                      value={capsuleDate}
-                      onChangeText={setCapsuleDate}
-                      placeholder="mm/dd/yyyy"
+  // ---- Render ----
+
+  return (
+    <BottomSheetModal
+      ref={modalRef}
+      name="unifiedCommand"
+      index={0}
+      snapPoints={["62%", "92%"]}
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      detached={isLargeScreen}
+      enablePanDownToClose
+      style={
+        isLargeScreen
+          ? {
+              marginHorizontal: 16,
+              width: "100%",
+              maxWidth: 720,
+              alignSelf: "center",
+            }
+          : undefined
+      }
+      topInset={isLargeScreen ? insets.top + 16 : insets.top}
+      bottomInset={isLargeScreen ? insets.bottom + 16 : insets.bottom}
+      enableBlurKeyboardOnGesture
+      android_keyboardInputMode="adjustResize"
+      stackBehavior="push"
+      backdropComponent={renderBackdrop}
+      backgroundStyle={{ backgroundColor: theme.surface.val }}
+      footerComponent={
+        activeTab === "chat"
+          ? (props) => (
+              <AIChatPanelFooter
+                {...props}
+                controller={chatController}
+                bottomInset={isLargeScreen ? insets.bottom + 16 : insets.bottom}
+                onHeightChange={(height) => {
+                  setChatFooterHeight((current) =>
+                    Math.abs(current - height) < 1 ? current : height,
+                  );
+                }}
+              />
+            )
+          : undefined
+      }
+      onDismiss={handleDismiss}
+    >
+      {activeTab === "chat" ? (
+        <>
+          {sharedHeader}
+          <XStack
+            alignItems="center"
+            justifyContent="space-between"
+            paddingHorizontal={16}
+            paddingBottom={10}
+            borderBottomWidth={1}
+            borderBottomColor="$borderColor"
+            backgroundColor="$background"
+          >
+            <Text fontSize={12} fontFamily="$body" color="$colorMuted">
+              {chatController.messages.length}{" "}
+              {chatController.messages.length === 1 ? "message" : "messages"}
+            </Text>
+            <PressableScale onPress={chatController.handleClearChat}>
+              <XStack
+                alignItems="center"
+                gap={6}
+                paddingHorizontal={10}
+                paddingVertical={6}
+                borderRadius={999}
+                borderWidth={1}
+                borderColor="$borderColor"
+                backgroundColor="$card"
+              >
+                <Feather name="trash-2" size={13} color={theme.colorMuted.val} />
+                <Text fontSize={12} fontFamily="$body" color="$colorMuted">
+                  Clear
+                </Text>
+              </XStack>
+            </PressableScale>
+          </XStack>
+          <AIChatPanel controller={chatController} footerHeight={chatFooterHeight} />
+        </>
+      ) : (
+        <BottomSheetView style={{ flex: 1, minHeight: 0 }}>
+          {sharedHeader}
+          <YStack flex={1} minHeight={0}>
+            {/* Sub-tabs */}
+            <YStack paddingHorizontal={16} paddingBottom={8}>
+              <SegmentedControl
+                options={[
+                  {
+                    value: "type" as const,
+                    label: "Type",
+                    icon: (
+                      <Feather
+                        name="edit-3"
+                        size={14}
+                        color={noteSubTab === "type" ? theme.color.val : theme.colorMuted.val}
+                      />
+                    ),
+                  },
+                  {
+                    value: "template" as const,
+                    label: "Template",
+                    icon: (
+                      <Feather
+                        name="grid"
+                        size={14}
+                        color={noteSubTab === "template" ? theme.color.val : theme.colorMuted.val}
+                      />
+                    ),
+                  },
+                ]}
+                value={noteSubTab}
+                onChange={setNoteSubTab}
+              />
+            </YStack>
+
+            <BottomSheetScrollView
+              contentContainerStyle={{ padding: 16, paddingTop: 8, paddingBottom: 32, gap: 16 }}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
+            >
+              {/* Time Capsule Toggle */}
+              <XStack
+                alignItems="center"
+                justifyContent="space-between"
+                padding={14}
+                borderRadius={16}
+                borderWidth={1}
+                borderColor="$borderColor"
+                backgroundColor="$card"
+              >
+                <XStack alignItems="center" gap={12}>
+                  <Feather
+                    name="lock"
+                    size={18}
+                    color={timeCapsuleEnabled ? theme.primary.val : theme.colorMuted.val}
+                  />
+                  <YStack>
+                    <Text fontSize={15} fontFamily="$body" fontWeight="600" color="$color">
+                      Time Capsule
+                    </Text>
+                    <Text fontSize={12} fontFamily="$body" marginTop={1} color="$colorMuted">
+                      Lock until a future date
+                    </Text>
+                  </YStack>
+                </XStack>
+                <Switch
+                  value={timeCapsuleEnabled}
+                  onValueChange={setTimeCapsuleEnabled}
+                  trackColor={{
+                    false: theme.borderColor.val,
+                    true: theme.primary.val + "60",
+                  }}
+                  thumbColor={timeCapsuleEnabled ? theme.primary.val : theme.colorMuted.val}
+                />
+              </XStack>
+
+              {/* Date picker when time capsule is on */}
+              {timeCapsuleEnabled && (
+                <Animated.View entering={FadeIn.duration(200)}>
+                  <XStack
+                    alignItems="center"
+                    paddingHorizontal={14}
+                    paddingVertical={12}
+                    borderRadius={16}
+                    borderWidth={1}
+                    borderColor="$borderColor"
+                    backgroundColor="$card"
+                    gap={8}
+                  >
+                    {Platform.OS === "web" ? (
+                      <input
+                        type="date"
+                        value={capsuleDate}
+                        onChange={(e: any) => setCapsuleDate(e.target.value)}
+                        min={new Date().toISOString().split("T")[0]}
+                        style={{
+                          flex: 1,
+                          border: "none",
+                          background: "transparent",
+                          color: theme.color.val,
+                          fontSize: 14,
+                          fontFamily: "Inter, sans-serif",
+                          outline: "none",
+                        }}
+                      />
+                    ) : (
+                      <BottomSheetTextInput
+                        value={capsuleDate}
+                        onChangeText={setCapsuleDate}
+                        placeholder="mm/dd/yyyy"
+                        placeholderTextColor={theme.colorMuted.val}
+                        style={{
+                          flex: 1,
+                          fontSize: 14,
+                          fontFamily: FontFamily.regular,
+                          padding: 0,
+                          color: theme.color.val,
+                        }}
+                        keyboardType="numbers-and-punctuation"
+                      />
+                    )}
+                    <Feather name="calendar" size={16} color={theme.colorMuted.val} />
+                  </XStack>
+                </Animated.View>
+              )}
+
+              {noteSubTab === "type" ? (
+                <>
+                  {/* Note input area */}
+                  <YStack
+                    backgroundColor="$card"
+                    borderColor="$borderColor"
+                    borderWidth={1}
+                    borderRadius={16}
+                    padding={16}
+                    gap={12}
+                  >
+                    <YStack gap={4}>
+                      <Text
+                        fontSize={12}
+                        fontWeight="600"
+                        color="$colorMuted"
+                        textTransform="uppercase"
+                      >
+                        Memory note
+                      </Text>
+                      <Text fontSize={13} color="$colorMuted">
+                        Write a quick note, reminder, or idea.
+                      </Text>
+                    </YStack>
+                    <BottomSheetTextInput
+                      ref={noteInputRef as any}
+                      value={noteText}
+                      onChangeText={setNoteText}
+                      placeholder={
+                        "Type a memory note... e.g.\n'Remind me to renew my passport\non March 15 every year'"
+                      }
                       placeholderTextColor={theme.colorMuted.val}
+                      multiline
                       style={{
-                        flex: 1,
                         fontSize: 14,
                         fontFamily: FontFamily.regular,
+                        lineHeight: 22,
+                        textAlignVertical: "top",
+                        minHeight: 60,
                         padding: 0,
                         color: theme.color.val,
                       }}
-                      keyboardType="numbers-and-punctuation"
                     />
-                  )}
-                  <Feather name="calendar" size={16} color={theme.colorMuted.val} />
-                </XStack>
-              </Animated.View>
-            )}
+                    <GradientButton
+                      title={isSaving ? "Saving..." : "Save Memory"}
+                      icon="save"
+                      onPress={handleSaveNote}
+                      disabled={!noteText.trim() || isSaving}
+                    />
+                  </YStack>
 
-            {noteSubTab === "type" ? (
-              <>
-                {/* Note input area */}
-                <YStack
-                  backgroundColor="$card"
-                  borderColor="$borderColor"
-                  borderWidth={1}
-                  borderRadius={16}
-                  padding={16}
-                  minHeight={120}
-                  position="relative"
-                >
-                  <Feather
-                    name="edit-3"
-                    size={18}
-                    color={theme.colorMuted.val}
-                    style={{ marginBottom: 8 }}
-                  />
-                  <TextInput
-                    ref={noteInputRef}
-                    value={noteText}
-                    onChangeText={setNoteText}
-                    placeholder={
-                      "Type a memory note... e.g.\n'Remind me to renew my passport\non March 15 every year'"
-                    }
-                    placeholderTextColor={theme.colorMuted.val}
-                    multiline
-                    style={{
-                      fontSize: 14,
-                      fontFamily: FontFamily.regular,
-                      lineHeight: 22,
-                      textAlignVertical: "top",
-                      minHeight: 60,
-                      padding: 0,
-                      color: theme.color.val,
-                    }}
-                  />
-                  <PressableScale
-                    onPress={handleSaveNote}
-                    disabled={!noteText.trim() || isSaving}
-                    style={{ position: "absolute", bottom: 14, right: 14 }}
-                  >
-                    <XStack
-                      width={38}
-                      height={38}
-                      borderRadius={19}
-                      alignItems="center"
-                      justifyContent="center"
-                      backgroundColor={noteText.trim() && !isSaving ? "$primary" : "$borderColor"}
-                    >
-                      <Feather
-                        name="send"
-                        size={16}
-                        color={
-                          noteText.trim() && !isSaving
-                            ? theme.textInverse.val
-                            : theme.colorMuted.val
-                        }
+                  <TipsCard />
+                </>
+              ) : (
+                <>
+                  {/* Template grid */}
+                  <XStack flexWrap="wrap" gap={12}>
+                    {TEMPLATES.map((template) => (
+                      <TemplateCard
+                        key={template.name}
+                        template={template}
+                        onPress={() => handleTemplateSelect(template)}
                       />
-                    </XStack>
-                  </PressableScale>
-                </YStack>
+                    ))}
+                  </XStack>
 
-                <TipsCard />
-              </>
-            ) : (
-              <>
-                {/* Template grid */}
-                <XStack flexWrap="wrap" gap={12}>
-                  {TEMPLATES.map((template) => (
-                    <TemplateCard
-                      key={template.name}
-                      template={template}
-                      onPress={() => handleTemplateSelect(template)}
-                    />
-                  ))}
-                </XStack>
-
-                <TipsCard />
-              </>
-            )}
-          </ScrollView>
-        </YStack>
+                  <TipsCard />
+                </>
+              )}
+            </BottomSheetScrollView>
+          </YStack>
+        </BottomSheetView>
       )}
-    </BaseSheet>
+    </BottomSheetModal>
   );
 }

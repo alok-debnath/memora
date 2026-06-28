@@ -1,5 +1,8 @@
-import React, { useMemo, useState } from "react";
-import { ScrollView, View, useWindowDimensions } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { View, useWindowDimensions } from "react-native";
+import { BottomSheetBackdrop, BottomSheetModal, BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import { FlatList } from "react-native-gesture-handler";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@/lib/icons";
 import { useQuery } from "convex/react";
 import Svg, {
@@ -22,10 +25,9 @@ import { Badge } from "@/components/ui/Badge";
 import { SectionLabel } from "@/components/ui/SectionLabel";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { PressableScale } from "@/components/ui/PressableScale";
-import { BaseSheet } from "@/components/ui/BaseSheet";
-import { SheetHeader } from "@/components/ui/SheetHeader";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useAuth } from "@/hooks/useAuth";
+import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
 import { integrationAccentColors, statAccentColors, statusAccentColors } from "@/constants/colors";
 import { withAlpha } from "@/components/ui/themeHelpers";
 
@@ -360,6 +362,10 @@ function getDetailPanelMeta(
 
 export default function AnalyticsScreen() {
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const isLargeScreen = useIsLargeScreen();
+  const modalRef = useRef<BottomSheetModal>(null);
+  const presentedRef = useRef(false);
   const { token } = useAuth();
   const { width: windowWidth } = useWindowDimensions();
   const [range, setRange] = useState<RangeKey>("7d");
@@ -378,6 +384,36 @@ export default function AnalyticsScreen() {
     useQuery(api.analytics.aiFeatureBreakdown, token ? { token, range, spendSource } : "skip") ??
     [];
   const detailMeta = getDetailPanelMeta(detailPanel);
+  const detailOpen = detailPanel !== "none";
+
+  const handleDismiss = useCallback(() => {
+    presentedRef.current = false;
+    setDetailPanel("none");
+  }, []);
+
+  const renderBackdrop = useCallback(
+    (props: React.ComponentProps<typeof BottomSheetBackdrop>) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        pressBehavior="close"
+      />
+    ),
+    [],
+  );
+
+  useEffect(() => {
+    if (detailOpen && !presentedRef.current) {
+      modalRef.current?.present();
+      presentedRef.current = true;
+      return;
+    }
+
+    if (!detailOpen && presentedRef.current) {
+      modalRef.current?.dismiss();
+    }
+  }, [detailOpen]);
   const recentEventsResult = useQuery(
     api.analytics.recentEvents,
     token ? { token, range, spendSource, paginationOpts: { numItems: 10, cursor: null } } : "skip",
@@ -649,31 +685,35 @@ export default function AnalyticsScreen() {
                 </Text>
               </YStack>
             </XStack>
-            <ScrollView
+            <FlatList
               horizontal
+              data={[0]}
+              keyExtractor={() => "timeline"}
+              renderItem={() => (
+                <YStack>
+                  <XStack justifyContent="space-between" alignItems="center" marginBottom={8}>
+                    <Text fontSize={10} color="$colorMuted">
+                      {formatCompactNumber(usageFlowScale.maxSearches)} searches
+                    </Text>
+                    <Text fontSize={10} color="$colorMuted">
+                      {formatCompactNumber(usageFlowScale.maxAiCalls)} AI calls
+                    </Text>
+                  </XStack>
+                  <TimelineChart
+                    data={(overview?.timeline ?? []).map((item) => ({
+                      dayKey: item.dayKey,
+                      primaryValue: item.searches ?? 0,
+                      secondaryValue: item.aiRequests,
+                    }))}
+                    barColor={theme.primary.val}
+                    lineColor={integrationAccentColors.openai}
+                  />
+                </YStack>
+              )}
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ paddingRight: 8, paddingBottom: 2 }}
-            >
-              <YStack>
-                <XStack justifyContent="space-between" alignItems="center" marginBottom={8}>
-                  <Text fontSize={10} color="$colorMuted">
-                    {formatCompactNumber(usageFlowScale.maxSearches)} searches
-                  </Text>
-                  <Text fontSize={10} color="$colorMuted">
-                    {formatCompactNumber(usageFlowScale.maxAiCalls)} AI calls
-                  </Text>
-                </XStack>
-                <TimelineChart
-                  data={(overview?.timeline ?? []).map((item) => ({
-                    dayKey: item.dayKey,
-                    primaryValue: item.searches ?? 0,
-                    secondaryValue: item.aiRequests,
-                  }))}
-                  barColor={theme.primary.val}
-                  lineColor={integrationAccentColors.openai}
-                />
-              </YStack>
-            </ScrollView>
+              nestedScrollEnabled
+            />
           </YStack>
         </Card>
       </Animated.View>
@@ -898,39 +938,73 @@ export default function AnalyticsScreen() {
         </Card>
       </Animated.View>
 
-      <BaseSheet
-        open={detailPanel !== "none"}
-        onOpenChange={(open) => {
-          if (!open) setDetailPanel("none");
-        }}
-        snapPoints={[86]}
+      <BottomSheetModal
+        ref={modalRef}
+        index={0}
+        name="analyticsDetail"
+        snapPoints={["86%"]}
+        keyboardBehavior="interactive"
+        enablePanDownToClose
+        detached={isLargeScreen}
+        style={
+          isLargeScreen
+            ? {
+                marginHorizontal: 16,
+                width: "100%",
+                maxWidth: 720,
+                alignSelf: "center",
+              }
+            : undefined
+        }
+        topInset={isLargeScreen ? insets.top + 16 : insets.top}
+        bottomInset={isLargeScreen ? insets.bottom + 16 : insets.bottom}
+        keyboardBlurBehavior="restore"
+        enableBlurKeyboardOnGesture
+        android_keyboardInputMode="adjustResize"
+        stackBehavior="push"
+        backdropComponent={renderBackdrop}
+        backgroundStyle={{ backgroundColor: theme.surface.val }}
+        onDismiss={handleDismiss}
       >
-        <SheetHeader
-          title={detailMeta?.title ?? "AI Details"}
-          subtitle={detailMeta?.subtitle}
-          right={
+        <BottomSheetScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{
+            paddingHorizontal: 20,
+            paddingTop: 10,
+            paddingBottom: 32,
+            gap: 14,
+          }}
+          nestedScrollEnabled
+        >
+          <XStack alignItems="center" justifyContent="space-between" gap={12}>
+            <YStack flex={1} minWidth={0} gap={2}>
+              <Text fontSize={18} fontWeight="700" color="$color">
+                {detailMeta?.title ?? "AI Details"}
+              </Text>
+              {detailMeta?.subtitle ? (
+                <Text fontSize={13} lineHeight={18} color="$colorMuted">
+                  {detailMeta.subtitle}
+                </Text>
+              ) : null}
+            </YStack>
             <PressableScale onPress={() => setDetailPanel("none")}>
               <YStack
                 width={36}
                 height={36}
-                borderRadius={12}
+                borderRadius={18}
                 alignItems="center"
                 justifyContent="center"
-                backgroundColor="$background"
+                backgroundColor="$card"
                 borderWidth={1}
                 borderColor="$borderColor"
               >
                 <Feather name="x" size={16} color={theme.color.val} />
               </YStack>
             </PressableScale>
-          }
-        />
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32, gap: 14 }}
-        >
+          </XStack>
+
           {detailPanel === "features" ? (
-            <Card style={{ borderRadius: 26 }}>
+            <Card style={{ borderRadius: 18 }}>
               <YStack gap={12}>
                 <Text fontSize={13} color="$colorMuted">
                   {formatCompactNumber(overview?.rangeTotals.aiActions ?? 0)} user-visible actions
@@ -943,7 +1017,7 @@ export default function AnalyticsScreen() {
                       key={`${item.feature}-${item.stage}-${item.visibility}`}
                       gap={8}
                       padding={12}
-                      borderRadius={18}
+                      borderRadius={14}
                       backgroundColor={withAlpha(
                         item.visibility === "user_visible"
                           ? theme.primary.val
@@ -1018,7 +1092,7 @@ export default function AnalyticsScreen() {
           ) : null}
 
           {detailPanel === "models" ? (
-            <Card style={{ borderRadius: 26 }}>
+            <Card style={{ borderRadius: 18 }}>
               <YStack gap={12}>
                 {aiBreakdown.length > 0 ? (
                   aiBreakdown.map((item, index) => (
@@ -1056,7 +1130,7 @@ export default function AnalyticsScreen() {
           ) : null}
 
           {detailPanel === "events" ? (
-            <Card style={{ borderRadius: 26 }}>
+            <Card style={{ borderRadius: 18 }}>
               <YStack gap={12}>
                 {recentEvents.length > 0 ? (
                   recentEvents.map((event) => (
@@ -1101,8 +1175,8 @@ export default function AnalyticsScreen() {
               </YStack>
             </Card>
           ) : null}
-        </ScrollView>
-      </BaseSheet>
+        </BottomSheetScrollView>
+      </BottomSheetModal>
     </MorePageScaffold>
   );
 }

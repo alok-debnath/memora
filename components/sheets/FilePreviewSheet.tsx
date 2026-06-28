@@ -1,13 +1,19 @@
-import React, { useCallback } from "react";
-import { Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import React, { useCallback, useEffect, useRef } from "react";
+import { Linking, StyleSheet, View } from "react-native";
+import {
+  BottomSheetBackdrop,
+  BottomSheetModal,
+  BottomSheetScrollView,
+  TouchableOpacity as BottomSheetTouchableOpacity,
+} from "@gorhom/bottom-sheet";
 import { Image } from "expo-image";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@/lib/icons";
 import { Text, XStack, YStack } from "tamagui";
-import { BaseSheet } from "@/components/ui/BaseSheet";
-import { SheetHeader } from "@/components/ui/SheetHeader";
 import { useColors } from "@/hooks/useColors";
 import { useDrivePreviewUrls } from "@/hooks/useDrivePreviewUrls";
 import { useAuth } from "@/hooks/useAuth";
+import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { useAppToast } from "@/components/ui/toast";
 import { useMutation } from "convex/react";
@@ -24,6 +30,10 @@ const processingColors = {
 
 export function FilePreviewSheet() {
   const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const isLargeScreen = useIsLargeScreen();
+  const modalRef = useRef<BottomSheetModal>(null);
+  const presentedRef = useRef(false);
   const { token } = useAuth();
   const { confirm } = useAppConfirm();
   const { showToast } = useAppToast();
@@ -64,38 +74,99 @@ export function FilePreviewSheet() {
     }
   }, [attachment?.driveWebViewLink]);
 
+  const isOpen = open && !!attachment;
+
+  const handleDismiss = useCallback(() => {
+    presentedRef.current = false;
+    closeFilePreview();
+  }, [closeFilePreview]);
+
+  const renderBackdrop = useCallback(
+    (props: React.ComponentProps<typeof BottomSheetBackdrop>) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        pressBehavior="close"
+      />
+    ),
+    [],
+  );
+
+  useEffect(() => {
+    if (isOpen && !presentedRef.current) {
+      modalRef.current?.present();
+      presentedRef.current = true;
+      return;
+    }
+
+    if (!isOpen && presentedRef.current) {
+      modalRef.current?.dismiss();
+    }
+  }, [isOpen]);
+
   return (
-    <BaseSheet
-      open={open && !!attachment}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) closeFilePreview();
-      }}
-      sheetId="filePreview"
+    <BottomSheetModal
+      ref={modalRef}
+      name="filePreview"
+      index={0}
+      snapPoints={["CONTENT_HEIGHT"]}
+      enablePanDownToClose
+      detached={isLargeScreen}
+      style={
+        isLargeScreen
+          ? {
+              marginHorizontal: 16,
+              width: "100%",
+              maxWidth: 720,
+              alignSelf: "center",
+            }
+          : undefined
+      }
+      topInset={isLargeScreen ? insets.top + 16 : insets.top}
+      bottomInset={isLargeScreen ? insets.bottom + 16 : insets.bottom}
+      enableDynamicSizing
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      enableBlurKeyboardOnGesture
+      android_keyboardInputMode="adjustResize"
+      stackBehavior="push"
+      backdropComponent={renderBackdrop}
+      backgroundStyle={{ backgroundColor: colors.surface }}
+      onDismiss={handleDismiss}
     >
       {attachment ? (
         <>
-          <SheetHeader
-            title="File Preview"
-            subtitle={attachment.type === "image" ? "Image" : "Document"}
-            right={
-              <Pressable onPress={closeFilePreview} hitSlop={8}>
+          <BottomSheetScrollView
+            contentContainerStyle={[styles.previewScrollContent, { paddingTop: 10 }]}
+            showsVerticalScrollIndicator={false}
+            nestedScrollEnabled
+          >
+            <XStack alignItems="center" justifyContent="space-between" gap={12}>
+              <YStack flex={1} minWidth={0} gap={2}>
+                <Text fontSize={18} fontWeight="700" color={colors.text}>
+                  File Preview
+                </Text>
+                <Text fontSize={13} lineHeight={18} color={colors.textSecondary}>
+                  {attachment.type === "image" ? "Image" : "Document"}
+                </Text>
+              </YStack>
+              <BottomSheetTouchableOpacity onPress={closeFilePreview} hitSlop={8}>
                 <XStack
-                  width={34}
-                  height={34}
-                  borderRadius={12}
+                  width={36}
+                  height={36}
+                  borderRadius={18}
                   alignItems="center"
                   justifyContent="center"
-                  backgroundColor={colors.backgroundSecondary}
+                  backgroundColor={colors.surface}
+                  borderWidth={1}
+                  borderColor={colors.border}
                 >
                   <Feather name="x" size={18} color={colors.text} />
                 </XStack>
-              </Pressable>
-            }
-          />
-          <ScrollView
-            contentContainerStyle={styles.previewScrollContent}
-            showsVerticalScrollIndicator={false}
-          >
+              </BottomSheetTouchableOpacity>
+            </XStack>
+
             {attachment.type === "image" ? (
               <YStack
                 style={[
@@ -140,8 +211,8 @@ export function FilePreviewSheet() {
 
             <YStack
               gap="$3"
-              padding="$4"
-              borderRadius="$5"
+              padding={16}
+              borderRadius={16}
               borderWidth={1}
               backgroundColor={colors.surface}
               borderColor={colors.border}
@@ -187,8 +258,8 @@ export function FilePreviewSheet() {
               ) : null}
             </YStack>
 
-            <YStack gap="$2">
-              <Pressable
+            <YStack gap={10}>
+              <BottomSheetTouchableOpacity
                 onPress={handleOpenDrive}
                 style={[
                   styles.actionBtn,
@@ -202,9 +273,9 @@ export function FilePreviewSheet() {
                 <Text fontSize={14} fontWeight="600" color={colors.text}>
                   Open in Google Drive
                 </Text>
-              </Pressable>
+              </BottomSheetTouchableOpacity>
 
-              <Pressable
+              <BottomSheetTouchableOpacity
                 onPress={handleDelete}
                 style={[
                   styles.actionBtn,
@@ -218,12 +289,12 @@ export function FilePreviewSheet() {
                 <Text fontSize={14} fontWeight="600" color={colors.textError}>
                   Delete File
                 </Text>
-              </Pressable>
+              </BottomSheetTouchableOpacity>
             </YStack>
-          </ScrollView>
+          </BottomSheetScrollView>
         </>
       ) : null}
-    </BaseSheet>
+    </BottomSheetModal>
   );
 }
 
@@ -247,13 +318,14 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   previewScrollContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 24,
-    gap: 16,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 28,
+    gap: 14,
   },
   previewHero: {
     minHeight: 280,
-    borderRadius: 18,
+    borderRadius: 16,
     borderWidth: 1,
     overflow: "hidden",
     justifyContent: "center",
@@ -264,7 +336,7 @@ const styles = StyleSheet.create({
   },
   documentHero: {
     minHeight: 180,
-    borderRadius: 18,
+    borderRadius: 16,
     borderWidth: 1,
   },
   actionBtn: {

@@ -1,20 +1,25 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  TextInput,
   Switch,
   Platform,
   Pressable,
   ActivityIndicator,
   Alert,
   useWindowDimensions,
-  Modal,
-  View,
   Linking,
+  View,
   StyleSheet,
 } from "react-native";
 import { Image } from "expo-image";
 import DateTimePicker from "react-native-ui-datepicker";
 import dayjs from "dayjs";
+import {
+  BottomSheetBackdrop,
+  BottomSheetModal,
+  BottomSheetScrollView,
+  BottomSheetTextInput,
+} from "@gorhom/bottom-sheet";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import * as Haptics from "expo-haptics";
@@ -26,17 +31,16 @@ import { useAuth } from "@/hooks/useAuth";
 import { useColors } from "@/hooks/useColors";
 import { useDrivePreviewUrls } from "@/hooks/useDrivePreviewUrls";
 import { useFileAttachments } from "@/hooks/useFileAttachments";
+import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
 import { AttachmentPreviewBar } from "./AttachmentPreviewBar";
 import { AttachmentPickerButton } from "./AttachmentPickerButton";
 import { GradientButton } from "./ui/GradientButton";
 import { PressableScale } from "./ui/PressableScale";
-import { BaseSheet } from "./ui/BaseSheet";
 import { SegmentedControl } from "./ui/SegmentedControl";
 import { TagInput } from "./ui/TagInput";
 import { PickerField, type PickerOption } from "./ui/PickerField";
 import { TimeCapsuleToggle } from "./ui/TimeCapsuleToggle";
 import { VoiceRecorder } from "./VoiceRecorder";
-import { KeyboardAwareScrollViewCompat } from "./KeyboardAwareScrollViewCompat";
 import { useAppConfirm } from "./ui/confirm/AppConfirmProvider";
 import { FontFamily } from "@/constants/fonts";
 import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
@@ -80,6 +84,10 @@ function createInitialState(memory?: MemoryNote) {
 
 export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemorySheetProps) {
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const isLargeScreen = useIsLargeScreen();
+  const modalRef = useRef<BottomSheetModal>(null);
+  const presentedRef = useRef(false);
   const { confirm } = useAppConfirm();
   const colors = useColors();
   const { width } = useWindowDimensions();
@@ -121,16 +129,46 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
   const [voiceLoading, setVoiceLoading] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState("");
   const [isVoicePaused, setIsVoicePaused] = useState(false);
-  const [showPicker, setShowPicker] = useState(false);
+  const [showReminderPicker, setShowReminderPicker] = useState(false);
 
   useEffect(() => {
     if (visible) {
       setForm(createInitialState(memory));
       setMode("manual");
       setVoiceTranscript("");
+      setShowReminderPicker(false);
       fileAttachments.clear();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  const handleDismiss = useCallback(() => {
+    presentedRef.current = false;
+    onClose();
+  }, [onClose]);
+
+  const renderBackdrop = useCallback(
+    (props: React.ComponentProps<typeof BottomSheetBackdrop>) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        pressBehavior="close"
+      />
+    ),
+    [],
+  );
+
+  useEffect(() => {
+    if (visible && !presentedRef.current) {
+      modalRef.current?.present();
+      presentedRef.current = true;
+      return;
+    }
+
+    if (!visible && presentedRef.current) {
+      modalRef.current?.dismiss();
+    }
   }, [visible]);
 
   const handleRequestDriveAccess = () => {
@@ -271,68 +309,91 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
   };
 
   return (
-    <BaseSheet
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-      open={visible}
-      sheetId="editMemory"
-      backgroundColor={theme.background.val}
+    <BottomSheetModal
+      ref={modalRef}
+      name="editMemory"
+      index={0}
+      snapPoints={["70%", "94%"]}
+      enablePanDownToClose
+      detached={isLargeScreen}
+      style={
+        isLargeScreen
+          ? {
+              marginHorizontal: 16,
+              width: "100%",
+              maxWidth: 720,
+              alignSelf: "center",
+            }
+          : undefined
+      }
+      topInset={isLargeScreen ? insets.top + 16 : insets.top}
+      bottomInset={isLargeScreen ? insets.bottom + 16 : insets.bottom}
+      enableDynamicSizing={false}
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      enableBlurKeyboardOnGesture
+      android_keyboardInputMode="adjustResize"
+      stackBehavior="push"
+      backdropComponent={renderBackdrop}
+      backgroundStyle={{ backgroundColor: theme.surface.val }}
+      onDismiss={handleDismiss}
     >
-      {/* Header */}
-      <XStack alignItems="center" paddingHorizontal={20} paddingTop={6} paddingBottom={12}>
-        <XStack flex={1} alignItems="center" gap={8}>
-          <Text fontSize={18}>✏️</Text>
-          <Text fontSize={18} fontFamily="$body" fontWeight="600" color="$color">
-            Edit Memory
-          </Text>
+      <YStack paddingHorizontal={20} paddingTop={10} paddingBottom={8} gap={12}>
+        <XStack alignItems="center" justifyContent="space-between" gap={12}>
+          <XStack flex={1} alignItems="center" gap={12}>
+            <XStack
+              width={40}
+              height={40}
+              borderRadius={20}
+              alignItems="center"
+              justifyContent="center"
+              backgroundColor={theme.primary.val + "15"}
+            >
+              <Feather name="edit-3" size={18} color={theme.primary.val} />
+            </XStack>
+            <YStack flex={1} minWidth={0} gap={2}>
+              <Text
+                fontSize={18}
+                fontFamily="$body"
+                fontWeight="700"
+                color="$color"
+                numberOfLines={1}
+              >
+                Edit Memory
+              </Text>
+              <Text fontSize={13} lineHeight={18} color="$colorMuted" numberOfLines={2}>
+                {memory?.title ? `Editing ${memory.title}` : "Update details, reminders, and files"}
+              </Text>
+            </YStack>
+          </XStack>
+          <PressableScale onPress={onClose}>
+            <YStack
+              width={36}
+              height={36}
+              borderRadius={18}
+              alignItems="center"
+              justifyContent="center"
+              backgroundColor="$card"
+              borderWidth={1}
+              borderColor="$borderColor"
+            >
+              <Feather name="x" size={16} color={theme.color.val} />
+            </YStack>
+          </PressableScale>
         </XStack>
-        <PressableScale onPress={onClose}>
-          <YStack
-            width={38}
-            height={38}
-            borderRadius={14}
-            alignItems="center"
-            justifyContent="center"
-            backgroundColor="$background"
-            borderWidth={1}
-            borderColor="$borderColor"
-          >
-            <Feather name="x" size={18} color={theme.color.val} />
-          </YStack>
-        </PressableScale>
-      </XStack>
-
-      {/* Memory subtitle */}
-      {memory && (
-        <XStack alignItems="center" justifyContent="center" gap={6} marginBottom={6}>
-          <Text
-            fontSize={13}
-            fontFamily="$body"
-            color="$colorMuted"
-            numberOfLines={1}
-            maxWidth="80%"
-          >
-            {memory.title}
-          </Text>
-        </XStack>
-      )}
-
-      {/* Mode switcher */}
-      <YStack paddingHorizontal={20} marginBottom={4}>
         <SegmentedControl options={MANUAL_OPTIONS} value={mode} onChange={setMode} />
       </YStack>
 
-      <KeyboardAwareScrollViewCompat
-        style={{ flex: 1 }}
+      <BottomSheetScrollView
         contentContainerStyle={{
           paddingHorizontal: 20,
           paddingTop: 8,
           gap: 16,
-          paddingBottom: 40,
+          paddingBottom: 56,
         }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
       >
         {/* Time Capsule */}
         <TimeCapsuleToggle
@@ -387,7 +448,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
               >
                 TITLE
               </Text>
-              <TextInput
+              <BottomSheetTextInput
                 value={form.title}
                 onChangeText={(v) => setField("title", v)}
                 placeholder="Memory title"
@@ -419,7 +480,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
               >
                 CONTENT
               </Text>
-              <TextInput
+              <BottomSheetTextInput
                 value={form.content}
                 onChangeText={(v) => setField("content", v)}
                 placeholder="What happened?"
@@ -479,6 +540,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                   if (entryKind === "memory") {
                     setField("reminderDate", "");
                     setField("isRecurring", false);
+                    setShowReminderPicker(false);
                   }
                 }}
               />
@@ -533,7 +595,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                   ) : (
                     <YStack gap={8}>
                       <Pressable
-                        onPress={() => setShowPicker(!showPicker)}
+                        onPress={() => setShowReminderPicker((value) => !value)}
                         style={{
                           flexDirection: "row",
                           alignItems: "center",
@@ -559,122 +621,109 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                             ? dayjs(form.reminderDate).format("MMM D, YYYY - h:mm A")
                             : "Select Date & Time"}
                         </Text>
+                        <Feather
+                          name={showReminderPicker ? "chevron-up" : "chevron-down"}
+                          size={16}
+                          color={theme.colorMuted.val}
+                        />
                       </Pressable>
 
-                      <Modal
-                        visible={showPicker}
-                        transparent
-                        animationType="fade"
-                        onRequestClose={() => setShowPicker(false)}
-                      >
-                        <View
-                          style={{
-                            flex: 1,
-                            backgroundColor: withAlpha(theme.shadowColor.val, "80"),
-                            justifyContent: "center",
-                            alignItems: "center",
-                            padding: 20,
-                          }}
+                      {showReminderPicker ? (
+                        <YStack
+                          gap={14}
+                          borderWidth={0.5}
+                          borderRadius={16}
+                          padding={14}
+                          borderColor="$borderColor"
+                          backgroundColor="$card"
                         >
-                          <Pressable
-                            style={{
-                              position: "absolute",
-                              top: 0,
-                              left: 0,
-                              right: 0,
-                              bottom: 0,
-                            }}
-                            onPress={() => setShowPicker(false)}
-                          />
-                          <YStack
-                            backgroundColor="$card"
-                            borderRadius={16}
-                            borderWidth={1}
-                            borderColor="$borderColor"
-                            padding={16}
-                            width="100%"
-                            maxWidth={400}
-                            shadowColor={theme.shadowColor.val}
-                            shadowOffset={{ width: 0, height: 4 }}
-                            shadowOpacity={0.2}
-                            shadowRadius={12}
-                            elevation={10}
-                          >
-                            <XStack
-                              justifyContent="space-between"
-                              alignItems="center"
-                              marginBottom={16}
-                            >
+                          <XStack alignItems="center" justifyContent="space-between" gap={12}>
+                            <YStack gap={2} flex={1}>
                               <Text
-                                fontSize={16}
+                                fontSize={15}
                                 fontFamily="$heading"
                                 fontWeight="600"
                                 color="$color"
                               >
                                 Set Reminder
                               </Text>
-                              <Pressable onPress={() => setShowPicker(false)} hitSlop={10}>
-                                <Feather name="x" size={20} color={theme.colorMuted.val} />
-                              </Pressable>
-                            </XStack>
+                              <Text fontSize={12} color="$colorMuted">
+                                Pick a date and time directly inside the sheet.
+                              </Text>
+                            </YStack>
+                            {form.reminderDate ? (
+                              <PressableScale onPress={() => setField("reminderDate", "")}>
+                                <XStack
+                                  paddingHorizontal={10}
+                                  paddingVertical={6}
+                                  borderRadius={999}
+                                  borderWidth={1}
+                                  borderColor="$borderColor"
+                                  backgroundColor="$background"
+                                >
+                                  <Text fontSize={12} fontWeight="600" color="$colorMuted">
+                                    Clear
+                                  </Text>
+                                </XStack>
+                              </PressableScale>
+                            ) : null}
+                          </XStack>
 
-                            <DateTimePicker
-                              mode="single"
-                              timePicker={true}
-                              date={
-                                form.reminderDate ? dayjs(form.reminderDate).toDate() : new Date()
+                          <DateTimePicker
+                            mode="single"
+                            timePicker
+                            date={
+                              form.reminderDate ? dayjs(form.reminderDate).toDate() : new Date()
+                            }
+                            onChange={(params: any) => {
+                              if (params.date) {
+                                setField("reminderDate", dayjs(params.date).toISOString());
                               }
-                              onChange={(params: any) => {
-                                if (params.date) {
-                                  setField("reminderDate", dayjs(params.date).toISOString());
-                                }
-                              }}
-                              styles={{
-                                day_label: {
-                                  color: theme.color.val,
-                                  fontFamily: FontFamily.regular,
-                                },
-                                selected: {
-                                  backgroundColor: theme.primary.val,
-                                  borderRadius: 8,
-                                },
-                                selected_label: {
-                                  color: theme.textInverse.val,
-                                  fontFamily: FontFamily.bold,
-                                },
-                                month_selector_label: {
-                                  color: theme.color.val,
-                                  fontFamily: FontFamily.bold,
-                                },
-                                year_selector_label: {
-                                  color: theme.color.val,
-                                  fontFamily: FontFamily.bold,
-                                },
-                                time_selector_label: {
-                                  color: theme.color.val,
-                                  fontFamily: FontFamily.bold,
-                                },
-                                weekday_label: {
-                                  color: theme.colorMuted.val,
-                                  fontFamily: FontFamily.regular,
-                                },
-                                today_label: {
-                                  color: theme.primary.val,
-                                  fontFamily: FontFamily.bold,
-                                },
-                                button_prev: { backgroundColor: "transparent" },
-                                button_next: { backgroundColor: "transparent" },
-                              }}
-                            />
+                            }}
+                            styles={{
+                              day_label: {
+                                color: theme.color.val,
+                                fontFamily: FontFamily.regular,
+                              },
+                              selected: {
+                                backgroundColor: theme.primary.val,
+                                borderRadius: 8,
+                              },
+                              selected_label: {
+                                color: theme.textInverse.val,
+                                fontFamily: FontFamily.bold,
+                              },
+                              month_selector_label: {
+                                color: theme.color.val,
+                                fontFamily: FontFamily.bold,
+                              },
+                              year_selector_label: {
+                                color: theme.color.val,
+                                fontFamily: FontFamily.bold,
+                              },
+                              time_selector_label: {
+                                color: theme.color.val,
+                                fontFamily: FontFamily.bold,
+                              },
+                              weekday_label: {
+                                color: theme.colorMuted.val,
+                                fontFamily: FontFamily.regular,
+                              },
+                              today_label: {
+                                color: theme.primary.val,
+                                fontFamily: FontFamily.bold,
+                              },
+                              button_prev: { backgroundColor: "transparent" },
+                              button_next: { backgroundColor: "transparent" },
+                            }}
+                          />
 
-                            <GradientButton
-                              title="Done"
-                              onPress={() => setShowPicker(false)}
-                              style={{ marginTop: 16 }}
-                            />
-                          </YStack>
-                        </View>
-                      </Modal>
+                          <GradientButton
+                            title="Done"
+                            onPress={() => setShowReminderPicker(false)}
+                          />
+                        </YStack>
+                      ) : null}
                     </YStack>
                   )}
                 </YStack>
@@ -1073,42 +1122,42 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
               )}
             </YStack>
 
-            {/* Save */}
-            <GradientButton title="Save Changes" onPress={handleSave} icon="save" />
-
-            {/* Read Aloud + Delete */}
-            <XStack justifyContent="center" gap={24} paddingTop={4}>
-              <Pressable
-                onPress={handleReadAloud}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 6,
-                  paddingVertical: 8,
-                  paddingHorizontal: 4,
-                }}
-              >
-                <Feather name="volume-2" size={14} color={theme.colorMuted.val} />
-                <Text fontSize={13} fontFamily="$body" color="$colorMuted">
-                  Read Aloud
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={handleDelete}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 6,
-                  paddingVertical: 8,
-                  paddingHorizontal: 4,
-                }}
-              >
-                <Feather name="trash-2" size={14} color={theme.destructive.val} />
-                <Text fontSize={13} fontFamily="$body" color="$destructive">
-                  Delete
-                </Text>
-              </Pressable>
-            </XStack>
+            {/* Actions */}
+            <YStack gap={10}>
+              <GradientButton title="Save Changes" onPress={handleSave} icon="save" />
+              <XStack justifyContent="center" gap={24} paddingTop={2}>
+                <Pressable
+                  onPress={handleReadAloud}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                    paddingVertical: 8,
+                    paddingHorizontal: 4,
+                  }}
+                >
+                  <Feather name="volume-2" size={14} color={theme.colorMuted.val} />
+                  <Text fontSize={13} fontFamily="$body" color="$colorMuted">
+                    Read Aloud
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleDelete}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                    paddingVertical: 8,
+                    paddingHorizontal: 4,
+                  }}
+                >
+                  <Feather name="trash-2" size={14} color={theme.destructive.val} />
+                  <Text fontSize={13} fontFamily="$body" color="$destructive">
+                    Delete
+                  </Text>
+                </Pressable>
+              </XStack>
+            </YStack>
 
             {/* Tips */}
             <TipsCard />
@@ -1164,8 +1213,8 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
             <TipsCard />
           </>
         )}
-      </KeyboardAwareScrollViewCompat>
-    </BaseSheet>
+      </BottomSheetScrollView>
+    </BottomSheetModal>
   );
 }
 

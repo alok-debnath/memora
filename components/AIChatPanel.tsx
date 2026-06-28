@@ -1,14 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  TextInput,
-  FlatList,
-  Pressable,
-  Platform,
-  Alert,
-  ScrollView,
-  View,
-  Text as RNText,
-} from "react-native";
+import { TextInput, Pressable, Platform, Alert, View, Text as RNText } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
 import { XStack, YStack, Text, TooltipSimple } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -16,6 +7,12 @@ import { Feather, FontAwesome5 } from "@/lib/icons";
 import * as Haptics from "expo-haptics";
 import * as Speech from "expo-speech";
 import { Markdown } from "@believer/react-native-markdown-display";
+import {
+  BottomSheetFlatList,
+  BottomSheetFooter,
+  BottomSheetTextInput,
+  type BottomSheetFooterProps,
+} from "@gorhom/bottom-sheet";
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -32,11 +29,6 @@ import Animated, {
   ZoomIn,
 } from "react-native-reanimated";
 import { useAction, useMutation, useQuery } from "convex/react";
-import {
-  KeyboardStickyView,
-  useReanimatedKeyboardAnimation,
-} from "react-native-keyboard-controller";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
 import { FontFamily } from "@/constants/fonts";
@@ -44,13 +36,11 @@ import { useAppToast } from "@/components/ui/toast";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { logDevError } from "@/lib/devLog";
 import { Badge } from "@/components/ui/Badge";
-import { BaseSheet } from "@/components/ui/BaseSheet";
 import {
   ContextMenu,
   type ContextMenuHandle,
   type ContextMenuItemDef,
 } from "@/components/ui/ContextMenu";
-import { SheetHeader } from "@/components/ui/SheetHeader";
 import type { MemoryNote } from "@/types/memory";
 import { getReminderDate, inferMemoryEntryKind } from "@/types/memoryKind";
 import { AttachmentPreviewBar } from "@/components/AttachmentPreviewBar";
@@ -59,7 +49,7 @@ import { useFileAttachments, type PendingAttachment } from "@/hooks/useFileAttac
 import { Linking, StyleSheet } from "react-native";
 import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
 import { withAlpha } from "@/components/ui/themeHelpers";
-import { selectSheetOpen, useUIStore } from "@/store/ui";
+import { useUIStore } from "@/store/ui";
 import { canUseGoogleCalendar, canUseGoogleDrive } from "@/lib/googleIntegration";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -345,10 +335,16 @@ interface AIChatPanelProps {
   token?: string | null;
 }
 
+interface ExtendedAIChatPanelProps extends AIChatPanelProps {
+  chatInputMode?: "voice" | "keyboard";
+  setChatInputMode?: (mode: "voice" | "keyboard") => void;
+  autoVoiceOutput?: boolean;
+}
+
 type ChatMsg = {
   _id: string;
   role: string;
-  content: string;
+  content?: string;
   _creationTime: number;
   attachments?: Array<{
     attachmentId: string;
@@ -378,6 +374,29 @@ type SearchResultItem = {
   google_sync_updated_at?: number;
   _score?: number;
 };
+
+export type AIChatController = {
+  theme: ReturnType<typeof useAppTheme>;
+  messages: ChatMsg[];
+  displayMessages: any[];
+  renderMessage: ({ item }: { item: any }) => React.ReactElement | null;
+  keyExtractor: (item: any) => string;
+  flatListRef: React.RefObject<any>;
+  handleClearChat: () => void;
+  isSending: boolean;
+  chatInputMode?: "voice" | "keyboard";
+  setChatInputMode?: (mode: "voice" | "keyboard") => void;
+  attachments: PendingAttachment[];
+  onRemoveAttachment: (id: string) => void;
+  onPickImages: () => void;
+  onPickCamera: () => void;
+  onPickDocument: () => void;
+  driveConnected: boolean;
+  onRequestDriveAccess: () => void;
+  handleSend: (text: string, isVoice?: boolean) => Promise<void>;
+};
+
+const CHAT_BOTTOM_SPACING = 20;
 
 // ─── Memory Note Conversion ───────────────────────────────────────────────────
 
@@ -449,41 +468,6 @@ function extractSpeakableText(content: string): string {
   // Strip any remaining HTML comments (safety net)
   text = text.replace(/<!--[\s\S]*?-->/g, "").trim();
   return text;
-}
-
-function formatCompactNumber(value: number) {
-  return new Intl.NumberFormat(undefined, {
-    notation: "compact",
-    maximumFractionDigits: value >= 1000 ? 1 : 0,
-  }).format(value);
-}
-
-function formatUsdMicros(value: number) {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: value >= 100_000 ? 2 : 4,
-  }).format(value / 1_000_000);
-}
-
-function formatFeatureLabel(feature: string) {
-  const map: Record<string, string> = {
-    memory_chat: "Chat assistant",
-    attachment_extraction: "Image / document extraction",
-    memory_capture: "Memory capture",
-    memory_processing: "Memory processing",
-    memory_search: "Search grounding",
-    topic_management: "Topic assignment",
-    diary_processing: "Diary processing",
-    conflict_detection: "Conflict detection",
-    audio_transcription: "Audio transcription",
-    deep_search: "Deep search",
-  };
-  return map[feature] ?? feature.replace(/_/g, " ");
-}
-
-function formatStageLabel(stage?: string | null) {
-  return stage ? stage.replace(/_/g, " ") : "unspecified";
 }
 
 type CardFlowAttachment = {
@@ -1075,139 +1059,138 @@ function SearchResultRow({
     </YStack>
   );
 
-  return (
-    <Animated.View entering={FadeInDown.duration(260).delay(index * 55)}>
-      <ContextMenu ref={menuRef} items={menuItems} preview={previewCard} previewFrame>
-        <XStack
-          paddingHorizontal={14}
-          paddingVertical={11}
-          gap={12}
-          alignItems="center"
-          borderTopWidth={index > 0 ? 1 : 0}
-          borderTopColor="$borderColor"
-          opacity={isCompleted ? 0.45 : 1}
-        >
-          {/* Icon */}
-          <View
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              backgroundColor: isCompleted ? SUCCESS + "20" : theme.accent.val,
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <Feather
-              name={isCompleted ? "check" : isReminder ? "bell" : "file-text"}
-              size={14}
-              color={isCompleted ? SUCCESS : theme.colorMuted.val}
-            />
-          </View>
+  const row = (
+    <XStack
+      paddingHorizontal={14}
+      paddingVertical={11}
+      gap={12}
+      alignItems="center"
+      borderTopWidth={index > 0 ? 1 : 0}
+      borderTopColor="$borderColor"
+      opacity={isCompleted ? 0.45 : 1}
+    >
+      {/* Icon */}
+      <View
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: 16,
+          backgroundColor: isCompleted ? SUCCESS + "20" : theme.accent.val,
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <Feather
+          name={isCompleted ? "check" : isReminder ? "bell" : "file-text"}
+          size={14}
+          color={isCompleted ? SUCCESS : theme.colorMuted.val}
+        />
+      </View>
 
-          {/* Content */}
-          <YStack flex={1} gap={6}>
-            <Text
-              fontSize={13}
-              fontFamily={FontFamily.semiBold}
-              color="$color"
-              numberOfLines={1}
-              textDecorationLine={isCompleted ? "line-through" : "none"}
-            >
-              {item.title || "Untitled memory"}
+      {/* Content */}
+      <YStack flex={1} gap={6}>
+        <Text
+          fontSize={13}
+          fontFamily={FontFamily.semiBold}
+          color="$color"
+          numberOfLines={1}
+          textDecorationLine={isCompleted ? "line-through" : "none"}
+        >
+          {item.title || "Untitled memory"}
+        </Text>
+        {item.content ? (
+          <Text fontSize={11} fontFamily="$body" color="$colorMuted" numberOfLines={1}>
+            {item.content}
+          </Text>
+        ) : null}
+        {isReminder && dueAtLabel ? (
+          <XStack alignItems="center" gap={5}>
+            <Feather name="bell" size={10} color={theme.primary.val} />
+            <Text fontSize={10} fontFamily={FontFamily.semiBold} color="$primary">
+              {dueAtLabel}
             </Text>
-            {item.content ? (
-              <Text fontSize={11} fontFamily="$body" color="$colorMuted" numberOfLines={1}>
-                {item.content}
-              </Text>
-            ) : null}
-            {isReminder && dueAtLabel ? (
-              <XStack alignItems="center" gap={5}>
-                <Feather name="bell" size={10} color={theme.primary.val} />
-                <Text fontSize={10} fontFamily={FontFamily.semiBold} color="$primary">
-                  {dueAtLabel}
+          </XStack>
+        ) : null}
+        {(isReminder && hasGoogleSyncInfo) || hasFiles ? (
+          <XStack marginTop={2} gap={5} alignItems="center" flexWrap="wrap">
+            {isReminder && hasGoogleSyncInfo ? (
+              <XStack
+                alignItems="center"
+                gap={4}
+                paddingHorizontal={7}
+                paddingVertical={4}
+                borderRadius={20}
+                borderWidth={1}
+                borderColor={syncTone.border}
+                backgroundColor={syncTone.bg}
+              >
+                <FontAwesome5 name="calendar-alt" size={10} color={syncTone.labelColor} />
+                <Text fontSize={10} fontFamily={FontFamily.semiBold} color={syncTone.labelColor}>
+                  {syncTone.label}
                 </Text>
               </XStack>
             ) : null}
-            {(isReminder && hasGoogleSyncInfo) || hasFiles ? (
-              <XStack marginTop={2} gap={5} alignItems="center" flexWrap="wrap">
-                {isReminder && hasGoogleSyncInfo ? (
-                  <XStack
-                    alignItems="center"
-                    gap={4}
-                    paddingHorizontal={7}
-                    paddingVertical={4}
-                    borderRadius={20}
-                    borderWidth={1}
-                    borderColor={syncTone.border}
-                    backgroundColor={syncTone.bg}
-                  >
-                    <FontAwesome5 name="calendar-alt" size={10} color={syncTone.labelColor} />
-                    <Text
-                      fontSize={10}
-                      fontFamily={FontFamily.semiBold}
-                      color={syncTone.labelColor}
-                    >
-                      {syncTone.label}
-                    </Text>
-                  </XStack>
-                ) : null}
-                {hasFiles ? (
-                  <XStack
-                    alignItems="center"
-                    gap={4}
-                    paddingHorizontal={7}
-                    paddingVertical={4}
-                    borderRadius={20}
-                    borderWidth={1}
-                    borderColor={withAlpha(integrationAccentColors.googleDrive, "40")}
-                    backgroundColor={withAlpha(integrationAccentColors.googleDrive, "12")}
-                  >
-                    <FontAwesome5
-                      name="google-drive"
-                      iconStyle="brand"
-                      size={10}
-                      color={integrationAccentColors.googleDrive}
-                    />
-                    <Text
-                      fontSize={10}
-                      fontFamily={FontFamily.semiBold}
-                      color={integrationAccentColors.googleDrive}
-                    >
-                      in Drive
-                    </Text>
-                  </XStack>
-                ) : null}
+            {hasFiles ? (
+              <XStack
+                alignItems="center"
+                gap={4}
+                paddingHorizontal={7}
+                paddingVertical={4}
+                borderRadius={20}
+                borderWidth={1}
+                borderColor={withAlpha(integrationAccentColors.googleDrive, "40")}
+                backgroundColor={withAlpha(integrationAccentColors.googleDrive, "12")}
+              >
+                <FontAwesome5
+                  name="google-drive"
+                  iconStyle="brand"
+                  size={10}
+                  color={integrationAccentColors.googleDrive}
+                />
+                <Text
+                  fontSize={10}
+                  fontFamily={FontFamily.semiBold}
+                  color={integrationAccentColors.googleDrive}
+                >
+                  in Drive
+                </Text>
               </XStack>
             ) : null}
-          </YStack>
-
-          {/* 3-dot menu button — tap opens the same context menu as long press */}
-          <XStack gap={4} alignItems="center">
-            {item._score !== undefined && (
-              <Text fontSize={10} color="$colorMuted" opacity={0.5}>
-                {Math.round(item._score * 100)}%
-              </Text>
-            )}
-            {/* 3-dot menu button */}
-            <Pressable
-              onPress={() => menuRef.current?.open()}
-              hitSlop={8}
-              style={({ pressed }) => ({
-                width: 28,
-                height: 28,
-                borderRadius: 14,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: pressed ? theme.accent.val : "transparent",
-                opacity: pressed ? 0.6 : 1,
-              })}
-            >
-              <Feather name="more-horizontal" size={16} color={theme.colorMuted.val} />
-            </Pressable>
           </XStack>
-        </XStack>
+        ) : null}
+      </YStack>
+
+      {/* 3-dot menu button — tap opens the same context menu as long press */}
+      <XStack gap={4} alignItems="center">
+        {item._score !== undefined && (
+          <Text fontSize={10} color="$colorMuted" opacity={0.5}>
+            {Math.round(item._score * 100)}%
+          </Text>
+        )}
+        <Pressable
+          onPress={() => menuRef.current?.open()}
+          hitSlop={8}
+          style={({ pressed }) => ({
+            width: 28,
+            height: 28,
+            borderRadius: 14,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: pressed ? theme.accent.val : "transparent",
+            opacity: pressed ? 0.6 : 1,
+          })}
+        >
+          <Feather name="more-horizontal" size={16} color={theme.colorMuted.val} />
+        </Pressable>
+      </XStack>
+    </XStack>
+  );
+
+  return (
+    <Animated.View entering={FadeInDown.duration(260).delay(index * 55)}>
+      <ContextMenu ref={menuRef} items={menuItems} preview={previewCard} previewFrame>
+        {row}
       </ContextMenu>
     </Animated.View>
   );
@@ -2049,14 +2032,8 @@ function SearchResultsCard({
   const removeReminderSync = useMutation(api.integrations.removeReminderSync);
   const { showToast } = useAppToast();
   const { confirm } = useAppConfirm();
-  const showTelemetry = useUIStore(selectSheetOpen("turnBreakdown"));
   const openTurnBreakdown = useUIStore((state) => state.openTurnBreakdown);
-  const closeTurnBreakdown = useUIStore((state) => state.closeTurnBreakdown);
   const chatTurnId = flow?.chatTurnId;
-  const telemetry = useQuery(
-    (api.analytics as Record<string, any>).chatTurnBreakdown,
-    token && chatTurnId && showTelemetry ? { token, chatTurnId: chatTurnId as any } : "skip",
-  );
 
   // Fetch full memory docs by ID reactively
   const fetchedDocs = useQuery(
@@ -2239,7 +2216,7 @@ function SearchResultsCard({
               isDeepSearching={isDeepSearching}
               onDeepSearch={isCached && onDeepSearch ? handleDeepSearch : undefined}
               theme={theme}
-              onOpenTelemetry={chatTurnId ? openTurnBreakdown : undefined}
+              onOpenTelemetry={chatTurnId ? () => openTurnBreakdown(chatTurnId) : undefined}
             />
           </XStack>
         </XStack>
@@ -2282,213 +2259,6 @@ function SearchResultsCard({
           </Pressable>
         )}
       </YStack>
-      <BaseSheet
-        open={showTelemetry}
-        onOpenChange={(open) => {
-          if (!open) closeTurnBreakdown();
-        }}
-        sheetId="turnBreakdown"
-      >
-        <SheetHeader
-          title="Turn Breakdown"
-          subtitle="Everything tracked for this completed chat turn"
-          right={
-            <Pressable
-              onPress={closeTurnBreakdown}
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 12,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: theme.backgroundStrong.val,
-                borderWidth: 1,
-                borderColor: theme.borderColor.val,
-              }}
-            >
-              <Feather name="x" size={16} color={theme.color.val} />
-            </Pressable>
-          }
-        />
-        <ScrollView
-          style={{ flex: 1, minHeight: 0 }}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32, gap: 14 }}
-          showsVerticalScrollIndicator={false}
-          nestedScrollEnabled
-        >
-          <XStack gap={10} flexWrap="wrap">
-            <Badge
-              label={`${formatCompactNumber(telemetry?.overview.aiActions ?? 0)} AI actions`}
-              color={theme.primary.val}
-            />
-            <Badge
-              label={`${formatCompactNumber(telemetry?.overview.aiRequests ?? 0)} backend ops`}
-            />
-            <Badge
-              label={`${formatCompactNumber(telemetry?.overview.totalTokens ?? 0)} tokens`}
-              color={integrationAccentColors.openai}
-            />
-            <Badge
-              label={formatUsdMicros(telemetry?.overview.costUsdMicros ?? 0)}
-              color={statusAccentColors.success}
-            />
-          </XStack>
-
-          <YStack
-            gap={8}
-            padding={14}
-            borderRadius={16}
-            backgroundColor={withAlpha(theme.primary.val, "10")}
-            borderWidth={1}
-            borderColor={withAlpha(theme.primary.val, "20")}
-          >
-            <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
-              Turn summary
-            </Text>
-            <Text fontSize={12} color="$colorMuted" lineHeight={18}>
-              {formatCompactNumber(telemetry?.overview.aiActions ?? 0)} user-visible actions
-              triggered {formatCompactNumber(telemetry?.overview.operationCount ?? 0)} tracked
-              operations. Searches: {formatCompactNumber(telemetry?.search.searches ?? 0)}.
-            </Text>
-          </YStack>
-
-          <YStack gap={10}>
-            <Text fontSize={12} fontFamily={FontFamily.semiBold} color="$colorMuted">
-              Feature breakdown
-            </Text>
-            {(telemetry?.features ?? []).length > 0 ? (
-              telemetry?.features.map((item: any) => (
-                <YStack
-                  key={`${item.feature}-${item.stage}-${item.visibility}`}
-                  gap={4}
-                  padding={12}
-                  borderRadius={14}
-                  backgroundColor={withAlpha(
-                    item.visibility === "user_visible"
-                      ? theme.primary.val
-                      : integrationAccentColors.openai,
-                    "08",
-                  )}
-                  borderWidth={1}
-                  borderColor={withAlpha(
-                    item.visibility === "user_visible"
-                      ? theme.primary.val
-                      : integrationAccentColors.openai,
-                    "18",
-                  )}
-                >
-                  <XStack justifyContent="space-between" gap={10}>
-                    <YStack flex={1}>
-                      <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
-                        {formatFeatureLabel(item.feature)}
-                      </Text>
-                      <Text fontSize={11} color="$colorMuted">
-                        {formatStageLabel(item.stage)} ·{" "}
-                        {item.visibility === "user_visible" ? "user visible" : "background"}
-                        {item.fallback ? " · fallback chain" : ""}
-                      </Text>
-                    </YStack>
-                    <YStack alignItems="flex-end">
-                      <Text fontSize={12} fontFamily={FontFamily.semiBold} color="$color">
-                        {formatUsdMicros(item.costUsdMicros)}
-                      </Text>
-                      <Text fontSize={11} color="$colorMuted">
-                        {formatCompactNumber(item.requests)} calls
-                      </Text>
-                    </YStack>
-                  </XStack>
-                  <XStack gap={8} flexWrap="wrap">
-                    <Badge label={`${formatCompactNumber(item.totalTokens)} tokens`} />
-                    <Badge label={`${Math.round(item.avgLatencyMs)} ms avg`} />
-                    <Badge label={`${item.errors} failures`} />
-                  </XStack>
-                </YStack>
-              ))
-            ) : (
-              <Text fontSize={12} color="$colorMuted">
-                Loading tracked operations…
-              </Text>
-            )}
-          </YStack>
-
-          <YStack gap={10}>
-            <Text fontSize={12} fontFamily={FontFamily.semiBold} color="$colorMuted">
-              Retrieval
-            </Text>
-            <XStack gap={8} flexWrap="wrap">
-              <Badge label={`${formatCompactNumber(telemetry?.search.searches ?? 0)} searches`} />
-              <Badge label={`${formatCompactNumber(telemetry?.search.deepSearches ?? 0)} deep`} />
-              <Badge
-                label={`${formatCompactNumber(telemetry?.search.vectorSearches ?? 0)}/${formatCompactNumber(telemetry?.search.fullTextSearches ?? 0)} vector/full-text`}
-              />
-              <Badge label={`${Math.round(telemetry?.search.avgLatencyMs ?? 0)} ms avg latency`} />
-            </XStack>
-          </YStack>
-
-          <Text fontSize={12} fontFamily={FontFamily.semiBold} color="$colorMuted">
-            Operation timeline
-          </Text>
-
-          {(telemetry?.timeline ?? []).length > 0 ? (
-            telemetry?.timeline.map((item: any) => (
-              <XStack
-                key={item._id}
-                padding={12}
-                gap={10}
-                borderRadius={14}
-                backgroundColor={withAlpha(
-                  item.status === "error" ? statusAccentColors.error : theme.backgroundStrong.val,
-                  item.status === "error" ? "10" : "CC",
-                )}
-                borderWidth={1}
-                borderColor={withAlpha(
-                  item.status === "error" ? statusAccentColors.error : theme.borderColor.val,
-                  item.status === "error" ? "26" : "66",
-                )}
-              >
-                <YStack
-                  width={10}
-                  height={10}
-                  marginTop={4}
-                  borderRadius={5}
-                  backgroundColor={
-                    item.status === "error"
-                      ? statusAccentColors.error
-                      : item.visibility === "user_visible"
-                        ? theme.primary.val
-                        : integrationAccentColors.openai
-                  }
-                />
-                <YStack flex={1} gap={3}>
-                  <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
-                    {formatFeatureLabel(item.feature)}
-                  </Text>
-                  <Text fontSize={11} color="$colorMuted">
-                    {formatStageLabel(item.stage)} · {item.model} · {item.provider}
-                  </Text>
-                  <Text fontSize={11} color="$colorMuted">
-                    {new Date(item.occurredAt).toLocaleTimeString()} · {item.latencyMs} ms
-                  </Text>
-                </YStack>
-                <YStack alignItems="flex-end" gap={3}>
-                  <Text fontSize={12} fontFamily={FontFamily.semiBold} color="$color">
-                    {item.costUsdMicros ? formatUsdMicros(item.costUsdMicros) : "n/a"}
-                  </Text>
-                  <Text fontSize={11} color="$colorMuted">
-                    {item.totalTokens
-                      ? `${formatCompactNumber(item.totalTokens)} tok`
-                      : item.status}
-                  </Text>
-                </YStack>
-              </XStack>
-            ))
-          ) : (
-            <Text fontSize={12} color="$colorMuted">
-              No finalized telemetry for this turn yet.
-            </Text>
-          )}
-        </ScrollView>
-      </BaseSheet>
     </Animated.View>
   );
 }
@@ -3191,7 +2961,7 @@ const ChatBubble = React.memo(function ChatBubble({
               <XStack gap={6} alignSelf={isUser ? "flex-end" : "flex-start"} paddingHorizontal={4}>
                 <Pressable
                   onPress={() => {
-                    onCopy(msg.content);
+                    onCopy(msg.content ?? "");
                     setShowActions(false);
                   }}
                   style={({ pressed }) => ({
@@ -3387,7 +3157,7 @@ function ChatInputBar({
               borderColor={isVoicePaused ? "$borderColor" : "$primary"}
             >
               {isVoicePaused ? (
-                <TextInput
+                <BottomSheetTextInput
                   value={voiceLiveTranscript}
                   onChangeText={setVoiceLiveTranscript}
                   multiline
@@ -3459,7 +3229,8 @@ function ChatInputBar({
       )}
       <XStack
         alignItems="flex-end"
-        padding={8}
+        paddingHorizontal={8}
+        paddingVertical={6}
         gap={6}
         borderWidth={1}
         borderRadius={24}
@@ -3476,8 +3247,8 @@ function ChatInputBar({
           size={18}
         />
 
-        <TextInput
-          ref={inputRef}
+        <BottomSheetTextInput
+          ref={inputRef as any}
           value={text}
           onChangeText={setText}
           placeholder="Ask Memora anything..."
@@ -3488,11 +3259,11 @@ function ChatInputBar({
           editable={!isSending}
           style={{
             flex: 1,
-            minHeight: 40,
+            minHeight: 36,
             maxHeight: 120,
             borderRadius: 18,
             paddingHorizontal: 14,
-            paddingVertical: 10,
+            paddingVertical: 8,
             fontSize: 15,
             fontFamily: FontFamily.regular,
             borderWidth: 0.5,
@@ -3506,9 +3277,9 @@ function ChatInputBar({
           onPress={() => setMode("voice")}
           hitSlop={6}
           style={({ pressed }) => ({
-            width: 38,
-            height: 38,
-            borderRadius: 19,
+            width: 36,
+            height: 36,
+            borderRadius: 18,
             alignItems: "center",
             justifyContent: "center",
             opacity: pressed ? 0.6 : 1,
@@ -3522,9 +3293,9 @@ function ChatInputBar({
           disabled={!canSend}
           hitSlop={6}
           style={({ pressed }) => ({
-            width: 38,
-            height: 38,
-            borderRadius: 19,
+            width: 36,
+            height: 36,
+            borderRadius: 18,
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: canSend ? theme.primary.val : theme.borderColor.val,
@@ -3547,25 +3318,22 @@ function ChatInputBar({
 function EmptyState() {
   const theme = useAppTheme();
   return (
-    <YStack flex={1} justifyContent="center" padding={24} gap={28}>
-      <YStack alignItems="center" gap={12}>
+    <YStack flex={1} justifyContent="center" paddingHorizontal={24} paddingVertical={32} gap={24}>
+      <YStack alignItems="center" gap={10}>
         <Animated.View entering={ZoomIn.duration(250)}>
           <XStack
-            width={72}
-            height={72}
-            borderRadius={36}
+            width={60}
+            height={60}
+            borderRadius={30}
             alignItems="center"
             justifyContent="center"
-            marginBottom={4}
             backgroundColor={theme.primary.val + "15"}
-            borderWidth={1}
-            borderColor={theme.primary.val + "25"}
           >
-            <Feather name="zap" size={32} color={theme.primary.val} />
+            <Feather name="message-square" size={26} color={theme.primary.val} />
           </XStack>
         </Animated.View>
         <Text
-          fontSize={20}
+          fontSize={18}
           fontFamily="$heading"
           fontWeight="700"
           textAlign="center"
@@ -3574,33 +3342,31 @@ function EmptyState() {
           What's on your mind?
         </Text>
         <Text
-          fontSize={14}
+          fontSize={13}
           fontFamily="$body"
-          lineHeight={20}
+          lineHeight={19}
           textAlign="center"
-          maxWidth={300}
+          maxWidth={320}
           color="$colorMuted"
         >
-          Create, find, edit or remove any memory
+          Ask about memories, edit old notes, or create something new.
         </Text>
       </YStack>
 
-      <XStack flexWrap="wrap" gap={6} width="100%" justifyContent="center">
+      <XStack flexWrap="wrap" gap={8} width="100%" justifyContent="center">
         {FEATURE_BULLETS.map((feature, i) => (
           <Animated.View key={feature} entering={FadeInDown.delay(i * 50).duration(250)}>
             <XStack
               alignItems="center"
               gap={5}
-              paddingHorizontal={8}
-              paddingVertical={4}
+              paddingHorizontal={10}
+              paddingVertical={6}
               borderRadius={999}
               borderWidth={1}
               borderColor={theme.borderColor.val}
-              backgroundColor={theme.background.val}
+              backgroundColor={theme.card.val}
             >
-              <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val}>
-                •
-              </Text>
+              <Feather name="check" size={11} color={theme.primary.val} />
               <Text fontSize={11} fontFamily="$body" color="$colorMuted">
                 {feature}
               </Text>
@@ -3614,13 +3380,7 @@ function EmptyState() {
 
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 
-interface ExtendedAIChatPanelProps extends AIChatPanelProps {
-  chatInputMode?: "voice" | "keyboard";
-  setChatInputMode?: (mode: "voice" | "keyboard") => void;
-  autoVoiceOutput?: boolean;
-}
-
-export function AIChatPanel({
+export function useAIChatController({
   compact,
   token: tokenProp,
   chatInputMode,
@@ -3632,12 +3392,6 @@ export function AIChatPanel({
   const { showToast } = useAppToast();
   const openEditMemory = useUIStore((state) => state.openEditMemory);
   const token = tokenProp ?? auth.token;
-  const insets = useSafeAreaInsets();
-  const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
-
-  const keyboardSpacerStyle = useAnimatedStyle(() => ({
-    height: Math.abs(keyboardHeight.value),
-  }));
 
   const messages = useQuery(api.chat.list, token ? { token, limit: 100 } : "skip") ?? [];
   const searchStatus = useQuery(api.chat.getSearchStatus, token ? { token } : "skip");
@@ -3660,7 +3414,7 @@ export function AIChatPanel({
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [speechLocale, setSpeechLocale] = useState(getPreferredSpeechLocale);
   const [speechVoiceId, setSpeechVoiceId] = useState<string | undefined>(undefined);
-  const flatListRef = useRef<FlatList>(null);
+  const flatListRef = useRef<any>(null);
   const speechPlaybackTokenRef = useRef(0);
 
   // ── Edit memory flow ────────────────────────────────────────────────────────
@@ -3714,7 +3468,7 @@ export function AIChatPanel({
   useEffect(() => {
     if (messages.length > prevCountRef.current) {
       const timer = setTimeout(() => {
-        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+        flatListRef.current?.scrollToEnd({ animated: true });
       }, 120);
 
       // Auto-readout logic
@@ -3746,7 +3500,7 @@ export function AIChatPanel({
   useEffect(() => {
     if (isSending || optimisticMessage) {
       const timer = setTimeout(() => {
-        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+        flatListRef.current?.scrollToEnd({ animated: true });
       }, 50);
       return () => clearTimeout(timer);
     }
@@ -3987,8 +3741,7 @@ export function AIChatPanel({
     [compact, theme.textInverse.val],
   );
 
-  // Inject a synthetic "thinking" item at the front (visual bottom in inverted list)
-  // instead of using ListHeaderComponent, which gets scaleY:-1 applied in inverted mode
+  // Add optimistic / progress rows at the end so the chat can stay in natural top-to-bottom order.
   const displayMessages = useMemo(() => {
     let base = [...messages];
 
@@ -4005,30 +3758,28 @@ export function AIChatPanel({
       base.push(optimisticMessage as any);
     }
 
-    base = base.reverse();
-
     if (isSending || searchStatus) {
       if (searchStatus) {
         return [
+          ...base,
           {
             _id: "__tool_progress__",
             role: "tool_progress",
             status: searchStatus,
-            _creationTime: 0,
+            _creationTime: Date.now(),
           } as any,
-          ...base,
         ];
       }
     }
     if (isSending) {
       return [
+        ...base,
         {
           _id: "__thinking__",
           role: "thinking",
           content: "",
-          _creationTime: 0,
+          _creationTime: Date.now(),
         } as any,
-        ...base,
       ];
     }
     return base;
@@ -4120,135 +3871,176 @@ export function AIChatPanel({
 
   const keyExtractor = useCallback((item: any) => item._id, []);
 
-  // ── Input bar ──────────────────────────────────────────────────────────────
-  const inputBar = (
-    <KeyboardStickyView>
+  return useMemo<AIChatController>(
+    () => ({
+      theme,
+      messages,
+      displayMessages,
+      renderMessage,
+      keyExtractor,
+      flatListRef,
+      handleClearChat,
+      isSending,
+      chatInputMode,
+      setChatInputMode,
+      attachments: fileAttachments.attachments,
+      onRemoveAttachment: fileAttachments.removeAttachment,
+      onPickImages: fileAttachments.pickImages,
+      onPickCamera: fileAttachments.pickCamera,
+      onPickDocument: fileAttachments.pickDocument,
+      driveConnected,
+      onRequestDriveAccess: handleRequestDriveAccess,
+      handleSend,
+    }),
+    [
+      chatInputMode,
+      driveConnected,
+      displayMessages,
+      fileAttachments.attachments,
+      fileAttachments.pickCamera,
+      fileAttachments.pickDocument,
+      fileAttachments.pickImages,
+      fileAttachments.removeAttachment,
+      flatListRef,
+      handleClearChat,
+      handleRequestDriveAccess,
+      handleSend,
+      isSending,
+      keyExtractor,
+      messages,
+      renderMessage,
+      setChatInputMode,
+      theme,
+    ],
+  );
+}
+
+export function AIChatPanel({
+  controller,
+  footerHeight = 0,
+}: {
+  controller: AIChatController;
+  footerHeight?: number;
+}) {
+  const { theme, displayMessages, renderMessage, keyExtractor, flatListRef } = controller;
+  const isNearBottomRef = useRef(true);
+  const didInitialScrollRef = useRef(false);
+  const prevDisplayCountRef = useRef(0);
+  const lastMessageIdRef = useRef<string | undefined>(
+    displayMessages[displayMessages.length - 1]?._id,
+  );
+
+  lastMessageIdRef.current = displayMessages[displayMessages.length - 1]?._id;
+
+  const scrollToBottom = useCallback(
+    (animated: boolean) => {
+      flatListRef.current?.scrollToEnd({ animated });
+    },
+    [flatListRef],
+  );
+
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: Array<{ item?: any }> }) => {
+      const currentLastMessageId = lastMessageIdRef.current;
+      if (!currentLastMessageId) {
+        isNearBottomRef.current = true;
+        return;
+      }
+      isNearBottomRef.current = viewableItems.some(
+        (entry) => entry.item?._id === currentLastMessageId,
+      );
+    },
+  );
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 20,
+  });
+
+  const listFooter = displayMessages.length > 0 ? <YStack flex={1} minHeight={0} /> : null;
+
+  useEffect(() => {
+    prevDisplayCountRef.current = displayMessages.length;
+  }, []);
+
+  return (
+    <BottomSheetFlatList
+      ref={flatListRef}
+      data={displayMessages}
+      renderItem={renderMessage}
+      keyExtractor={keyExtractor}
+      style={{ flex: 1, backgroundColor: theme.background.val }}
+      ListEmptyComponent={<EmptyState />}
+      ListFooterComponent={listFooter}
+      onContentSizeChange={(_, height) => {
+        if (!didInitialScrollRef.current) {
+          didInitialScrollRef.current = true;
+          requestAnimationFrame(() => {
+            scrollToBottom(false);
+          });
+          prevDisplayCountRef.current = displayMessages.length;
+          return;
+        }
+
+        if (displayMessages.length > prevDisplayCountRef.current && isNearBottomRef.current) {
+          requestAnimationFrame(() => {
+            scrollToBottom(true);
+          });
+        }
+
+        prevDisplayCountRef.current = displayMessages.length;
+      }}
+      onViewableItemsChanged={onViewableItemsChanged.current}
+      viewabilityConfig={viewabilityConfig.current}
+      contentContainerStyle={{
+        paddingHorizontal: 16,
+        paddingTop: 18,
+        paddingBottom: footerHeight + CHAT_BOTTOM_SPACING,
+        flexGrow: 1,
+      }}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+    />
+  );
+}
+
+export function AIChatPanelFooter({
+  controller,
+  bottomInset = 0,
+  onHeightChange,
+  ...props
+}: BottomSheetFooterProps & {
+  controller: AIChatController;
+  bottomInset?: number;
+  onHeightChange?: (height: number) => void;
+}) {
+  return (
+    <BottomSheetFooter {...props}>
       <YStack
+        onLayout={(event) => {
+          onHeightChange?.(event.nativeEvent.layout.height);
+        }}
         backgroundColor="$background"
         borderTopWidth={1}
         borderTopColor="$borderColor"
         paddingHorizontal={16}
-        paddingTop={10}
-        paddingBottom={Math.max(insets.bottom, 12)}
+        paddingTop={8}
+        paddingBottom={Math.max(8, bottomInset)}
         gap={8}
       >
         <ChatInputBar
-          isSending={isSending}
-          onSend={handleSend}
-          chatInputMode={chatInputMode}
-          setChatInputMode={setChatInputMode}
-          attachments={fileAttachments.attachments}
-          onRemoveAttachment={fileAttachments.removeAttachment}
-          onPickImages={fileAttachments.pickImages}
-          onPickCamera={fileAttachments.pickCamera}
-          onPickDocument={fileAttachments.pickDocument}
-          driveConnected={driveConnected}
-          onRequestDriveAccess={handleRequestDriveAccess}
+          isSending={controller.isSending}
+          onSend={controller.handleSend}
+          chatInputMode={controller.chatInputMode}
+          setChatInputMode={controller.setChatInputMode}
+          attachments={controller.attachments}
+          onRemoveAttachment={controller.onRemoveAttachment}
+          onPickImages={controller.onPickImages}
+          onPickCamera={controller.onPickCamera}
+          onPickDocument={controller.onPickDocument}
+          driveConnected={controller.driveConnected}
+          onRequestDriveAccess={controller.onRequestDriveAccess}
         />
       </YStack>
-    </KeyboardStickyView>
-  );
-
-  // ── Empty state ────────────────────────────────────────────────────────────
-  if (messages.length === 0 && !optimisticMessage && !isSending) {
-    return (
-      <YStack flex={1}>
-        <YStack flex={1} overflow="hidden">
-          <YStack
-            marginHorizontal={CHAT.bodyPad}
-            marginTop={12}
-            marginBottom={8}
-            borderRadius={CHAT.panelRadius}
-            backgroundColor="$backgroundStrong"
-            borderWidth={1}
-            borderColor="$borderColor"
-            overflow="hidden"
-            style={getSurfaceShadow(theme.shadowColor.val)}
-            flex={1}
-          >
-            <EmptyState />
-          </YStack>
-          <Animated.View style={keyboardSpacerStyle} />
-        </YStack>
-        {inputBar}
-      </YStack>
-    );
-  }
-
-  // ── Chat view ──────────────────────────────────────────────────────────────
-  return (
-    <YStack flex={1}>
-      <YStack
-        marginHorizontal={CHAT.bodyPad}
-        marginTop={12}
-        marginBottom={10}
-        borderRadius={CHAT.panelRadius}
-        borderWidth={1}
-        borderColor="$borderColor"
-        backgroundColor="$backgroundStrong"
-        overflow="hidden"
-        style={getSurfaceShadow(theme.shadowColor.val)}
-        flex={1}
-      >
-        {/* Header */}
-        <XStack
-          alignItems="center"
-          justifyContent="space-between"
-          paddingHorizontal={CHAT.bodyPad}
-          paddingVertical={11}
-          borderBottomWidth={1}
-          borderBottomColor="$borderColor"
-          backgroundColor="$card"
-        >
-          <Text fontSize={12} fontFamily="$body" color="$colorMuted">
-            {messages.length} {messages.length === 1 ? "message" : "messages"}
-          </Text>
-          <Pressable
-            onPress={handleClearChat}
-            hitSlop={8}
-            style={({ pressed }) => ({
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-              paddingHorizontal: 10,
-              paddingVertical: 7,
-              borderRadius: 999,
-              borderWidth: 1,
-              borderColor: theme.borderColor.val,
-              backgroundColor: theme.background.val,
-              opacity: pressed ? 0.6 : 1,
-            })}
-          >
-            <Feather name="trash-2" size={14} color={theme.colorMuted.val} />
-            <Text fontSize={12} fontFamily="$body" color="$colorMuted">
-              Clear
-            </Text>
-          </Pressable>
-        </XStack>
-
-        {/* Message list + keyboard spacer */}
-        <YStack flex={1} overflow="hidden" backgroundColor="$background">
-          <FlatList
-            ref={flatListRef}
-            data={displayMessages}
-            renderItem={renderMessage}
-            keyExtractor={keyExtractor}
-            inverted
-            style={{ flex: 1 }}
-            contentContainerStyle={{
-              paddingHorizontal: CHAT.bodyPad + 2,
-              paddingTop: CHAT.bodyPad + 6,
-              paddingBottom: CHAT.bodyPad - 2,
-            }}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
-          />
-          <Animated.View style={keyboardSpacerStyle} />
-        </YStack>
-      </YStack>
-
-      {inputBar}
-    </YStack>
+    </BottomSheetFooter>
   );
 }

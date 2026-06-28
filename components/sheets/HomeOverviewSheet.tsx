@@ -1,18 +1,20 @@
-import React, { useMemo, useState } from "react";
-import { ScrollView } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BottomSheetBackdrop, BottomSheetModal, BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import Animated, { FadeInRight } from "react-native-reanimated";
+import { FlatList } from "react-native-gesture-handler";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@/lib/icons";
 import { Text, XStack, YStack } from "tamagui";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { BaseSheet } from "@/components/ui/BaseSheet";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { Badge } from "@/components/ui/Badge";
 import { SectionCard } from "@/components/ui/AppScreen";
 import { FlashbackCard } from "@/components/FlashbackCard";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
 import { selectSheetOpen, useUIStore } from "@/store/ui";
 import type { MemoryNote } from "@/types/memory";
 import { getReminderDate, inferMemoryEntryKind } from "@/types/memoryKind";
@@ -76,14 +78,15 @@ function MetricTile({ value, label }: { value: number; label: string }) {
   return (
     <YStack
       flex={1}
-      padding={14}
-      borderRadius={20}
-      backgroundColor="$background"
+      minWidth={0}
+      padding={12}
+      borderRadius={16}
+      backgroundColor="$card"
       borderWidth={1}
       borderColor="$borderColor"
-      gap={4}
+      gap={2}
     >
-      <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
+      <Text fontSize={20} fontFamily="$heading" fontWeight="700" color="$color">
         {value}
       </Text>
       <Text fontSize={12} color="$colorMuted">
@@ -95,6 +98,10 @@ function MetricTile({ value, label }: { value: number; label: string }) {
 
 export function HomeOverviewSheet() {
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const isLargeScreen = useIsLargeScreen();
+  const modalRef = useRef<BottomSheetModal>(null);
+  const presentedRef = useRef(false);
   const { token } = useAuth();
   const open = useUIStore(selectSheetOpen("homeOverview"));
   const closeHomeOverview = useUIStore((state) => state.closeHomeOverview);
@@ -139,40 +146,97 @@ export function HomeOverviewSheet() {
   const totalReminders = stats?.totalReminders ?? 0;
   const totalCategories = activeTopicSummaries.length;
 
+  const handleDismiss = useCallback(() => {
+    presentedRef.current = false;
+    closeHomeOverview();
+  }, [closeHomeOverview]);
+
+  const renderBackdrop = useCallback(
+    (props: React.ComponentProps<typeof BottomSheetBackdrop>) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        pressBehavior="close"
+      />
+    ),
+    [],
+  );
+
+  useEffect(() => {
+    if (open && !presentedRef.current) {
+      modalRef.current?.present();
+      presentedRef.current = true;
+      return;
+    }
+
+    if (!open && presentedRef.current) {
+      modalRef.current?.dismiss();
+    }
+  }, [open]);
+
   return (
-    <BaseSheet
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) closeHomeOverview();
-      }}
-      sheetId="homeOverview"
+    <BottomSheetModal
+      ref={modalRef}
+      name="homeOverview"
+      index={0}
+      snapPoints={["CONTENT_HEIGHT"]}
+      enablePanDownToClose
+      detached={isLargeScreen}
+      style={
+        isLargeScreen
+          ? {
+              marginHorizontal: 16,
+              width: "100%",
+              maxWidth: 720,
+              alignSelf: "center",
+            }
+          : undefined
+      }
+      topInset={isLargeScreen ? insets.top + 16 : insets.top}
+      bottomInset={isLargeScreen ? insets.bottom + 16 : insets.bottom}
+      enableDynamicSizing
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      enableBlurKeyboardOnGesture
+      android_keyboardInputMode="adjustResize"
+      stackBehavior="push"
+      backdropComponent={renderBackdrop}
+      backgroundStyle={{ backgroundColor: theme.surface.val }}
+      onDismiss={handleDismiss}
     >
-      <ScrollView
+      <BottomSheetScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           paddingHorizontal: 20,
-          paddingTop: 8,
+          paddingTop: 10,
           paddingBottom: 40,
           gap: 18,
         }}
+        nestedScrollEnabled
       >
         <YStack gap={18}>
           <XStack alignItems="center" justifyContent="space-between" gap={12}>
-            <Text fontSize={26} fontFamily="$heading" fontWeight="700" color="$color">
-              Overview
-            </Text>
+            <YStack flex={1} minWidth={0} gap={2}>
+              <Text fontSize={18} fontWeight="700" color="$color">
+                Overview
+              </Text>
+              <Text fontSize={13} lineHeight={18} color="$colorMuted">
+                Recent memory activity and reminders
+              </Text>
+            </YStack>
             <PressableScale onPress={closeHomeOverview}>
               <YStack
-                width={38}
-                height={38}
-                borderRadius={14}
+                width={36}
+                height={36}
+                borderRadius={18}
                 alignItems="center"
                 justifyContent="center"
-                backgroundColor="$background"
+                backgroundColor="$card"
                 borderWidth={1}
                 borderColor="$borderColor"
               >
-                <Feather name="x" size={18} color={theme.color.val} />
+                <Feather name="x" size={16} color={theme.color.val} />
               </YStack>
             </PressableScale>
           </XStack>
@@ -317,30 +381,29 @@ export function HomeOverviewSheet() {
 
           {flashbacks.length > 0 ? (
             <SectionCard title="On this day">
-              <ScrollView
+              <FlatList
                 horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: 12, paddingRight: 8 }}
-              >
-                {(flashbacks as MemoryItem[]).map((memory, index) => (
-                  <Animated.View
-                    key={memory._id}
-                    entering={FadeInRight.delay(index * 60).duration(240)}
-                  >
+                data={flashbacks as MemoryItem[]}
+                keyExtractor={(item) => item._id}
+                renderItem={({ item, index }) => (
+                  <Animated.View entering={FadeInRight.delay(index * 60).duration(240)}>
                     <FlashbackCard
-                      memory={toMemoryNote(memory)}
+                      memory={toMemoryNote(item)}
                       onPress={() => {
                         closeHomeOverview();
-                        openEditMemory(toMemoryNote(memory));
+                        openEditMemory(toMemoryNote(item));
                       }}
                     />
                   </Animated.View>
-                ))}
-              </ScrollView>
+                )}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 12, paddingRight: 8 }}
+                nestedScrollEnabled
+              />
             </SectionCard>
           ) : null}
         </YStack>
-      </ScrollView>
-    </BaseSheet>
+      </BottomSheetScrollView>
+    </BottomSheetModal>
   );
 }

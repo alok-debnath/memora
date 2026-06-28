@@ -18,6 +18,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useColorScheme } from "react-native";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { TamaguiProvider } from "tamagui";
 import { PortalProvider } from "react-native-teleport";
 
@@ -57,38 +58,42 @@ function RootLayoutNav() {
   if (!auth.hasSeenOnboarding) {
     return (
       <TamaguiProvider config={tamaguiConfig} defaultTheme={resolvedMode}>
-        <AppConfirmProvider>
-          <AuthContext.Provider value={auth}>
-            <OnboardingScreen />
-            <AppToastRenderer />
-          </AuthContext.Provider>
-        </AppConfirmProvider>
+        <AuthContext.Provider value={auth}>
+          <AppConfirmProvider>
+            <BottomSheetModalProvider>
+              <OnboardingScreen />
+              <AppToastRenderer />
+            </BottomSheetModalProvider>
+          </AppConfirmProvider>
+        </AuthContext.Provider>
       </TamaguiProvider>
     );
   }
 
   return (
     <TamaguiProvider config={tamaguiConfig} defaultTheme={resolvedMode}>
-      <AppConfirmProvider>
-        <AuthContext.Provider value={auth}>
-          <StatusBar style={resolvedMode === "dark" ? "light" : "dark"} />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: {
-                backgroundColor:
-                  resolvedMode === "dark"
-                    ? tamaguiConfig.themes.dark.background.val
-                    : tamaguiConfig.themes.light.background.val,
-              },
-            }}
-          >
-            <Stack.Screen name="(public)" options={{ headerShown: false }} />
-            <Stack.Screen name="(protected)" options={{ headerShown: false }} />
-          </Stack>
-          <AppToastRenderer />
-        </AuthContext.Provider>
-      </AppConfirmProvider>
+      <AuthContext.Provider value={auth}>
+        <AppConfirmProvider>
+          <BottomSheetModalProvider>
+            <StatusBar style={resolvedMode === "dark" ? "light" : "dark"} />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: {
+                  backgroundColor:
+                    resolvedMode === "dark"
+                      ? tamaguiConfig.themes.dark.background.val
+                      : tamaguiConfig.themes.light.background.val,
+                },
+              }}
+            >
+              <Stack.Screen name="(public)" options={{ headerShown: false }} />
+              <Stack.Screen name="(protected)" options={{ headerShown: false }} />
+            </Stack>
+            <AppToastRenderer />
+          </BottomSheetModalProvider>
+        </AppConfirmProvider>
+      </AuthContext.Provider>
     </TamaguiProvider>
   );
 }

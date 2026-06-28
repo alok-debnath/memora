@@ -2,11 +2,7 @@ import { create } from "zustand";
 import type { MemoryNote } from "@/types/memory";
 
 export type SheetId =
-  | "unifiedCommand"
-  | "editMemory"
-  | "homeOverview"
-  | "filePreview"
-  | "turnBreakdown";
+  "unifiedCommand" | "editMemory" | "homeOverview" | "filePreview" | "turnBreakdown";
 
 export type FilePreviewPayload = {
   _id: string;
@@ -27,7 +23,7 @@ export type SheetPayloadMap = {
   editMemory: { memory: MemoryNote };
   homeOverview: null;
   filePreview: { attachment: FilePreviewPayload };
-  turnBreakdown: null;
+  turnBreakdown: { chatTurnId: string };
 };
 
 type SheetEntry<K extends SheetId = SheetId> = {
@@ -59,7 +55,7 @@ interface UIStore {
   closeHomeOverview: () => void;
   openFilePreview: (attachment: FilePreviewPayload) => void;
   closeFilePreview: () => void;
-  openTurnBreakdown: () => void;
+  openTurnBreakdown: (chatTurnId: string) => void;
   closeTurnBreakdown: () => void;
   resetSheets: () => void;
 }
@@ -248,13 +244,13 @@ export const useUIStore = create<UIStore>()((set) => ({
       sheetStack: unregisterSheetId(state.sheetStack, "filePreview"),
     })),
 
-  openTurnBreakdown: () =>
+  openTurnBreakdown: (chatTurnId) =>
     set((state) => ({
       sheets: {
         ...state.sheets,
         turnBreakdown: {
           open: true,
-          payload: null,
+          payload: { chatTurnId },
           enteredAt: Date.now(),
         },
       },
