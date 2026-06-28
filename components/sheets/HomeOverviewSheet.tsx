@@ -107,6 +107,7 @@ export function HomeOverviewSheet() {
   const closeHomeOverview = useUIStore((state) => state.closeHomeOverview);
   const openEditMemory = useUIStore((state) => state.openEditMemory);
   const [upcomingRange, setUpcomingRange] = useState<"week" | "month" | "year" | "all">("week");
+  const snapPoints = useMemo(() => (isLargeScreen ? ["72%"] : ["88%"]), [isLargeScreen]);
 
   const querySnapshot = useMemo(
     () => ({
@@ -180,7 +181,7 @@ export function HomeOverviewSheet() {
       ref={modalRef}
       name="homeOverview"
       index={0}
-      snapPoints={["CONTENT_HEIGHT"]}
+      snapPoints={snapPoints}
       enablePanDownToClose
       detached={isLargeScreen}
       style={
@@ -195,7 +196,6 @@ export function HomeOverviewSheet() {
       }
       topInset={isLargeScreen ? insets.top + 16 : insets.top}
       bottomInset={isLargeScreen ? insets.bottom + 16 : insets.bottom}
-      enableDynamicSizing
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
       enableBlurKeyboardOnGesture

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { Linking, StyleSheet, View } from "react-native";
 import {
   BottomSheetBackdrop,
@@ -41,6 +41,7 @@ export function FilePreviewSheet() {
   const open = useUIStore(selectSheetOpen("filePreview"));
   const payload = useUIStore(selectSheetPayload("filePreview"));
   const closeFilePreview = useUIStore((state) => state.closeFilePreview);
+  const snapPoints = useMemo(() => (isLargeScreen ? ["70%"] : ["85%"]), [isLargeScreen]);
 
   const attachment = payload?.attachment ?? null;
   const previewUrls = useDrivePreviewUrls(attachment ? [attachment] : [], token);
@@ -110,7 +111,7 @@ export function FilePreviewSheet() {
       ref={modalRef}
       name="filePreview"
       index={0}
-      snapPoints={["CONTENT_HEIGHT"]}
+      snapPoints={snapPoints}
       enablePanDownToClose
       detached={isLargeScreen}
       style={
@@ -125,7 +126,6 @@ export function FilePreviewSheet() {
       }
       topInset={isLargeScreen ? insets.top + 16 : insets.top}
       bottomInset={isLargeScreen ? insets.bottom + 16 : insets.bottom}
-      enableDynamicSizing
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
       enableBlurKeyboardOnGesture

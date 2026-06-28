@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { TextInput, Platform, Alert, Switch } from "react-native";
 import {
   BottomSheetBackdrop,
@@ -153,12 +153,20 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
   const [timeCapsuleEnabled, setTimeCapsuleEnabled] = useState(false);
   const [capsuleDate, setCapsuleDate] = useState("");
   const [chatFooterHeight, setChatFooterHeight] = useState(0);
+  const currentSnapIndexRef = useRef(0);
   const chatController = useAIChatController({
     token,
     chatInputMode,
     setChatInputMode,
     autoVoiceOutput,
   });
+  const snapPoints = useMemo(() => {
+    if (activeTab === "chat") {
+      return isLargeScreen ? ["68%", "90%"] : ["74%", "96%"];
+    }
+
+    return isLargeScreen ? ["64%", "86%"] : ["62%", "92%"];
+  }, [activeTab, isLargeScreen]);
 
   const noteInputRef = useRef<TextInput>(null);
 
@@ -229,6 +237,7 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
     if (visible && !presentedRef.current) {
       modalRef.current?.present();
       presentedRef.current = true;
+      currentSnapIndexRef.current = 0;
       return;
     }
 
@@ -236,6 +245,16 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
       modalRef.current?.dismiss();
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (!visible || !presentedRef.current || activeTab !== "chat") {
+      return;
+    }
+
+    if (chatController.messages.length >= 4 && currentSnapIndexRef.current === 0) {
+      modalRef.current?.snapToIndex(1);
+    }
+  }, [activeTab, chatController.messages.length, visible]);
 
   const sharedHeader = (
     <YStack paddingHorizontal={16} paddingTop={10} paddingBottom={10} gap={12}>
@@ -373,7 +392,7 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
       ref={modalRef}
       name="unifiedCommand"
       index={0}
-      snapPoints={["62%", "92%"]}
+      snapPoints={snapPoints}
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
       detached={isLargeScreen}
@@ -395,6 +414,9 @@ export function UnifiedCommandPanel({ visible, onClose }: UnifiedCommandPanelPro
       stackBehavior="push"
       backdropComponent={renderBackdrop}
       backgroundStyle={{ backgroundColor: theme.surface.val }}
+      onChange={(index) => {
+        currentSnapIndexRef.current = index;
+      }}
       footerComponent={
         activeTab === "chat"
           ? (props) => (

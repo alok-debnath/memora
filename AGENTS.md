@@ -55,6 +55,7 @@ Convex agent skills for common tasks can be installed by running `bun x convex a
 
 - Never auto-commit or run git write commands unless the user explicitly asks.
 - When the user asks for a commit, write a detailed commit message with a clear subject and explanatory body.
+- When helpful, include a few compact code references in the commit body such as `components/AIChatPanel.tsx` or `app/_layout.tsx` so a future agent can recover the main implementation context directly from `git log`, but keep the message concise and avoid turning it into a file-by-file changelog.
 - Never add a co-author trailer to commit messages.
 - Use `.worktrees/` (project-local, gitignored) for git worktrees when worktrees are needed.
 

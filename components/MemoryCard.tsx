@@ -360,7 +360,7 @@ export const MemoryCard = React.memo(function MemoryCard({
             icon: "check-circle",
             iconColor: statusAccentColors.successStrong,
             onPress: onComplete!,
-          },
+          } satisfies ContextMenuItemDef,
         ]
       : []),
     ...(canTriggerSync
@@ -371,7 +371,7 @@ export const MemoryCard = React.memo(function MemoryCard({
             icon: "refresh-cw",
             iconColor: theme.primary.val,
             onPress: onTriggerSync!,
-          },
+          } satisfies ContextMenuItemDef,
         ]
       : []),
     ...(canRemoveSync
@@ -381,7 +381,7 @@ export const MemoryCard = React.memo(function MemoryCard({
             icon: "link-2",
             destructive: true,
             onPress: onRemoveSync!,
-          },
+          } satisfies ContextMenuItemDef,
         ]
       : []),
     ...(onShare
@@ -391,7 +391,7 @@ export const MemoryCard = React.memo(function MemoryCard({
             icon: "share-2",
             iconColor: theme.color.val,
             onPress: onShare,
-          },
+          } satisfies ContextMenuItemDef,
         ]
       : []),
     ...(onAddToReview
@@ -401,7 +401,7 @@ export const MemoryCard = React.memo(function MemoryCard({
             icon: "repeat",
             iconColor: theme.color.val,
             onPress: onAddToReview,
-          },
+          } satisfies ContextMenuItemDef,
         ]
       : []),
     ...(onDelete
@@ -411,7 +411,7 @@ export const MemoryCard = React.memo(function MemoryCard({
             icon: "trash-2",
             destructive: true,
             onPress: onDelete,
-          },
+          } satisfies ContextMenuItemDef,
         ]
       : []),
   ];

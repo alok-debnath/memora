@@ -679,7 +679,7 @@ export default function HomeScreen() {
                           icon: "check-circle",
                           iconColor: statusAccentColors.successStrong,
                           onPress: () => token && completeMemory({ token, id: memory._id }),
-                        },
+                        } satisfies import("@/components/ui/ContextMenu").ContextMenuItemDef,
                         ...(showTriggerSyncAction
                           ? [
                               {
@@ -690,7 +690,7 @@ export default function HomeScreen() {
                                 icon: "refresh-cw",
                                 iconColor: theme.primary.val,
                                 onPress: () => handleTriggerReminderSync(memory._id),
-                              },
+                              } satisfies import("@/components/ui/ContextMenu").ContextMenuItemDef,
                             ]
                           : []),
                         ...(showRemoveSyncAction
@@ -700,7 +700,7 @@ export default function HomeScreen() {
                                 icon: "link-2",
                                 destructive: true,
                                 onPress: () => handleRemoveReminderSync(memory._id),
-                              },
+                              } satisfies import("@/components/ui/ContextMenu").ContextMenuItemDef,
                             ]
                           : []),
                         {
@@ -709,18 +709,18 @@ export default function HomeScreen() {
                           onPress: () => {
                             openEditMemory(toMemoryNote(memory));
                           },
-                        },
+                        } satisfies import("@/components/ui/ContextMenu").ContextMenuItemDef,
                         {
                           label: "Share",
                           icon: "share-2",
                           onPress: () => handleShare(memory._id),
-                        },
+                        } satisfies import("@/components/ui/ContextMenu").ContextMenuItemDef,
                         {
                           label: "Delete",
                           icon: "trash-2",
                           destructive: true,
                           onPress: () => handleDelete(memory._id),
-                        },
+                        } satisfies import("@/components/ui/ContextMenu").ContextMenuItemDef,
                       ]}
                     >
                       <XStack

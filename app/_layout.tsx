@@ -32,6 +32,7 @@ import { logDevError } from "@/lib/devLog";
 import tamaguiConfig from "@/tamagui.config";
 import { AppToastProvider, AppToastRenderer } from "@/components/ui/toast";
 import { AppConfirmProvider } from "@/components/ui/confirm/AppConfirmProvider";
+import { BackdropBlurProvider } from "@/components/ui/BackdropBlurProvider";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -58,42 +59,46 @@ function RootLayoutNav() {
   if (!auth.hasSeenOnboarding) {
     return (
       <TamaguiProvider config={tamaguiConfig} defaultTheme={resolvedMode}>
-        <AuthContext.Provider value={auth}>
-          <AppConfirmProvider>
-            <BottomSheetModalProvider>
-              <OnboardingScreen />
-              <AppToastRenderer />
-            </BottomSheetModalProvider>
-          </AppConfirmProvider>
-        </AuthContext.Provider>
+        <BackdropBlurProvider>
+          <AuthContext.Provider value={auth}>
+            <AppConfirmProvider>
+              <BottomSheetModalProvider>
+                <OnboardingScreen />
+                <AppToastRenderer />
+              </BottomSheetModalProvider>
+            </AppConfirmProvider>
+          </AuthContext.Provider>
+        </BackdropBlurProvider>
       </TamaguiProvider>
     );
   }
 
   return (
     <TamaguiProvider config={tamaguiConfig} defaultTheme={resolvedMode}>
-      <AuthContext.Provider value={auth}>
-        <AppConfirmProvider>
-          <BottomSheetModalProvider>
-            <StatusBar style={resolvedMode === "dark" ? "light" : "dark"} />
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: {
-                  backgroundColor:
-                    resolvedMode === "dark"
-                      ? tamaguiConfig.themes.dark.background.val
-                      : tamaguiConfig.themes.light.background.val,
-                },
-              }}
-            >
-              <Stack.Screen name="(public)" options={{ headerShown: false }} />
-              <Stack.Screen name="(protected)" options={{ headerShown: false }} />
-            </Stack>
-            <AppToastRenderer />
-          </BottomSheetModalProvider>
-        </AppConfirmProvider>
-      </AuthContext.Provider>
+      <BackdropBlurProvider>
+        <AuthContext.Provider value={auth}>
+          <AppConfirmProvider>
+            <BottomSheetModalProvider>
+              <StatusBar style={resolvedMode === "dark" ? "light" : "dark"} />
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  contentStyle: {
+                    backgroundColor:
+                      resolvedMode === "dark"
+                        ? tamaguiConfig.themes.dark.background.val
+                        : tamaguiConfig.themes.light.background.val,
+                  },
+                }}
+              >
+                <Stack.Screen name="(public)" options={{ headerShown: false }} />
+                <Stack.Screen name="(protected)" options={{ headerShown: false }} />
+              </Stack>
+              <AppToastRenderer />
+            </BottomSheetModalProvider>
+          </AppConfirmProvider>
+        </AuthContext.Provider>
+      </BackdropBlurProvider>
     </TamaguiProvider>
   );
 }
