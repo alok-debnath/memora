@@ -19,7 +19,7 @@ import { XStack, YStack, Text } from "tamagui";
 
 import { AppButton } from "@/components/ui/AppButton";
 import { useBackdropBlurHost } from "@/components/ui/BackdropBlurProvider";
-import { withAlpha } from "@/components/ui/themeHelpers";
+import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import { FontFamily } from "@/constants/fonts";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
@@ -433,13 +433,7 @@ function FloatingTabBar({
       <Animated.View
         style={[
           styles.outerContainer,
-          {
-            shadowColor: theme.shadowColor.val,
-            shadowOpacity: isDark ? 0.24 : 0.12,
-            shadowRadius: isDark ? 22 : 18,
-            shadowOffset: { width: 0, height: 4 },
-            elevation: isDark ? 12 : 9,
-          },
+          appShadow(theme.shadowColor.val, isDark ? "lg" : "md"),
           barEntranceStyle,
         ]}
       >
@@ -502,11 +496,21 @@ function FloatingTabBar({
   );
 }
 
+function isTabRootPath(pathname: string) {
+  return (
+    pathname === "/" ||
+    pathname === "/index" ||
+    pathname === "/diary" ||
+    pathname === "/review" ||
+    pathname === "/more"
+  );
+}
+
 function routeNameFromPathname(pathname: string): NavItemName {
-  if (pathname === "/" || pathname === "/index" || pathname.startsWith("/index/")) return "index";
-  if (pathname === "/diary" || pathname.startsWith("/diary/")) return "diary";
-  if (pathname === "/review" || pathname.startsWith("/review/")) return "review";
-  if (pathname === "/more" || pathname.startsWith("/more/")) return "more";
+  if (pathname === "/" || pathname === "/index") return "index";
+  if (pathname === "/diary") return "diary";
+  if (pathname === "/review") return "review";
+  if (pathname === "/more") return "more";
   return "index";
 }
 
@@ -553,6 +557,7 @@ function CustomTabLayout() {
   const router = useRouter();
   const pathname = usePathname();
   const openCommand = useUIStore((s) => s.openCommand);
+  const showTabBar = isTabRootPath(pathname);
   const activeRouteName = routeNameFromPathname(pathname);
 
   const handleNavigate = React.useCallback(
@@ -582,8 +587,7 @@ function CustomTabLayout() {
             backgroundColor: "transparent",
             borderTopWidth: 0,
             elevation: 0,
-            shadowOpacity: 0,
-            shadowRadius: 0,
+            boxShadow: "none",
             height: 0,
           },
         }}
@@ -595,11 +599,13 @@ function CustomTabLayout() {
         {/* __fab.tsx exists for file-system routing but is not a nav tab */}
         <Tabs.Screen name="__fab" options={{ href: null }} />
       </Tabs>
-      <MobileTabBarOverlay
-        activeRouteName={activeRouteName}
-        onNavigate={handleNavigate}
-        onPressAdd={handlePressAdd}
-      />
+      {showTabBar ? (
+        <MobileTabBarOverlay
+          activeRouteName={activeRouteName}
+          onNavigate={handleNavigate}
+          onPressAdd={handlePressAdd}
+        />
+      ) : null}
     </>
   );
 }
@@ -790,12 +796,6 @@ const styles = StyleSheet.create({
     height: BAR_H,
     borderRadius: BAR_R,
     backgroundColor: "transparent",
-    // iOS / web shadow
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 20,
-    // Android elevation
-    elevation: 0,
   },
   // Inner shell: clips glass blur + border to pill shape
   innerContainer: {

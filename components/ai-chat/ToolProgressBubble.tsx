@@ -18,6 +18,7 @@ import { FontFamily } from "@/constants/fonts";
 import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { Feather } from "@/lib/icons";
+import { appShadow } from "@/components/ui/themeHelpers";
 import type { ProgressStatus } from "./types";
 import {
   formatElapsedTime,
@@ -40,13 +41,7 @@ const CHAT = {
   messageGap: 14,
 } as const;
 
-const getBubbleShadow = (shadowColor: string) => ({
-  shadowColor,
-  shadowOffset: { width: 0, height: 1 },
-  shadowOpacity: 0.03,
-  shadowRadius: 3,
-  elevation: 0,
-});
+const getBubbleShadow = (shadowColor: string) => appShadow(shadowColor, "xs");
 
 function getAccentColor(status: ProgressStatus, fallback: string) {
   const phase = (status.phase ?? "").toLowerCase();

@@ -4,6 +4,7 @@ import Animated, { FadeInRight } from "react-native-reanimated";
 import { PressableScale } from "./ui/PressableScale";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { appShadow } from "@/components/ui/themeHelpers";
 
 interface NudgeCardProps {
   title: string;
@@ -26,10 +27,7 @@ export function NudgeCard({ title, message, onDismiss, index = 0 }: NudgeCardPro
           backgroundColor: theme.accent.val,
           borderColor: theme.borderColor.val,
           marginRight: 12,
-          shadowColor: theme.shadowColor.val,
-          shadowOpacity: 0.05,
-          shadowRadius: 14,
-          shadowOffset: { width: 0, height: 8 },
+          ...appShadow(theme.shadowColor.val, "sm"),
         }}
       >
         <XStack alignItems="center" gap={10} marginBottom={8}>

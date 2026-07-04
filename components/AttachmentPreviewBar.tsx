@@ -6,6 +6,7 @@ import { useColors } from "@/hooks/useColors";
 import { Text } from "tamagui";
 import type { PendingAttachment } from "@/hooks/useFileAttachments";
 import { statusAccentColors } from "@/constants/colors";
+import { appShadow } from "@/components/ui/themeHelpers";
 
 type AttachmentPreviewBarProps = {
   attachments: PendingAttachment[];
@@ -119,7 +120,8 @@ function AttachmentSquare({ attachment, colors, onRemove, onPress }: AttachmentS
         hitSlop={8}
         style={[
           styles.removeButton,
-          { backgroundColor: colors.surface, shadowColor: colors.shadow },
+          { backgroundColor: colors.surface },
+          appShadow(colors.shadow, "xs"),
         ]}
       >
         <Feather name="x" size={10} color={colors.text} />
@@ -232,9 +234,5 @@ const styles = StyleSheet.create({
     borderRadius: 9,
     alignItems: "center",
     justifyContent: "center",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.15,
-    shadowRadius: 1,
-    elevation: 2,
   },
 });

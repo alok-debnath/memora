@@ -17,7 +17,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { FontFamily } from "@/constants/fonts";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { Feather } from "@/lib/icons";
-import { withAlpha } from "@/components/ui/themeHelpers";
+import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import { DeletionProposalCard } from "./DeletionProposalCard";
 import { SearchResultsCard } from "./SearchResultsCard";
 import type { CardFlow, ChatMsg, DeletionItem } from "./types";
@@ -30,13 +30,7 @@ const CHAT = {
   messageGap: 14,
 } as const;
 
-const getBubbleShadow = (shadowColor: string) => ({
-  shadowColor,
-  shadowOffset: { width: 0, height: 1 },
-  shadowOpacity: 0.03,
-  shadowRadius: 3,
-  elevation: 0,
-});
+const getBubbleShadow = (shadowColor: string) => appShadow(shadowColor, "xs");
 
 function AttachmentChip({
   name,

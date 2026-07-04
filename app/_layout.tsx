@@ -59,26 +59,26 @@ function RootLayoutNav() {
   if (!auth.hasSeenOnboarding) {
     return (
       <TamaguiProvider config={tamaguiConfig} defaultTheme={resolvedMode}>
-        <BackdropBlurProvider>
-          <AuthContext.Provider value={auth}>
-            <AppConfirmProvider>
-              <BottomSheetModalProvider>
+        <BottomSheetModalProvider>
+          <BackdropBlurProvider>
+            <AuthContext.Provider value={auth}>
+              <AppConfirmProvider>
                 <OnboardingScreen />
                 <AppToastRenderer />
-              </BottomSheetModalProvider>
-            </AppConfirmProvider>
-          </AuthContext.Provider>
-        </BackdropBlurProvider>
+              </AppConfirmProvider>
+            </AuthContext.Provider>
+          </BackdropBlurProvider>
+        </BottomSheetModalProvider>
       </TamaguiProvider>
     );
   }
 
   return (
     <TamaguiProvider config={tamaguiConfig} defaultTheme={resolvedMode}>
-      <BackdropBlurProvider>
-        <AuthContext.Provider value={auth}>
-          <AppConfirmProvider>
-            <BottomSheetModalProvider>
+      <BottomSheetModalProvider>
+        <BackdropBlurProvider>
+          <AuthContext.Provider value={auth}>
+            <AppConfirmProvider>
               <StatusBar style={resolvedMode === "dark" ? "light" : "dark"} />
               <Stack
                 screenOptions={{
@@ -95,10 +95,10 @@ function RootLayoutNav() {
                 <Stack.Screen name="(protected)" options={{ headerShown: false }} />
               </Stack>
               <AppToastRenderer />
-            </BottomSheetModalProvider>
-          </AppConfirmProvider>
-        </AuthContext.Provider>
-      </BackdropBlurProvider>
+            </AppConfirmProvider>
+          </AuthContext.Provider>
+        </BackdropBlurProvider>
+      </BottomSheetModalProvider>
     </TamaguiProvider>
   );
 }

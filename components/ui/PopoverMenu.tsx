@@ -10,6 +10,7 @@ import {
 import { Feather } from "@/lib/icons";
 import { XStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { appShadow } from "@/components/ui/themeHelpers";
 import { Portal } from "react-native-teleport";
 
 export interface PopoverMenuItem {
@@ -208,7 +209,7 @@ export function PopoverMenu({
                   width,
                   backgroundColor: theme.card.val,
                   borderColor: theme.borderColor.val,
-                  shadowColor: theme.shadowColor.val,
+                  ...appShadow(theme.shadowColor.val, "md"),
                 },
               ]}
               onPress={(e) => e.stopPropagation()}
@@ -267,10 +268,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.14,
-    shadowRadius: 12,
-    elevation: 8,
     overflow: "hidden",
   },
   item: { minHeight: ITEM_HEIGHT },

@@ -1,5 +1,7 @@
 import React from "react";
 import { Platform, Switch, Alert, TextInput, Pressable, StyleSheet } from "react-native";
+import DateTimePicker from "@expo/ui/community/datetime-picker";
+import dayjs from "dayjs";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { Feather, type FeatherIconName } from "@/lib/icons";
@@ -121,6 +123,126 @@ function IntegrationFeatureRow({
         thumbColor={theme.textInverse.val}
       />
     </XStack>
+  );
+}
+
+function getTimePreferenceDate(value: string) {
+  const [hours = "9", minutes = "0"] = value.split(":");
+  return dayjs()
+    .hour(Number.parseInt(hours, 10) || 0)
+    .minute(Number.parseInt(minutes, 10) || 0)
+    .second(0)
+    .millisecond(0)
+    .toDate();
+}
+
+function formatTimePreference(date: Date) {
+  return dayjs(date).format("HH:mm");
+}
+
+function TimePreferenceField({
+  label,
+  value,
+  placeholder,
+  theme,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  theme: ReturnType<typeof useAppTheme>;
+  onChange: (value: string) => void;
+}) {
+  const [showAndroidPicker, setShowAndroidPicker] = React.useState(false);
+  const pickerDate = getTimePreferenceDate(value || placeholder);
+
+  return (
+    <YStack gap={6}>
+      <Text
+        fontSize={12}
+        fontFamily="$heading"
+        fontWeight="600"
+        textTransform="uppercase"
+        letterSpacing={0.8}
+        marginLeft={4}
+        color="$colorMuted"
+      >
+        {label}
+      </Text>
+      {Platform.OS === "web" ? (
+        <TextInput
+          value={value}
+          onChangeText={onChange}
+          placeholder={placeholder}
+          placeholderTextColor={theme.colorMuted.val}
+          style={[
+            styles.input,
+            {
+              backgroundColor: theme.secondary.val,
+              color: theme.color.val,
+              borderColor: theme.borderColor.val,
+            },
+          ]}
+        />
+      ) : Platform.OS === "ios" ? (
+        <XStack
+          alignItems="center"
+          justifyContent="space-between"
+          style={[
+            styles.input,
+            {
+              backgroundColor: theme.secondary.val,
+              borderColor: theme.borderColor.val,
+            },
+          ]}
+        >
+          <Text fontSize={15} fontFamily="$body" color="$color">
+            {value || placeholder}
+          </Text>
+          <DateTimePicker
+            value={pickerDate}
+            mode="time"
+            display="compact"
+            presentation="inline"
+            accentColor={theme.primary.val}
+            onValueChange={(_, date) => onChange(formatTimePreference(date))}
+          />
+        </XStack>
+      ) : (
+        <>
+          <Pressable
+            onPress={() => setShowAndroidPicker(true)}
+            style={[
+              styles.input,
+              {
+                backgroundColor: theme.secondary.val,
+                borderColor: theme.borderColor.val,
+                justifyContent: "center",
+              },
+            ]}
+          >
+            <Text fontSize={15} fontFamily="$body" color="$color">
+              {value || placeholder}
+            </Text>
+          </Pressable>
+          {showAndroidPicker ? (
+            <DateTimePicker
+              value={pickerDate}
+              mode="time"
+              presentation="dialog"
+              accentColor={theme.primary.val}
+              positiveButton={{ label: "Set" }}
+              negativeButton={{ label: "Cancel" }}
+              onValueChange={(_, date) => {
+                onChange(formatTimePreference(date));
+                setShowAndroidPicker(false);
+              }}
+              onDismiss={() => setShowAndroidPicker(false)}
+            />
+          ) : null}
+        </>
+      )}
+    </YStack>
   );
 }
 
@@ -933,33 +1055,13 @@ export default function ProfileScreen() {
             />
           </XStack>
           <YStack paddingBottom={10}>
-            <YStack gap={6}>
-              <Text
-                fontSize={12}
-                fontFamily="$heading"
-                fontWeight="600"
-                textTransform="uppercase"
-                letterSpacing={0.8}
-                marginLeft={4}
-                color="$colorMuted"
-              >
-                Daily Review Time
-              </Text>
-              <TextInput
-                value={notificationPrefs?.dailyReviewTime ?? "09:00"}
-                onChangeText={(value) => updatePreference({ dailyReviewTime: value })}
-                placeholder="09:00"
-                placeholderTextColor={theme.colorMuted.val}
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: theme.secondary.val,
-                    color: theme.color.val,
-                    borderColor: theme.borderColor.val,
-                  },
-                ]}
-              />
-            </YStack>
+            <TimePreferenceField
+              label="Daily Review Time"
+              value={notificationPrefs?.dailyReviewTime ?? "09:00"}
+              placeholder="09:00"
+              theme={theme}
+              onChange={(value) => updatePreference({ dailyReviewTime: value })}
+            />
           </YStack>
           <YStack height={StyleSheet.hairlineWidth} backgroundColor="$borderColor" />
           <XStack alignItems="center" gap={12} paddingVertical={10}>

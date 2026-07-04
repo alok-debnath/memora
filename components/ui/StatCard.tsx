@@ -1,5 +1,7 @@
 import React from "react";
 import { YStack, Text } from "tamagui";
+import { useAppTheme } from "@/hooks/useAppTheme";
+import { appShadow } from "@/components/ui/themeHelpers";
 
 interface StatCardProps {
   emoji: string;
@@ -8,6 +10,8 @@ interface StatCardProps {
 }
 
 export function StatCard({ emoji, count, label }: StatCardProps) {
+  const theme = useAppTheme();
+
   return (
     <YStack
       flex={1}
@@ -18,10 +22,7 @@ export function StatCard({ emoji, count, label }: StatCardProps) {
       gap={6}
       backgroundColor="$card"
       borderColor="$borderColor"
-      shadowColor="$shadowColor"
-      shadowOffset={{ width: 0, height: 10 }}
-      shadowOpacity={0.06}
-      shadowRadius={24}
+      style={appShadow(theme.shadowColor.val, "sm")}
     >
       <Text fontSize={22}>{emoji}</Text>
       <Text fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">

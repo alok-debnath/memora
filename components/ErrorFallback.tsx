@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { logDevError } from "@/lib/devLog";
+import { appShadow } from "@/components/ui/themeHelpers";
 
 export type ErrorFallbackProps = {
   error: Error;
@@ -96,7 +97,7 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
             styles.button,
             {
               backgroundColor: palette.link,
-              shadowColor: palette.shadow,
+              ...appShadow(palette.shadow, "xs"),
               opacity: pressed ? 0.9 : 1,
               transform: [{ scale: pressed ? 0.98 : 1 }],
             },
@@ -210,13 +211,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 24,
     minWidth: 200,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   buttonText: {
     fontWeight: "600",

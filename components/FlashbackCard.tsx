@@ -6,7 +6,7 @@ import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useThemeStore } from "@/store/theme";
 import type { MemoryNote } from "@/types/memory";
-import { withAlpha } from "./ui/themeHelpers";
+import { appShadow, withAlpha } from "./ui/themeHelpers";
 
 interface FlashbackCardProps {
   memory: MemoryNote;
@@ -41,10 +41,7 @@ export function FlashbackCard({ memory, onPress }: FlashbackCardProps) {
           borderWidth: 1,
           borderColor: theme.primary.val + "24",
           marginRight: 12,
-          shadowColor: theme.shadowColor.val,
-          shadowOpacity: 0.08,
-          shadowRadius: 16,
-          shadowOffset: { width: 0, height: 10 },
+          ...appShadow(theme.shadowColor.val, "md"),
         }}
       >
         <YStack marginBottom={10} alignItems="flex-start">

@@ -15,7 +15,7 @@ import { XStack, YStack, Text } from "tamagui";
 import { Feather } from "@/lib/icons";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { FontFamily } from "@/constants/fonts";
-import { withAlpha } from "@/components/ui/themeHelpers";
+import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import { AttachmentPreviewBar } from "@/components/AttachmentPreviewBar";
 import { AttachmentPickerButton } from "@/components/AttachmentPickerButton";
 import { VoiceRecorder } from "@/components/VoiceRecorder";
@@ -23,19 +23,7 @@ import type { PendingAttachment } from "@/hooks/useFileAttachments";
 
 const BAR_HEIGHTS = [10, 18, 24, 18, 10] as const;
 
-const getSurfaceShadow = (shadowColor: string) =>
-  Platform.select({
-    ios: {
-      shadowColor,
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.04,
-      shadowRadius: 10,
-    },
-    android: {
-      elevation: 1,
-    },
-    default: {},
-  });
+const getSurfaceShadow = (shadowColor: string) => appShadow(shadowColor, "xs");
 
 function WaveformBar({ height, delay, color }: { height: number; delay: number; color: string }) {
   const scaleY = useSharedValue(0.4);

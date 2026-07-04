@@ -11,7 +11,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { Image } from "expo-image";
-import DateTimePicker from "react-native-ui-datepicker";
+import DateTimePicker from "@expo/ui/community/datetime-picker";
 import dayjs from "dayjs";
 import {
   BottomSheetBackdrop,
@@ -58,6 +58,29 @@ const ENTRY_KIND_OPTIONS = [
   { value: "memory" as const, label: "Memory" },
   { value: "reminder" as const, label: "Reminder" },
 ];
+
+function getPickerDate(value: string) {
+  const parsed = dayjs(value);
+  return parsed.isValid() ? parsed.toDate() : new Date();
+}
+
+function mergeDatePart(currentValue: string, selectedDate: Date) {
+  const current = dayjs(currentValue);
+  const base = current.isValid() ? current : dayjs();
+  return dayjs(selectedDate)
+    .hour(base.hour())
+    .minute(base.minute())
+    .second(0)
+    .millisecond(0)
+    .toISOString();
+}
+
+function mergeTimePart(currentValue: string, selectedTime: Date) {
+  const current = dayjs(currentValue);
+  const base = current.isValid() ? current : dayjs();
+  const time = dayjs(selectedTime);
+  return base.hour(time.hour()).minute(time.minute()).second(0).millisecond(0).toISOString();
+}
 
 interface EditMemorySheetProps {
   memory?: MemoryNote;
@@ -669,54 +692,76 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                             ) : null}
                           </XStack>
 
-                          <DateTimePicker
-                            mode="single"
-                            timePicker
-                            date={
-                              form.reminderDate ? dayjs(form.reminderDate).toDate() : new Date()
-                            }
-                            onChange={(params: any) => {
-                              if (params.date) {
-                                setField("reminderDate", dayjs(params.date).toISOString());
-                              }
-                            }}
-                            styles={{
-                              day_label: {
-                                color: theme.color.val,
-                                fontFamily: FontFamily.regular,
-                              },
-                              selected: {
-                                backgroundColor: theme.primary.val,
-                                borderRadius: 8,
-                              },
-                              selected_label: {
-                                color: theme.textInverse.val,
-                                fontFamily: FontFamily.bold,
-                              },
-                              month_selector_label: {
-                                color: theme.color.val,
-                                fontFamily: FontFamily.bold,
-                              },
-                              year_selector_label: {
-                                color: theme.color.val,
-                                fontFamily: FontFamily.bold,
-                              },
-                              time_selector_label: {
-                                color: theme.color.val,
-                                fontFamily: FontFamily.bold,
-                              },
-                              weekday_label: {
-                                color: theme.colorMuted.val,
-                                fontFamily: FontFamily.regular,
-                              },
-                              today_label: {
-                                color: theme.primary.val,
-                                fontFamily: FontFamily.bold,
-                              },
-                              button_prev: { backgroundColor: "transparent" },
-                              button_next: { backgroundColor: "transparent" },
-                            }}
-                          />
+                          {Platform.OS === "ios" ? (
+                            <DateTimePicker
+                              value={getPickerDate(form.reminderDate)}
+                              mode="datetime"
+                              display="inline"
+                              presentation="inline"
+                              accentColor={theme.primary.val}
+                              onValueChange={(_, date) => {
+                                setField("reminderDate", dayjs(date).toISOString());
+                              }}
+                              style={{ alignSelf: "stretch" }}
+                            />
+                          ) : (
+                            <YStack gap={12}>
+                              <YStack gap={6}>
+                                <Text
+                                  fontSize={11}
+                                  fontFamily="$body"
+                                  fontWeight="600"
+                                  letterSpacing={0.8}
+                                  marginLeft={4}
+                                  textTransform="uppercase"
+                                  color="$colorMuted"
+                                >
+                                  DATE
+                                </Text>
+                                <DateTimePicker
+                                  value={getPickerDate(form.reminderDate)}
+                                  mode="date"
+                                  display="inline"
+                                  presentation="inline"
+                                  accentColor={theme.primary.val}
+                                  onValueChange={(_, date) => {
+                                    setField(
+                                      "reminderDate",
+                                      mergeDatePart(form.reminderDate, date),
+                                    );
+                                  }}
+                                  style={{ alignSelf: "stretch" }}
+                                />
+                              </YStack>
+                              <YStack gap={6}>
+                                <Text
+                                  fontSize={11}
+                                  fontFamily="$body"
+                                  fontWeight="600"
+                                  letterSpacing={0.8}
+                                  marginLeft={4}
+                                  textTransform="uppercase"
+                                  color="$colorMuted"
+                                >
+                                  TIME
+                                </Text>
+                                <DateTimePicker
+                                  value={getPickerDate(form.reminderDate)}
+                                  mode="time"
+                                  display="inline"
+                                  presentation="inline"
+                                  accentColor={theme.primary.val}
+                                  onValueChange={(_, date) => {
+                                    setField(
+                                      "reminderDate",
+                                      mergeTimePart(form.reminderDate, date),
+                                    );
+                                  }}
+                                  style={{ alignSelf: "stretch" }}
+                                />
+                              </YStack>
+                            </YStack>
+                          )}
 
                           <GradientButton
                             title="Done"

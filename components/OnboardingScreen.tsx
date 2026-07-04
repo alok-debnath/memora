@@ -89,9 +89,6 @@ const SLIDES: IntroSlide[] = [
   },
 ];
 
-const TOP_GLOW_COLORS = SLIDES.map((slide) => withAlpha(slide.accent, "78"));
-const BOTTOM_GLOW_COLORS = SLIDES.map((slide) => withAlpha(slide.accent, "4D"));
-
 function SlideCard({
   item,
   index,
@@ -171,19 +168,35 @@ function SlideCard({
             />
             <YStack
               position="absolute"
-              width={196}
-              height={196}
-              borderRadius={999}
-              borderWidth={1}
-              borderColor={withAlpha(item.accent, "2C")}
+              left={28}
+              right={28}
+              top={48}
+              height={1}
+              backgroundColor={withAlpha(item.accent, "48")}
             />
             <YStack
               position="absolute"
-              width={140}
-              height={140}
-              borderRadius={999}
-              borderWidth={1}
-              borderColor={withAlpha(item.accent, "56")}
+              left={52}
+              right={52}
+              bottom={54}
+              height={1}
+              backgroundColor={withAlpha(theme.borderStrong.val, "72")}
+            />
+            <YStack
+              position="absolute"
+              left={42}
+              top={68}
+              bottom={68}
+              width={1}
+              backgroundColor={withAlpha(theme.borderStrong.val, "55")}
+            />
+            <YStack
+              position="absolute"
+              right={42}
+              top={68}
+              bottom={68}
+              width={1}
+              backgroundColor={withAlpha(item.accent, "30")}
             />
 
             <Animated.View style={iconOrbStyle}>
@@ -310,43 +323,6 @@ export function OnboardingScreen() {
     };
   });
 
-  const topBlobStyle = useAnimatedStyle(() => {
-    const input = SLIDES.map((_, i) => i * width);
-    return {
-      backgroundColor: interpolateColor(scrollX.value, input, TOP_GLOW_COLORS),
-      transform: [
-        {
-          translateX:
-            interpolate(scrollX.value, input, [0, -12, 16, 4], Extrapolation.CLAMP) +
-            interpolate(floatTick.value, [0, 1], [-8, 8]),
-        },
-        {
-          translateY: interpolate(floatTick.value, [0, 1], [10, -10]),
-        },
-        {
-          scale: interpolate(floatTick.value, [0, 1], [0.96, 1.05]),
-        },
-      ],
-    };
-  });
-
-  const bottomBlobStyle = useAnimatedStyle(() => {
-    const input = SLIDES.map((_, i) => i * width);
-    return {
-      backgroundColor: interpolateColor(scrollX.value, input, BOTTOM_GLOW_COLORS),
-      transform: [
-        {
-          translateX:
-            interpolate(scrollX.value, input, [6, 18, -8, -14], Extrapolation.CLAMP) +
-            interpolate(floatTick.value, [0, 1], [9, -9]),
-        },
-        {
-          translateY: interpolate(floatTick.value, [0, 1], [-6, 8]),
-        },
-      ],
-    };
-  });
-
   const railFillStyle = useAnimatedStyle(() => {
     const max = Math.max((SLIDES.length - 1) * width, 1);
     const progress = interpolate(scrollX.value, [0, max], [0, 1], Extrapolation.CLAMP);
@@ -384,17 +360,16 @@ export function OnboardingScreen() {
           end={{ x: 0.8, y: 0.95 }}
           style={StyleSheet.absoluteFill}
         />
-        <Animated.View
+        <LinearGradient
           pointerEvents="none"
-          style={[s.topGlow, topBlobStyle]}
-          shouldRasterizeIOS
-          renderToHardwareTextureAndroid
-        />
-        <Animated.View
-          pointerEvents="none"
-          style={[s.bottomGlow, bottomBlobStyle]}
-          shouldRasterizeIOS
-          renderToHardwareTextureAndroid
+          colors={[
+            withAlpha(theme.textInverse.val, "10"),
+            withAlpha(theme.textInverse.val, "04"),
+            withAlpha(theme.textInverse.val, "00"),
+          ]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={s.topWash}
         />
 
         <XStack
@@ -534,22 +509,11 @@ const s = StyleSheet.create({
     height: "100%",
     borderRadius: 999,
   },
-  topGlow: {
+  topWash: {
     position: "absolute",
-    width: 340,
-    height: 340,
-    borderRadius: 340,
-    top: -130,
-    right: -110,
-    backgroundColor: withAlpha(brandGradients.ember[2], "52"),
-  },
-  bottomGlow: {
-    position: "absolute",
-    width: 320,
-    height: 320,
-    borderRadius: 320,
-    bottom: -120,
-    left: -110,
-    backgroundColor: withAlpha(integrationAccentColors.reasoning, "47"),
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 220,
   },
 });

@@ -11,6 +11,7 @@ import Animated, {
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { FontFamily } from "@/constants/fonts";
 import { XStack, Text } from "tamagui";
+import { appShadow } from "@/components/ui/themeHelpers";
 
 interface SearchBarProps {
   value: string;
@@ -54,10 +55,7 @@ export function SearchBar({
       height={52}
       alignItems="stretch"
       gap={10}
-      shadowColor="$shadowColor"
-      shadowOffset={{ width: 0, height: 10 }}
-      shadowOpacity={0.05}
-      shadowRadius={24}
+      style={appShadow(theme.shadowColor.val, "sm")}
     >
       {/* Icon — centered within the row height */}
       <XStack

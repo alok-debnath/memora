@@ -1,9 +1,8 @@
 import React, { useState } from "react";
-import { Platform, TextInput, ScrollView, Pressable, ActivityIndicator } from "react-native";
+import { Platform, Pressable, ActivityIndicator } from "react-native";
 import { Feather } from "@/lib/icons";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeInUp } from "react-native-reanimated";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -14,12 +13,11 @@ import { MoodTrendStrip } from "@/components/MoodTrendStrip";
 import { VoiceRecorder } from "@/components/VoiceRecorder";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
+import { AppScreen, SectionCard } from "@/components/ui/AppScreen";
+import { PageHero } from "@/components/ui/PageHero";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { FontFamily } from "@/constants/fonts";
-import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { AppTextField } from "@/components/ui/AppTextField";
 
@@ -48,7 +46,6 @@ export default function DiaryScreen() {
   const theme = useAppTheme();
   const { confirm } = useAppConfirm();
   const { user, token } = useAuth();
-  const tabBarPadding = useTabBarBottomPadding();
 
   const entries = (useQuery(api.diary.list, token ? { token, limit: 100 } : "skip") ??
     []) as DiaryEntryItem[];
@@ -103,69 +100,30 @@ export default function DiaryScreen() {
   };
 
   return (
-    <SafeAreaView
-      style={{ flex: 1, backgroundColor: theme.background.val }}
-      edges={["top", "bottom"]}
+    <AppScreen
+      hero={
+        <Animated.View entering={FadeInUp.duration(360)}>
+          <PageHero
+            eyebrow="Daily capture"
+            title="AI Diary"
+            description="Capture voice or typed reflections. Memora turns them into structured entries and insights."
+            icon="book-open"
+          />
+        </Animated.View>
+      }
     >
-      <YStack flex={1} backgroundColor="$background">
-        <ScrollView
-          contentContainerStyle={{
-            paddingHorizontal: 16,
-            paddingBottom: tabBarPadding,
-            paddingTop: 12,
-          }}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
-          <Animated.View entering={FadeInUp.duration(400)}>
-            <Card
-              style={{
-                marginBottom: 14,
-                padding: 18,
-                borderRadius: 24,
-                backgroundColor: theme.card.val,
-              }}
-            >
-              <XStack alignItems="flex-start" justifyContent="space-between" gap={12}>
-                <YStack flex={1} gap={6}>
-                  <Badge label="Daily capture" color={theme.primary.val} />
-                  <Text
-                    fontSize={28}
-                    lineHeight={32}
-                    fontFamily="$heading"
-                    fontWeight="700"
-                    color="$color"
-                  >
-                    AI Diary
-                  </Text>
-                  <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
-                    Capture voice or typed reflections. Memora turns them into structured entries
-                    and insights.
-                  </Text>
-                </YStack>
-                <Pressable hitSlop={8}>
-                  <Feather name="info" size={20} color={theme.colorMuted.val} />
-                </Pressable>
-              </XStack>
-            </Card>
-          </Animated.View>
-
-          <Card
-            style={{
-              padding: 16,
-              borderRadius: 24,
-              backgroundColor: theme.card.val,
-            }}
-          >
-            <XStack gap={8} marginBottom={14}>
+      <Animated.View entering={FadeInUp.delay(80).duration(320)}>
+        <SurfaceCard variant="frosted" radius={16} padding={14}>
+          <YStack gap={12}>
+            <XStack gap={8}>
               <Pressable
                 onPress={() => setMode("voice")}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
                   gap: 6,
-                  paddingHorizontal: 14,
-                  paddingVertical: 9,
+                  paddingHorizontal: 12,
+                  paddingVertical: 7,
                   borderRadius: 999,
                   backgroundColor: mode === "voice" ? theme.primary.val : theme.secondary.val,
                 }}
@@ -190,8 +148,8 @@ export default function DiaryScreen() {
                   flexDirection: "row",
                   alignItems: "center",
                   gap: 6,
-                  paddingHorizontal: 14,
-                  paddingVertical: 9,
+                  paddingHorizontal: 12,
+                  paddingVertical: 7,
                   borderRadius: 999,
                   backgroundColor: mode === "type" ? theme.primary.val : theme.secondary.val,
                 }}
@@ -221,7 +179,7 @@ export default function DiaryScreen() {
                   </Text>
                 </YStack>
               ) : (
-                <YStack gap={12} paddingVertical={20}>
+                <YStack gap={12} paddingVertical={12}>
                   <VoiceRecorder
                     onTranscription={setLiveTranscript}
                     onTranscriptionComplete={handleVoiceComplete}
@@ -270,56 +228,47 @@ export default function DiaryScreen() {
                 />
               </>
             )}
-          </Card>
-
-          <YStack marginTop={16}>
-            <MoodTrendStrip entries={entries} />
-            <Text
-              fontSize={11}
-              fontFamily="$body"
-              color="$colorMuted"
-              letterSpacing={0.8}
-              marginBottom={12}
-              textTransform="uppercase"
-            >
-              Recent entries
-            </Text>
-            {entries.length === 0 ? (
-              <EmptyState
-                icon="book"
-                title="No diary entries yet"
-                description="Start speaking or typing to create your first entry."
-              />
-            ) : (
-              <YStack gap={12}>
-                {entries.map((entry, i: number) => (
-                  <DiaryEntryCard
-                    key={entry._id}
-                    entry={
-                      {
-                        ...entry,
-                        id: entry._id,
-                        userId: user?._id ?? ("" as never),
-                        mood: entry.mood as DiaryEntry["mood"],
-                        energyLevel: entry.energyLevel as DiaryEntry["energyLevel"],
-                        createdAt: new Date(entry._creationTime).toISOString(),
-                        updatedAt: new Date(entry._creationTime).toISOString(),
-                        habitsDetected: entry.habitsDetected ?? [],
-                        personalityTraits: entry.personalityTraits ?? [],
-                        likes: entry.likes ?? [],
-                        dislikes: entry.dislikes ?? [],
-                        actionItems: entry.actionItems ?? [],
-                      } as DiaryEntry
-                    }
-                    onDelete={() => handleDelete(entry._id)}
-                    index={i}
-                  />
-                ))}
-              </YStack>
-            )}
           </YStack>
-        </ScrollView>
-      </YStack>
-    </SafeAreaView>
+        </SurfaceCard>
+      </Animated.View>
+
+      <MoodTrendStrip entries={entries} />
+
+      <SectionCard title="Recent entries">
+        {entries.length === 0 ? (
+          <EmptyState
+            icon="book"
+            title="No diary entries yet"
+            description="Start speaking or typing to create your first entry."
+          />
+        ) : (
+          <YStack gap={12}>
+            {entries.map((entry, i: number) => (
+              <DiaryEntryCard
+                key={entry._id}
+                entry={
+                  {
+                    ...entry,
+                    id: entry._id,
+                    userId: user?._id ?? ("" as never),
+                    mood: entry.mood as DiaryEntry["mood"],
+                    energyLevel: entry.energyLevel as DiaryEntry["energyLevel"],
+                    createdAt: new Date(entry._creationTime).toISOString(),
+                    updatedAt: new Date(entry._creationTime).toISOString(),
+                    habitsDetected: entry.habitsDetected ?? [],
+                    personalityTraits: entry.personalityTraits ?? [],
+                    likes: entry.likes ?? [],
+                    dislikes: entry.dislikes ?? [],
+                    actionItems: entry.actionItems ?? [],
+                  } as DiaryEntry
+                }
+                onDelete={() => handleDelete(entry._id)}
+                index={i}
+              />
+            ))}
+          </YStack>
+        )}
+      </SectionCard>
+    </AppScreen>
   );
 }

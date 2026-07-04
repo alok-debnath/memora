@@ -4,7 +4,7 @@ import { XStack, YStack, Text } from "tamagui";
 
 import { FontFamily } from "@/constants/fonts";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { withAlpha } from "@/components/ui/themeHelpers";
+import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 
 type AppTextFieldProps = TextInputProps & {
   label?: string;
@@ -51,10 +51,7 @@ export function AppTextField({
         alignItems={multiline ? "flex-start" : "center"}
         backgroundColor={theme.surfaceElevated.val}
         borderColor={error ? withAlpha(theme.destructive.val, "30") : theme.borderColor.val}
-        shadowColor="$shadowColor"
-        shadowOffset={{ width: 0, height: 10 }}
-        shadowOpacity={0.05}
-        shadowRadius={22}
+        style={appShadow(theme.shadowColor.val, "sm")}
       >
         <TextInput
           {...inputProps}

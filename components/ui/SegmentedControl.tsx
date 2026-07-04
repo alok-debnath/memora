@@ -3,6 +3,7 @@ import { LayoutChangeEvent, Pressable } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { appShadow } from "@/components/ui/themeHelpers";
 
 export interface SegmentOption<T extends string = string> {
   value: T;
@@ -87,11 +88,7 @@ export function SegmentedControl<T extends string = string>({
             bottom: PADDING,
             borderRadius: 11,
             backgroundColor: theme.card.val,
-            shadowColor: theme.shadowColor.val,
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: effectiveSegmentWidth > 0 ? 0.1 : 0,
-            shadowRadius: 4,
-            elevation: effectiveSegmentWidth > 0 ? 2 : 0,
+            ...(effectiveSegmentWidth > 0 ? appShadow(theme.shadowColor.val, "xs") : null),
           },
           indicatorStyle,
         ]}

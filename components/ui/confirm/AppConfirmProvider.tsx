@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { FontFamily } from "@/constants/fonts";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { withAlpha } from "@/components/ui/themeHelpers";
+import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 
 type ConfirmTone = "default" | "destructive";
 
@@ -165,7 +165,7 @@ export function AppConfirmProvider({ children }: { children: React.ReactNode }) 
                   {
                     backgroundColor: theme.card.val,
                     borderColor: theme.borderColor.val,
-                    shadowColor: theme.shadowColor.val,
+                    ...appShadow(theme.shadowColor.val, "lg"),
                   },
                 ]}
               >
@@ -245,10 +245,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 22,
     maxHeight: "100%",
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 16,
   },
   headerRow: {
     flexDirection: "row",

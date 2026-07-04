@@ -11,7 +11,7 @@ import { FontFamily } from "@/constants/fonts";
 import { brandGradients, integrationAccentColors, statusAccentColors } from "@/constants/colors";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { ContextMenu, type ContextMenuItemDef } from "@/components/ui/ContextMenu";
-import { withAlpha } from "@/components/ui/themeHelpers";
+import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import { useAppToast } from "@/components/ui/toast";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { Feather, FontAwesome5 } from "@/lib/icons";
@@ -19,13 +19,7 @@ import { useUIStore } from "@/store/ui";
 import type { CardFlow, SearchResultItem } from "./types";
 import { formatReminderDueAt } from "./rendererUtils";
 
-const getBubbleShadow = (shadowColor: string) => ({
-  shadowColor,
-  shadowOffset: { width: 0, height: 1 },
-  shadowOpacity: 0.03,
-  shadowRadius: 3,
-  elevation: 0,
-});
+const getBubbleShadow = (shadowColor: string) => appShadow(shadowColor, "xs");
 
 function PerformancePill({
   isCached,

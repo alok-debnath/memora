@@ -3,7 +3,13 @@ import type { StyleProp, ViewStyle } from "react-native";
 import { YStack } from "tamagui";
 
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { getSurfaceColors, type SurfaceTone } from "@/components/ui/themeHelpers";
+import { GlassSurface } from "@/components/ui/GlassSurface";
+import {
+  appShadow,
+  getSurfaceColors,
+  withAlpha,
+  type SurfaceTone,
+} from "@/components/ui/themeHelpers";
 
 type SurfaceCardProps = {
   children: React.ReactNode;
@@ -11,6 +17,8 @@ type SurfaceCardProps = {
   padding?: number;
   style?: StyleProp<ViewStyle>;
   shadowed?: boolean;
+  variant?: "solid" | "frosted" | "glass";
+  radius?: number;
 };
 
 export function SurfaceCard({
@@ -18,23 +26,31 @@ export function SurfaceCard({
   tone = "default",
   padding = 18,
   style,
-  shadowed = true,
+  shadowed = false,
+  variant = "frosted",
+  radius = 16,
 }: SurfaceCardProps) {
   const theme = useAppTheme();
   const surface = getSurfaceColors(theme, tone);
 
+  if (variant === "glass") {
+    return (
+      <GlassSurface radius={radius} style={style} contentStyle={{ padding }}>
+        {children}
+      </GlassSurface>
+    );
+  }
+
   return (
     <YStack
-      backgroundColor={surface.background}
+      backgroundColor={
+        variant === "frosted" ? withAlpha(surface.background, "E8") : surface.background
+      }
       borderColor={surface.border}
       borderWidth={1}
-      borderRadius={28}
+      borderRadius={radius}
       padding={padding}
-      style={style}
-      shadowColor={theme.shadowColor.val}
-      shadowOffset={shadowed ? { width: 0, height: 14 } : undefined}
-      shadowOpacity={shadowed ? 0.08 : 0}
-      shadowRadius={shadowed ? 30 : 0}
+      style={[shadowed ? appShadow(theme.shadowColor.val, "xs") : null, style]}
     >
       {children}
     </YStack>

@@ -1,14 +1,7 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from "react-native";
 import { Feather, type FeatherIconName } from "@/lib/icons";
 import { LinearGradient } from "expo-linear-gradient";
-import Animated, {
-  interpolate,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Text, XStack, YStack } from "tamagui";
 
@@ -46,28 +39,6 @@ export function AuthShell({ title, subtitle, children, accentIcon = "zap" }: Aut
   const theme = useAppTheme();
   const isLargeScreen = useIsLargeScreen();
 
-  const drift = useSharedValue(0);
-
-  useEffect(() => {
-    drift.value = withRepeat(withTiming(1, { duration: 5200 }), -1, true);
-  }, [drift]);
-
-  const topGlowStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: interpolate(drift.value, [0, 1], [-12, 12]) },
-      { translateY: interpolate(drift.value, [0, 1], [8, -8]) },
-      { scale: interpolate(drift.value, [0, 1], [0.95, 1.06]) },
-    ],
-  }));
-
-  const bottomGlowStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: interpolate(drift.value, [0, 1], [10, -10]) },
-      { translateY: interpolate(drift.value, [0, 1], [-6, 8]) },
-      { scale: interpolate(drift.value, [0, 1], [1.04, 0.96]) },
-    ],
-  }));
-
   return (
     <YStack flex={1} backgroundColor="$background">
       <LinearGradient
@@ -80,25 +51,27 @@ export function AuthShell({ title, subtitle, children, accentIcon = "zap" }: Aut
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      <Animated.View
+      <LinearGradient
         pointerEvents="none"
-        shouldRasterizeIOS
-        renderToHardwareTextureAndroid
-        style={[
-          styles.glowTop,
-          topGlowStyle,
-          { backgroundColor: withAlpha(theme.primary.val, "1A") },
+        colors={[
+          withAlpha(theme.primary.val, "16"),
+          withAlpha(theme.primary.val, "06"),
+          withAlpha(theme.background.val, "00"),
         ]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.topBand}
       />
-      <Animated.View
+      <LinearGradient
         pointerEvents="none"
-        shouldRasterizeIOS
-        renderToHardwareTextureAndroid
-        style={[
-          styles.glowBottom,
-          bottomGlowStyle,
-          { backgroundColor: withAlpha(theme.warning.val, "14") },
+        colors={[
+          withAlpha(theme.background.val, "00"),
+          withAlpha(theme.warning.val, "08"),
+          withAlpha(theme.warning.val, "12"),
         ]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.bottomBand}
       />
 
       <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }} edges={["top", "bottom"]}>
@@ -389,20 +362,18 @@ export function AuthShell({ title, subtitle, children, accentIcon = "zap" }: Aut
 }
 
 const styles = StyleSheet.create({
-  glowTop: {
+  topBand: {
     position: "absolute",
-    width: 420,
-    height: 420,
-    borderRadius: 420,
-    top: -180,
-    right: -170,
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 160,
   },
-  glowBottom: {
+  bottomBand: {
     position: "absolute",
-    width: 340,
-    height: 340,
-    borderRadius: 340,
-    bottom: -150,
-    left: -120,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 180,
   },
 });

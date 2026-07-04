@@ -1,9 +1,7 @@
 import React from "react";
-import { ScrollView } from "react-native";
 import { Feather, type FeatherIconName } from "@/lib/icons";
 import { appRouter as router } from "@/lib/appRouter";
 import Animated, { FadeInUp } from "react-native-reanimated";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { XStack, YStack, Text } from "tamagui";
 import { useQuery } from "convex/react";
 
@@ -11,10 +9,10 @@ import { api } from "@/convex/_generated/api";
 import { navigationAccentColors } from "@/constants/colors";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { PressableScale } from "@/components/ui/PressableScale";
-import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
+import { AppScreen } from "@/components/ui/AppScreen";
+import { PageHero } from "@/components/ui/PageHero";
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
-import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
+import { withAlpha } from "@/components/ui/themeHelpers";
 
 interface MenuItem {
   icon: FeatherIconName;
@@ -86,123 +84,115 @@ const adminItem: MenuItem = {
 
 export default function MoreScreen() {
   const theme = useAppTheme();
-  const tabBarPadding = useTabBarBottomPadding();
   const adminStatus = useQuery(api.auth.getAdminStatus);
   const isAdmin = adminStatus?.isAdmin === true;
 
-  const visibleItems = isAdmin ? [...menuItems, adminItem] : menuItems;
-  const totalRoutes = visibleItems.length;
+  const groupedItems = [
+    { label: "Library", items: menuItems.slice(0, 3) },
+    { label: "Insights", items: menuItems.slice(3, 5) },
+    { label: "Settings", items: isAdmin ? [...menuItems.slice(5), adminItem] : menuItems.slice(5) },
+  ];
 
   return (
-    <SafeAreaView
-      style={{ flex: 1, backgroundColor: theme.background.val }}
-      edges={["top", "bottom"]}
-    >
-      <YStack flex={1} backgroundColor="$background" paddingHorizontal={16} paddingTop={12}>
-        <Animated.View entering={FadeInUp.duration(420)}>
-          <Card
-            style={{
-              marginBottom: 16,
-              padding: 18,
-              borderRadius: 26,
-              backgroundColor: theme.card.val,
-            }}
-          >
-            <XStack alignItems="flex-start" justifyContent="space-between" gap={12}>
-              <YStack flex={1} gap={6}>
-                <Badge label="Navigation" color={theme.primary.val} />
-                <Text
-                  fontSize={28}
-                  lineHeight={32}
-                  fontFamily="$heading"
-                  fontWeight="700"
-                  color="$color"
-                >
-                  Explore the vault
-                </Text>
-                <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
-                  Jump into timelines, analytics, reminders, data controls, and profile settings
-                  from one place.
-                </Text>
-              </YStack>
-              <YStack
-                width={52}
-                height={52}
-                borderRadius={18}
-                alignItems="center"
-                justifyContent="center"
-                backgroundColor={theme.primary.val + "18"}
-              >
-                <Feather name="compass" size={22} color={theme.primary.val} />
-              </YStack>
-            </XStack>
-            <XStack gap={10} marginTop={16} flexWrap="wrap">
-              <Badge label={`${totalRoutes} sections`} color={theme.primary.val} />
-              <Badge label="Fast actions" tone="neutral" />
-              {isAdmin && <Badge label="Admin" color={navigationAccentColors.admin} />}
-            </XStack>
-          </Card>
+    <AppScreen
+      hero={
+        <Animated.View entering={FadeInUp.duration(360)}>
+          <PageHero
+            eyebrow="Navigation"
+            title="Explore the vault"
+            description="Jump into timelines, analytics, reminders, data controls, and profile settings from one place."
+            icon="compass"
+          />
         </Animated.View>
-
-        <ScrollView
-          contentContainerStyle={{ gap: 10, paddingBottom: tabBarPadding }}
-          showsVerticalScrollIndicator={false}
-        >
-          {visibleItems.map((item, i) => (
-            <Animated.View key={item.route} entering={FadeInUp.delay(i * 60).duration(400)}>
-              <PressableScale
-                onPress={() => router.push(item.route as never)}
-                style={{ borderRadius: 22 }}
+      }
+    >
+      <YStack gap={16}>
+        {groupedItems.map((group, groupIndex) => (
+          <Animated.View
+            key={group.label}
+            entering={FadeInUp.delay(80 + groupIndex * 60).duration(300)}
+          >
+            <YStack gap={6}>
+              <Text
+                fontSize={11}
+                fontFamily="$body"
+                fontWeight="700"
+                color="$colorMuted"
+                textTransform="uppercase"
+                marginLeft={4}
               >
-                <SurfaceCard padding={16} style={{ borderRadius: 22 }}>
-                  <XStack alignItems="center" gap={14}>
-                    <YStack
-                      width={46}
-                      height={46}
-                      borderRadius={14}
-                      backgroundColor={item.color + "15"}
-                      alignItems="center"
-                      justifyContent="center"
+                {group.label}
+              </Text>
+              <SurfaceCard variant="frosted" padding={0} radius={18} style={{ overflow: "hidden" }}>
+                {group.items.map((item, i) => {
+                  const isLast = i === group.items.length - 1;
+                  return (
+                    <PressableScale
+                      key={item.route}
+                      onPress={() => router.push(item.route as never)}
                     >
-                      <Feather name={item.icon} size={22} color={item.color} />
-                    </YStack>
-                    <YStack flex={1}>
-                      <XStack alignItems="center" gap={8}>
-                        <Text fontSize={16} fontFamily="$body" fontWeight="600" color="$color">
-                          {item.label}
-                        </Text>
-                        {item.route === "/admin" && (
-                          <YStack
-                            backgroundColor={navigationAccentColors.admin + "20"}
-                            borderRadius={6}
-                            paddingHorizontal={7}
-                            paddingVertical={2}
-                          >
-                            <Text
-                              fontSize={9}
-                              fontFamily="$body"
-                              fontWeight="700"
-                              color={navigationAccentColors.admin}
-                              textTransform="uppercase"
-                              letterSpacing={0.8}
-                            >
-                              Admin
+                      <XStack
+                        alignItems="center"
+                        gap={12}
+                        paddingHorizontal={14}
+                        paddingVertical={12}
+                        borderBottomWidth={isLast ? 0 : 1}
+                        borderBottomColor="$borderSubtle"
+                      >
+                        <YStack
+                          width={32}
+                          height={32}
+                          borderRadius={9}
+                          backgroundColor={item.color}
+                          alignItems="center"
+                          justifyContent="center"
+                        >
+                          <Feather name={item.icon} size={16} color={theme.textInverse.val} />
+                        </YStack>
+                        <YStack flex={1} minWidth={0} gap={1}>
+                          <XStack alignItems="center" gap={8}>
+                            <Text fontSize={15} fontFamily="$body" fontWeight="600" color="$color">
+                              {item.label}
                             </Text>
-                          </YStack>
-                        )}
+                            {item.route === "/admin" && (
+                              <YStack
+                                backgroundColor={withAlpha(navigationAccentColors.admin, "18")}
+                                borderRadius={7}
+                                paddingHorizontal={7}
+                                paddingVertical={2}
+                              >
+                                <Text
+                                  fontSize={9}
+                                  fontFamily="$body"
+                                  fontWeight="700"
+                                  color={navigationAccentColors.admin}
+                                  textTransform="uppercase"
+                                  letterSpacing={0.8}
+                                >
+                                  Admin
+                                </Text>
+                              </YStack>
+                            )}
+                          </XStack>
+                          <Text
+                            fontSize={12}
+                            fontFamily="$body"
+                            color="$colorMuted"
+                            numberOfLines={1}
+                          >
+                            {item.description}
+                          </Text>
+                        </YStack>
+                        <Feather name="chevron-right" size={16} color={theme.colorMuted.val} />
                       </XStack>
-                      <Text fontSize={13} fontFamily="$body" color="$colorMuted" marginTop={2}>
-                        {item.description}
-                      </Text>
-                    </YStack>
-                    <Feather name="chevron-right" size={18} color={theme.colorMuted.val} />
-                  </XStack>
-                </SurfaceCard>
-              </PressableScale>
-            </Animated.View>
-          ))}
-        </ScrollView>
+                    </PressableScale>
+                  );
+                })}
+              </SurfaceCard>
+            </YStack>
+          </Animated.View>
+        ))}
       </YStack>
-    </SafeAreaView>
+    </AppScreen>
   );
 }

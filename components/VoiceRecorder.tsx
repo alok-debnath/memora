@@ -13,6 +13,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { appShadow } from "@/components/ui/themeHelpers";
 import {
   getBestTranscript,
   isSpeechRecognitionAvailable,
@@ -606,11 +607,7 @@ export function VoiceRecorder({
                   : theme.primary.val,
               alignItems: "center",
               justifyContent: "center",
-              shadowColor: theme.primary.val,
-              shadowOffset: { width: 0, height: compact ? 1 : 3 },
-              shadowOpacity: compact ? 0.14 : 0.24,
-              shadowRadius: compact ? 3 : 8,
-              elevation: compact ? 1 : 4,
+              ...appShadow(theme.primary.val, compact ? "xs" : "sm"),
             }}
           >
             <Feather name={mainIcon} size={compact ? 18 : 28} color={theme.textInverse.val} />

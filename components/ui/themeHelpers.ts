@@ -1,13 +1,8 @@
+import type { ViewStyle } from "react-native";
 import type { AppTheme } from "@/hooks/useAppTheme";
 
 export type StatusTone =
-  | "primary"
-  | "neutral"
-  | "success"
-  | "warning"
-  | "error"
-  | "info"
-  | "accent";
+  "primary" | "neutral" | "success" | "warning" | "error" | "info" | "accent";
 
 export type SurfaceTone = "default" | "elevated" | "accent" | "dangerSoft" | "successSoft";
 
@@ -19,6 +14,22 @@ export function withAlpha(color: string, alphaHex: string) {
     return `${color.slice(0, 7)}${alphaHex}`;
   }
   return color;
+}
+
+export type AppShadowLevel = "xs" | "sm" | "md" | "lg";
+
+const shadowLevels: Record<AppShadowLevel, { y: number; blur: number; alpha: string }> = {
+  xs: { y: 2, blur: 8, alpha: "14" },
+  sm: { y: 4, blur: 14, alpha: "16" },
+  md: { y: 8, blur: 24, alpha: "18" },
+  lg: { y: 12, blur: 34, alpha: "1F" },
+};
+
+export function appShadow(color: string, level: AppShadowLevel = "sm"): ViewStyle {
+  const shadow = shadowLevels[level];
+  return {
+    boxShadow: `0px ${shadow.y}px ${shadow.blur}px ${withAlpha(color, shadow.alpha)}`,
+  } as ViewStyle;
 }
 
 export function getStatusColors(theme: AppTheme, tone: StatusTone) {

@@ -23,8 +23,9 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { PageHero } from "@/components/ui/PageHero";
 import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
-import { reviewQualityColors, statusAccentColors } from "@/constants/colors";
+import { reviewQualityColors } from "@/constants/colors";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -65,65 +66,6 @@ const RATINGS = [
 ] as const;
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
-
-/** Stats strip across the top of the header card */
-function StatsStrip({
-  dueCount,
-  totalCount,
-  sessionDone,
-  sessionTotal,
-}: {
-  dueCount: number;
-  totalCount: number;
-  sessionDone: number;
-  sessionTotal: number;
-}) {
-  const theme = useAppTheme();
-  const stats = [
-    {
-      label: "Due now",
-      value: String(dueCount),
-      icon: "clock" as const,
-      color: statusAccentColors.error,
-    },
-    {
-      label: "In queue",
-      value: String(totalCount),
-      icon: "layers" as const,
-      color: theme.primary.val,
-    },
-    {
-      label: "Reviewed",
-      value: `${sessionDone}/${sessionTotal}`,
-      icon: "check-circle" as const,
-      color: statusAccentColors.success,
-    },
-  ];
-  return (
-    <XStack gap={8} marginTop={14}>
-      {stats.map((s) => (
-        <YStack
-          key={s.label}
-          flex={1}
-          alignItems="center"
-          paddingVertical={10}
-          borderRadius={16}
-          backgroundColor={s.color + "12"}
-          borderWidth={1}
-          borderColor={s.color + "22"}
-        >
-          <Feather name={s.icon} size={14} color={s.color} />
-          <Text fontSize={18} fontFamily="$heading" fontWeight="700" color={s.color} marginTop={4}>
-            {s.value}
-          </Text>
-          <Text fontSize={10} fontFamily="$body" color="$colorMuted">
-            {s.label}
-          </Text>
-        </YStack>
-      ))}
-    </XStack>
-  );
-}
 
 /** Progress bar */
 function ProgressBar({ progress }: { progress: number }) {
@@ -609,41 +551,12 @@ export default function ReviewScreen() {
         {/* ── Header ─────────────────────────────────────────── */}
         <Animated.View entering={FadeInDown.duration(400)}>
           <YStack paddingHorizontal={16} paddingTop={12} paddingBottom={4}>
-            <Card style={{ marginBottom: 6, padding: 18, borderRadius: 24 }}>
-              <XStack alignItems="flex-start" justifyContent="space-between" gap={12}>
-                <YStack flex={1} gap={4}>
-                  <Badge label="Spaced repetition" color={theme.primary.val} />
-                  <Text
-                    fontSize={26}
-                    lineHeight={32}
-                    fontFamily="$heading"
-                    fontWeight="700"
-                    color="$color"
-                  >
-                    Review queue
-                  </Text>
-                  <Text fontSize={13} lineHeight={19} fontFamily="$body" color="$colorMuted">
-                    Reveal each card, rate your recall, and let SM-2 schedule the next review.
-                  </Text>
-                </YStack>
-                <YStack
-                  width={50}
-                  height={50}
-                  borderRadius={18}
-                  alignItems="center"
-                  justifyContent="center"
-                  backgroundColor={theme.primary.val + "18"}
-                >
-                  <Feather name="refresh-cw" size={22} color={theme.primary.val} />
-                </YStack>
-              </XStack>
-              <StatsStrip
-                dueCount={dueCards.length}
-                totalCount={allCards.length}
-                sessionDone={sessionRatings.length}
-                sessionTotal={Math.max(sessionQueue.length, dueCards.length)}
-              />
-            </Card>
+            <PageHero
+              eyebrow="Spaced repetition"
+              title="Review queue"
+              description="Reveal each card, rate your recall, and let SM-2 schedule the next review."
+              icon="refresh-cw"
+            />
 
             {/* Progress bar — only show when session is active */}
             {sessionQueue.length > 0 && !sessionDone && <ProgressBar progress={progress} />}

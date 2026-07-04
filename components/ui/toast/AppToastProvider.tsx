@@ -14,6 +14,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, useTheme, View, XStack, YStack } from "tamagui";
 import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
+import { appShadow } from "@/components/ui/themeHelpers";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -216,7 +217,7 @@ function AnimatedToast({
             maxWidth,
             backgroundColor: theme.backgroundStrong?.val,
             borderColor: theme.borderColor?.val,
-            shadowColor: theme.shadowColor?.val,
+            ...appShadow(theme.shadowColor?.val ?? "#000000", "sm"),
           },
         ]}
         {...panResponder.panHandlers}
@@ -421,9 +422,5 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
   },
 });

@@ -39,7 +39,7 @@ import { useThemeStore } from "@/store/theme";
 import { useUIStore } from "@/store/ui";
 import { Text, XStack, YStack } from "tamagui";
 import { useBackdropBlurHost } from "./BackdropBlurProvider";
-import { withAlpha } from "./themeHelpers";
+import { appShadow, withAlpha } from "./themeHelpers";
 import {
   ContextMenuHandle,
   type ContextMenuItemDef,
@@ -283,8 +283,10 @@ const ContextMenuOverlay = React.memo(function ContextMenuOverlay({
         <BlurView
           intensity={resolvedMode === "dark" ? BLUR_INTENSITY_DARK : BLUR_INTENSITY_LIGHT}
           tint={resolvedMode === "dark" ? "dark" : "light"}
-          blurMethod={Platform.OS === "android" ? "dimezisBlurViewSdk31Plus" : undefined}
-          blurTarget={Platform.OS === "android" ? blurTargetRef : undefined}
+          blurMethod={
+            Platform.OS === "android" && blurTargetRef ? "dimezisBlurViewSdk31Plus" : undefined
+          }
+          blurTarget={Platform.OS === "android" && blurTargetRef ? blurTargetRef : undefined}
           style={StyleSheet.absoluteFill}
           pointerEvents="none"
         />
@@ -345,13 +347,7 @@ const ContextMenuOverlay = React.memo(function ContextMenuOverlay({
                   borderWidth={StyleSheet.hairlineWidth}
                   borderColor="$borderColor"
                   backgroundColor="$card"
-                  style={{
-                    shadowColor: theme.shadowColor.val,
-                    shadowOpacity: resolvedMode === "dark" ? 0.2 : 0.12,
-                    shadowRadius: 16,
-                    shadowOffset: { width: 0, height: 10 },
-                    elevation: 8,
-                  }}
+                  style={appShadow(theme.shadowColor.val, resolvedMode === "dark" ? "lg" : "md")}
                 >
                   {validItems.map((item, index) => (
                     <React.Fragment key={`${item.label}-${index}`}>
