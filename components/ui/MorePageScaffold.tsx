@@ -28,6 +28,7 @@ type MorePageScaffoldProps = {
   title: string;
   children: React.ReactNode;
   backHref?: string;
+  fallbackHref?: string;
   scrollProps?: Omit<ScrollViewProps, "children">;
   /**
    * When true, renders children directly in a View instead of a ScrollView.
@@ -50,6 +51,7 @@ export function MorePageScaffold({
   title,
   children,
   backHref,
+  fallbackHref = "/",
   scrollProps,
   noScroll,
   externalOnScroll,
@@ -73,8 +75,8 @@ export function MorePageScaffold({
       router.back();
       return;
     }
-    router.replace("/");
-  }, [backHref, router]);
+    router.replace(fallbackHref as never);
+  }, [backHref, fallbackHref, router]);
 
   React.useEffect(() => {
     onContentTopPadding?.(contentTopPadding);

@@ -576,7 +576,7 @@ function CustomTabLayout() {
   }, [openCommand]);
 
   return (
-    <>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top"]}>
       <Tabs
         screenOptions={{
           headerShown: false,
@@ -606,7 +606,7 @@ function CustomTabLayout() {
           onPressAdd={handlePressAdd}
         />
       ) : null}
-    </>
+    </SafeAreaView>
   );
 }
 

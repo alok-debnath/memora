@@ -80,7 +80,7 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
   return (
     <MorePageScaffold
       title="Admin"
-      backHref="/more"
+      fallbackHref="/more"
       staticHeader
       scrollProps={{ contentContainerStyle: { gap: 14 } }}
     >
@@ -134,7 +134,7 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
                   return (
                     <PressableScale
                       key={route.href}
-                      onPress={() => router.push(route.href as never)}
+                      onPress={() => router.replace(route.href as never)}
                     >
                       <XStack
                         alignItems="center"

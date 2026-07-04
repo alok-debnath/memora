@@ -12,7 +12,6 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Doc, Id } from "@/convex/_generated/dataModel";
@@ -540,149 +539,144 @@ export default function ReviewScreen() {
   const isLoading = dueCards === undefined || allCards === undefined;
 
   return (
-    <SafeAreaView
-      style={{ flex: 1, backgroundColor: theme.background.val }}
-      edges={["top", "bottom"]}
-    >
-      <YStack flex={1} backgroundColor="$background">
-        {/* ── Header ─────────────────────────────────────────── */}
-        <YStack paddingHorizontal={16} paddingTop={12} paddingBottom={4}>
-          <PageHero
-            eyebrow="Spaced repetition"
-            title="Review queue"
-            description="Reveal each card, rate your recall, and let SM-2 schedule the next review."
-            icon="refresh-cw"
+    <YStack flex={1} backgroundColor="$background">
+      {/* ── Header ─────────────────────────────────────────── */}
+      <YStack paddingHorizontal={16} paddingTop={12} paddingBottom={4}>
+        <PageHero
+          eyebrow="Spaced repetition"
+          title="Review queue"
+          description="Reveal each card, rate your recall, and let SM-2 schedule the next review."
+          icon="refresh-cw"
+        />
+
+        {/* Progress bar — only show when session is active */}
+        {sessionQueue.length > 0 && !sessionDone && <ProgressBar progress={progress} />}
+      </YStack>
+
+      {/* ── Body ───────────────────────────────────────────── */}
+      {sessionDone ? (
+        /* ── Session complete ── */
+        <SessionComplete totalReviewed={sessionRatings.length} onReset={handleStartNewSession} />
+      ) : sessionQueue.length === 0 || !currentCard ? (
+        /* ── Nothing due / empty ── */
+        <ScrollView
+          contentContainerStyle={{
+            flexGrow: 1,
+            paddingHorizontal: 16,
+            paddingBottom: tabBarPadding,
+          }}
+          showsVerticalScrollIndicator={false}
+        >
+          <EmptyState
+            icon="check-circle"
+            title={allCards.length > 0 ? "All caught up!" : "No cards queued"}
+            description={
+              allCards.length > 0
+                ? "You have no cards due right now. Your upcoming schedule is below."
+                : "Add memories to your review queue from the home screen."
+            }
           />
-
-          {/* Progress bar — only show when session is active */}
-          {sessionQueue.length > 0 && !sessionDone && <ProgressBar progress={progress} />}
-        </YStack>
-
-        {/* ── Body ───────────────────────────────────────────── */}
-        {sessionDone ? (
-          /* ── Session complete ── */
-          <SessionComplete totalReviewed={sessionRatings.length} onReset={handleStartNewSession} />
-        ) : sessionQueue.length === 0 || !currentCard ? (
-          /* ── Nothing due / empty ── */
-          <ScrollView
-            contentContainerStyle={{
-              flexGrow: 1,
-              paddingHorizontal: 16,
-              paddingBottom: tabBarPadding,
-            }}
-            showsVerticalScrollIndicator={false}
-          >
-            <EmptyState
-              icon="check-circle"
-              title={allCards.length > 0 ? "All caught up!" : "No cards queued"}
-              description={
-                allCards.length > 0
-                  ? "You have no cards due right now. Your upcoming schedule is below."
-                  : "Add memories to your review queue from the home screen."
-              }
-            />
-            {upcomingCards.length > 0 && (
-              <YStack gap={10} marginTop={8}>
-                <Text
-                  fontSize={16}
-                  fontFamily="$heading"
-                  fontWeight="700"
-                  color="$color"
-                  marginBottom={4}
-                >
-                  Upcoming
-                </Text>
-                {upcomingCards.map((card) => (
-                  <YStack key={card._id}>
-                    <UpcomingRow card={card} />
-                  </YStack>
-                ))}
-              </YStack>
-            )}
-          </ScrollView>
-        ) : (
-          /* ── Active session ── */
-          <YStack flex={1} alignItems="center" paddingHorizontal={16} paddingBottom={tabBarPadding}>
-            {/* Flashcard */}
-            <YStack
-              width="100%"
-              style={{ flex: 1, maxHeight: 380, position: "relative" }}
-              marginBottom={16}
-            >
-              {/* Front */}
-              <Animated.View
-                pointerEvents={isRevealed ? "none" : "auto"}
-                style={[StyleSheet.absoluteFill, frontStyle]}
+          {upcomingCards.length > 0 && (
+            <YStack gap={10} marginTop={8}>
+              <Text
+                fontSize={16}
+                fontFamily="$heading"
+                fontWeight="700"
+                color="$color"
+                marginBottom={4}
               >
-                <PressableScale onPress={handleReveal} style={{ flex: 1 }}>
-                  <Card style={{ flex: 1 }} noPadding>
-                    <CardFront
-                      card={currentCard}
-                      cardCount={sessionQueue.length}
-                      cardIndex={sessionIndex}
-                    />
-                  </Card>
-                </PressableScale>
-              </Animated.View>
-
-              {/* Back */}
-              <Animated.View
-                pointerEvents={isRevealed ? "auto" : "none"}
-                style={[StyleSheet.absoluteFill, backStyle]}
-              >
-                <Card style={{ flex: 1 }} noPadding>
-                  <CardBack card={currentCard} />
-                </Card>
-              </Animated.View>
+                Upcoming
+              </Text>
+              {upcomingCards.map((card) => (
+                <YStack key={card._id}>
+                  <UpcomingRow card={card} />
+                </YStack>
+              ))}
             </YStack>
-
-            {/* Rating buttons */}
-            {isRevealed && (
-              <YStack width="100%">
-                <Text
-                  fontSize={12}
-                  fontFamily="$body"
-                  color="$colorMuted"
-                  textAlign="center"
-                  marginBottom={10}
-                >
-                  How well did you remember this?
-                </Text>
-                <XStack gap={8} width="100%">
-                  {RATINGS.map((r) => (
-                    <RatingButton
-                      key={r.label}
-                      rating={r}
-                      card={currentCard}
-                      onPress={() => handleRate(r.quality)}
-                    />
-                  ))}
-                </XStack>
-              </YStack>
-            )}
-
-            {/* Remove from queue */}
-            <Animated.View entering={FadeIn.delay(200).duration(300)} style={{ marginTop: 14 }}>
-              <PressableScale
-                onPress={handleRemove}
-                style={[
-                  styles.removeButton,
-                  {
-                    borderColor: theme.borderColor.val,
-                    backgroundColor: theme.card.val,
-                  },
-                ]}
-              >
-                <Feather name="x-circle" size={15} color={theme.colorMuted.val} />
-                <Text fontSize={13} fontFamily="$body" color="$colorMuted" marginLeft={6}>
-                  Remove from queue
-                </Text>
+          )}
+        </ScrollView>
+      ) : (
+        /* ── Active session ── */
+        <YStack flex={1} alignItems="center" paddingHorizontal={16} paddingBottom={tabBarPadding}>
+          {/* Flashcard */}
+          <YStack
+            width="100%"
+            style={{ flex: 1, maxHeight: 380, position: "relative" }}
+            marginBottom={16}
+          >
+            {/* Front */}
+            <Animated.View
+              pointerEvents={isRevealed ? "none" : "auto"}
+              style={[StyleSheet.absoluteFill, frontStyle]}
+            >
+              <PressableScale onPress={handleReveal} style={{ flex: 1 }}>
+                <Card style={{ flex: 1 }} noPadding>
+                  <CardFront
+                    card={currentCard}
+                    cardCount={sessionQueue.length}
+                    cardIndex={sessionIndex}
+                  />
+                </Card>
               </PressableScale>
             </Animated.View>
+
+            {/* Back */}
+            <Animated.View
+              pointerEvents={isRevealed ? "auto" : "none"}
+              style={[StyleSheet.absoluteFill, backStyle]}
+            >
+              <Card style={{ flex: 1 }} noPadding>
+                <CardBack card={currentCard} />
+              </Card>
+            </Animated.View>
           </YStack>
-        )}
-      </YStack>
-    </SafeAreaView>
+
+          {/* Rating buttons */}
+          {isRevealed && (
+            <YStack width="100%">
+              <Text
+                fontSize={12}
+                fontFamily="$body"
+                color="$colorMuted"
+                textAlign="center"
+                marginBottom={10}
+              >
+                How well did you remember this?
+              </Text>
+              <XStack gap={8} width="100%">
+                {RATINGS.map((r) => (
+                  <RatingButton
+                    key={r.label}
+                    rating={r}
+                    card={currentCard}
+                    onPress={() => handleRate(r.quality)}
+                  />
+                ))}
+              </XStack>
+            </YStack>
+          )}
+
+          {/* Remove from queue */}
+          <Animated.View entering={FadeIn.delay(200).duration(300)} style={{ marginTop: 14 }}>
+            <PressableScale
+              onPress={handleRemove}
+              style={[
+                styles.removeButton,
+                {
+                  borderColor: theme.borderColor.val,
+                  backgroundColor: theme.card.val,
+                },
+              ]}
+            >
+              <Feather name="x-circle" size={15} color={theme.colorMuted.val} />
+              <Text fontSize={13} fontFamily="$body" color="$colorMuted" marginLeft={6}>
+                Remove from queue
+              </Text>
+            </PressableScale>
+          </Animated.View>
+        </YStack>
+      )}
+    </YStack>
   );
 }
 
