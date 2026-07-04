@@ -1,7 +1,6 @@
 import React from "react";
 import { Feather, type FeatherIconName } from "@/lib/icons";
 import { appRouter as router } from "@/lib/appRouter";
-import Animated, { FadeInUp } from "react-native-reanimated";
 import { XStack, YStack, Text } from "tamagui";
 import { useQuery } from "convex/react";
 
@@ -96,22 +95,17 @@ export default function MoreScreen() {
   return (
     <AppScreen
       hero={
-        <Animated.View entering={FadeInUp.duration(360)}>
-          <PageHero
-            eyebrow="Navigation"
-            title="Explore the vault"
-            description="Jump into timelines, analytics, reminders, data controls, and profile settings from one place."
-            icon="compass"
-          />
-        </Animated.View>
+        <PageHero
+          eyebrow="Navigation"
+          title="Explore the vault"
+          description="Jump into timelines, analytics, reminders, data controls, and profile settings from one place."
+          icon="compass"
+        />
       }
     >
       <YStack gap={16}>
-        {groupedItems.map((group, groupIndex) => (
-          <Animated.View
-            key={group.label}
-            entering={FadeInUp.delay(80 + groupIndex * 60).duration(300)}
-          >
+        {groupedItems.map((group) => (
+          <React.Fragment key={group.label}>
             <YStack gap={6}>
               <Text
                 fontSize={11}
@@ -190,7 +184,7 @@ export default function MoreScreen() {
                 })}
               </SurfaceCard>
             </YStack>
-          </Animated.View>
+          </React.Fragment>
         ))}
       </YStack>
     </AppScreen>

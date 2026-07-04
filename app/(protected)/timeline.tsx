@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import Animated, { FadeInUp } from "react-native-reanimated";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -73,64 +72,56 @@ export default function TimelineScreen() {
 
   return (
     <MorePageScaffold title="Timeline" staticHeader>
-      <Animated.View entering={FadeInUp.duration(400)}>
-        <Card
-          style={{
-            padding: 18,
-            borderRadius: 24,
-            backgroundColor: theme.card.val,
-            marginBottom: 14,
-          }}
-        >
-          <YStack flex={1} gap={6}>
-            <Badge label="Chronological" color={theme.primary.val} />
-            <Text
-              fontSize={28}
-              lineHeight={32}
-              fontFamily="$heading"
-              fontWeight="700"
-              color="$color"
-            >
-              Timeline
+      <Card
+        style={{
+          padding: 18,
+          borderRadius: 24,
+          backgroundColor: theme.card.val,
+          marginBottom: 14,
+        }}
+      >
+        <YStack flex={1} gap={6}>
+          <Badge label="Chronological" color={theme.primary.val} />
+          <Text fontSize={28} lineHeight={32} fontFamily="$heading" fontWeight="700" color="$color">
+            Timeline
+          </Text>
+          <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
+            Review memories in time order, or narrow the story with a search.
+          </Text>
+        </YStack>
+        <XStack gap={10} marginTop={16}>
+          <Card
+            style={{
+              flex: 1,
+              alignItems: "center",
+              paddingVertical: 12,
+              borderRadius: 18,
+            }}
+          >
+            <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
+              {sorted.length}
             </Text>
-            <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
-              Review memories in time order, or narrow the story with a search.
+            <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">
+              visible
             </Text>
-          </YStack>
-          <XStack gap={10} marginTop={16}>
-            <Card
-              style={{
-                flex: 1,
-                alignItems: "center",
-                paddingVertical: 12,
-                borderRadius: 18,
-              }}
-            >
-              <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
-                {sorted.length}
-              </Text>
-              <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">
-                visible
-              </Text>
-            </Card>
-            <Card
-              style={{
-                flex: 1,
-                alignItems: "center",
-                paddingVertical: 12,
-                borderRadius: 18,
-              }}
-            >
-              <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
-                {sectionCount}
-              </Text>
-              <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">
-                sections
-              </Text>
-            </Card>
-          </XStack>
-        </Card>
-      </Animated.View>
+          </Card>
+          <Card
+            style={{
+              flex: 1,
+              alignItems: "center",
+              paddingVertical: 12,
+              borderRadius: 18,
+            }}
+          >
+            <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
+              {sectionCount}
+            </Text>
+            <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">
+              sections
+            </Text>
+          </Card>
+        </XStack>
+      </Card>
 
       <SearchBar
         value={searchQuery}
@@ -145,8 +136,8 @@ export default function TimelineScreen() {
           description="Create memories to see them on your timeline."
         />
       ) : (
-        Object.entries(groups).map(([label, items], gi) => (
-          <Animated.View key={label} entering={FadeInUp.delay(gi * 80).duration(400)}>
+        Object.entries(groups).map(([label, items]) => (
+          <YStack key={label}>
             <Text
               color="$colorMuted"
               fontSize={11}
@@ -187,7 +178,7 @@ export default function TimelineScreen() {
                 />
               ))}
             </YStack>
-          </Animated.View>
+          </YStack>
         ))
       )}
     </MorePageScaffold>

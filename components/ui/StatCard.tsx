@@ -22,7 +22,7 @@ export function StatCard({ emoji, count, label }: StatCardProps) {
       gap={6}
       backgroundColor="$card"
       borderColor="$borderColor"
-      style={appShadow(theme.shadowColor.val, "sm")}
+      style={appShadow(theme.shadowColor.val, "xs")}
     >
       <Text fontSize={22}>{emoji}</Text>
       <Text fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">

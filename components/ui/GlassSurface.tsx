@@ -12,7 +12,7 @@ import {
 
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useThemeStore } from "@/store/theme";
-import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
+import { appShadow, withAlpha, type AppShadowLevel } from "@/components/ui/themeHelpers";
 
 type GlassSurfaceProps = {
   children?: React.ReactNode;
@@ -22,6 +22,7 @@ type GlassSurfaceProps = {
   intensity?: number;
   interactive?: boolean;
   border?: boolean;
+  shadowLevel?: AppShadowLevel | false;
   onLayout?: (event: LayoutChangeEvent) => void;
 };
 
@@ -37,6 +38,7 @@ export function GlassSurface({
   intensity = 12,
   interactive = false,
   border = true,
+  shadowLevel = "xs",
   onLayout,
 }: GlassSurfaceProps) {
   const theme = useAppTheme();
@@ -58,7 +60,7 @@ export function GlassSurface({
         {
           borderRadius: radius,
         },
-        appShadow(theme.shadowColor.val, "sm"),
+        shadowLevel ? appShadow(theme.shadowColor.val, shadowLevel) : null,
         style,
       ]}
     >

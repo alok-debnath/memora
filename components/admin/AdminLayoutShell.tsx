@@ -3,7 +3,6 @@ import { ScrollView, StyleSheet } from "react-native";
 import { usePathname } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@/lib/icons";
-import Animated, { FadeInUp } from "react-native-reanimated";
 import { Text, XStack, YStack } from "tamagui";
 
 import { appRouter as router } from "@/lib/appRouter";
@@ -86,7 +85,7 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
       scrollProps={{ contentContainerStyle: { gap: 14 } }}
     >
       <AdminGuard>
-        <Animated.View entering={FadeInUp.duration(280)}>
+        <YStack>
           <Card style={{ borderRadius: 26 }}>
             <XStack alignItems="flex-start" justifyContent="space-between" gap={10}>
               <YStack gap={6} flex={1}>
@@ -116,9 +115,9 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
               </YStack>
             </XStack>
           </Card>
-        </Animated.View>
+        </YStack>
 
-        <Animated.View entering={FadeInUp.delay(40).duration(280)}>
+        <YStack>
           <Card style={{ borderRadius: 22, padding: 12 }}>
             <YStack position="relative" marginHorizontal={-12}>
               <ScrollView
@@ -269,9 +268,9 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
               ) : null}
             </YStack>
           </Card>
-        </Animated.View>
+        </YStack>
 
-        <Animated.View entering={FadeInUp.delay(80).duration(280)}>
+        <YStack>
           <Card style={{ borderRadius: 22 }}>
             <YStack gap={10}>
               <SegmentedControl options={RANGE_OPTIONS} value={range} onChange={setRange} />
@@ -320,7 +319,7 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
               ) : null}
             </YStack>
           </Card>
-        </Animated.View>
+        </YStack>
 
         {children}
       </AdminGuard>

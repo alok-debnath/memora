@@ -15,7 +15,6 @@ import Svg, {
   Stop,
   Text as SvgText,
 } from "react-native-svg";
-import Animated, { FadeInUp } from "react-native-reanimated";
 import { Text, XStack, YStack } from "tamagui";
 
 import { api } from "@/convex/_generated/api";
@@ -476,7 +475,7 @@ export default function AnalyticsScreen() {
       staticHeader
       scrollProps={{ contentContainerStyle: { gap: 18 } }}
     >
-      <Animated.View entering={FadeInUp.duration(360)}>
+      <YStack>
         <Card
           style={{
             borderRadius: 28,
@@ -516,9 +515,9 @@ export default function AnalyticsScreen() {
             />
           </XStack>
         </Card>
-      </Animated.View>
+      </YStack>
 
-      <Animated.View entering={FadeInUp.delay(80).duration(360)}>
+      <YStack>
         <YStack gap={10}>
           <SegmentedControl options={RANGE_OPTIONS} value={range} onChange={setRange} />
           <SegmentedControl
@@ -527,10 +526,10 @@ export default function AnalyticsScreen() {
             onChange={(value) => setSpendSource(value as SpendSource)}
           />
         </YStack>
-      </Animated.View>
+      </YStack>
 
       <XStack flexWrap="wrap" gap={10} alignItems="flex-start">
-        <Animated.View entering={FadeInUp.delay(110).duration(360)} style={{ width: kpiWidth }}>
+        <YStack style={{ width: kpiWidth }}>
           <KPI
             icon="cpu"
             label="AI spend"
@@ -539,8 +538,8 @@ export default function AnalyticsScreen() {
             tone={integrationAccentColors.openai}
             width={kpiWidth}
           />
-        </Animated.View>
-        <Animated.View entering={FadeInUp.delay(140).duration(360)} style={{ width: kpiWidth }}>
+        </YStack>
+        <YStack style={{ width: kpiWidth }}>
           <KPI
             icon="search"
             label="Searches"
@@ -549,8 +548,8 @@ export default function AnalyticsScreen() {
             tone={statAccentColors.diary}
             width={kpiWidth}
           />
-        </Animated.View>
-        <Animated.View entering={FadeInUp.delay(170).duration(360)} style={{ width: kpiWidth }}>
+        </YStack>
+        <YStack style={{ width: kpiWidth }}>
           <KPI
             icon="activity"
             label="AI actions"
@@ -559,8 +558,8 @@ export default function AnalyticsScreen() {
             tone={theme.primary.val}
             width={kpiWidth}
           />
-        </Animated.View>
-        <Animated.View entering={FadeInUp.delay(200).duration(360)} style={{ width: kpiWidth }}>
+        </YStack>
+        <YStack style={{ width: kpiWidth }}>
           <KPI
             icon="layers"
             label="AI backend ops"
@@ -569,10 +568,10 @@ export default function AnalyticsScreen() {
             tone={statusAccentColors.warning}
             width={kpiWidth}
           />
-        </Animated.View>
+        </YStack>
       </XStack>
 
-      <Animated.View entering={FadeInUp.delay(240).duration(360)}>
+      <YStack>
         <SectionLabel>Usage Flow</SectionLabel>
         <Card
           style={{
@@ -716,9 +715,9 @@ export default function AnalyticsScreen() {
             />
           </YStack>
         </Card>
-      </Animated.View>
+      </YStack>
 
-      <Animated.View entering={FadeInUp.delay(280).duration(360)}>
+      <YStack>
         <SectionLabel>AI Usage</SectionLabel>
         <Card style={{ borderRadius: 26 }}>
           <YStack gap={10} marginBottom={16}>
@@ -874,9 +873,9 @@ export default function AnalyticsScreen() {
             </Text>
           )}
         </Card>
-      </Animated.View>
+      </YStack>
 
-      <Animated.View entering={FadeInUp.delay(320).duration(360)}>
+      <YStack>
         <SectionLabel>Search & Retrieval</SectionLabel>
         <Card style={{ borderRadius: 26 }}>
           <XStack flexWrap="wrap" gap={10}>
@@ -936,7 +935,7 @@ export default function AnalyticsScreen() {
             />
           </XStack>
         </Card>
-      </Animated.View>
+      </YStack>
 
       <BottomSheetModal
         ref={modalRef}

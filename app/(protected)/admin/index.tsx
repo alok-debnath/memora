@@ -1,6 +1,5 @@
 import React from "react";
 import { ActivityIndicator } from "react-native";
-import Animated, { FadeInUp } from "react-native-reanimated";
 import { useQuery } from "convex/react";
 import { Text, XStack, YStack } from "tamagui";
 
@@ -63,7 +62,7 @@ export default function AdminOverviewScreen() {
   return (
     <>
       {data.anomalies.length > 0 ? (
-        <Animated.View entering={FadeInUp.duration(240)}>
+        <YStack>
           <Card style={{ borderRadius: 20 }}>
             <YStack gap={8}>
               <Text fontSize={15} fontFamily="$heading" fontWeight="700" color="$color">
@@ -93,10 +92,10 @@ export default function AdminOverviewScreen() {
               ))}
             </YStack>
           </Card>
-        </Animated.View>
+        </YStack>
       ) : null}
 
-      <Animated.View entering={FadeInUp.duration(260)}>
+      <YStack>
         <XStack gap={10} flexWrap="wrap">
           <Kpi
             label="AI requests"
@@ -127,7 +126,7 @@ export default function AdminOverviewScreen() {
             color={statusAccentColors.warning}
           />
         </XStack>
-      </Animated.View>
+      </YStack>
 
       <Card style={{ borderRadius: 24 }}>
         <InteractiveTimelineChart
@@ -152,7 +151,7 @@ export default function AdminOverviewScreen() {
         />
       </Card>
 
-      <Animated.View entering={FadeInUp.delay(40).duration(260)}>
+      <YStack>
         <XStack gap={10} flexWrap="wrap" alignItems="stretch">
           <Card style={{ borderRadius: 24, flex: 1, minWidth: 260 }}>
             <YStack gap={10}>
@@ -206,7 +205,7 @@ export default function AdminOverviewScreen() {
             </YStack>
           </Card>
         </XStack>
-      </Animated.View>
+      </YStack>
     </>
   );
 }

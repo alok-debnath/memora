@@ -1,6 +1,5 @@
 import React from "react";
 import { ActivityIndicator } from "react-native";
-import Animated, { FadeInUp } from "react-native-reanimated";
 import { useQuery } from "convex/react";
 import { Text, XStack, YStack } from "tamagui";
 
@@ -44,7 +43,7 @@ export default function AdminAnalyticsLabScreen() {
 
   return (
     <>
-      <Animated.View entering={FadeInUp.duration(260)}>
+      <YStack>
         <Card style={{ borderRadius: 24 }}>
           <InteractiveTimelineChart
             title="Segment Timeline"
@@ -67,9 +66,9 @@ export default function AdminAnalyticsLabScreen() {
             onSelectPoint={(point) => setSelectedTimepoint(point?.label ?? null)}
           />
         </Card>
-      </Animated.View>
+      </YStack>
 
-      <Animated.View entering={FadeInUp.delay(40).duration(260)}>
+      <YStack>
         <XStack gap={10} flexWrap="wrap">
           <Card style={{ borderRadius: 22, flex: 1, minWidth: 180 }}>
             <Text fontSize={12} color="$colorMuted">
@@ -96,7 +95,7 @@ export default function AdminAnalyticsLabScreen() {
             </Text>
           </Card>
         </XStack>
-      </Animated.View>
+      </YStack>
 
       <Card style={{ borderRadius: 24 }}>
         <YStack gap={10}>

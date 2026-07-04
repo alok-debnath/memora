@@ -51,7 +51,7 @@ export function AppTextField({
         alignItems={multiline ? "flex-start" : "center"}
         backgroundColor={theme.surfaceElevated.val}
         borderColor={error ? withAlpha(theme.destructive.val, "30") : theme.borderColor.val}
-        style={appShadow(theme.shadowColor.val, "sm")}
+        style={appShadow(theme.shadowColor.val, "xs")}
       >
         <TextInput
           {...inputProps}

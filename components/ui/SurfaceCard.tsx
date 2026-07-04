@@ -8,6 +8,7 @@ import {
   appShadow,
   getSurfaceColors,
   withAlpha,
+  type AppShadowLevel,
   type SurfaceTone,
 } from "@/components/ui/themeHelpers";
 
@@ -17,6 +18,7 @@ type SurfaceCardProps = {
   padding?: number;
   style?: StyleProp<ViewStyle>;
   shadowed?: boolean;
+  shadowLevel?: AppShadowLevel;
   variant?: "solid" | "frosted" | "glass";
   radius?: number;
 };
@@ -26,16 +28,24 @@ export function SurfaceCard({
   tone = "default",
   padding = 18,
   style,
-  shadowed = false,
+  shadowed,
+  shadowLevel,
   variant = "frosted",
   radius = 16,
 }: SurfaceCardProps) {
   const theme = useAppTheme();
   const surface = getSurfaceColors(theme, tone);
+  const resolvedShadowLevel = shadowLevel ?? (shadowed ? "sm" : "xs");
+  const shouldShadow = shadowed ?? variant !== "solid";
 
   if (variant === "glass") {
     return (
-      <GlassSurface radius={radius} style={style} contentStyle={{ padding }}>
+      <GlassSurface
+        radius={radius}
+        style={style}
+        contentStyle={{ padding }}
+        shadowLevel={shouldShadow ? resolvedShadowLevel : false}
+      >
         {children}
       </GlassSurface>
     );
@@ -50,7 +60,7 @@ export function SurfaceCard({
       borderWidth={1}
       borderRadius={radius}
       padding={padding}
-      style={[shadowed ? appShadow(theme.shadowColor.val, "xs") : null, style]}
+      style={[shouldShadow ? appShadow(theme.shadowColor.val, resolvedShadowLevel) : null, style]}
     >
       {children}
     </YStack>

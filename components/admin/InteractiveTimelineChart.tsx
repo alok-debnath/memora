@@ -10,7 +10,6 @@ import Svg, {
   Stop,
   Text as SvgText,
 } from "react-native-svg";
-import Animated, { FadeInUp } from "react-native-reanimated";
 import { Text, XStack, YStack } from "tamagui";
 
 import { PressableScale } from "@/components/ui/PressableScale";
@@ -127,7 +126,7 @@ export function InteractiveTimelineChart({
   const inactiveDot = withAlpha(statusAccentColors.neutral, "77");
 
   return (
-    <Animated.View entering={FadeInUp.duration(320)}>
+    <YStack>
       <YStack gap={12}>
         <YStack gap={4}>
           <Text fontSize={17} fontFamily="$heading" fontWeight="700" color="$color">
@@ -333,7 +332,7 @@ export function InteractiveTimelineChart({
           </Svg>
         </ScrollView>
       </YStack>
-    </Animated.View>
+    </YStack>
   );
 }
 

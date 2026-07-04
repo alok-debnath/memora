@@ -6,8 +6,6 @@ import { Feather } from "@/lib/icons";
 import * as Haptics from "expo-haptics";
 import Animated, {
   FadeIn,
-  FadeInDown,
-  FadeInUp,
   FadeOut,
   useAnimatedStyle,
   useSharedValue,
@@ -286,8 +284,7 @@ function SessionComplete({
 }) {
   const theme = useAppTheme();
   return (
-    <Animated.View
-      entering={FadeInUp.duration(500)}
+    <YStack
       style={{
         flex: 1,
         justifyContent: "center",
@@ -365,7 +362,7 @@ function SessionComplete({
           </Text>
         </PressableScale>
       </YStack>
-    </Animated.View>
+    </YStack>
   );
 }
 
@@ -549,19 +546,17 @@ export default function ReviewScreen() {
     >
       <YStack flex={1} backgroundColor="$background">
         {/* ── Header ─────────────────────────────────────────── */}
-        <Animated.View entering={FadeInDown.duration(400)}>
-          <YStack paddingHorizontal={16} paddingTop={12} paddingBottom={4}>
-            <PageHero
-              eyebrow="Spaced repetition"
-              title="Review queue"
-              description="Reveal each card, rate your recall, and let SM-2 schedule the next review."
-              icon="refresh-cw"
-            />
+        <YStack paddingHorizontal={16} paddingTop={12} paddingBottom={4}>
+          <PageHero
+            eyebrow="Spaced repetition"
+            title="Review queue"
+            description="Reveal each card, rate your recall, and let SM-2 schedule the next review."
+            icon="refresh-cw"
+          />
 
-            {/* Progress bar — only show when session is active */}
-            {sessionQueue.length > 0 && !sessionDone && <ProgressBar progress={progress} />}
-          </YStack>
-        </Animated.View>
+          {/* Progress bar — only show when session is active */}
+          {sessionQueue.length > 0 && !sessionDone && <ProgressBar progress={progress} />}
+        </YStack>
 
         {/* ── Body ───────────────────────────────────────────── */}
         {sessionDone ? (
@@ -598,9 +593,9 @@ export default function ReviewScreen() {
                   Upcoming
                 </Text>
                 {upcomingCards.map((card) => (
-                  <Animated.View key={card._id} entering={FadeIn.delay(100).duration(300)}>
+                  <YStack key={card._id}>
                     <UpcomingRow card={card} />
-                  </Animated.View>
+                  </YStack>
                 ))}
               </YStack>
             )}
@@ -643,7 +638,7 @@ export default function ReviewScreen() {
 
             {/* Rating buttons */}
             {isRevealed && (
-              <Animated.View entering={FadeInUp.delay(100).duration(280)} style={{ width: "100%" }}>
+              <YStack width="100%">
                 <Text
                   fontSize={12}
                   fontFamily="$body"
@@ -663,7 +658,7 @@ export default function ReviewScreen() {
                     />
                   ))}
                 </XStack>
-              </Animated.View>
+              </YStack>
             )}
 
             {/* Remove from queue */}

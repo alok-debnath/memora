@@ -16,13 +16,14 @@ export function withAlpha(color: string, alphaHex: string) {
   return color;
 }
 
-export type AppShadowLevel = "xs" | "sm" | "md" | "lg";
+export type AppShadowLevel = "hairline" | "xs" | "sm" | "md" | "lg";
 
 const shadowLevels: Record<AppShadowLevel, { y: number; blur: number; alpha: string }> = {
-  xs: { y: 2, blur: 8, alpha: "14" },
-  sm: { y: 4, blur: 14, alpha: "16" },
-  md: { y: 8, blur: 24, alpha: "18" },
-  lg: { y: 12, blur: 34, alpha: "1F" },
+  hairline: { y: 1, blur: 6, alpha: "14" },
+  xs: { y: 3, blur: 12, alpha: "1C" },
+  sm: { y: 6, blur: 20, alpha: "24" },
+  md: { y: 12, blur: 32, alpha: "2B" },
+  lg: { y: 18, blur: 46, alpha: "38" },
 };
 
 export function appShadow(color: string, level: AppShadowLevel = "sm"): ViewStyle {

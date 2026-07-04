@@ -41,7 +41,7 @@ export function FlashbackCard({ memory, onPress }: FlashbackCardProps) {
           borderWidth: 1,
           borderColor: theme.primary.val + "24",
           marginRight: 12,
-          ...appShadow(theme.shadowColor.val, "md"),
+          ...appShadow(theme.shadowColor.val, "sm"),
         }}
       >
         <YStack marginBottom={10} alignItems="flex-start">

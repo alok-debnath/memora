@@ -1,5 +1,4 @@
 import React from "react";
-import { LinearGradient } from "expo-linear-gradient";
 import { ScrollView, type ScrollViewProps } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { XStack, YStack, Text } from "tamagui";
@@ -8,7 +7,6 @@ import { useAppTheme } from "@/hooks/useAppTheme";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
 import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
-import { withAlpha } from "@/components/ui/themeHelpers";
 
 type AppScreenProps = {
   children: React.ReactNode;
@@ -41,40 +39,6 @@ export function AppScreen({
       edges={["top", "bottom"]}
     >
       <YStack flex={1} backgroundColor="$background">
-        <LinearGradient
-          colors={[
-            withAlpha(theme.surfaceElevated.val, chrome === "glass" ? "A8" : "84"),
-            withAlpha(theme.surfaceAccent.val, "28"),
-            theme.background.val,
-          ]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0.82, y: 0.62 }}
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 180,
-          }}
-        />
-        <LinearGradient
-          pointerEvents="none"
-          colors={[
-            withAlpha(theme.borderColor.val, "00"),
-            withAlpha(theme.borderStrong.val, "68"),
-            withAlpha(theme.borderColor.val, "00"),
-          ]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 1,
-            opacity: 0.55,
-          }}
-        />
         <ScrollView
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"

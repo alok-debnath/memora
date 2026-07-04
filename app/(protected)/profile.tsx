@@ -7,7 +7,6 @@ import { useAppTheme } from "@/hooks/useAppTheme";
 import { Feather, type FeatherIconName } from "@/lib/icons";
 import { appRouter as router } from "@/lib/appRouter";
 import { LinearGradient } from "expo-linear-gradient";
-import Animated, { FadeInUp } from "react-native-reanimated";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -739,7 +738,7 @@ export default function ProfileScreen() {
       staticHeader
       scrollProps={{ contentContainerStyle: styles.content }}
     >
-      <Animated.View entering={FadeInUp.duration(400)}>
+      <YStack>
         <Card style={{ ...styles.profileCard, padding: 18, borderRadius: 26 }}>
           <XStack alignItems="flex-start" justifyContent="space-between" gap={14}>
             <XStack alignItems="center" gap={14} flex={1}>
@@ -810,9 +809,9 @@ export default function ProfileScreen() {
             </Card>
           </XStack>
         </Card>
-      </Animated.View>
+      </YStack>
 
-      <Animated.View entering={FadeInUp.delay(40).duration(400)}>
+      <YStack>
         <SectionLabel>PROFILE</SectionLabel>
         <Card style={styles.groupCard}>
           <YStack gap={6} marginBottom={14}>
@@ -966,9 +965,9 @@ export default function ProfileScreen() {
             style={{ marginTop: 8 }}
           />
         </Card>
-      </Animated.View>
+      </YStack>
 
-      <Animated.View entering={FadeInUp.delay(100).duration(400)}>
+      <YStack>
         <SectionLabel>APPEARANCE</SectionLabel>
         <Card style={styles.groupCard}>
           <YStack flex={1}>
@@ -1024,9 +1023,9 @@ export default function ProfileScreen() {
             })}
           </XStack>
         </Card>
-      </Animated.View>
+      </YStack>
 
-      <Animated.View entering={FadeInUp.delay(150).duration(400)}>
+      <YStack>
         <SectionLabel>NOTIFICATIONS</SectionLabel>
         <Card style={styles.groupCard}>
           <XStack alignItems="center" gap={12} paddingVertical={10}>
@@ -1198,9 +1197,9 @@ export default function ProfileScreen() {
             />
           </XStack>
         </Card>
-      </Animated.View>
+      </YStack>
 
-      <Animated.View entering={FadeInUp.delay(180).duration(400)}>
+      <YStack>
         <SectionLabel>INTEGRATIONS</SectionLabel>
         <Card style={styles.groupCard}>
           <XStack alignItems="center" gap={12} paddingVertical={4}>
@@ -1312,9 +1311,9 @@ export default function ProfileScreen() {
             </YStack>
           ) : null}
         </Card>
-      </Animated.View>
+      </YStack>
 
-      <Animated.View entering={FadeInUp.delay(190).duration(400)}>
+      <YStack>
         <SectionLabel>AI PROVIDERS</SectionLabel>
         <Card style={styles.groupCard}>
           <XStack alignItems="center" gap={12} paddingVertical={4}>
@@ -1624,9 +1623,9 @@ export default function ProfileScreen() {
             </>
           ) : null}
         </Card>
-      </Animated.View>
+      </YStack>
 
-      <Animated.View entering={FadeInUp.delay(200).duration(400)}>
+      <YStack>
         <SectionLabel>DATA</SectionLabel>
         <Card style={styles.groupCard}>
           <YStack flex={1}>
@@ -1650,9 +1649,9 @@ export default function ProfileScreen() {
             style={{ marginTop: 16 }}
           />
         </Card>
-      </Animated.View>
+      </YStack>
 
-      <Animated.View entering={FadeInUp.delay(250).duration(400)}>
+      <YStack>
         <SectionLabel>ACCOUNT</SectionLabel>
         <Card>
           <PressableScale onPress={handleLogout} style={styles.settingRow}>
@@ -1662,9 +1661,9 @@ export default function ProfileScreen() {
             </Text>
           </PressableScale>
         </Card>
-      </Animated.View>
+      </YStack>
 
-      <Animated.View entering={FadeInUp.delay(300).duration(400)}>
+      <YStack>
         <SectionLabel>DANGER ZONE</SectionLabel>
         <Card>
           <PressableScale onPress={handleDeleteAccount} style={styles.settingRow}>
@@ -1674,7 +1673,7 @@ export default function ProfileScreen() {
             </Text>
           </PressableScale>
         </Card>
-      </Animated.View>
+      </YStack>
 
       <YStack height={40} />
     </MorePageScaffold>

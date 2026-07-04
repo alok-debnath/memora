@@ -55,7 +55,7 @@ export function SearchBar({
       height={52}
       alignItems="stretch"
       gap={10}
-      style={appShadow(theme.shadowColor.val, "sm")}
+      style={appShadow(theme.shadowColor.val, "xs")}
     >
       {/* Icon — centered within the row height */}
       <XStack

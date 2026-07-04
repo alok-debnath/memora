@@ -3,7 +3,6 @@ import { FlatList, Pressable, StyleSheet, RefreshControl, View, Dimensions } fro
 import { Image } from "expo-image";
 import { XStack, YStack, Text } from "tamagui";
 import { Feather } from "@/lib/icons";
-import Animated, { FadeInDown } from "react-native-reanimated";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -79,69 +78,67 @@ export default function FilesScreen() {
   const driveConnected = canUseGoogleDrive(googleIntegration ?? null);
 
   const renderItem = useCallback(
-    ({ item, index }: { item: AttachmentDoc; index: number }) => {
+    ({ item }: { item: AttachmentDoc; index: number }) => {
       const previewUri =
         item.type === "image"
           ? (previewUrls[item.driveFileId] ?? item.driveThumbnailLink)
           : undefined;
 
       return (
-        <Animated.View entering={FadeInDown.delay(index * 30).duration(200)}>
-          <Pressable
-            onPress={() => {
-              openFilePreview(item as any);
-            }}
-            style={({ pressed }) => [
-              styles.card,
-              {
-                backgroundColor: colors.surface,
-                borderColor: colors.border,
-                opacity: pressed ? 0.85 : 1,
-              },
-            ]}
-          >
-            {item.type === "image" && previewUri ? (
-              <Image
-                source={{ uri: previewUri }}
-                style={styles.thumbnail}
-                contentFit="cover"
-                transition={300}
-                placeholder={{ blurhash: "L6PZfSi_.AyE_3t7t7R**0o#DgR4" }}
-              />
-            ) : (
-              <View
-                style={[styles.docIconContainer, { backgroundColor: colors.backgroundSecondary }]}
-              >
-                <Feather name="file-text" size={36} color={colors.primary} />
-              </View>
-            )}
-
-            <YStack
-              paddingHorizontal={8}
-              paddingVertical={6}
-              gap={2}
-              borderTopWidth={StyleSheet.hairlineWidth}
-              borderTopColor={colors.border}
+        <Pressable
+          onPress={() => {
+            openFilePreview(item as any);
+          }}
+          style={({ pressed }) => [
+            styles.card,
+            {
+              backgroundColor: colors.surface,
+              borderColor: colors.border,
+              opacity: pressed ? 0.85 : 1,
+            },
+          ]}
+        >
+          {item.type === "image" && previewUri ? (
+            <Image
+              source={{ uri: previewUri }}
+              style={styles.thumbnail}
+              contentFit="cover"
+              transition={300}
+              placeholder={{ blurhash: "L6PZfSi_.AyE_3t7t7R**0o#DgR4" }}
+            />
+          ) : (
+            <View
+              style={[styles.docIconContainer, { backgroundColor: colors.backgroundSecondary }]}
             >
-              <Text fontSize={11} fontWeight="600" color={colors.text} numberOfLines={1}>
-                {item.filename}
+              <Feather name="file-text" size={36} color={colors.primary} />
+            </View>
+          )}
+
+          <YStack
+            paddingHorizontal={8}
+            paddingVertical={6}
+            gap={2}
+            borderTopWidth={StyleSheet.hairlineWidth}
+            borderTopColor={colors.border}
+          >
+            <Text fontSize={11} fontWeight="600" color={colors.text} numberOfLines={1}>
+              {item.filename}
+            </Text>
+            <XStack alignItems="center" gap={4}>
+              <View
+                style={[
+                  styles.statusDot,
+                  {
+                    backgroundColor: processingColors[item.processingStatus],
+                  },
+                ]}
+              />
+              <Text fontSize={10} color={colors.textSecondary}>
+                {formatDate(item.createdAt)}
               </Text>
-              <XStack alignItems="center" gap={4}>
-                <View
-                  style={[
-                    styles.statusDot,
-                    {
-                      backgroundColor: processingColors[item.processingStatus],
-                    },
-                  ]}
-                />
-                <Text fontSize={10} color={colors.textSecondary}>
-                  {formatDate(item.createdAt)}
-                </Text>
-              </XStack>
-            </YStack>
-          </Pressable>
-        </Animated.View>
+            </XStack>
+          </YStack>
+        </Pressable>
       );
     },
     [colors, openFilePreview, previewUrls],

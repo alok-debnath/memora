@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { Platform, Pressable, ActivityIndicator } from "react-native";
 import { Feather } from "@/lib/icons";
 import * as Haptics from "expo-haptics";
-import Animated, { FadeInUp } from "react-native-reanimated";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -102,135 +101,131 @@ export default function DiaryScreen() {
   return (
     <AppScreen
       hero={
-        <Animated.View entering={FadeInUp.duration(360)}>
-          <PageHero
-            eyebrow="Daily capture"
-            title="AI Diary"
-            description="Capture voice or typed reflections. Memora turns them into structured entries and insights."
-            icon="book-open"
-          />
-        </Animated.View>
+        <PageHero
+          eyebrow="Daily capture"
+          title="AI Diary"
+          description="Capture voice or typed reflections. Memora turns them into structured entries and insights."
+          icon="book-open"
+        />
       }
     >
-      <Animated.View entering={FadeInUp.delay(80).duration(320)}>
-        <SurfaceCard variant="frosted" radius={16} padding={14}>
-          <YStack gap={12}>
-            <XStack gap={8}>
-              <Pressable
-                onPress={() => setMode("voice")}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 6,
-                  paddingHorizontal: 12,
-                  paddingVertical: 7,
-                  borderRadius: 999,
-                  backgroundColor: mode === "voice" ? theme.primary.val : theme.secondary.val,
-                }}
+      <SurfaceCard variant="frosted" radius={16} padding={14}>
+        <YStack gap={12}>
+          <XStack gap={8}>
+            <Pressable
+              onPress={() => setMode("voice")}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                paddingHorizontal: 12,
+                paddingVertical: 7,
+                borderRadius: 999,
+                backgroundColor: mode === "voice" ? theme.primary.val : theme.secondary.val,
+              }}
+            >
+              <Feather
+                name="mic"
+                size={14}
+                color={mode === "voice" ? theme.textInverse.val : theme.colorMuted.val}
+              />
+              <Text
+                fontSize={13}
+                fontFamily="$body"
+                fontWeight="600"
+                color={mode === "voice" ? "$textInverse" : "$colorMuted"}
               >
-                <Feather
-                  name="mic"
-                  size={14}
-                  color={mode === "voice" ? theme.textInverse.val : theme.colorMuted.val}
-                />
-                <Text
-                  fontSize={13}
-                  fontFamily="$body"
-                  fontWeight="600"
-                  color={mode === "voice" ? "$textInverse" : "$colorMuted"}
-                >
-                  Voice
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setMode("type")}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 6,
-                  paddingHorizontal: 12,
-                  paddingVertical: 7,
-                  borderRadius: 999,
-                  backgroundColor: mode === "type" ? theme.primary.val : theme.secondary.val,
-                }}
+                Voice
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setMode("type")}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                paddingHorizontal: 12,
+                paddingVertical: 7,
+                borderRadius: 999,
+                backgroundColor: mode === "type" ? theme.primary.val : theme.secondary.val,
+              }}
+            >
+              <Feather
+                name="edit-3"
+                size={14}
+                color={mode === "type" ? theme.textInverse.val : theme.colorMuted.val}
+              />
+              <Text
+                fontSize={13}
+                fontFamily="$body"
+                fontWeight="600"
+                color={mode === "type" ? "$textInverse" : "$colorMuted"}
               >
-                <Feather
-                  name="edit-3"
-                  size={14}
-                  color={mode === "type" ? theme.textInverse.val : theme.colorMuted.val}
-                />
-                <Text
-                  fontSize={13}
-                  fontFamily="$body"
-                  fontWeight="600"
-                  color={mode === "type" ? "$textInverse" : "$colorMuted"}
-                >
-                  Type
-                </Text>
-              </Pressable>
-            </XStack>
+                Type
+              </Text>
+            </Pressable>
+          </XStack>
 
-            {mode === "voice" ? (
-              isSaving ? (
-                <YStack alignItems="center" justifyContent="center" paddingVertical={28} gap={16}>
-                  <ActivityIndicator size="large" color={theme.primary.val} />
-                  <Text fontSize={14} fontFamily="$body" color="$colorMuted">
-                    Saving entry...
-                  </Text>
-                </YStack>
-              ) : (
-                <YStack gap={12} paddingVertical={12}>
-                  <VoiceRecorder
-                    onTranscription={setLiveTranscript}
-                    onTranscriptionComplete={handleVoiceComplete}
-                    onPauseChange={setIsVoicePaused}
-                    inputMode="auto"
-                  />
-                  {/* Hide while paused — VoiceRecorder shows the editable TextInput internally */}
-                  {!isVoicePaused && liveTranscript.trim().length > 0 ? (
-                    <YStack
-                      backgroundColor="$card"
-                      borderRadius={14}
-                      borderWidth={1}
-                      borderColor="$borderColor"
-                      padding={14}
-                      marginHorizontal={4}
-                    >
-                      <Text fontSize={14} fontFamily="$body" color="$color" lineHeight={21}>
-                        {liveTranscript}
-                      </Text>
-                    </YStack>
-                  ) : !isVoicePaused ? (
-                    <Text fontSize={13} fontFamily="$body" color="$colorMuted" textAlign="center">
-                      Tap to start — speak naturally. Entry is analyzed after you stop.
-                    </Text>
-                  ) : null}
-                </YStack>
-              )
+          {mode === "voice" ? (
+            isSaving ? (
+              <YStack alignItems="center" justifyContent="center" paddingVertical={28} gap={16}>
+                <ActivityIndicator size="large" color={theme.primary.val} />
+                <Text fontSize={14} fontFamily="$body" color="$colorMuted">
+                  Saving entry...
+                </Text>
+              </YStack>
             ) : (
-              <>
-                <AppTextField
-                  value={diaryText}
-                  onChangeText={setDiaryText}
-                  label="Journal entry"
-                  placeholder="Write about your day, thoughts, feelings, or anything on your mind..."
-                  multiline
-                  helperText="Memora will structure this into a searchable diary entry."
-                  containerStyle={{ marginBottom: 12 }}
-                  style={{ minHeight: 156, fontSize: 15, lineHeight: 22 }}
+              <YStack gap={12} paddingVertical={12}>
+                <VoiceRecorder
+                  onTranscription={setLiveTranscript}
+                  onTranscriptionComplete={handleVoiceComplete}
+                  onPauseChange={setIsVoicePaused}
+                  inputMode="auto"
                 />
-                <GradientButton
-                  title="Save & Analyze"
-                  onPress={handleSubmit}
-                  icon="send"
-                  loading={isSaving}
-                  style={{ marginTop: 12 }}
-                />
-              </>
-            )}
-          </YStack>
-        </SurfaceCard>
-      </Animated.View>
+                {/* Hide while paused — VoiceRecorder shows the editable TextInput internally */}
+                {!isVoicePaused && liveTranscript.trim().length > 0 ? (
+                  <YStack
+                    backgroundColor="$card"
+                    borderRadius={14}
+                    borderWidth={1}
+                    borderColor="$borderColor"
+                    padding={14}
+                    marginHorizontal={4}
+                  >
+                    <Text fontSize={14} fontFamily="$body" color="$color" lineHeight={21}>
+                      {liveTranscript}
+                    </Text>
+                  </YStack>
+                ) : !isVoicePaused ? (
+                  <Text fontSize={13} fontFamily="$body" color="$colorMuted" textAlign="center">
+                    Tap to start — speak naturally. Entry is analyzed after you stop.
+                  </Text>
+                ) : null}
+              </YStack>
+            )
+          ) : (
+            <>
+              <AppTextField
+                value={diaryText}
+                onChangeText={setDiaryText}
+                label="Journal entry"
+                placeholder="Write about your day, thoughts, feelings, or anything on your mind..."
+                multiline
+                helperText="Memora will structure this into a searchable diary entry."
+                containerStyle={{ marginBottom: 12 }}
+                style={{ minHeight: 156, fontSize: 15, lineHeight: 22 }}
+              />
+              <GradientButton
+                title="Save & Analyze"
+                onPress={handleSubmit}
+                icon="send"
+                loading={isSaving}
+                style={{ marginTop: 12 }}
+              />
+            </>
+          )}
+        </YStack>
+      </SurfaceCard>
 
       <MoodTrendStrip entries={entries} />
 

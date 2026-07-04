@@ -2,7 +2,6 @@ import React, { useMemo, useState } from "react";
 import { ScrollView, Pressable } from "react-native";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import Animated, { FadeInUp } from "react-native-reanimated";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -109,52 +108,44 @@ export default function RemindersScreen() {
 
   return (
     <MorePageScaffold title="Reminders" staticHeader>
-      <Animated.View entering={FadeInUp.duration(400)}>
-        <Card
-          style={{
-            padding: 18,
-            borderRadius: 24,
-            backgroundColor: theme.card.val,
-            marginBottom: 14,
-          }}
-        >
-          <YStack flex={1} gap={6}>
-            <Badge label="Time aware" color={theme.primary.val} />
-            <Text
-              fontSize={28}
-              lineHeight={32}
-              fontFamily="$heading"
-              fontWeight="700"
-              color="$color"
+      <Card
+        style={{
+          padding: 18,
+          borderRadius: 24,
+          backgroundColor: theme.card.val,
+          marginBottom: 14,
+        }}
+      >
+        <YStack flex={1} gap={6}>
+          <Badge label="Time aware" color={theme.primary.val} />
+          <Text fontSize={28} lineHeight={32} fontFamily="$heading" fontWeight="700" color="$color">
+            Reminders
+          </Text>
+          <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
+            Keep the pending moments in view. Overdue items are surfaced first so nothing slips.
+          </Text>
+        </YStack>
+        <XStack gap={10} marginTop={16}>
+          {metrics.map((metric) => (
+            <Card
+              key={metric.label}
+              style={{
+                flex: 1,
+                alignItems: "center",
+                paddingVertical: 12,
+                borderRadius: 18,
+              }}
             >
-              Reminders
-            </Text>
-            <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
-              Keep the pending moments in view. Overdue items are surfaced first so nothing slips.
-            </Text>
-          </YStack>
-          <XStack gap={10} marginTop={16}>
-            {metrics.map((metric) => (
-              <Card
-                key={metric.label}
-                style={{
-                  flex: 1,
-                  alignItems: "center",
-                  paddingVertical: 12,
-                  borderRadius: 18,
-                }}
-              >
-                <Text fontSize={20} fontFamily="$heading" fontWeight="700" color="$color">
-                  {metric.value}
-                </Text>
-                <Text fontSize={11} fontFamily="$body" marginTop={2} color="$colorMuted">
-                  {metric.label.toLowerCase()}
-                </Text>
-              </Card>
-            ))}
-          </XStack>
-        </Card>
-      </Animated.View>
+              <Text fontSize={20} fontFamily="$heading" fontWeight="700" color="$color">
+                {metric.value}
+              </Text>
+              <Text fontSize={11} fontFamily="$body" marginTop={2} color="$colorMuted">
+                {metric.label.toLowerCase()}
+              </Text>
+            </Card>
+          ))}
+        </XStack>
+      </Card>
 
       <ScrollView
         horizontal
@@ -227,8 +218,8 @@ export default function RemindersScreen() {
             }
           />
         ) : (
-          filtered.map((m, i) => (
-            <Animated.View key={m._id} entering={FadeInUp.delay(i * 40).duration(300)}>
+          filtered.map((m) => (
+            <YStack key={m._id}>
               <Card style={{ borderRadius: 22 }}>
                 <XStack alignItems="center" gap={12}>
                   <YStack
@@ -266,7 +257,7 @@ export default function RemindersScreen() {
                   </YStack>
                 </XStack>
               </Card>
-            </Animated.View>
+            </YStack>
           ))
         )}
       </YStack>

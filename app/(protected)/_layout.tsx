@@ -1,5 +1,5 @@
 import { Redirect, Stack, usePathname } from "expo-router";
-import { ActivityIndicator, Pressable } from "react-native";
+import { ActivityIndicator, Platform, Pressable } from "react-native";
 import { Feather } from "@/lib/icons";
 import { Text, XStack, YStack, useTheme } from "tamagui";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -204,6 +204,9 @@ function DesktopProtectedShell() {
               screenOptions={{
                 headerShown: false,
                 contentStyle: { backgroundColor: theme.background?.val },
+                animation: Platform.OS === "android" ? "ios_from_right" : "default",
+                gestureEnabled: true,
+                freezeOnBlur: true,
               }}
             />
           </YStack>
@@ -250,6 +253,9 @@ export default function ProtectedLayout() {
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: theme.background?.val },
+          animation: Platform.OS === "android" ? "ios_from_right" : "default",
+          gestureEnabled: true,
+          freezeOnBlur: true,
         }}
       />
       <ProtectedSheetHost />

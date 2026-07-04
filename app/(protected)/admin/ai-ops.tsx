@@ -1,6 +1,5 @@
 import React from "react";
 import { ActivityIndicator } from "react-native";
-import Animated, { FadeInUp } from "react-native-reanimated";
 import { useMutation, useQuery } from "convex/react";
 import { Text, XStack, YStack } from "tamagui";
 
@@ -109,7 +108,7 @@ export default function AdminAiOpsScreen() {
 
   return (
     <>
-      <Animated.View entering={FadeInUp.duration(260)}>
+      <YStack>
         <XStack gap={10} flexWrap="wrap">
           <Card style={{ borderRadius: 24, flex: 1, minWidth: 260 }}>
             <YStack gap={10}>
@@ -283,7 +282,7 @@ export default function AdminAiOpsScreen() {
             </YStack>
           </Card>
         </XStack>
-      </Animated.View>
+      </YStack>
 
       <Card style={{ borderRadius: 24 }}>
         <YStack gap={10}>

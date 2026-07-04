@@ -20,6 +20,7 @@ export default function AuthLayout() {
       screenOptions={{
         headerShown: false,
         animation: "simple_push",
+        freezeOnBlur: true,
         contentStyle: { backgroundColor: theme.background?.val },
       }}
     >

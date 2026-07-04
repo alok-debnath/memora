@@ -3,7 +3,6 @@ import { Pressable } from "react-native";
 import { Feather } from "@/lib/icons";
 import { useMutation, useQuery } from "convex/react";
 import { Text, XStack, YStack } from "tamagui";
-import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -390,7 +389,7 @@ export default function DataScreen() {
 
           {/* Deleted tab */}
           {activeTab === "deleted" && (
-            <Animated.View entering={FadeInDown.duration(300)}>
+            <YStack>
               <YStack gap={14}>
                 <YStack gap={4}>
                   <Text fontSize={17} fontFamily="$heading" fontWeight="700" color="$color">
@@ -480,12 +479,12 @@ export default function DataScreen() {
                   </YStack>
                 )}
               </YStack>
-            </Animated.View>
+            </YStack>
           )}
 
           {/* Completed tab */}
           {activeTab === "completed" && (
-            <Animated.View entering={FadeInDown.duration(300)}>
+            <YStack>
               <YStack gap={14}>
                 <YStack gap={4}>
                   <Text fontSize={17} fontFamily="$heading" fontWeight="700" color="$color">
@@ -549,7 +548,7 @@ export default function DataScreen() {
                   </YStack>
                 )}
               </YStack>
-            </Animated.View>
+            </YStack>
           )}
         </YStack>
       </Card>

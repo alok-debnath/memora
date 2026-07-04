@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from "react";
 import { ActivityIndicator, ScrollView } from "react-native";
-import Animated, { FadeInUp } from "react-native-reanimated";
 import { useMutation, useQuery } from "convex/react";
 import { Feather } from "@/lib/icons";
 import { Text, XStack, YStack } from "tamagui";
@@ -60,7 +59,7 @@ export default function AdminUsersScreen() {
 
   return (
     <>
-      <Animated.View entering={FadeInUp.duration(260)}>
+      <YStack>
         <Card style={{ borderRadius: 20 }}>
           <AppTextField
             placeholder="Search by name or email"
@@ -68,7 +67,7 @@ export default function AdminUsersScreen() {
             onChangeText={setSearch}
           />
         </Card>
-      </Animated.View>
+      </YStack>
 
       {!list ? (
         <YStack alignItems="center" paddingVertical={40}>

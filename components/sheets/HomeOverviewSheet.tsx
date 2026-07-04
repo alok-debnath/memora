@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BottomSheetBackdrop, BottomSheetModal, BottomSheetScrollView } from "@gorhom/bottom-sheet";
-import Animated, { FadeInRight } from "react-native-reanimated";
 import { FlatList } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@/lib/icons";
@@ -386,7 +385,7 @@ export function HomeOverviewSheet() {
                 data={flashbacks as MemoryItem[]}
                 keyExtractor={(item) => item._id}
                 renderItem={({ item, index }) => (
-                  <Animated.View entering={FadeInRight.delay(index * 60).duration(240)}>
+                  <YStack>
                     <FlashbackCard
                       memory={toMemoryNote(item)}
                       onPress={() => {
@@ -394,7 +393,7 @@ export function HomeOverviewSheet() {
                         openEditMemory(toMemoryNote(item));
                       }}
                     />
-                  </Animated.View>
+                  </YStack>
                 )}
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={{ gap: 12, paddingRight: 8 }}

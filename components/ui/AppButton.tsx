@@ -8,7 +8,12 @@ import { brandGradients } from "@/constants/colors";
 import { FontFamily } from "@/constants/fonts";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { PressableScale } from "@/components/ui/PressableScale";
-import { getStatusColors, withAlpha, type StatusTone } from "@/components/ui/themeHelpers";
+import {
+  appShadow,
+  getStatusColors,
+  withAlpha,
+  type StatusTone,
+} from "@/components/ui/themeHelpers";
 
 type AppButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "gradient";
 type AppButtonSize = "sm" | "md" | "lg";
@@ -57,6 +62,7 @@ export function AppButton({
   const metrics = BUTTON_SIZES[size];
   const toneColors = getStatusColors(theme, tone);
   const isDisabled = disabled || loading;
+  const hasButtonShadow = variant === "primary" || variant === "danger" || variant === "gradient";
 
   const baseContent = (
     <XStack
@@ -109,13 +115,14 @@ export function AppButton({
     <PressableScale
       onPress={onPress}
       disabled={isDisabled}
-      scale={0.98}
+      scale={0.99}
       style={[
         {
           alignSelf: fullWidth ? "stretch" : "flex-start",
           borderRadius: metrics.radius,
           opacity: isDisabled ? 0.58 : 1,
         },
+        hasButtonShadow && !isDisabled ? appShadow(theme.shadowColor.val, "xs") : null,
         style,
       ]}
     >

@@ -1,6 +1,5 @@
 import React from "react";
 import { Feather, type FeatherIconName } from "@/lib/icons";
-import Animated, { FadeInUp } from "react-native-reanimated";
 import { XStack, YStack, Text } from "tamagui";
 import { Card } from "./ui/Card";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -14,11 +13,11 @@ interface StatCardProps {
   index: number;
 }
 
-function StatCard({ icon, label, value, color, index }: StatCardProps) {
+function StatCard({ icon, label, value, color }: StatCardProps) {
   const theme = useAppTheme();
 
   return (
-    <Animated.View entering={FadeInUp.delay(100 + index * 80).duration(400)} style={{ flex: 1 }}>
+    <YStack flex={1}>
       <Card
         style={{
           alignItems: "center",
@@ -46,7 +45,7 @@ function StatCard({ icon, label, value, color, index }: StatCardProps) {
           {label}
         </Text>
       </Card>
-    </Animated.View>
+    </YStack>
   );
 }
 

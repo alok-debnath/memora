@@ -7,6 +7,7 @@ export default function PublicLayout() {
     <Stack
       screenOptions={{
         headerShown: false,
+        freezeOnBlur: true,
         contentStyle: { backgroundColor: theme.background?.val },
       }}
     >

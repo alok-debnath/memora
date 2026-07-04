@@ -1,7 +1,6 @@
 import React from "react";
 import { Pressable, Platform, StyleSheet } from "react-native";
 import { Feather, FontAwesome5 } from "@/lib/icons";
-import Animated, { FadeIn } from "react-native-reanimated";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import type { MemoryNote } from "@/types/memory";
@@ -417,33 +416,31 @@ export const MemoryCard = React.memo(function MemoryCard({
   ];
 
   return (
-    <Animated.View entering={FadeIn.delay(Math.min(index * 40, 300)).duration(300)}>
-      <ContextMenu
-        preview={
-          <CardBody
-            memory={memory}
-            resolvedTopics={resolvedTopics}
-            showActions={false}
-            hasFiles={hasFiles}
-            framed={false}
-          />
-        }
-        previewFrame
-        items={menuItems}
-        onPress={onPress}
-      >
+    <ContextMenu
+      preview={
         <CardBody
           memory={memory}
           resolvedTopics={resolvedTopics}
-          showActions={Platform.OS === "web"}
-          onComplete={onComplete}
-          onShare={onShare}
-          onAddToReview={onAddToReview}
-          onDelete={onDelete}
+          showActions={false}
           hasFiles={hasFiles}
+          framed={false}
         />
-      </ContextMenu>
-    </Animated.View>
+      }
+      previewFrame
+      items={menuItems}
+      onPress={onPress}
+    >
+      <CardBody
+        memory={memory}
+        resolvedTopics={resolvedTopics}
+        showActions={Platform.OS === "web"}
+        onComplete={onComplete}
+        onShare={onShare}
+        onAddToReview={onAddToReview}
+        onDelete={onDelete}
+        hasFiles={hasFiles}
+      />
+    </ContextMenu>
   );
 });
 

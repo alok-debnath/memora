@@ -6,7 +6,6 @@ import { Feather } from "@/lib/icons";
 import { useRouter } from "expo-router";
 import Animated, {
   Extrapolation,
-  FadeIn,
   interpolate,
   useAnimatedScrollHandler,
   useAnimatedStyle,
@@ -60,7 +59,7 @@ export function MorePageScaffold({
   const router = useRouter();
   const theme = useAppTheme();
   const isLargeScreen = useIsLargeScreen();
-  const headerCollapse = useSharedValue(0);
+  const scrollY = useSharedValue(0);
   const headerTop = HEADER_TOP_MARGIN;
   const contentTopPadding = headerTop + HEADER_HEIGHT + CONTENT_TOP_GAP;
 
@@ -82,35 +81,22 @@ export function MorePageScaffold({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contentTopPadding]);
 
-  const onScroll = useAnimatedScrollHandler<{ lastY?: number }>({
-    onBeginDrag: (event, context) => {
-      context.lastY = Math.max(event.contentOffset.y, 0);
-    },
-    onMomentumBegin: (event, context) => {
-      context.lastY = Math.max(event.contentOffset.y, 0);
-    },
-    onScroll: (event, context) => {
-      // When staticHeader is on, keep collapse value permanently at 0.
+  const onScroll = useAnimatedScrollHandler({
+    onScroll: (event) => {
       if (staticHeader) return;
-      const currentY = Math.max(event.contentOffset.y, 0);
-      const previousY = context.lastY ?? currentY;
-      const deltaY = currentY - previousY;
-      context.lastY = currentY;
-
-      const next = headerCollapse.value + deltaY;
-      headerCollapse.value = Math.max(0, Math.min(HEADER_COLLAPSE_RANGE, next));
+      scrollY.value = Math.max(event.contentOffset.y, 0);
     },
   });
 
   const headerCapsuleStyle = useAnimatedStyle(() => {
     if (staticHeader) return { transform: [] };
-    const offset = headerCollapse.value;
-    const scale = interpolate(offset, [0, HEADER_COLLAPSE_RANGE], [1, 0.94], Extrapolation.CLAMP);
+    const offset = scrollY.value;
+    const scale = interpolate(offset, [0, HEADER_COLLAPSE_RANGE], [1, 0.96], Extrapolation.CLAMP);
     return {
       transform: [
         { scale },
         {
-          translateY: interpolate(offset, [0, HEADER_COLLAPSE_RANGE], [0, -6], Extrapolation.CLAMP),
+          translateY: interpolate(offset, [0, HEADER_COLLAPSE_RANGE], [0, -4], Extrapolation.CLAMP),
         },
       ],
     };
@@ -118,7 +104,7 @@ export function MorePageScaffold({
 
   const ambientStyle = useAnimatedStyle(() => {
     if (staticHeader) return { opacity: 0.95 };
-    const offset = headerCollapse.value;
+    const offset = scrollY.value;
     return {
       opacity: interpolate(offset, [0, HEADER_COLLAPSE_RANGE * 0.67], [0.95, 0.5]),
     };
@@ -130,17 +116,6 @@ export function MorePageScaffold({
       edges={["top", "bottom"]}
     >
       <YStack flex={1} backgroundColor="$background">
-        <LinearGradient
-          colors={[
-            withAlpha(theme.surfaceElevated.val, "A8"),
-            withAlpha(theme.surfaceAccent.val, "30"),
-            theme.background.val,
-          ]}
-          start={{ x: 0.04, y: 0 }}
-          end={{ x: 0.88, y: 0.62 }}
-          style={StyleSheet.absoluteFill}
-        />
-
         <Animated.View
           pointerEvents="none"
           style={[
@@ -196,7 +171,6 @@ export function MorePageScaffold({
         />
 
         <Animated.View
-          entering={FadeIn.duration(320)}
           pointerEvents="box-none"
           style={[
             styles.headerLayer,

@@ -4,7 +4,6 @@ import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { Feather } from "@/lib/icons";
 import Svg, { Circle, Line, G, Text as SvgText } from "react-native-svg";
-import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
 import { useWindowDimensions } from "react-native";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -362,7 +361,7 @@ export default function KnowledgeGraphScreen() {
       scrollProps={{ contentContainerStyle: { gap: 12, paddingBottom: 32 } }}
     >
       {/* ── Header ── */}
-      <Animated.View entering={FadeInUp.duration(380)}>
+      <YStack>
         <Card style={{ padding: 18, borderRadius: 24 }}>
           <YStack flex={1} gap={5}>
             <Badge label="Mind Map" color={theme.primary.val} />
@@ -457,7 +456,7 @@ export default function KnowledgeGraphScreen() {
             )}
           </XStack>
         </Card>
-      </Animated.View>
+      </YStack>
 
       {/* ── Mode Selector ── */}
       <SegmentedControl
@@ -500,7 +499,7 @@ export default function KnowledgeGraphScreen() {
 
       {/* ── Topic filter chips (memory mode) ── */}
       {mode === "memories" && topics.length > 0 && (
-        <Animated.View entering={FadeIn.duration(300)}>
+        <YStack>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -593,7 +592,7 @@ export default function KnowledgeGraphScreen() {
                 );
               })}
           </ScrollView>
-        </Animated.View>
+        </YStack>
       )}
 
       {/* ── Graph Canvas ── */}
@@ -609,7 +608,7 @@ export default function KnowledgeGraphScreen() {
           }
         />
       ) : (
-        <Animated.View entering={FadeIn.duration(500)}>
+        <YStack>
           <Card style={{ padding: 8, overflow: "hidden", borderRadius: 20 }}>
             <Svg width={svgWidth} height={svgHeight} style={{ alignSelf: "center" }}>
               {/* Memory Network edges */}
@@ -745,7 +744,7 @@ export default function KnowledgeGraphScreen() {
 
           {/* ── Legend (memory mode) ── */}
           {mode === "memories" && topics.length > 0 && (
-            <Animated.View entering={FadeIn.delay(200).duration(300)}>
+            <YStack>
               <XStack gap={12} paddingTop={4} flexWrap="wrap">
                 <XStack alignItems="center" gap={4}>
                   <YStack width={16} height={2} backgroundColor={theme.primary.val} opacity={0.5} />
@@ -768,12 +767,12 @@ export default function KnowledgeGraphScreen() {
                   </Text>
                 </XStack>
               </XStack>
-            </Animated.View>
+            </YStack>
           )}
 
           {/* ── Selected Memory Panel ── */}
           {selectedMemory && mode === "memories" && (
-            <Animated.View entering={FadeInUp.duration(220)}>
+            <YStack>
               <Card style={{ marginTop: 4, borderRadius: 20, gap: 12 }}>
                 {/* Topic badges */}
                 {(selectedMemory.primaryTopicId || (selectedMemory.topicIds?.length ?? 0) > 0) && (
@@ -865,12 +864,12 @@ export default function KnowledgeGraphScreen() {
                   </XStack>
                 </XStack>
               </Card>
-            </Animated.View>
+            </YStack>
           )}
 
           {/* ── Selected Topic Panel ── */}
           {selectedTopic && mode === "topics" && (
-            <Animated.View entering={FadeInUp.duration(220)}>
+            <YStack>
               <Card style={{ marginTop: 4, borderRadius: 20, gap: 12 }}>
                 <XStack alignItems="center" gap={10}>
                   <YStack
@@ -976,12 +975,12 @@ export default function KnowledgeGraphScreen() {
                   </YStack>
                 )}
               </Card>
-            </Animated.View>
+            </YStack>
           )}
 
           {/* ── Topic Index (topic mode, no selection) ── */}
           {mode === "topics" && !selectedTopic && (topicGraph?.nodes.length ?? 0) > 0 && (
-            <Animated.View entering={FadeIn.delay(300).duration(300)}>
+            <YStack>
               <YStack gap={8}>
                 <Text fontSize={13} fontFamily="$body" fontWeight="600" color="$colorMuted">
                   Tap any node to explore · {topicGraph!.nodes.length} topics
@@ -1017,9 +1016,9 @@ export default function KnowledgeGraphScreen() {
                     ))}
                 </XStack>
               </YStack>
-            </Animated.View>
+            </YStack>
           )}
-        </Animated.View>
+        </YStack>
       )}
     </MorePageScaffold>
   );

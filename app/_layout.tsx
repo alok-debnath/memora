@@ -16,7 +16,7 @@ import React, { useEffect } from "react";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import { initialWindowMetrics, SafeAreaProvider } from "react-native-safe-area-context";
 import { useColorScheme } from "react-native";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { TamaguiProvider } from "tamagui";
@@ -83,6 +83,7 @@ function RootLayoutNav() {
               <Stack
                 screenOptions={{
                   headerShown: false,
+                  freezeOnBlur: true,
                   contentStyle: {
                     backgroundColor:
                       resolvedMode === "dark"
@@ -120,7 +121,7 @@ export default function RootLayout() {
   if (!fontsLoaded && !fontError) return null;
 
   return (
-    <SafeAreaProvider>
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <ErrorBoundary
         onError={(error, stackTrace) => {
           logDevError("ErrorBoundary", error, { stackTrace });
