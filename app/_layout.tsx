@@ -53,6 +53,7 @@ function RootLayoutNav() {
     setSystemMode,
   } = useThemeStore();
   const auth = useAuthState();
+  const isStartupReady = themeLoaded && !auth.isOnboardingLoading;
   // Base Tamagui config stays fixed to MEMORA_ACCENT and is never recreated —
   // all user-selected accent colors flow through AppThemeProvider/useAppTheme()
   // instead, which re-renders live off the theme store. defaultTheme={resolvedMode}
@@ -80,7 +81,13 @@ function RootLayoutNav() {
     setSystemMode(systemMode);
   }, [setSystemMode, systemMode]);
 
-  if (!themeLoaded || auth.isLoading) return null;
+  useEffect(() => {
+    if (isStartupReady) {
+      void SplashScreen.hideAsync();
+    }
+  }, [isStartupReady]);
+
+  if (!isStartupReady) return null;
 
   if (!auth.hasSeenOnboarding) {
     return (
@@ -142,12 +149,6 @@ export default function RootLayout() {
     DMSans_600SemiBold,
     DMSans_700Bold,
   });
-
-  useEffect(() => {
-    if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded, fontError]);
 
   if (!fontsLoaded && !fontError) return null;
 

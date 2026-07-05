@@ -17,6 +17,7 @@ interface AuthState {
   user: AuthUser | null;
   token: string | null;
   isLoading: boolean;
+  isOnboardingLoading: boolean;
   hasSeenOnboarding: boolean;
 }
 
@@ -114,6 +115,7 @@ export function useAuthState(): AuthContextValue {
   return {
     user: (meResult as AuthUser | null | undefined) ?? null,
     token: convexAuth.isAuthenticated ? "authenticated" : null,
+    isOnboardingLoading: !onboardingLoaded,
     isLoading:
       !onboardingLoaded ||
       sessionPending ||

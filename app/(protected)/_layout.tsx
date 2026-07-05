@@ -8,7 +8,7 @@ import { AppButton } from "@/components/ui/AppButton";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
-import { ProtectedSheetHost } from "@/components/sheets/ProtectedSheetHost";
+import { DeferredProtectedSheetHost } from "@/components/sheets/ProtectedSheetHost";
 import { useUIStore } from "@/store/ui";
 import { useAppRouter as useRouter } from "@/hooks/useAppRouter";
 
@@ -247,7 +247,7 @@ export default function ProtectedLayout() {
     return (
       <>
         <DesktopProtectedShell />
-        <ProtectedSheetHost />
+        <DeferredProtectedSheetHost />
       </>
     );
   }
@@ -263,7 +263,7 @@ export default function ProtectedLayout() {
           freezeOnBlur: true,
         }}
       />
-      <ProtectedSheetHost />
+      <DeferredProtectedSheetHost />
     </>
   );
 }

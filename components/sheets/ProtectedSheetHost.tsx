@@ -1,14 +1,50 @@
-import React, { useCallback } from "react";
+import React, { Suspense, lazy, useCallback } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppToast } from "@/components/ui/toast";
-import { selectSheetOpen, selectSheetPayload, useUIStore } from "@/store/ui";
-import { ChatSheet } from "@/components/chat-sheet/ChatSheet";
-import { EditMemorySheet } from "@/components/EditMemorySheet";
-import { FilePreviewSheet } from "@/components/sheets/FilePreviewSheet";
-import { HomeOverviewSheet } from "@/components/sheets/HomeOverviewSheet";
-import { TurnBreakdownSheet } from "@/components/sheets/TurnBreakdownSheet";
+import { selectSheetOpen, selectSheetPayload, selectSheetStack, useUIStore } from "@/store/ui";
+
+const ChatSheet = lazy(() =>
+  import("@/components/chat-sheet/ChatSheet").then((module) => ({ default: module.ChatSheet })),
+);
+const EditMemorySheet = lazy(() =>
+  import("@/components/EditMemorySheet").then((module) => ({ default: module.EditMemorySheet })),
+);
+const FilePreviewSheet = lazy(() =>
+  import("@/components/sheets/FilePreviewSheet").then((module) => ({
+    default: module.FilePreviewSheet,
+  })),
+);
+const HomeOverviewSheet = lazy(() =>
+  import("@/components/sheets/HomeOverviewSheet").then((module) => ({
+    default: module.HomeOverviewSheet,
+  })),
+);
+const TurnBreakdownSheet = lazy(() =>
+  import("@/components/sheets/TurnBreakdownSheet").then((module) => ({
+    default: module.TurnBreakdownSheet,
+  })),
+);
+
+export function DeferredProtectedSheetHost() {
+  const hasOpenSheet = useUIStore((state) => selectSheetStack(state).length > 0);
+  const [shouldMountHost, setShouldMountHost] = React.useState(false);
+
+  React.useEffect(() => {
+    if (hasOpenSheet) {
+      setShouldMountHost(true);
+    }
+  }, [hasOpenSheet]);
+
+  if (!shouldMountHost) return null;
+
+  return (
+    <Suspense fallback={null}>
+      <ProtectedSheetHost />
+    </Suspense>
+  );
+}
 
 export function ProtectedSheetHost() {
   const { token } = useAuth();

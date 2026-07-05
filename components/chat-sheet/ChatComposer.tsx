@@ -118,7 +118,13 @@ export const ChatComposer = React.memo(function ChatComposer({
     // keeps it from reading as a plain rectangle. No background here: the
     // sheet itself now uses the same color as the message list, so this
     // wrapper is purely layout (padding), not a visible panel.
-    <YStack paddingHorizontal={10} paddingTop={8} paddingBottom={10} gap={8}>
+    <YStack
+      pointerEvents="box-none"
+      paddingHorizontal={10}
+      paddingTop={8}
+      paddingBottom={10}
+      gap={8}
+    >
       {mode === "keyboard" && hasAttachments ? (
         <AttachmentPreviewBar attachments={attachments} onRemove={onRemoveAttachment} />
       ) : null}

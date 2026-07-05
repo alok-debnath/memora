@@ -161,7 +161,7 @@ export function ChatSheet({ visible, onClose }: { visible: boolean; onClose: () 
               pointerEvents="none"
               style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 80 }}
             />
-            <YStack position="absolute" left={0} right={0} bottom={0}>
+            <YStack pointerEvents="box-none" position="absolute" left={0} right={0} bottom={0}>
               <ChatComposer
                 isSending={controller.isSending}
                 onSend={controller.handleSend}

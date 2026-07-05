@@ -17,7 +17,6 @@
     },
     "android": {
       "package": "com.alokdebnath.memora",
-      "scheme": "com.alokdebnath.memora",
       "permissions": ["android.permission.RECORD_AUDIO"]
     },
     "web": {

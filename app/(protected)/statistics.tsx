@@ -913,6 +913,7 @@ export default function AnalyticsScreen() {
         bottomInset={isLargeScreen ? insets.bottom + 16 : insets.bottom}
         keyboardBlurBehavior="restore"
         enableBlurKeyboardOnGesture
+        enableContentPanningGesture={false}
         android_keyboardInputMode="adjustResize"
         stackBehavior="push"
         backdropComponent={renderBackdrop}
