@@ -7,8 +7,12 @@ import {
 } from "@gorhom/bottom-sheet";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import { YStack } from "tamagui";
+import { withAlpha } from "@/components/ui/themeHelpers";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
+import { SheetIdProvider } from "@/components/ui/ContextMenu.shared";
 import { useChatController } from "./useChatController";
 import { ChatHeader } from "./ChatHeader";
 import { ChatMessageList } from "./ChatMessageList";
@@ -52,7 +56,7 @@ export function ChatSheet({ visible, onClose }: { visible: boolean; onClose: () 
   const presentedRef = useRef(false);
   const controller = useChatController();
 
-  const snapPoints = useMemo(() => (isLargeScreen ? ["80%"] : ["85%"]), [isLargeScreen]);
+  const snapPoints = useMemo(() => (isLargeScreen ? ["80%"] : ["95%"]), [isLargeScreen]);
   const sheetBottomInset = isLargeScreen ? insets.bottom + 16 : insets.bottom;
 
   useEffect(() => {
@@ -130,32 +134,49 @@ export function ChatSheet({ visible, onClose }: { visible: boolean; onClose: () 
       bottomInset={sheetBottomInset}
       stackBehavior="push"
       backdropComponent={renderBackdrop}
-      backgroundStyle={{ backgroundColor: theme.surface.val }}
+      backgroundStyle={{ backgroundColor: theme.background.val }}
       onDismiss={handleDismiss}
     >
       {/* Deliberately NOT BottomSheetView: it forces position absolute with
           top/left/right only, so it sizes to content and overflows the sheet
           (with bottom:0 it fills the mask's padded overdrag zone instead,
           pushing the composer offscreen). */}
-      <VisibleContentContainer>
-        <ChatHeader
-          messageCount={controller.messages.length}
-          onClear={controller.handleClearChat}
-          onClose={onClose}
-        />
-        <ChatMessageList controller={controller} />
-        <ChatComposer
-          isSending={controller.isSending}
-          onSend={controller.handleSend}
-          attachments={controller.attachments}
-          onRemoveAttachment={controller.onRemoveAttachment}
-          onPickImages={controller.onPickImages}
-          onPickCamera={controller.onPickCamera}
-          onPickDocument={controller.onPickDocument}
-          driveConnected={controller.driveConnected}
-          onRequestDriveAccess={controller.onRequestDriveAccess}
-        />
-      </VisibleContentContainer>
+      <SheetIdProvider value="unifiedCommand">
+        <VisibleContentContainer>
+          <ChatHeader
+            messageCount={controller.messages.length}
+            onClear={controller.handleClearChat}
+            onClose={onClose}
+          />
+          {/* Composer floats over the list instead of sitting in its own row —
+              the list runs full height underneath and scrolls visibly behind
+              the gaps around the rounded pill. */}
+          <YStack flex={1} position="relative">
+            <ChatMessageList controller={controller} />
+            {/* Fades messages out as they scroll under the floating pill,
+                instead of a hard clip against the transparent overlay. */}
+            <LinearGradient
+              colors={[withAlpha(theme.background.val, "00"), theme.background.val]}
+              locations={[0, 0.75]}
+              pointerEvents="none"
+              style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 80 }}
+            />
+            <YStack position="absolute" left={0} right={0} bottom={0}>
+              <ChatComposer
+                isSending={controller.isSending}
+                onSend={controller.handleSend}
+                attachments={controller.attachments}
+                onRemoveAttachment={controller.onRemoveAttachment}
+                onPickImages={controller.onPickImages}
+                onPickCamera={controller.onPickCamera}
+                onPickDocument={controller.onPickDocument}
+                driveConnected={controller.driveConnected}
+                onRequestDriveAccess={controller.onRequestDriveAccess}
+              />
+            </YStack>
+          </YStack>
+        </VisibleContentContainer>
+      </SheetIdProvider>
     </BottomSheetModal>
   );
 }

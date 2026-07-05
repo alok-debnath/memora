@@ -18,7 +18,6 @@ type RenderMessageOptions = {
   copyMessage: (text: string) => void;
   token?: string | null;
   calendarSyncEnabled?: boolean;
-  onDeepSearch: (messageId: string, query: string) => void;
   onEditMemory: (id: Id<"memories">) => void;
 };
 
@@ -35,7 +34,6 @@ export function useAIChatMessageRenderer({
   copyMessage,
   token,
   calendarSyncEnabled,
-  onDeepSearch,
   onEditMemory,
 }: RenderMessageOptions) {
   const theme = useAppTheme();
@@ -96,7 +94,6 @@ export function useAIChatMessageRenderer({
           cardTurns={cardTurns}
           cardFlow={cardFlow}
           calendarSyncEnabled={calendarSyncEnabled}
-          onDeepSearch={onDeepSearch}
           onEditMemory={onEditMemory}
         />
       );
@@ -105,7 +102,6 @@ export function useAIChatMessageRenderer({
       aiMdStyles,
       calendarSyncEnabled,
       copyMessage,
-      onDeepSearch,
       onEditMemory,
       speakMessage,
       speakingId,

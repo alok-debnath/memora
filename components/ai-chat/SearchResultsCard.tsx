@@ -1,6 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { Platform, Pressable, View } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { useMutation, useQuery } from "convex/react";
@@ -8,7 +7,7 @@ import { Text, XStack, YStack } from "tamagui";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { FontFamily } from "@/constants/fonts";
-import { brandGradients, integrationAccentColors, statusAccentColors } from "@/constants/colors";
+import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { ContextMenu, type ContextMenuItemDef } from "@/components/ui/ContextMenu";
 import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
@@ -24,16 +23,11 @@ const getBubbleShadow = (shadowColor: string) => appShadow(shadowColor, "xs");
 function PerformancePill({
   isCached,
   turns = 1,
-  flow,
-  isDeepSearching = false,
-  onDeepSearch,
   onOpenTelemetry,
 }: {
   isCached: boolean;
   turns?: number;
   flow?: CardFlow;
-  isDeepSearching?: boolean;
-  onDeepSearch?: () => void;
   onOpenTelemetry?: () => void;
 }) {
   const theme = useAppTheme();
@@ -43,26 +37,6 @@ function PerformancePill({
     : isCached
       ? statusAccentColors.warning
       : theme.primary.val;
-  const menuItems = useMemo(
-    () =>
-      [
-        flow?.chatTurnId && onOpenTelemetry
-          ? {
-              label: "Open Full Breakdown",
-              icon: "file-text",
-              onPress: onOpenTelemetry,
-            }
-          : null,
-        isCached && onDeepSearch && !isDeepSearching
-          ? {
-              label: "Run Deep Scan",
-              icon: "refresh-cw",
-              onPress: onDeepSearch,
-            }
-          : null,
-      ].filter(Boolean) as ContextMenuItemDef[],
-    [flow?.chatTurnId, isCached, isDeepSearching, onDeepSearch, onOpenTelemetry],
-  );
 
   const pill = (
     <View
@@ -107,12 +81,8 @@ function PerformancePill({
     </View>
   );
 
-  if (menuItems.length === 0 && !onOpenTelemetry) return pill;
-  return (
-    <ContextMenu items={menuItems} onPress={onOpenTelemetry}>
-      {pill}
-    </ContextMenu>
-  );
+  if (!onOpenTelemetry) return pill;
+  return <Pressable onPress={onOpenTelemetry}>{pill}</Pressable>;
 }
 
 const SearchResultRow = React.memo(function SearchResultRow({
@@ -327,7 +297,11 @@ const SearchResultRow = React.memo(function SearchResultRow({
           width: 32,
           height: 32,
           borderRadius: 16,
-          backgroundColor: isCompleted ? `${success}20` : theme.accent.val,
+          backgroundColor: isCompleted
+            ? withAlpha(success, "20")
+            : isReminder
+              ? withAlpha(theme.warning.val, "18")
+              : withAlpha(theme.primary.val, "15"),
           alignItems: "center",
           justifyContent: "center",
           flexShrink: 0,
@@ -336,7 +310,7 @@ const SearchResultRow = React.memo(function SearchResultRow({
         <Feather
           name={isCompleted ? "check" : isReminder ? "bell" : "file-text"}
           size={14}
-          color={isCompleted ? success : theme.colorMuted.val}
+          color={isCompleted ? success : isReminder ? theme.warning.val : theme.primary.val}
         />
       </View>
 
@@ -461,7 +435,6 @@ export function SearchResultsCard({
   flow,
   token,
   calendarSyncEnabled,
-  onDeepSearch,
   onEdit,
 }: {
   ids: Id<"memories">[];
@@ -470,13 +443,11 @@ export function SearchResultsCard({
   flow?: CardFlow;
   token?: string | null;
   calendarSyncEnabled?: boolean;
-  onDeepSearch?: (query: string) => void;
   onEdit?: (id: Id<"memories">) => void;
 }) {
   const theme = useAppTheme();
   const [expanded, setExpanded] = useState(false);
   const [completedIds, setCompletedIds] = useState<Set<Id<"memories">>>(new Set());
-  const [isDeepSearching, setIsDeepSearching] = useState(false);
   const completeMemory = useMutation(api.memories.complete);
   const deleteMemory = useMutation(api.memories.remove);
   const triggerReminderSync = useMutation(api.integrations.triggerReminderSync);
@@ -587,23 +558,6 @@ export function SearchResultsCard({
     [confirm, removeReminderSync, showToast, token],
   );
 
-  const handleDeepSearch = useCallback(async () => {
-    if (!onDeepSearch || isDeepSearching) return;
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setIsDeepSearching(true);
-    try {
-      onDeepSearch(
-        items
-          .slice(0, 3)
-          .map((item) => item.title ?? "")
-          .filter(Boolean)
-          .join(" "),
-      );
-    } finally {
-      setIsDeepSearching(false);
-    }
-  }, [isDeepSearching, items, onDeepSearch]);
-
   return (
     <Animated.View entering={FadeInDown.duration(320)} style={{ marginTop: 8 }}>
       <YStack
@@ -614,53 +568,30 @@ export function SearchResultsCard({
         overflow="hidden"
         style={getBubbleShadow(theme.shadowColor.val)}
       >
-        <LinearGradient
-          colors={[
-            withAlpha(brandGradients.ember[1], "21"),
-            withAlpha(theme.primary.val, "10"),
-            withAlpha(theme.surfaceElevated.val, "00"),
-          ]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{ paddingHorizontal: 14, paddingTop: 14, paddingBottom: 12 }}
+        <XStack
+          alignItems="center"
+          justifyContent="space-between"
+          gap={10}
+          paddingHorizontal={14}
+          paddingVertical={10}
+          borderBottomWidth={1}
+          borderBottomColor={theme.borderSubtle.val}
         >
-          <XStack alignItems="center" justifyContent="space-between" gap={10}>
-            <YStack gap={6} flex={1}>
-              <XStack gap={8} alignItems="center">
-                <View
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: 14,
-                    backgroundColor: withAlpha(theme.primary.val, "15"),
-                    alignItems: "center",
-                    justifyContent: "center",
-                    borderWidth: 1,
-                    borderColor: withAlpha(theme.primary.val, "22"),
-                  }}
-                >
-                  <Feather name="search" size={13} color={theme.primary.val} />
-                </View>
-                <Text fontSize={14} fontFamily={FontFamily.semiBold} color="$color">
-                  {items.length} {items.length === 1 ? "memory" : "memories"}
-                </Text>
-              </XStack>
-              <Text fontSize={11} fontFamily="$body" color="$colorMuted">
-                Retrieved from your saved memories and reminders
-              </Text>
-            </YStack>
-            <PerformancePill
-              isCached={isCached}
-              turns={turns}
-              flow={flow}
-              isDeepSearching={isDeepSearching}
-              onDeepSearch={isCached && onDeepSearch ? handleDeepSearch : undefined}
-              onOpenTelemetry={
-                flow?.chatTurnId ? () => openTurnBreakdown(flow.chatTurnId!) : undefined
-              }
-            />
+          <XStack gap={6} alignItems="center" flex={1}>
+            <Feather name="search" size={13} color={theme.colorMuted.val} />
+            <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
+              {items.length} {items.length === 1 ? "memory" : "memories"}
+            </Text>
           </XStack>
-        </LinearGradient>
+          <PerformancePill
+            isCached={isCached}
+            turns={turns}
+            flow={flow}
+            onOpenTelemetry={
+              flow?.chatTurnId ? () => openTurnBreakdown(flow.chatTurnId!) : undefined
+            }
+          />
+        </XStack>
 
         <YStack>
           {displayItems.map((item, index) => (
@@ -684,8 +615,11 @@ export function SearchResultsCard({
           <Pressable
             onPress={() => setExpanded((current) => !current)}
             style={({ pressed }) => ({
-              paddingVertical: 12,
+              flexDirection: "row",
+              justifyContent: "center",
               alignItems: "center",
+              gap: 4,
+              paddingVertical: 11,
               borderTopWidth: 1,
               borderTopColor: theme.borderSubtle.val,
               backgroundColor: pressed ? withAlpha(theme.primary.val, "08") : "transparent",
@@ -694,6 +628,11 @@ export function SearchResultsCard({
             <Text fontSize={12} color={theme.primary.val} fontFamily={FontFamily.semiBold}>
               {expanded ? "Show less" : `Show all ${items.length} results`}
             </Text>
+            <Feather
+              name={expanded ? "chevron-up" : "chevron-down"}
+              size={13}
+              color={theme.primary.val}
+            />
           </Pressable>
         ) : null}
       </YStack>

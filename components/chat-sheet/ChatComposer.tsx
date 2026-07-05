@@ -6,40 +6,39 @@ import { XStack, YStack, Text } from "tamagui";
 import { Feather } from "@/lib/icons";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { FontFamily } from "@/constants/fonts";
-import { withAlpha } from "@/components/ui/themeHelpers";
+import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import { AttachmentPreviewBar } from "@/components/AttachmentPreviewBar";
 import { AttachmentPickerButton } from "@/components/AttachmentPickerButton";
-import { VoiceRecorder } from "@/components/VoiceRecorder";
+import { VoiceRecorder, type VoiceRecorderHandle } from "@/components/VoiceRecorder";
 import type { PendingAttachment } from "@/hooks/useFileAttachments";
 
-function RoundIconButton({
+// Ghost icon button — no border, no background fill. Modern chat inputs
+// (iMessage/ChatGPT-style) keep side controls flat; only the input field and
+// the send action get any surface of their own.
+function GhostIconButton({
   icon,
   onPress,
-  accent,
+  size = 20,
 }: {
   icon: React.ComponentProps<typeof Feather>["name"];
   onPress: () => void;
-  accent?: boolean;
+  size?: number;
 }) {
   const theme = useAppTheme();
 
   return (
     <Pressable
       onPress={onPress}
-      hitSlop={6}
+      hitSlop={10}
       style={({ pressed }) => ({
-        width: 38,
-        height: 38,
-        borderRadius: 19,
+        width: 34,
+        height: 34,
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: accent ? withAlpha(theme.primary.val, "14") : theme.card.val,
-        borderWidth: 1,
-        borderColor: accent ? withAlpha(theme.primary.val, "28") : theme.borderSubtle.val,
-        opacity: pressed ? 0.7 : 1,
+        opacity: pressed ? 0.5 : 1,
       })}
     >
-      <Feather name={icon} size={16} color={accent ? theme.primary.val : theme.colorMuted.val} />
+      <Feather name={icon} size={size} color={theme.colorMuted.val} />
     </Pressable>
   );
 }
@@ -70,12 +69,10 @@ export const ChatComposer = React.memo(function ChatComposer({
   const theme = useAppTheme();
   const [text, setText] = useState("");
   const [mode, setMode] = useState<"keyboard" | "voice">("keyboard");
-  const [voiceLiveTranscript, setVoiceLiveTranscript] = useState("");
-  const [isVoicePaused, setIsVoicePaused] = useState(false);
   const inputRef = useRef<ComponentRef<typeof BottomSheetTextInput>>(null);
+  const recorderRef = useRef<VoiceRecorderHandle>(null);
 
   const hasAttachments = attachments.length > 0;
-  const hasLiveTranscript = voiceLiveTranscript.trim().length > 0;
   const canSend = (text.trim().length > 0 || hasAttachments) && !isSending;
 
   const submit = useCallback(() => {
@@ -86,14 +83,16 @@ export const ChatComposer = React.memo(function ChatComposer({
     setText("");
   }, [onSend, hasAttachments, isSending, text]);
 
-  const handleVoiceComplete = useCallback(
-    (transcript: string) => {
-      if (!transcript.trim()) return;
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      void onSend(transcript);
-    },
-    [onSend],
-  );
+  // Voice mode hands the finished transcript back to the regular text input
+  // instead of sending it — the user reviews/edits, then sends like normal.
+  const handleVoiceTranscript = useCallback((transcript: string) => {
+    const trimmed = transcript.trim();
+    setMode("keyboard");
+    if (!trimmed) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setText(trimmed);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, []);
 
   useEffect(() => {
     if (Platform.OS !== "web" || mode !== "keyboard") return;
@@ -111,101 +110,71 @@ export const ChatComposer = React.memo(function ChatComposer({
     return () => element.removeEventListener("keydown", handler);
   }, [mode, submit]);
 
-  return (
-    <YStack
-      backgroundColor={theme.surface.val}
-      borderTopWidth={1}
-      borderTopColor={theme.borderSubtle.val}
-      paddingHorizontal={12}
-      paddingTop={10}
-      paddingBottom={10}
-      gap={8}
-    >
-      {mode === "voice" ? (
-        <YStack gap={8}>
-          {hasLiveTranscript ? (
-            <YStack
-              paddingHorizontal={14}
-              paddingVertical={12}
-              borderRadius={18}
-              backgroundColor={theme.card.val}
-              borderWidth={1}
-              borderColor={
-                isVoicePaused ? theme.borderSubtle.val : withAlpha(theme.primary.val, "28")
-              }
-            >
-              {isVoicePaused ? (
-                <BottomSheetTextInput
-                  value={voiceLiveTranscript}
-                  onChangeText={setVoiceLiveTranscript}
-                  multiline
-                  style={{
-                    fontSize: 14,
-                    fontFamily: FontFamily.regular,
-                    color: theme.color.val,
-                    lineHeight: 20,
-                    padding: 0,
-                    textAlignVertical: "top",
-                  }}
-                />
-              ) : (
-                <Text fontSize={14} fontFamily="$body" color="$color" lineHeight={20}>
-                  {voiceLiveTranscript}
-                </Text>
-              )}
-            </YStack>
-          ) : null}
+  const isVoice = mode === "voice";
 
-          <XStack
-            alignItems="center"
-            justifyContent="center"
-            position="relative"
-            minHeight={72}
-            borderRadius={18}
-            backgroundColor={withAlpha(theme.primary.val, "08")}
-            borderWidth={1}
-            borderColor={withAlpha(theme.primary.val, "14")}
-          >
+  return (
+    // Floats as its own capsule, inset from the sheet edges, instead of a
+    // flush edge-to-edge bar — that inset + full rounding + shadow is what
+    // keeps it from reading as a plain rectangle. No background here: the
+    // sheet itself now uses the same color as the message list, so this
+    // wrapper is purely layout (padding), not a visible panel.
+    <YStack paddingHorizontal={10} paddingTop={8} paddingBottom={10} gap={8}>
+      {mode === "keyboard" && hasAttachments ? (
+        <AttachmentPreviewBar attachments={attachments} onRemove={onRemoveAttachment} />
+      ) : null}
+
+      <XStack
+        alignItems="center"
+        gap={4}
+        minHeight={54}
+        paddingHorizontal={6}
+        borderRadius={27}
+        borderWidth={1}
+        borderColor={isVoice ? withAlpha(theme.primary.val, "30") : theme.borderSubtle.val}
+        backgroundColor={theme.card.val}
+        style={appShadow(theme.color.val, "sm")}
+      >
+        {isVoice ? (
+          <>
             <VoiceRecorder
-              onTranscription={setVoiceLiveTranscript}
-              onTranscriptionComplete={(transcript) => {
-                setVoiceLiveTranscript("");
-                setIsVoicePaused(false);
-                handleVoiceComplete(transcript);
-              }}
-              onPauseChange={setIsVoicePaused}
-              transcriptOverride={isVoicePaused ? voiceLiveTranscript : undefined}
-              compact
+              ref={recorderRef}
+              variant="pill"
+              autoStart
+              onTranscription={() => {}}
+              onTranscriptionComplete={handleVoiceTranscript}
+              onCancel={() => setMode("keyboard")}
               inputMode="auto"
             />
-            <XStack position="absolute" right={10}>
-              <RoundIconButton icon="type" onPress={() => setMode("keyboard")} />
-            </XStack>
-          </XStack>
-        </YStack>
-      ) : (
-        <YStack gap={8}>
-          {hasAttachments ? (
-            <AttachmentPreviewBar attachments={attachments} onRemove={onRemoveAttachment} />
-          ) : null}
-
-          <XStack
-            alignItems="flex-end"
-            paddingHorizontal={8}
-            paddingVertical={6}
-            gap={6}
-            borderWidth={1}
-            borderRadius={24}
-            borderColor={theme.borderSubtle.val}
-            backgroundColor={theme.card.val}
-          >
+            <Pressable
+              onPress={() => {
+                if (recorderRef.current) recorderRef.current.cancel();
+                else setMode("keyboard");
+              }}
+              hitSlop={8}
+              style={{ paddingHorizontal: 10 }}
+            >
+              {({ pressed }) => (
+                <Text
+                  fontSize={13}
+                  fontFamily="$body"
+                  fontWeight="600"
+                  color="$colorMuted"
+                  opacity={pressed ? 0.6 : 1}
+                >
+                  Cancel
+                </Text>
+              )}
+            </Pressable>
+          </>
+        ) : (
+          <>
             <AttachmentPickerButton
               onPickImages={onPickImages}
               onPickCamera={onPickCamera}
               onPickDocument={onPickDocument}
               driveConnected={driveConnected}
               onRequestDriveAccess={onRequestDriveAccess}
-              size={18}
+              size={20}
             />
 
             <BottomSheetTextInput
@@ -220,7 +189,7 @@ export const ChatComposer = React.memo(function ChatComposer({
                 flex: 1,
                 minHeight: 40,
                 maxHeight: 120,
-                paddingHorizontal: 12,
+                paddingHorizontal: 8,
                 paddingVertical: 10,
                 fontSize: 15,
                 fontFamily: FontFamily.regular,
@@ -229,30 +198,30 @@ export const ChatComposer = React.memo(function ChatComposer({
               }}
             />
 
-            <RoundIconButton icon="mic" onPress={() => setMode("voice")} />
+            <GhostIconButton icon="mic" onPress={() => setMode("voice")} />
 
             <Pressable onPress={submit} disabled={!canSend} hitSlop={6}>
               {({ pressed }) => (
                 <XStack
                   alignItems="center"
                   justifyContent="center"
-                  width={38}
-                  height={38}
-                  borderRadius={19}
-                  backgroundColor={canSend ? theme.primary.val : theme.borderColor.val}
+                  width={36}
+                  height={36}
+                  borderRadius={18}
+                  backgroundColor={canSend ? theme.primary.val : "transparent"}
                   opacity={pressed ? 0.8 : 1}
                 >
                   <Feather
                     name="arrow-up"
-                    size={18}
+                    size={17}
                     color={canSend ? theme.textInverse.val : theme.colorMuted.val}
                   />
                 </XStack>
               )}
             </Pressable>
-          </XStack>
-        </YStack>
-      )}
+          </>
+        )}
+      </XStack>
     </YStack>
   );
 });

@@ -75,7 +75,6 @@ export function useChatController(): ChatSheetController {
     token ? { token } : "skip",
   );
   const sendMessage = useAction(api.actions.memoryChat.chat);
-  const runDeepSearch = useAction(api.chat.deepSearch);
   const clearChat = useMutation(api.chat.clear);
 
   const driveConnected = canUseGoogleDrive(googleIntegration ?? null);
@@ -255,24 +254,10 @@ export function useChatController(): ChatSheetController {
     return base;
   }, [isSending, messages, optimisticMessage, searchStatus]);
 
-  const handleDeepSearch = useCallback(
-    async (messageId: string, query: string) => {
-      if (!token) return;
-      try {
-        await runDeepSearch({ token, query, messageId: messageId as Id<"chatMessages"> });
-        showToast({ title: "Deep scan complete", tone: "success" });
-      } catch {
-        showToast({ title: "Deep scan failed — try again", tone: "error" });
-      }
-    },
-    [runDeepSearch, showToast, token],
-  );
-
   const renderMessage = useAIChatMessageRenderer({
     copyMessage,
     token,
     calendarSyncEnabled,
-    onDeepSearch: handleDeepSearch,
     onEditMemory: handleEditMemory,
   });
 

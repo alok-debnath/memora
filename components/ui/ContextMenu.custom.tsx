@@ -38,12 +38,13 @@ import { useAppTheme } from "@/hooks/useAppTheme";
 import { useThemeStore } from "@/store/theme";
 import { useUIStore } from "@/store/ui";
 import { Text, XStack, YStack } from "tamagui";
-import { useBackdropBlurHost } from "./BackdropBlurProvider";
+import { useTopOverlayHost } from "./BackdropBlurProvider";
 import { appShadow, withAlpha } from "./themeHelpers";
 import {
   ContextMenuHandle,
   type ContextMenuItemDef,
   type ContextMenuProps,
+  useContextMenuSheetId,
 } from "./ContextMenu.shared";
 import type { AppTheme } from "@/hooks/useAppTheme";
 
@@ -382,13 +383,23 @@ export const ContextMenu = React.forwardRef<ContextMenuHandle, ContextMenuProps>
   ) {
     const theme = useAppTheme();
     const { resolvedMode } = useThemeStore();
-    // Any app sheet/modal being open (edit sheet, command panel, etc.) fully
-    // disables this trigger's gesture recognizer below — a sheet's own
-    // backdrop can't be trusted to block a GestureDetector-based recognizer
-    // the way it blocks a plain Pressable, so the recognizer itself must
-    // never turn on while one is showing.
-    const anySheetOpen = useUIStore((state) => state.sheetStack.length > 0);
-    const host = useBackdropBlurHost();
+    // Any sheet stacked ABOVE this trigger's own sheet (or, for triggers
+    // outside any sheet, any sheet at all) fully disables the gesture
+    // recognizer below — a sheet's own backdrop can't be trusted to block a
+    // GestureDetector-based recognizer the way it blocks a plain Pressable,
+    // so the recognizer itself must never turn on while something covers it.
+    // Compared by stack position (not just "any sheet open") because a
+    // trigger's own enclosing sheet is itself on the stack — e.g. a
+    // SearchResultsCard menu inside the chat sheet must stay enabled while
+    // the chat sheet is the only one open.
+    const ownSheetId = useContextMenuSheetId();
+    const sheetStack = useUIStore((state) => state.sheetStack);
+    const anySheetOpen = useMemo(() => {
+      if (ownSheetId == null) return sheetStack.length > 0;
+      const index = sheetStack.indexOf(ownSheetId);
+      return index === -1 || index < sheetStack.length - 1;
+    }, [ownSheetId, sheetStack]);
+    const host = useTopOverlayHost();
     const overlayId = useId();
     const { width: windowWidth, height: windowHeight } = useWindowDimensions();
     const insets = useSafeAreaInsets();

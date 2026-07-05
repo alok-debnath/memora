@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { Keyboard, Linking, Pressable, View } from "react-native";
+import { Keyboard, Linking, Pressable } from "react-native";
 import { TouchableWithoutFeedback } from "@gorhom/bottom-sheet";
 import { Markdown } from "@believer/react-native-markdown-display";
 import Animated, {
@@ -27,11 +27,12 @@ import { extractSpeakableText, formatMessageTime } from "./rendererUtils";
 
 const CHAT = {
   bubbleRadius: 18,
-  bubblePadding: 14,
-  messageGap: 14,
+  bubblePadding: 12,
+  bubbleMinWidth: 72,
+  messageGap: 10,
 } as const;
 
-const getBubbleShadow = (shadowColor: string) => appShadow(shadowColor, "xs");
+const getBubbleShadow = (shadowColor: string) => appShadow(shadowColor, "sm");
 
 function AttachmentChip({
   name,
@@ -98,7 +99,6 @@ export const ChatBubble = React.memo(function ChatBubble({
   cardTurns,
   cardFlow,
   calendarSyncEnabled,
-  onDeepSearch,
   onEditMemory,
 }: {
   msg: ChatMsg;
@@ -114,7 +114,6 @@ export const ChatBubble = React.memo(function ChatBubble({
   cardTurns?: number;
   cardFlow?: CardFlow;
   calendarSyncEnabled?: boolean;
-  onDeepSearch?: (messageId: string, query: string) => void;
   onEditMemory?: (id: Id<"memories">) => void;
 }) {
   const theme = useAppTheme();
@@ -122,7 +121,6 @@ export const ChatBubble = React.memo(function ChatBubble({
   const [showActions, setShowActions] = useState(false);
   const scaleAnim = useSharedValue(1);
   const messageTime = useMemo(() => formatMessageTime(msg._creationTime), [msg._creationTime]);
-  const headerTone = isUser ? withAlpha(theme.textInverse.val, "CC") : theme.colorMuted.val;
   const actionBackground = isUser ? withAlpha(theme.primary.val, "18") : theme.backgroundStrong.val;
 
   const bubbleStyle = useAnimatedStyle(() => ({
@@ -159,31 +157,12 @@ export const ChatBubble = React.memo(function ChatBubble({
                     borderRadius={CHAT.bubbleRadius}
                     borderBottomRightRadius={6}
                     paddingHorizontal={CHAT.bubblePadding}
-                    paddingVertical={12}
-                    backgroundColor={theme.primary.val}
+                    paddingVertical={4}
+                    minWidth={CHAT.bubbleMinWidth}
+                    backgroundColor={withAlpha(theme.primary.val, "D6")}
                     gap={msg.attachments && msg.attachments.length > 0 ? 8 : 0}
                     style={getBubbleShadow(theme.shadowColor.val)}
                   >
-                    <XStack justifyContent="space-between" alignItems="center" marginBottom={4}>
-                      <Text
-                        fontSize={10}
-                        fontFamily="$body"
-                        fontWeight="700"
-                        letterSpacing={0.4}
-                        color={headerTone}
-                      >
-                        YOU
-                      </Text>
-                      {messageTime ? (
-                        <Text
-                          fontSize={10}
-                          fontFamily="$body"
-                          color={withAlpha(theme.textInverse.val, "A8")}
-                        >
-                          {messageTime}
-                        </Text>
-                      ) : null}
-                    </XStack>
                     {msg.content ? <Markdown style={mdStyles}>{msg.content}</Markdown> : null}
                     {msg.attachments?.length ? (
                       <YStack gap={4}>
@@ -201,7 +180,8 @@ export const ChatBubble = React.memo(function ChatBubble({
                 ) : (
                   <YStack
                     paddingHorizontal={CHAT.bubblePadding}
-                    paddingVertical={12}
+                    paddingVertical={4}
+                    minWidth={CHAT.bubbleMinWidth}
                     borderRadius={CHAT.bubbleRadius}
                     backgroundColor={theme.surfaceElevated.val}
                     borderWidth={1}
@@ -209,38 +189,6 @@ export const ChatBubble = React.memo(function ChatBubble({
                     style={[{ borderBottomLeftRadius: 6 }, getBubbleShadow(theme.shadowColor.val)]}
                     gap={msg.attachments && msg.attachments.length > 0 ? 8 : 0}
                   >
-                    <XStack justifyContent="space-between" alignItems="center" marginBottom={4}>
-                      <XStack gap={6} alignItems="center">
-                        <View
-                          style={{
-                            width: 18,
-                            height: 18,
-                            borderRadius: 9,
-                            alignItems: "center",
-                            justifyContent: "center",
-                            backgroundColor: withAlpha(theme.primary.val, "14"),
-                            borderWidth: 1,
-                            borderColor: withAlpha(theme.primary.val, "20"),
-                          }}
-                        >
-                          <Feather name="cpu" size={10} color={theme.primary.val} />
-                        </View>
-                        <Text
-                          fontSize={10}
-                          fontFamily="$body"
-                          fontWeight="700"
-                          letterSpacing={0.4}
-                          color="$primary"
-                        >
-                          MEMORA
-                        </Text>
-                      </XStack>
-                      {messageTime ? (
-                        <Text fontSize={10} fontFamily="$body" color="$colorMuted">
-                          {messageTime}
-                        </Text>
-                      ) : null}
-                    </XStack>
                     {msg.content ? <Markdown style={mdStyles}>{msg.content}</Markdown> : null}
                   </YStack>
                 )}
@@ -277,6 +225,18 @@ export const ChatBubble = React.memo(function ChatBubble({
               </Animated.View>
             ) : null}
           </XStack>
+
+          {messageTime ? (
+            <Text
+              fontSize={10}
+              fontFamily="$body"
+              color="$colorMuted"
+              alignSelf={isUser ? "flex-end" : "flex-start"}
+              paddingHorizontal={4}
+            >
+              {messageTime}
+            </Text>
+          ) : null}
 
           {showActions ? (
             <Animated.View entering={ZoomIn.duration(200)}>
@@ -323,7 +283,6 @@ export const ChatBubble = React.memo(function ChatBubble({
           flow={cardFlow}
           token={token}
           calendarSyncEnabled={calendarSyncEnabled}
-          onDeepSearch={onDeepSearch ? (query) => onDeepSearch(msg._id, query) : undefined}
           onEdit={onEditMemory}
         />
       ) : null}

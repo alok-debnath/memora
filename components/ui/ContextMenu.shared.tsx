@@ -1,7 +1,17 @@
-import React from "react";
+import React, { createContext, useContext } from "react";
 import { Pressable } from "react-native";
 import type { SFSymbol } from "sf-symbols-typescript";
 import type { FeatherIconName } from "@/lib/icons";
+import type { SheetId } from "@/store/ui";
+
+// Lets a ContextMenu rendered inside a sheet's content identify which sheet
+// it belongs to, so it can tell "a sheet is stacked above mine" (should
+// disable) apart from "I *am* the topmost/only open sheet" (should not).
+const SheetIdContext = createContext<SheetId | null>(null);
+export const SheetIdProvider = SheetIdContext.Provider;
+export function useContextMenuSheetId() {
+  return useContext(SheetIdContext);
+}
 
 export interface ContextMenuHandle {
   open: () => void;

@@ -10,15 +10,7 @@ function EmptyState() {
   const theme = useAppTheme();
 
   return (
-    // The list is inverted, so counter-flip the empty state upright.
-    <YStack
-      flex={1}
-      alignItems="center"
-      justifyContent="center"
-      paddingHorizontal={32}
-      gap={14}
-      style={{ transform: [{ scaleY: -1 }] }}
-    >
+    <YStack flex={1} alignItems="center" justifyContent="center" paddingHorizontal={32} gap={14}>
       <XStack
         width={56}
         height={56}
@@ -63,8 +55,11 @@ export function ChatMessageList({ controller }: { controller: ChatSheetControlle
       ListEmptyComponent={<EmptyState />}
       contentContainerStyle={{
         paddingHorizontal: 16,
-        // Inverted: content start (paddingTop) is the visual bottom.
-        paddingTop: 12,
+        // Inverted: content start (paddingTop) is the visual bottom. Composer
+        // now floats over the list instead of pushing it up, so this has to
+        // clear the floating pill's own height + margins (~92) or the newest
+        // message would render underneath it.
+        paddingTop: 100,
         paddingBottom: 16,
         flexGrow: 1,
       }}
