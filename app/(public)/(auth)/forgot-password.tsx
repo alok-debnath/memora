@@ -76,7 +76,7 @@ export default function ForgotPasswordScreen() {
               lineHeight={22}
               fontFamily={FontFamily.regular}
               textAlign="center"
-              color="$colorMuted"
+              color={theme.colorMuted.val}
             >
               If an account exists with {email}, you’ll receive instructions to reset your password.
             </Text>

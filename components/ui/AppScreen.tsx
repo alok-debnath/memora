@@ -4,6 +4,7 @@ import { XStack, YStack, Text } from "tamagui";
 
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
 import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
+import { useAppTheme } from "@/hooks/useAppTheme";
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
 
 type AppScreenProps = {
@@ -27,9 +28,10 @@ export function AppScreen({
 }: AppScreenProps) {
   const isLargeScreen = useIsLargeScreen();
   const tabBarPadding = useTabBarBottomPadding();
+  const theme = useAppTheme();
 
   return (
-    <YStack flex={1} backgroundColor="$background">
+    <YStack flex={1} backgroundColor={theme.background.val}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -54,7 +56,7 @@ export function AppScreen({
               <YStack flex={1} gap={3}>
                 {title ? (
                   <Text
-                    color="$color"
+                    color={theme.color.val}
                     fontSize={isLargeScreen ? 30 : 26}
                     lineHeight={isLargeScreen ? 34 : 30}
                     fontFamily="$heading"
@@ -64,7 +66,7 @@ export function AppScreen({
                   </Text>
                 ) : null}
                 {subtitle ? (
-                  <Text color="$colorMuted" fontSize={13} lineHeight={18} maxWidth={720}>
+                  <Text color={theme.colorMuted.val} fontSize={13} lineHeight={18} maxWidth={720}>
                     {subtitle}
                   </Text>
                 ) : null}
@@ -89,6 +91,8 @@ type SectionCardProps = {
 };
 
 export function SectionCard({ children, title, eyebrow, action, padded = true }: SectionCardProps) {
+  const theme = useAppTheme();
+
   return (
     <SurfaceCard variant="frosted" padding={padded ? 14 : 0} radius={16}>
       <YStack gap={12}>
@@ -97,7 +101,7 @@ export function SectionCard({ children, title, eyebrow, action, padded = true }:
             <YStack flex={1} gap={4}>
               {eyebrow ? (
                 <Text
-                  color="$primary"
+                  color={theme.primary.val}
                   fontSize={11}
                   letterSpacing={1.2}
                   textTransform="uppercase"
@@ -107,7 +111,7 @@ export function SectionCard({ children, title, eyebrow, action, padded = true }:
                 </Text>
               ) : null}
               {title ? (
-                <Text color="$color" fontSize={16} fontFamily="$heading" fontWeight="700">
+                <Text color={theme.color.val} fontSize={16} fontFamily="$heading" fontWeight="700">
                   {title}
                 </Text>
               ) : null}

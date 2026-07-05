@@ -7,12 +7,12 @@ import { Text, XStack, YStack } from "tamagui";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { FontFamily } from "@/constants/fonts";
-import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { ContextMenu, type ContextMenuItemDef } from "@/components/ui/ContextMenu";
 import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import { useAppToast } from "@/components/ui/toast";
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
 import { Feather, FontAwesome5 } from "@/lib/icons";
 import { useUIStore } from "@/store/ui";
 import type { CardFlow, SearchResultItem } from "./types";
@@ -31,11 +31,12 @@ function PerformancePill({
   onOpenTelemetry?: () => void;
 }) {
   const theme = useAppTheme();
+  const semantic = useSemanticColors();
   const isReasoned = turns > 1;
   const baseColor = isReasoned
-    ? integrationAccentColors.reasoning
+    ? semantic.integration.reasoning
     : isCached
-      ? statusAccentColors.warning
+      ? semantic.status.warning
       : theme.primary.val;
 
   const pill = (
@@ -109,6 +110,7 @@ const SearchResultRow = React.memo(function SearchResultRow({
   hasFiles?: boolean;
 }) {
   const theme = useAppTheme();
+  const semantic = useSemanticColors();
   const isReminder = item.entry_kind === "reminder" || !!item.schedule_due_at;
   const hasGoogleSyncInfo = !!(
     item.google_event_id ||
@@ -209,25 +211,30 @@ const SearchResultRow = React.memo(function SearchResultRow({
           />
         </View>
         <YStack flex={1} gap={2}>
-          <Text fontSize={14} fontFamily={FontFamily.semiBold} color="$color" numberOfLines={2}>
+          <Text
+            fontSize={14}
+            fontFamily={FontFamily.semiBold}
+            color={theme.color.val}
+            numberOfLines={2}
+          >
             {item.title || "Untitled memory"}
           </Text>
           {item.entry_kind ? (
-            <Text fontSize={11} color="$colorMuted">
+            <Text fontSize={11} color={theme.colorMuted.val}>
               {isReminder ? "Reminder" : "Memory"}
             </Text>
           ) : null}
         </YStack>
       </XStack>
       {item.content ? (
-        <Text fontSize={12} fontFamily="$body" color="$colorMuted" numberOfLines={3}>
+        <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val} numberOfLines={3}>
           {item.content}
         </Text>
       ) : null}
       {isReminder && dueAtLabel ? (
         <XStack alignItems="center" gap={5}>
           <Feather name="bell" size={11} color={theme.primary.val} />
-          <Text fontSize={11} fontFamily={FontFamily.semiBold} color="$primary">
+          <Text fontSize={11} fontFamily={FontFamily.semiBold} color={theme.primary.val}>
             {dueAtLabel}
           </Text>
         </XStack>
@@ -259,19 +266,19 @@ const SearchResultRow = React.memo(function SearchResultRow({
               paddingVertical={5}
               borderRadius={20}
               borderWidth={1}
-              borderColor={withAlpha(integrationAccentColors.googleDrive, "40")}
-              backgroundColor={withAlpha(integrationAccentColors.googleDrive, "12")}
+              borderColor={withAlpha(semantic.integration.googleDrive, "40")}
+              backgroundColor={withAlpha(semantic.integration.googleDrive, "12")}
             >
               <FontAwesome5
                 name="google-drive"
                 iconStyle="brand"
                 size={12}
-                color={integrationAccentColors.googleDrive}
+                color={semantic.integration.googleDrive}
               />
               <Text
                 fontSize={11}
                 fontFamily={FontFamily.semiBold}
-                color={integrationAccentColors.googleDrive}
+                color={semantic.integration.googleDrive}
               >
                 in Drive
               </Text>
@@ -289,7 +296,7 @@ const SearchResultRow = React.memo(function SearchResultRow({
       gap={12}
       alignItems="center"
       borderTopWidth={index > 0 ? 1 : 0}
-      borderTopColor="$borderColor"
+      borderTopColor={theme.borderColor.val}
       opacity={isCompleted ? 0.45 : 1}
     >
       <View
@@ -318,21 +325,21 @@ const SearchResultRow = React.memo(function SearchResultRow({
         <Text
           fontSize={13}
           fontFamily={FontFamily.semiBold}
-          color="$color"
+          color={theme.color.val}
           numberOfLines={1}
           textDecorationLine={isCompleted ? "line-through" : "none"}
         >
           {item.title || "Untitled memory"}
         </Text>
         {item.content ? (
-          <Text fontSize={11} fontFamily="$body" color="$colorMuted" numberOfLines={1}>
+          <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val} numberOfLines={1}>
             {item.content}
           </Text>
         ) : null}
         {isReminder && dueAtLabel ? (
           <XStack alignItems="center" gap={5}>
             <Feather name="bell" size={10} color={theme.primary.val} />
-            <Text fontSize={10} fontFamily={FontFamily.semiBold} color="$primary">
+            <Text fontSize={10} fontFamily={FontFamily.semiBold} color={theme.primary.val}>
               {dueAtLabel}
             </Text>
           </XStack>
@@ -364,19 +371,19 @@ const SearchResultRow = React.memo(function SearchResultRow({
                 paddingVertical={4}
                 borderRadius={20}
                 borderWidth={1}
-                borderColor={withAlpha(integrationAccentColors.googleDrive, "40")}
-                backgroundColor={withAlpha(integrationAccentColors.googleDrive, "12")}
+                borderColor={withAlpha(semantic.integration.googleDrive, "40")}
+                backgroundColor={withAlpha(semantic.integration.googleDrive, "12")}
               >
                 <FontAwesome5
                   name="google-drive"
                   iconStyle="brand"
                   size={10}
-                  color={integrationAccentColors.googleDrive}
+                  color={semantic.integration.googleDrive}
                 />
                 <Text
                   fontSize={10}
                   fontFamily={FontFamily.semiBold}
-                  color={integrationAccentColors.googleDrive}
+                  color={semantic.integration.googleDrive}
                 >
                   in Drive
                 </Text>
@@ -388,7 +395,7 @@ const SearchResultRow = React.memo(function SearchResultRow({
 
       <XStack gap={4} alignItems="center">
         {item._score !== undefined ? (
-          <Text fontSize={10} color="$colorMuted" opacity={0.5}>
+          <Text fontSize={10} color={theme.colorMuted.val} opacity={0.5}>
             {Math.round(item._score * 100)}%
           </Text>
         ) : null}
@@ -397,7 +404,7 @@ const SearchResultRow = React.memo(function SearchResultRow({
           openOn="press"
           preview={
             Platform.OS === "ios" ? (
-              <YStack backgroundColor="$card" borderRadius={18}>
+              <YStack backgroundColor={theme.card.val} borderRadius={18}>
                 {previewCard}
               </YStack>
             ) : undefined
@@ -579,7 +586,7 @@ export function SearchResultsCard({
         >
           <XStack gap={6} alignItems="center" flex={1}>
             <Feather name="search" size={13} color={theme.colorMuted.val} />
-            <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
+            <Text fontSize={13} fontFamily={FontFamily.semiBold} color={theme.color.val}>
               {items.length} {items.length === 1 ? "memory" : "memories"}
             </Text>
           </XStack>

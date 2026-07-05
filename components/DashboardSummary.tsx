@@ -3,7 +3,7 @@ import { Feather, type FeatherIconName } from "@/lib/icons";
 import { XStack, YStack, Text } from "tamagui";
 import { Card } from "./ui/Card";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { statAccentColors } from "@/constants/colors";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
 
 interface StatCardProps {
   icon: FeatherIconName;
@@ -38,10 +38,16 @@ function StatCard({ icon, label, value, color }: StatCardProps) {
         >
           <Feather name={icon} size={19} color={color} />
         </YStack>
-        <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color" marginBottom={2}>
+        <Text
+          fontSize={22}
+          fontFamily="$heading"
+          fontWeight="700"
+          color={theme.color.val}
+          marginBottom={2}
+        >
           {value}
         </Text>
-        <Text fontSize={11} fontFamily="$body" fontWeight="600" color="$colorMuted">
+        <Text fontSize={11} fontFamily="$body" fontWeight="600" color={theme.colorMuted.val}>
           {label}
         </Text>
       </Card>
@@ -60,27 +66,29 @@ export function DashboardSummary({
   totalReminders,
   categories,
 }: DashboardSummaryProps) {
+  const semantic = useSemanticColors();
+
   return (
     <XStack gap={10} paddingHorizontal={16}>
       <StatCard
         icon="layers"
         label="Memories"
         value={totalMemories}
-        color={statAccentColors.memories}
+        color={semantic.stat.memories}
         index={0}
       />
       <StatCard
         icon="bell"
         label="Reminders"
         value={totalReminders}
-        color={statAccentColors.reminders}
+        color={semantic.stat.reminders}
         index={1}
       />
       <StatCard
         icon="folder"
         label="Categories"
         value={categories}
-        color={statAccentColors.categories}
+        color={semantic.stat.categories}
         index={2}
       />
     </XStack>

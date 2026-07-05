@@ -170,7 +170,7 @@ export const ChatComposer = React.memo(function ChatComposer({
                     fontSize={13}
                     fontFamily="$body"
                     fontWeight="600"
-                    color="$colorMuted"
+                    color={theme.colorMuted.val}
                     opacity={pressed ? 0.6 : 1}
                   >
                     Cancel

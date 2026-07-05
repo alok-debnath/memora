@@ -611,7 +611,13 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
         return (
           <XStack flex={1} alignItems="center" gap={8}>
             <Feather name="mic-off" size={16} color={theme.colorMuted.val} />
-            <Text flex={1} fontSize={13} fontFamily="$body" color="$colorMuted" numberOfLines={1}>
+            <Text
+              flex={1}
+              fontSize={13}
+              fontFamily="$body"
+              color={theme.colorMuted.val}
+              numberOfLines={1}
+            >
               {statusMessage}
             </Text>
           </XStack>
@@ -659,7 +665,13 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
 
           {isRecording ? (
             <XStack flex={1} alignItems="center" gap={10}>
-              <Text fontSize={15} fontFamily="$body" fontWeight="600" color="$color" minWidth={36}>
+              <Text
+                fontSize={15}
+                fontFamily="$body"
+                fontWeight="600"
+                color={theme.color.val}
+                minWidth={36}
+              >
                 {formatDuration(duration)}
               </Text>
               <XStack flex={1} alignItems="center" gap={3} height={16}>
@@ -686,7 +698,7 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
               fontSize={13}
               fontFamily="$body"
               fontWeight={isStarting ? "600" : "500"}
-              color={isStarting ? "$color" : "$colorMuted"}
+              color={isStarting ? theme.color.val : theme.colorMuted.val}
             >
               {statusLabel}
             </Text>
@@ -699,7 +711,7 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
       return (
         <YStack alignItems="center" justifyContent="center" gap={12} paddingVertical={16}>
           <Feather name="mic-off" size={32} color={theme.colorMuted.val} />
-          <Text fontSize={14} fontFamily="$body" textAlign="center" color="$colorMuted">
+          <Text fontSize={14} fontFamily="$body" textAlign="center" color={theme.colorMuted.val}>
             {statusMessage}
           </Text>
         </YStack>
@@ -798,7 +810,7 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
         </XStack>
 
         {isRecording && (
-          <Text fontSize={24} fontFamily="$body" fontWeight="600" color="$color">
+          <Text fontSize={24} fontFamily="$body" fontWeight="600" color={theme.color.val}>
             {formatDuration(duration)}
           </Text>
         )}
@@ -827,7 +839,7 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
           />
         )}
 
-        <Text fontSize={14} fontFamily="$body" textAlign="center" color="$colorMuted">
+        <Text fontSize={14} fontFamily="$body" textAlign="center" color={theme.colorMuted.val}>
           {statusLabel}
         </Text>
       </YStack>

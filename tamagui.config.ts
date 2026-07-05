@@ -2,6 +2,7 @@ import { createAnimations } from "@tamagui/animations-react-native";
 import { defaultConfig } from "@tamagui/config/v4";
 import { createFont, createTamagui } from "tamagui";
 import { FontFamily } from "@/constants/fonts";
+import { createThemeColors, MEMORA_ACCENT } from "@/constants/themePalettes";
 
 const animations = createAnimations({
   fast: {
@@ -88,142 +89,36 @@ const interFont = createFont({
   },
 });
 
-const lightTheme = {
-  background: "#F7F1E8",
-  backgroundHover: "#F2E8DA",
-  backgroundPress: "#E8D7BF",
-  backgroundFocus: "#F2E8DA",
-  backgroundStrong: "#FFFFFF",
-  backgroundTransparent: "rgba(247, 241, 232, 0)",
+export const lightTheme = createThemeColors(MEMORA_ACCENT, "light");
+export const darkTheme = createThemeColors(MEMORA_ACCENT, "dark");
 
-  color: "#1B1814",
-  colorHover: "#1B1814",
-  colorPress: "#1B1814",
-  colorFocus: "#1B1814",
-  colorTransparent: "rgba(27, 24, 20, 0)",
-  colorMuted: "#6C6256",
+export function createAppTamaguiConfig(themes?: {
+  light: typeof lightTheme;
+  dark: typeof darkTheme;
+}) {
+  return createTamagui({
+    ...defaultConfig,
+    animations,
+    defaultTheme: "light",
+    shouldAddPrefersColorThemes: false,
+    themeClassNameOnRoot: true,
+    fonts: {
+      ...defaultConfig.fonts,
+      heading: interFont,
+      body: interFont,
+    },
+    themes: themes ?? {
+      light: lightTheme,
+      dark: darkTheme,
+    },
+    settings: {
+      ...defaultConfig.settings,
+      styleCompat: "react-native",
+    },
+  });
+}
 
-  primary: "#C98522",
-  primaryHover: "#E9AD4A",
-
-  secondary: "#EFE3D3",
-  secondaryHover: "#E8D7BF",
-
-  accent: "#F3E2C1",
-  accentHover: "#F2C66E",
-
-  destructive: "#EF4444",
-  destructiveHover: "#F87171",
-
-  success: "#10B981",
-  warning: "#F59E0B",
-  info: "#3B82F6",
-
-  borderColor: "#DCC7AB",
-  borderColorHover: "#D2BA9B",
-  borderColorFocus: "#C98522",
-  borderColorPress: "#C98522",
-
-  shadowColor: "#5C3F19",
-  shadowColorHover: "#5C3F19",
-
-  // Semantic aliases used across the app
-  card: "#FFFDFC",
-  cardBorder: "#E7D7C2",
-  overlay: "rgba(0, 0, 0, 0.4)",
-  overlayStrong: "rgba(0, 0, 0, 0.52)",
-  surface: "#FFFDFC",
-  surfaceElevated: "#FFFFFF",
-  surfaceAccent: "#FCF0DB",
-  surfaceDangerSoft: "#FEF2F2",
-  surfaceSuccessSoft: "#ECFDF5",
-  textInverse: "#FFFFFF",
-  textSuccess: "#15803D",
-  textWarning: "#B45309",
-  textError: "#B91C1C",
-  borderStrong: "#C7A06E",
-  borderSubtle: "#EADCC7",
-  focusRing: "#D99C36",
-};
-
-const darkTheme = {
-  background: "#18120D",
-  backgroundHover: "#241B14",
-  backgroundPress: "#33271D",
-  backgroundFocus: "#241B14",
-  backgroundStrong: "#2B2018",
-  backgroundTransparent: "rgba(24, 18, 13, 0)",
-
-  color: "#FBF4EA",
-  colorHover: "#FBF4EA",
-  colorPress: "#FBF4EA",
-  colorFocus: "#FBF4EA",
-  colorTransparent: "rgba(251, 244, 234, 0)",
-  colorMuted: "#CCBCA6",
-
-  primary: "#E9AD4A",
-  primaryHover: "#F2C66E",
-
-  secondary: "#2D2219",
-  secondaryHover: "#3A2E23",
-
-  accent: "#33271D",
-  accentHover: "#433325",
-
-  destructive: "#F87171",
-  destructiveHover: "#FCA5A5",
-
-  success: "#34D399",
-  warning: "#FBBF24",
-  info: "#60A5FA",
-
-  borderColor: "#433325",
-  borderColorHover: "#533F2F",
-  borderColorFocus: "#E9AD4A",
-  borderColorPress: "#E9AD4A",
-
-  shadowColor: "#000000",
-  shadowColorHover: "#000000",
-
-  // Semantic aliases used across the app
-  card: "#221913",
-  cardBorder: "#433325",
-  overlay: "rgba(0, 0, 0, 0.6)",
-  overlayStrong: "rgba(0, 0, 0, 0.72)",
-  surface: "#221913",
-  surfaceElevated: "#2B2018",
-  surfaceAccent: "#35281E",
-  surfaceDangerSoft: "#3D201B",
-  surfaceSuccessSoft: "#172B24",
-  textInverse: "#FFF8F0",
-  textSuccess: "#6EE7B7",
-  textWarning: "#FCD34D",
-  textError: "#FCA5A5",
-  borderStrong: "#6B523A",
-  borderSubtle: "#35281E",
-  focusRing: "#F2C66E",
-};
-
-export const tamaguiConfig = createTamagui({
-  ...defaultConfig,
-  animations,
-  defaultTheme: "light",
-  shouldAddPrefersColorThemes: false,
-  themeClassNameOnRoot: true,
-  fonts: {
-    ...defaultConfig.fonts,
-    heading: interFont,
-    body: interFont,
-  },
-  themes: {
-    light: lightTheme,
-    dark: darkTheme,
-  },
-  settings: {
-    ...defaultConfig.settings,
-    styleCompat: "react-native",
-  },
-});
+export const tamaguiConfig = createAppTamaguiConfig();
 
 export default tamaguiConfig;
 

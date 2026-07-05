@@ -88,7 +88,7 @@ export default function ResetPasswordScreen() {
               lineHeight={22}
               fontFamily={FontFamily.regular}
               textAlign="center"
-              color="$colorMuted"
+              color={theme.colorMuted.val}
             >
               You can now sign in with your new password.
             </Text>
@@ -116,7 +116,7 @@ export default function ResetPasswordScreen() {
                   onPress={() => setShowNewPassword((value) => !value)}
                   style={{ paddingHorizontal: 10, paddingVertical: 8 }}
                 >
-                  <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$colorMuted">
+                  <Text fontSize={13} fontFamily={FontFamily.semiBold} color={theme.colorMuted.val}>
                     {showNewPassword ? "Hide" : "Show"}
                   </Text>
                 </PressableScale>
@@ -137,7 +137,7 @@ export default function ResetPasswordScreen() {
                   onPress={() => setShowConfirmPassword((value) => !value)}
                   style={{ paddingHorizontal: 10, paddingVertical: 8 }}
                 >
-                  <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$colorMuted">
+                  <Text fontSize={13} fontFamily={FontFamily.semiBold} color={theme.colorMuted.val}>
                     {showConfirmPassword ? "Hide" : "Show"}
                   </Text>
                 </PressableScale>

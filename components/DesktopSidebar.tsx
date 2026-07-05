@@ -7,7 +7,6 @@ import { PressableScale } from "./ui/PressableScale";
 import { FontFamily } from "@/constants/fonts";
 import { AppButton } from "./ui/AppButton";
 import { SurfaceCard } from "./ui/SurfaceCard";
-import { brandGradients } from "@/constants/colors";
 
 interface NavItem {
   icon: FeatherIconName;
@@ -72,12 +71,14 @@ export function DesktopSidebar({
         <Text
           flex={1}
           fontSize={14}
-          color={isActive ? "$primary" : "$color"}
+          color={isActive ? theme.primary.val : theme.color.val}
           fontFamily={isActive ? FontFamily.semiBold : FontFamily.regular}
         >
           {item.label}
         </Text>
-        {isActive && <YStack width={6} height={6} borderRadius={3} backgroundColor="$primary" />}
+        {isActive && (
+          <YStack width={6} height={6} borderRadius={3} backgroundColor={theme.primary.val} />
+        )}
       </PressableScale>
     );
   };
@@ -88,13 +89,13 @@ export function DesktopSidebar({
       borderRightWidth={0.5}
       paddingTop={20}
       paddingHorizontal={16}
-      backgroundColor="$card"
-      borderRightColor="$borderColor"
+      backgroundColor={theme.card.val}
+      borderRightColor={theme.borderColor.val}
     >
       <SurfaceCard tone="accent" padding={14} style={{ marginBottom: 12 }}>
         <XStack alignItems="center" gap={10}>
           <LinearGradient
-            colors={[brandGradients.warm[1], brandGradients.warm[0]]}
+            colors={[theme.primary.val, theme.primaryHover.val] as const}
             style={{
               width: 36,
               height: 36,
@@ -105,7 +106,7 @@ export function DesktopSidebar({
           >
             <Feather name="zap" size={20} color={theme.textInverse.val} />
           </LinearGradient>
-          <Text fontSize={20} fontFamily={FontFamily.bold} fontWeight="700" color="$color">
+          <Text fontSize={20} fontFamily={FontFamily.bold} fontWeight="700" color={theme.color.val}>
             Memora
           </Text>
         </XStack>
@@ -117,7 +118,7 @@ export function DesktopSidebar({
           fontFamily={FontFamily.regular}
           paddingHorizontal={8}
           marginBottom={16}
-          color="$colorMuted"
+          color={theme.colorMuted.val}
         >
           Hey, {userName}
         </Text>
@@ -140,7 +141,7 @@ export function DesktopSidebar({
           letterSpacing={1.2}
           marginBottom={6}
           marginLeft={8}
-          color="$colorMuted"
+          color={theme.colorMuted.val}
         >
           MAIN
         </Text>
@@ -155,7 +156,7 @@ export function DesktopSidebar({
           letterSpacing={1.2}
           marginBottom={6}
           marginLeft={8}
-          color="$colorMuted"
+          color={theme.colorMuted.val}
         >
           MORE
         </Text>

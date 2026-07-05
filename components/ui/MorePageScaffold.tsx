@@ -117,7 +117,7 @@ export function MorePageScaffold({
       style={{ flex: 1, backgroundColor: theme.background.val }}
       edges={["top", "bottom"]}
     >
-      <YStack flex={1} backgroundColor="$background">
+      <YStack flex={1} backgroundColor={theme.background.val}>
         <Animated.View
           pointerEvents="none"
           style={[
@@ -206,7 +206,7 @@ export function MorePageScaffold({
               </PressableScale>
               <YStack flex={1} minWidth={0} gap={1}>
                 <Text
-                  color="$colorMuted"
+                  color={theme.colorMuted.val}
                   fontFamily="$body"
                   fontWeight="700"
                   fontSize={10}
@@ -217,7 +217,7 @@ export function MorePageScaffold({
                   More
                 </Text>
                 <Text
-                  color="$color"
+                  color={theme.color.val}
                   fontFamily="$heading"
                   fontWeight="700"
                   fontSize={28}

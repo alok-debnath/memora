@@ -244,7 +244,7 @@ export function PopoverMenu({
                       <Text
                         fontSize={14}
                         fontFamily="$body"
-                        color={item.destructive ? theme.destructive.val : "$color"}
+                        color={item.destructive ? theme.destructive.val : theme.color.val}
                       >
                         {item.label}
                       </Text>

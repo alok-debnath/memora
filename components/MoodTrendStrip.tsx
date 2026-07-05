@@ -3,7 +3,7 @@ import { ScrollView, Pressable } from "react-native";
 import { Feather } from "@/lib/icons";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { moodColors } from "@/constants/colors";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
 import { moodIcons, moodLabels, type Mood } from "@/constants/categories";
 
 interface MoodTrendEntry {
@@ -23,6 +23,7 @@ function formatShortDate(timestamp: number): string {
 
 export function MoodTrendStrip({ entries }: MoodTrendStripProps) {
   const theme = useAppTheme();
+  const semantic = useSemanticColors();
   const scrollRef = useRef<ScrollView>(null);
 
   const withMood = entries.filter((e) => e.mood);
@@ -41,7 +42,7 @@ export function MoodTrendStrip({ entries }: MoodTrendStripProps) {
       <Text
         fontSize={11}
         fontFamily="$body"
-        color="$colorMuted"
+        color={theme.colorMuted.val}
         letterSpacing={0.8}
         marginBottom={10}
         textTransform="uppercase"
@@ -60,7 +61,7 @@ export function MoodTrendStrip({ entries }: MoodTrendStripProps) {
       >
         {visible.map((entry) => {
           const mood = entry.mood as Mood | undefined;
-          const color = mood ? moodColors[mood] : theme.borderColor.val;
+          const color = mood ? semantic.mood[mood] : theme.borderColor.val;
           const icon = mood ? moodIcons[mood] : "minus";
 
           return (
@@ -80,7 +81,7 @@ export function MoodTrendStrip({ entries }: MoodTrendStripProps) {
               <Text
                 fontSize={9}
                 fontFamily="$body"
-                color="$colorMuted"
+                color={theme.colorMuted.val}
                 textAlign="center"
                 numberOfLines={1}
               >

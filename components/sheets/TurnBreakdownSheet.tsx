@@ -10,10 +10,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, XStack, YStack } from "tamagui";
 import { Badge } from "@/components/ui/Badge";
 import { FontFamily } from "@/constants/fonts";
-import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
 import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
 import { Feather } from "@/lib/icons";
 import { api } from "@/convex/_generated/api";
@@ -56,6 +56,7 @@ function formatStageLabel(stage?: string | null) {
 
 export function TurnBreakdownSheet() {
   const theme = useAppTheme();
+  const semantic = useSemanticColors();
   const insets = useSafeAreaInsets();
   const isLargeScreen = useIsLargeScreen();
   const modalRef = useRef<BottomSheetModal>(null);
@@ -145,10 +146,10 @@ export function TurnBreakdownSheet() {
       >
         <XStack alignItems="center" justifyContent="space-between" gap={12}>
           <YStack flex={1} minWidth={0} gap={2}>
-            <Text fontSize={18} fontWeight="700" color="$color">
+            <Text fontSize={18} fontWeight="700" color={theme.color.val}>
               Turn Breakdown
             </Text>
-            <Text fontSize={13} lineHeight={18} color="$colorMuted">
+            <Text fontSize={13} lineHeight={18} color={theme.colorMuted.val}>
               Everything tracked for this completed chat turn
             </Text>
           </YStack>
@@ -169,11 +170,11 @@ export function TurnBreakdownSheet() {
           />
           <Badge
             label={`${formatCompactNumber(telemetry?.overview.totalTokens ?? 0)} tokens`}
-            color={integrationAccentColors.openai}
+            color={semantic.integration.openai}
           />
           <Badge
             label={formatUsdMicros(telemetry?.overview.costUsdMicros ?? 0)}
-            color={statusAccentColors.success}
+            color={semantic.status.success}
           />
         </XStack>
 
@@ -181,13 +182,13 @@ export function TurnBreakdownSheet() {
           gap={8}
           padding={16}
           borderRadius={16}
-          backgroundColor="$card"
+          backgroundColor={theme.card.val}
           style={appShadow(theme.shadowColor.val, "xs")}
         >
-          <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
+          <Text fontSize={13} fontFamily={FontFamily.semiBold} color={theme.color.val}>
             Turn summary
           </Text>
-          <Text fontSize={12} color="$colorMuted" lineHeight={18}>
+          <Text fontSize={12} color={theme.colorMuted.val} lineHeight={18}>
             {formatCompactNumber(telemetry?.overview.aiActions ?? 0)} user-visible actions triggered{" "}
             {formatCompactNumber(telemetry?.overview.operationCount ?? 0)} tracked operations.
             Searches: {formatCompactNumber(telemetry?.search.searches ?? 0)}.
@@ -195,7 +196,7 @@ export function TurnBreakdownSheet() {
         </YStack>
 
         <YStack gap={10}>
-          <Text fontSize={12} fontFamily={FontFamily.semiBold} color="$colorMuted">
+          <Text fontSize={12} fontFamily={FontFamily.semiBold} color={theme.colorMuted.val}>
             Feature breakdown
           </Text>
           {(telemetry?.features ?? []).length > 0 ? (
@@ -208,32 +209,32 @@ export function TurnBreakdownSheet() {
                 backgroundColor={withAlpha(
                   item.visibility === "user_visible"
                     ? theme.primary.val
-                    : integrationAccentColors.openai,
+                    : semantic.integration.openai,
                   "08",
                 )}
                 style={appShadow(
                   item.visibility === "user_visible"
                     ? theme.primary.val
-                    : integrationAccentColors.openai,
+                    : semantic.integration.openai,
                   "hairline",
                 )}
               >
                 <XStack justifyContent="space-between" gap={10}>
                   <YStack flex={1}>
-                    <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
+                    <Text fontSize={13} fontFamily={FontFamily.semiBold} color={theme.color.val}>
                       {formatFeatureLabel(item.feature)}
                     </Text>
-                    <Text fontSize={11} color="$colorMuted">
+                    <Text fontSize={11} color={theme.colorMuted.val}>
                       {formatStageLabel(item.stage)} ·{" "}
                       {item.visibility === "user_visible" ? "user visible" : "background"}
                       {item.fallback ? " · fallback chain" : ""}
                     </Text>
                   </YStack>
                   <YStack alignItems="flex-end">
-                    <Text fontSize={12} fontFamily={FontFamily.semiBold} color="$color">
+                    <Text fontSize={12} fontFamily={FontFamily.semiBold} color={theme.color.val}>
                       {formatUsdMicros(item.costUsdMicros)}
                     </Text>
-                    <Text fontSize={11} color="$colorMuted">
+                    <Text fontSize={11} color={theme.colorMuted.val}>
                       {formatCompactNumber(item.requests)} calls
                     </Text>
                   </YStack>
@@ -246,14 +247,14 @@ export function TurnBreakdownSheet() {
               </YStack>
             ))
           ) : (
-            <Text fontSize={12} color="$colorMuted">
+            <Text fontSize={12} color={theme.colorMuted.val}>
               Loading tracked operations…
             </Text>
           )}
         </YStack>
 
         <YStack gap={10}>
-          <Text fontSize={12} fontFamily={FontFamily.semiBold} color="$colorMuted">
+          <Text fontSize={12} fontFamily={FontFamily.semiBold} color={theme.colorMuted.val}>
             Retrieval
           </Text>
           <XStack gap={8} flexWrap="wrap">
@@ -266,7 +267,7 @@ export function TurnBreakdownSheet() {
           </XStack>
         </YStack>
 
-        <Text fontSize={12} fontFamily={FontFamily.semiBold} color="$colorMuted">
+        <Text fontSize={12} fontFamily={FontFamily.semiBold} color={theme.colorMuted.val}>
           Operation timeline
         </Text>
 
@@ -278,11 +279,11 @@ export function TurnBreakdownSheet() {
               gap={10}
               borderRadius={14}
               backgroundColor={withAlpha(
-                item.status === "error" ? statusAccentColors.error : theme.backgroundStrong.val,
+                item.status === "error" ? semantic.status.error : theme.backgroundStrong.val,
                 item.status === "error" ? "10" : "66",
               )}
               style={appShadow(
-                item.status === "error" ? statusAccentColors.error : theme.shadowColor.val,
+                item.status === "error" ? semantic.status.error : theme.shadowColor.val,
                 "hairline",
               )}
             >
@@ -293,35 +294,35 @@ export function TurnBreakdownSheet() {
                 borderRadius={5}
                 backgroundColor={
                   item.status === "error"
-                    ? statusAccentColors.error
+                    ? semantic.status.error
                     : item.visibility === "user_visible"
                       ? theme.primary.val
-                      : integrationAccentColors.openai
+                      : semantic.integration.openai
                 }
               />
               <YStack flex={1} gap={3}>
-                <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
+                <Text fontSize={13} fontFamily={FontFamily.semiBold} color={theme.color.val}>
                   {formatFeatureLabel(item.feature)}
                 </Text>
-                <Text fontSize={11} color="$colorMuted">
+                <Text fontSize={11} color={theme.colorMuted.val}>
                   {formatStageLabel(item.stage)} · {item.model} · {item.provider}
                 </Text>
-                <Text fontSize={11} color="$colorMuted">
+                <Text fontSize={11} color={theme.colorMuted.val}>
                   {new Date(item.occurredAt).toLocaleTimeString()} · {item.latencyMs} ms
                 </Text>
               </YStack>
               <YStack alignItems="flex-end" gap={3}>
-                <Text fontSize={12} fontFamily={FontFamily.semiBold} color="$color">
+                <Text fontSize={12} fontFamily={FontFamily.semiBold} color={theme.color.val}>
                   {item.costUsdMicros ? formatUsdMicros(item.costUsdMicros) : "n/a"}
                 </Text>
-                <Text fontSize={11} color="$colorMuted">
+                <Text fontSize={11} color={theme.colorMuted.val}>
                   {item.totalTokens ? `${formatCompactNumber(item.totalTokens)} tok` : item.status}
                 </Text>
               </YStack>
             </XStack>
           ))
         ) : (
-          <Text fontSize={12} color="$colorMuted">
+          <Text fontSize={12} color={theme.colorMuted.val}>
             No finalized telemetry for this turn yet.
           </Text>
         )}

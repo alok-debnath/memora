@@ -66,13 +66,13 @@ export function SegmentedControl<T extends string = string>({
   return (
     <XStack
       onLayout={handleLayout}
-      backgroundColor="$secondary"
+      backgroundColor={theme.secondary.val}
       borderTopLeftRadius={14}
       borderTopRightRadius={14}
       borderBottomLeftRadius={attached ? 0 : 14}
       borderBottomRightRadius={attached ? 0 : 14}
       borderWidth={1}
-      borderColor="$borderColor"
+      borderColor={theme.borderColor.val}
       padding={PADDING}
       position="relative"
       alignSelf="stretch"
@@ -121,7 +121,7 @@ export function SegmentedControl<T extends string = string>({
                 fontSize={13}
                 fontFamily="$body"
                 fontWeight={isActive ? "600" : "500"}
-                color={isActive ? "$color" : "$colorMuted"}
+                color={isActive ? theme.color.val : theme.colorMuted.val}
               >
                 {label}
               </Text>

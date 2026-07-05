@@ -4,9 +4,10 @@ import { Feather, type FeatherIconName } from "@/lib/icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { XStack, Text } from "tamagui";
 
-import { brandGradients } from "@/constants/colors";
+import { createThemeGradient } from "@/constants/themePalettes";
 import { FontFamily } from "@/constants/fonts";
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { useThemeStore } from "@/store/theme";
 import { PressableScale } from "@/components/ui/PressableScale";
 import {
   appShadow,
@@ -59,10 +60,17 @@ export function AppButton({
   tone = "primary",
 }: AppButtonProps) {
   const theme = useAppTheme();
+  const isGradient = variant === "gradient";
+  const resolvedMode = useThemeStore((state) => state.resolvedMode);
+  const resolvedAccentColor = useThemeStore((state) => state.resolvedAccentColor);
   const metrics = BUTTON_SIZES[size];
   const toneColors = getStatusColors(theme, tone);
   const isDisabled = disabled || loading;
   const hasButtonShadow = variant === "primary" || variant === "danger" || variant === "gradient";
+  const gradientColors = React.useMemo(
+    () => (isGradient ? createThemeGradient(resolvedAccentColor, resolvedMode) : null),
+    [isGradient, resolvedAccentColor, resolvedMode],
+  );
 
   const baseContent = (
     <XStack
@@ -126,9 +134,9 @@ export function AppButton({
         style,
       ]}
     >
-      {variant === "gradient" ? (
+      {variant === "gradient" && gradientColors ? (
         <LinearGradient
-          colors={[...brandGradients.ember]}
+          colors={[...gradientColors]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{

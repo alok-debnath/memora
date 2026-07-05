@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { Platform, Pressable, ActivityIndicator } from "react-native";
 import { Feather } from "@/lib/icons";
 import * as Haptics from "expo-haptics";
@@ -85,18 +85,48 @@ export default function DiaryScreen() {
     }
   };
 
-  const handleDelete = async (id: Id<"diaryEntries">) => {
-    const confirmed = await confirm({
-      title: "Delete Entry",
-      message: "Are you sure?",
-      confirmLabel: "Delete",
-      tone: "destructive",
-      icon: "trash-2",
-    });
-    if (confirmed) {
-      deleteEntry({ token: token!, id });
-    }
-  };
+  const handleDelete = useCallback(
+    async (id: Id<"diaryEntries">) => {
+      const confirmed = await confirm({
+        title: "Delete Entry",
+        message: "Are you sure?",
+        confirmLabel: "Delete",
+        tone: "destructive",
+        icon: "trash-2",
+      });
+      if (confirmed) {
+        deleteEntry({ token: token!, id });
+      }
+    },
+    [confirm, deleteEntry, token],
+  );
+
+  const handleDeleteEntry = useCallback(
+    (id: string) => handleDelete(id as Id<"diaryEntries">),
+    [handleDelete],
+  );
+
+  const diaryEntries = useMemo<DiaryEntry[]>(
+    () =>
+      entries.map(
+        (entry) =>
+          ({
+            ...entry,
+            id: entry._id,
+            userId: user?._id ?? ("" as never),
+            mood: entry.mood as DiaryEntry["mood"],
+            energyLevel: entry.energyLevel as DiaryEntry["energyLevel"],
+            createdAt: new Date(entry._creationTime).toISOString(),
+            updatedAt: new Date(entry._creationTime).toISOString(),
+            habitsDetected: entry.habitsDetected ?? [],
+            personalityTraits: entry.personalityTraits ?? [],
+            likes: entry.likes ?? [],
+            dislikes: entry.dislikes ?? [],
+            actionItems: entry.actionItems ?? [],
+          }) as DiaryEntry,
+      ),
+    [entries, user?._id],
+  );
 
   return (
     <AppScreen
@@ -133,7 +163,7 @@ export default function DiaryScreen() {
                 fontSize={13}
                 fontFamily="$body"
                 fontWeight="600"
-                color={mode === "voice" ? "$textInverse" : "$colorMuted"}
+                color={mode === "voice" ? theme.textInverse.val : theme.colorMuted.val}
               >
                 Voice
               </Text>
@@ -159,7 +189,7 @@ export default function DiaryScreen() {
                 fontSize={13}
                 fontFamily="$body"
                 fontWeight="600"
-                color={mode === "type" ? "$textInverse" : "$colorMuted"}
+                color={mode === "type" ? theme.textInverse.val : theme.colorMuted.val}
               >
                 Type
               </Text>
@@ -170,7 +200,7 @@ export default function DiaryScreen() {
             isSaving ? (
               <YStack alignItems="center" justifyContent="center" paddingVertical={28} gap={16}>
                 <ActivityIndicator size="large" color={theme.primary.val} />
-                <Text fontSize={14} fontFamily="$body" color="$colorMuted">
+                <Text fontSize={14} fontFamily="$body" color={theme.colorMuted.val}>
                   Saving entry...
                 </Text>
               </YStack>
@@ -185,19 +215,24 @@ export default function DiaryScreen() {
                 {/* Hide while paused — VoiceRecorder shows the editable TextInput internally */}
                 {!isVoicePaused && liveTranscript.trim().length > 0 ? (
                   <YStack
-                    backgroundColor="$card"
+                    backgroundColor={theme.card.val}
                     borderRadius={14}
                     borderWidth={1}
-                    borderColor="$borderColor"
+                    borderColor={theme.borderColor.val}
                     padding={14}
                     marginHorizontal={4}
                   >
-                    <Text fontSize={14} fontFamily="$body" color="$color" lineHeight={21}>
+                    <Text fontSize={14} fontFamily="$body" color={theme.color.val} lineHeight={21}>
                       {liveTranscript}
                     </Text>
                   </YStack>
                 ) : !isVoicePaused ? (
-                  <Text fontSize={13} fontFamily="$body" color="$colorMuted" textAlign="center">
+                  <Text
+                    fontSize={13}
+                    fontFamily="$body"
+                    color={theme.colorMuted.val}
+                    textAlign="center"
+                  >
                     Tap to start — speak naturally. Entry is analyzed after you stop.
                   </Text>
                 ) : null}
@@ -238,28 +273,8 @@ export default function DiaryScreen() {
           />
         ) : (
           <YStack gap={12}>
-            {entries.map((entry, i: number) => (
-              <DiaryEntryCard
-                key={entry._id}
-                entry={
-                  {
-                    ...entry,
-                    id: entry._id,
-                    userId: user?._id ?? ("" as never),
-                    mood: entry.mood as DiaryEntry["mood"],
-                    energyLevel: entry.energyLevel as DiaryEntry["energyLevel"],
-                    createdAt: new Date(entry._creationTime).toISOString(),
-                    updatedAt: new Date(entry._creationTime).toISOString(),
-                    habitsDetected: entry.habitsDetected ?? [],
-                    personalityTraits: entry.personalityTraits ?? [],
-                    likes: entry.likes ?? [],
-                    dislikes: entry.dislikes ?? [],
-                    actionItems: entry.actionItems ?? [],
-                  } as DiaryEntry
-                }
-                onDelete={() => handleDelete(entry._id)}
-                index={i}
-              />
+            {diaryEntries.map((entry, i: number) => (
+              <DiaryEntryCard key={entry.id} entry={entry} onDelete={handleDeleteEntry} index={i} />
             ))}
           </YStack>
         )}

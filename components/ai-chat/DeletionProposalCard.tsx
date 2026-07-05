@@ -6,8 +6,8 @@ import { useMutation } from "convex/react";
 import { Text, XStack, YStack } from "tamagui";
 import { api } from "@/convex/_generated/api";
 import { FontFamily } from "@/constants/fonts";
-import { brandGradients, statusAccentColors } from "@/constants/colors";
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
 import { Feather } from "@/lib/icons";
 import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import type { DeletionItem } from "./types";
@@ -24,6 +24,7 @@ export function DeletionProposalCard({
   token?: string | null;
 }) {
   const theme = useAppTheme();
+  const semantic = useSemanticColors();
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(items.map((item) => item.id)),
   );
@@ -63,7 +64,7 @@ export function DeletionProposalCard({
         <XStack
           backgroundColor={theme.surfaceElevated.val}
           borderWidth={1}
-          borderColor={withAlpha(statusAccentColors.success, "59")}
+          borderColor={withAlpha(semantic.status.success, "59")}
           borderRadius={18}
           padding={14}
           gap={12}
@@ -75,18 +76,18 @@ export function DeletionProposalCard({
               width: 34,
               height: 34,
               borderRadius: 17,
-              backgroundColor: withAlpha(statusAccentColors.success, "26"),
+              backgroundColor: withAlpha(semantic.status.success, "26"),
               alignItems: "center",
               justifyContent: "center",
             }}
           >
-            <Feather name="check" size={16} color={statusAccentColors.success} />
+            <Feather name="check" size={16} color={semantic.status.success} />
           </View>
           <YStack flex={1}>
-            <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
+            <Text fontSize={13} fontFamily={FontFamily.semiBold} color={theme.color.val}>
               {resultCount === 1 ? "1 item deleted" : `${resultCount} items deleted`}
             </Text>
-            <Text fontSize={11} fontFamily="$body" color="$colorMuted" marginTop={2}>
+            <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val} marginTop={2}>
               Moved to trash · Restore anytime from Data
             </Text>
           </YStack>
@@ -120,7 +121,7 @@ export function DeletionProposalCard({
           >
             <Feather name="x" size={16} color={theme.colorMuted.val} />
           </View>
-          <Text fontSize={13} fontFamily="$body" color="$colorMuted">
+          <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val}>
             Nothing was deleted
           </Text>
         </XStack>
@@ -142,8 +143,8 @@ export function DeletionProposalCard({
       >
         <LinearGradient
           colors={[
-            withAlpha(statusAccentColors.errorStrong, "17"),
-            withAlpha(brandGradients.warm[1], "0F"),
+            withAlpha(semantic.status.errorStrong, "17"),
+            withAlpha(theme.primary.val, "0F"),
             withAlpha(theme.surfaceElevated.val, "00"),
           ]}
           start={{ x: 0, y: 0 }}
@@ -158,20 +159,20 @@ export function DeletionProposalCard({
                     width: 28,
                     height: 28,
                     borderRadius: 14,
-                    backgroundColor: withAlpha(statusAccentColors.error, "18"),
+                    backgroundColor: withAlpha(semantic.status.error, "18"),
                     alignItems: "center",
                     justifyContent: "center",
                     borderWidth: 1,
-                    borderColor: withAlpha(statusAccentColors.error, "24"),
+                    borderColor: withAlpha(semantic.status.error, "24"),
                   }}
                 >
-                  <Feather name="trash-2" size={13} color={statusAccentColors.error} />
+                  <Feather name="trash-2" size={13} color={semantic.status.error} />
                 </View>
-                <Text fontSize={14} fontFamily={FontFamily.semiBold} color="$color">
+                <Text fontSize={14} fontFamily={FontFamily.semiBold} color={theme.color.val}>
                   {items.length === 1 ? "1 item found" : `${items.length} items found`}
                 </Text>
               </XStack>
-              <Text fontSize={11} fontFamily="$body" color="$colorMuted">
+              <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val}>
                 Review the items below before moving them to trash
               </Text>
             </YStack>
@@ -187,7 +188,7 @@ export function DeletionProposalCard({
                 </Text>
               </Pressable>
             ) : (
-              <Text fontSize={11} fontFamily="$body" color="$colorMuted">
+              <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val}>
                 All selected
               </Text>
             )}
@@ -242,7 +243,7 @@ export function DeletionProposalCard({
                       <Text
                         fontSize={13}
                         fontFamily={FontFamily.semiBold}
-                        color={isSelected ? "$color" : "$colorMuted"}
+                        color={isSelected ? theme.color.val : theme.colorMuted.val}
                         numberOfLines={1}
                         flex={1}
                       >
@@ -253,7 +254,7 @@ export function DeletionProposalCard({
                       <Text
                         fontSize={11}
                         fontFamily="$body"
-                        color="$colorMuted"
+                        color={theme.colorMuted.val}
                         numberOfLines={1}
                         opacity={isSelected ? 1 : 0.6}
                       >
@@ -282,7 +283,7 @@ export function DeletionProposalCard({
               opacity: pressed || cardState === "deleting" ? 0.6 : 1,
             })}
           >
-            <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$colorMuted">
+            <Text fontSize={13} fontFamily={FontFamily.semiBold} color={theme.colorMuted.val}>
               Cancel
             </Text>
           </Pressable>
@@ -295,14 +296,14 @@ export function DeletionProposalCard({
               paddingVertical: 11,
               borderRadius: 14,
               alignItems: "center",
-              backgroundColor: selectedCount === 0 ? theme.accent.val : statusAccentColors.error,
+              backgroundColor: selectedCount === 0 ? theme.accent.val : semantic.status.error,
               opacity: pressed || cardState === "deleting" || selectedCount === 0 ? 0.6 : 1,
             })}
           >
             <Text
               fontSize={13}
               fontFamily={FontFamily.semiBold}
-              color={selectedCount === 0 ? "$colorMuted" : theme.textInverse.val}
+              color={selectedCount === 0 ? theme.colorMuted.val : theme.textInverse.val}
             >
               {cardState === "deleting"
                 ? "Deleting…"

@@ -230,7 +230,7 @@ export const ChatBubble = React.memo(function ChatBubble({
             <Text
               fontSize={10}
               fontFamily="$body"
-              color="$colorMuted"
+              color={theme.colorMuted.val}
               alignSelf={isUser ? "flex-end" : "flex-start"}
               paddingHorizontal={4}
             >
@@ -262,7 +262,7 @@ export const ChatBubble = React.memo(function ChatBubble({
                   })}
                 >
                   <Feather name="copy" size={12} color={theme.colorMuted.val} />
-                  <Text fontSize={11} fontFamily="$body" color="$colorMuted">
+                  <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val}>
                     Copy
                   </Text>
                 </Pressable>

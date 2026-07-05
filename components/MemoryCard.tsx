@@ -6,7 +6,7 @@ import { useAppTheme } from "@/hooks/useAppTheme";
 import type { MemoryNote } from "@/types/memory";
 import { getReminderDate, isReminder } from "@/types/memoryKind";
 import { ContextMenu, type ContextMenuItemDef } from "./ui/ContextMenu";
-import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
 import { withAlpha } from "@/components/ui/themeHelpers";
 
 interface MemoryCardProps {
@@ -76,6 +76,7 @@ export const CardBody = React.memo(function CardBody({
   framed = true,
 }: CardBodyProps) {
   const theme = useAppTheme();
+  const semantic = useSemanticColors();
   const hasGoogleSyncInfo = !!(
     memory.googleSyncStatus ||
     memory.googleEventId ||
@@ -90,8 +91,8 @@ export const CardBody = React.memo(function CardBody({
 
   return (
     <YStack
-      backgroundColor={framed ? "$card" : "transparent"}
-      borderColor={framed ? "$borderColor" : "transparent"}
+      backgroundColor={framed ? theme.card.val : "transparent"}
+      borderColor={framed ? theme.borderColor.val : "transparent"}
       borderWidth={framed ? 1 : 0}
       borderRadius={framed ? 16 : 0}
       padding={16}
@@ -113,7 +114,7 @@ export const CardBody = React.memo(function CardBody({
           gap={6}
         >
           <Feather name="lock" size={24} color={theme.colorMuted.val} />
-          <Text fontSize={12} fontFamily="$body" fontWeight="500" color="$colorMuted">
+          <Text fontSize={12} fontFamily="$body" fontWeight="500" color={theme.colorMuted.val}>
             Unlocks {new Date(memory.capsuleUnlockDate!).toLocaleDateString()}
           </Text>
         </YStack>
@@ -125,12 +126,12 @@ export const CardBody = React.memo(function CardBody({
           fontSize={15}
           fontFamily="$body"
           fontWeight="600"
-          color="$color"
+          color={theme.color.val}
           numberOfLines={1}
         >
           {memory.title}
         </Text>
-        <Text fontSize={11} fontFamily="$body" color="$colorMuted">
+        <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val}>
           {new Date(memory.createdAt).toLocaleDateString(undefined, {
             month: "short",
             day: "numeric",
@@ -144,7 +145,7 @@ export const CardBody = React.memo(function CardBody({
             fontSize={13}
             fontFamily="$body"
             lineHeight={19}
-            color="$colorMuted"
+            color={theme.colorMuted.val}
             numberOfLines={2}
             marginBottom={10}
           >
@@ -181,7 +182,7 @@ export const CardBody = React.memo(function CardBody({
                 </XStack>
               ))}
               {resolvedTopics && resolvedTopics.length > 2 && (
-                <Text fontSize={10} fontFamily="$body" color="$colorMuted">
+                <Text fontSize={10} fontFamily="$body" color={theme.colorMuted.val}>
                   +{resolvedTopics.length - 2}
                 </Text>
               )}
@@ -197,7 +198,7 @@ export const CardBody = React.memo(function CardBody({
               {isReminder(memory) && getReminderDate(memory) && (
                 <XStack alignItems="center" gap={3}>
                   <Feather name="bell" size={10} color={theme.primary.val} />
-                  <Text fontSize={11} fontFamily="$body" fontWeight="500" color="$primary">
+                  <Text fontSize={11} fontFamily="$body" fontWeight="500" color={theme.primary.val}>
                     {new Date(getReminderDate(memory)!).toLocaleString(undefined, {
                       month: "short",
                       day: "numeric",
@@ -222,11 +223,7 @@ export const CardBody = React.memo(function CardBody({
                     hitSlop={12}
                     style={styles.actionBtn}
                   >
-                    <Feather
-                      name="check-circle"
-                      size={14}
-                      color={statusAccentColors.successStrong}
-                    />
+                    <Feather name="check-circle" size={14} color={semantic.status.successStrong} />
                   </Pressable>
                 )}
                 {onShare && (
@@ -301,20 +298,20 @@ export const CardBody = React.memo(function CardBody({
                   paddingVertical={4}
                   borderRadius={20}
                   borderWidth={1}
-                  borderColor={withAlpha(integrationAccentColors.googleDrive, "40")}
-                  backgroundColor={withAlpha(integrationAccentColors.googleDrive, "12")}
+                  borderColor={withAlpha(semantic.integration.googleDrive, "40")}
+                  backgroundColor={withAlpha(semantic.integration.googleDrive, "12")}
                 >
                   <FontAwesome5
                     name="google-drive"
                     iconStyle="brand"
                     size={11}
-                    color={integrationAccentColors.googleDrive}
+                    color={semantic.integration.googleDrive}
                   />
                   <Text
                     fontSize={10}
                     fontFamily="$body"
                     fontWeight="600"
-                    color={integrationAccentColors.googleDrive}
+                    color={semantic.integration.googleDrive}
                   >
                     in Drive
                   </Text>
@@ -342,6 +339,7 @@ export const MemoryCard = React.memo(function MemoryCard({
   hasFiles = false,
 }: MemoryCardProps) {
   const theme = useAppTheme();
+  const semantic = useSemanticColors();
   const reminderHasSyncInfo =
     isReminder(memory) &&
     !!(memory.googleSyncStatus || memory.googleEventId || memory.googleSyncMessage);
@@ -357,7 +355,7 @@ export const MemoryCard = React.memo(function MemoryCard({
           {
             label: "Mark as Completed",
             icon: "check-circle",
-            iconColor: statusAccentColors.successStrong,
+            iconColor: semantic.status.successStrong,
             onPress: onComplete!,
           } satisfies ContextMenuItemDef,
         ]

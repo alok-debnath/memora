@@ -34,10 +34,10 @@ function EmptyState() {
         <Feather name="message-square" size={24} color={theme.primary.val} />
       </XStack>
       <YStack alignItems="center" gap={4}>
-        <Text fontSize={17} fontFamily="$body" fontWeight="700" color="$color">
+        <Text fontSize={17} fontFamily="$body" fontWeight="700" color={theme.color.val}>
           Ask Memora anything
         </Text>
-        <Text fontSize={13} fontFamily="$body" color="$colorMuted" textAlign="center">
+        <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val} textAlign="center">
           Search memories, set reminders, attach files, or speak naturally to capture something
           fast.
         </Text>

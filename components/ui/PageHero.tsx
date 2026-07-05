@@ -53,17 +53,23 @@ export function PageHero({
               lineHeight={14}
               fontFamily="$body"
               fontWeight="700"
-              color="$colorMuted"
+              color={theme.colorMuted.val}
               textTransform="uppercase"
             >
               {eyebrow}
             </Text>
           ) : null}
-          <Text fontSize={26} lineHeight={30} fontFamily="$heading" fontWeight="700" color="$color">
+          <Text
+            fontSize={26}
+            lineHeight={30}
+            fontFamily="$heading"
+            fontWeight="700"
+            color={theme.color.val}
+          >
             {title}
           </Text>
           {description ? (
-            <Text fontSize={13} lineHeight={18} fontFamily="$body" color="$colorMuted">
+            <Text fontSize={13} lineHeight={18} fontFamily="$body" color={theme.colorMuted.val}>
               {description}
             </Text>
           ) : null}
@@ -77,8 +83,8 @@ export function PageHero({
           gap={0}
           borderRadius={14}
           borderWidth={1}
-          borderColor="$borderSubtle"
-          backgroundColor="$backgroundStrong"
+          borderColor={theme.borderSubtle.val}
+          backgroundColor={theme.backgroundStrong.val}
           overflow="hidden"
         >
           {stats.map((stat, index) => {
@@ -90,13 +96,13 @@ export function PageHero({
                 paddingHorizontal={10}
                 paddingVertical={8}
                 borderLeftWidth={index === 0 ? 0 : 1}
-                borderLeftColor="$borderSubtle"
+                borderLeftColor={theme.borderSubtle.val}
                 gap={1}
               >
                 <Text fontSize={15} fontFamily="$heading" fontWeight="700" color={color}>
                   {stat.value}
                 </Text>
-                <Text fontSize={10} fontFamily="$body" color="$colorMuted">
+                <Text fontSize={10} fontFamily="$body" color={theme.colorMuted.val}>
                   {stat.label}
                 </Text>
               </YStack>

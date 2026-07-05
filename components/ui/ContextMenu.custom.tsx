@@ -226,13 +226,13 @@ function MenuItem({ item, closeMenu }: { item: ContextMenuItemDef; closeMenu: ()
           minHeight={52}
           paddingHorizontal={16}
           paddingVertical={14}
-          backgroundColor={pressed ? "$secondary" : "$card"}
+          backgroundColor={pressed ? theme.secondary.val : theme.card.val}
         >
           <Text
             fontSize={15}
             fontFamily="$body"
             fontWeight="500"
-            color={item.destructive ? theme.destructive.val : "$color"}
+            color={item.destructive ? theme.destructive.val : theme.color.val}
           >
             {item.label}
           </Text>
@@ -346,15 +346,15 @@ const ContextMenuOverlay = React.memo(function ContextMenuOverlay({
                   borderRadius={14}
                   overflow="hidden"
                   borderWidth={StyleSheet.hairlineWidth}
-                  borderColor="$borderColor"
-                  backgroundColor="$card"
+                  borderColor={theme.borderColor.val}
+                  backgroundColor={theme.card.val}
                   style={appShadow(theme.shadowColor.val, resolvedMode === "dark" ? "lg" : "md")}
                 >
                   {validItems.map((item, index) => (
                     <React.Fragment key={`${item.label}-${index}`}>
                       <MenuItem item={item} closeMenu={closeMenu} />
                       {index < validItems.length - 1 && (
-                        <YStack height={1} backgroundColor="$borderColor" />
+                        <YStack height={1} backgroundColor={theme.borderColor.val} />
                       )}
                     </React.Fragment>
                   ))}
@@ -382,7 +382,7 @@ export const ContextMenu = React.forwardRef<ContextMenuHandle, ContextMenuProps>
     ref,
   ) {
     const theme = useAppTheme();
-    const { resolvedMode } = useThemeStore();
+    const resolvedMode = useThemeStore((state) => state.resolvedMode);
     // Any sheet stacked ABOVE this trigger's own sheet (or, for triggers
     // outside any sheet, any sheet at all) fully disables the gesture
     // recognizer below — a sheet's own backdrop can't be trusted to block a

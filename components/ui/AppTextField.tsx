@@ -78,11 +78,11 @@ export function AppTextField({
         ) : null}
       </XStack>
       {error ? (
-        <Text fontSize={12} lineHeight={18} color="$textError">
+        <Text fontSize={12} lineHeight={18} color={theme.textError.val}>
           {error}
         </Text>
       ) : helperText ? (
-        <Text fontSize={12} lineHeight={18} color="$colorMuted">
+        <Text fontSize={12} lineHeight={18} color={theme.colorMuted.val}>
           {helperText}
         </Text>
       ) : null}

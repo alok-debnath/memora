@@ -14,8 +14,8 @@ import { Text, XStack, YStack } from "tamagui";
 
 import { PressableScale } from "@/components/ui/PressableScale";
 import { withAlpha } from "@/components/ui/themeHelpers";
-import { statusAccentColors } from "@/constants/colors";
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
 
 function formatCompact(value: number) {
   return new Intl.NumberFormat(undefined, {
@@ -40,7 +40,7 @@ export function InteractiveTimelineChart({
   compareLabel = "Previous period",
   barColor,
   lineColor,
-  compareLineColor = statusAccentColors.warning,
+  compareLineColor,
   onSelectPoint,
 }: {
   title: string;
@@ -55,6 +55,8 @@ export function InteractiveTimelineChart({
   onSelectPoint?: (point: TimelinePoint | null) => void;
 }) {
   const theme = useAppTheme();
+  const semantic = useSemanticColors();
+  const resolvedCompareLineColor = compareLineColor ?? semantic.status.warning;
   const [selectedIndex, setSelectedIndex] = React.useState<number>(Math.max(points.length - 1, 0));
   const [windowSize, setWindowSize] = React.useState<7 | 14 | "all">("all");
   const [showPrimary, setShowPrimary] = React.useState(true);
@@ -123,16 +125,16 @@ export function InteractiveTimelineChart({
   const axisColor = withAlpha(theme.color.val, "7A");
   const dotStroke = withAlpha(theme.background.val, "F0");
   const inactiveChipBorder = withAlpha(theme.shadowColor.val, "22");
-  const inactiveDot = withAlpha(statusAccentColors.neutral, "77");
+  const inactiveDot = withAlpha(semantic.status.neutral, "77");
 
   return (
     <YStack>
       <YStack gap={12}>
         <YStack gap={4}>
-          <Text fontSize={17} fontFamily="$heading" fontWeight="700" color="$color">
+          <Text fontSize={17} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
             {title}
           </Text>
-          <Text fontSize={12} color="$colorMuted">
+          <Text fontSize={12} color={theme.colorMuted.val}>
             {subtitle}
           </Text>
         </YStack>
@@ -157,7 +159,7 @@ export function InteractiveTimelineChart({
           {hasCompare ? (
             <ToggleChip
               active={showCompare}
-              color={compareLineColor}
+              color={resolvedCompareLineColor}
               label={compareLabel}
               onPress={() => setShowCompare((current) => !current)}
               inactiveBorder={inactiveChipBorder}
@@ -172,18 +174,21 @@ export function InteractiveTimelineChart({
             active={windowSize === 7}
             onPress={() => setWindowSize(7)}
             inactiveBorder={inactiveChipBorder}
+            activeColor={semantic.status.info}
           />
           <RangeChip
             label="14"
             active={windowSize === 14}
             onPress={() => setWindowSize(14)}
             inactiveBorder={inactiveChipBorder}
+            activeColor={semantic.status.info}
           />
           <RangeChip
             label="All"
             active={windowSize === "all"}
             onPress={() => setWindowSize("all")}
             inactiveBorder={inactiveChipBorder}
+            activeColor={semantic.status.info}
           />
         </XStack>
 
@@ -205,7 +210,7 @@ export function InteractiveTimelineChart({
             ) : null}
             {showCompare && selected.compareSecondary !== undefined ? (
               <StatPill
-                color={compareLineColor}
+                color={resolvedCompareLineColor}
                 label={compareLabel}
                 value={formatCompact(selected.compareSecondary)}
               />
@@ -293,7 +298,7 @@ export function InteractiveTimelineChart({
               <Path
                 d={comparePath}
                 fill="none"
-                stroke={compareLineColor}
+                stroke={resolvedCompareLineColor}
                 strokeWidth={2}
                 strokeDasharray="6 4"
                 strokeLinecap="round"
@@ -351,6 +356,7 @@ function ToggleChip({
   inactiveBorder: string;
   inactiveDotColor: string;
 }) {
+  const theme = useAppTheme();
   return (
     <PressableScale onPress={onPress}>
       <XStack
@@ -372,7 +378,7 @@ function ToggleChip({
         <Text
           fontSize={11}
           fontWeight={active ? "700" : "500"}
-          color={active ? "$color" : "$colorMuted"}
+          color={active ? theme.color.val : theme.colorMuted.val}
         >
           {label}
         </Text>
@@ -386,12 +392,15 @@ function RangeChip({
   active,
   onPress,
   inactiveBorder,
+  activeColor,
 }: {
   label: string;
   active: boolean;
   onPress: () => void;
   inactiveBorder: string;
+  activeColor: string;
 }) {
+  const theme = useAppTheme();
   return (
     <PressableScale onPress={onPress}>
       <XStack
@@ -402,13 +411,13 @@ function RangeChip({
         paddingVertical={6}
         borderRadius={10}
         borderWidth={1}
-        borderColor={active ? statusAccentColors.info : inactiveBorder}
-        backgroundColor={active ? statusAccentColors.info + "14" : "transparent"}
+        borderColor={active ? activeColor : inactiveBorder}
+        backgroundColor={active ? activeColor + "14" : "transparent"}
       >
         <Text
           fontSize={11}
           fontWeight={active ? "700" : "500"}
-          color={active ? "$color" : "$colorMuted"}
+          color={active ? theme.color.val : theme.colorMuted.val}
         >
           {label}
         </Text>
@@ -418,6 +427,7 @@ function RangeChip({
 }
 
 function StatPill({ label, value, color }: { label: string; value: string; color: string }) {
+  const theme = useAppTheme();
   return (
     <YStack
       paddingHorizontal={12}
@@ -427,10 +437,10 @@ function StatPill({ label, value, color }: { label: string; value: string; color
       borderColor={color + "40"}
       backgroundColor={color + "1A"}
     >
-      <Text fontSize={11} color="$colorMuted">
+      <Text fontSize={11} color={theme.colorMuted.val}>
         {label}
       </Text>
-      <Text fontSize={14} fontFamily="$heading" fontWeight="700" color="$color">
+      <Text fontSize={14} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
         {value}
       </Text>
     </YStack>

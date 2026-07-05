@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Platform, Share } from "react-native";
+import { Alert, FlatList, type ListRenderItemInfo, Platform, Share } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { Feather } from "@/lib/icons";
 import * as Haptics from "expo-haptics";
@@ -28,12 +28,14 @@ import { Badge } from "@/components/ui/Badge";
 import { FontFamily } from "@/constants/fonts";
 import { TopicPills } from "@/components/ui/TopicPills";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { AppScreen, SectionCard } from "@/components/ui/AppScreen";
+import { SectionCard } from "@/components/ui/AppScreen";
+import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
+import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
-import { statusAccentColors } from "@/constants/colors";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
 import { canUseGoogleCalendar } from "@/lib/googleIntegration";
 
 const INITIAL_FEED_SIZE = 6;
@@ -143,9 +145,11 @@ function getReminderSyncBadge(memory: MemoryItem, theme: ReturnType<typeof useAp
 
 export default function HomeScreen() {
   const theme = useAppTheme();
+  const semantic = useSemanticColors();
   const { confirm } = useAppConfirm();
   const { user, token } = useAuth();
-  const { resolvedMode, setMode } = useThemeStore();
+  const resolvedMode = useThemeStore((state) => state.resolvedMode);
+  const setMode = useThemeStore((state) => state.setMode);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
@@ -464,332 +468,409 @@ export default function HomeScreen() {
   const exactCount = exactMatches.length;
   const relatedCount = Math.max(filteredMemories.length - exactCount, 0);
 
-  return (
-    <>
-      <AppScreen
-        title={`Hey, ${firstName}`}
-        headerRight={
-          <XStack gap={10} alignItems="center">
-            {!searchMode && topReminders.length > 0 ? (
-              <Badge label={`${topReminders.length} due`} color={theme.warning.val} small />
-            ) : null}
-            <PressableScale onPress={() => setMode(resolvedMode === "dark" ? "light" : "dark")}>
-              <YStack
-                width={46}
-                height={46}
-                borderRadius={16}
-                alignItems="center"
-                justifyContent="center"
-                backgroundColor="$card"
-                borderWidth={1}
-                borderColor="$borderColor"
-              >
-                <Feather
-                  name={resolvedMode === "dark" ? "sun" : "moon"}
-                  size={19}
-                  color={theme.color.val}
-                />
-              </YStack>
-            </PressableScale>
-          </XStack>
+  const isLargeScreen = useIsLargeScreen();
+  const tabBarPadding = useTabBarBottomPadding();
+
+  type FeedRow = { raw: MemoryItem; note: MemoryNote };
+
+  const feedKeyExtractor = useCallback((item: FeedRow) => item.raw._id, []);
+
+  // Feed can span the full result set in search mode / "show full feed" (up
+  // to 500 items) — rendering it through FlatList instead of a plain .map
+  // means only the on-screen rows actually mount, instead of every match.
+  const renderFeedItem = useCallback(
+    ({ item, index }: ListRenderItemInfo<FeedRow>) => {
+      const { raw, note } = item;
+      const primaryTopic = note.primaryTopicId ? topicById[note.primaryTopicId] : undefined;
+      const secondaryTopics = (note.topicIds ?? [])
+        .filter((id) => id !== note.primaryTopicId && topicById[id])
+        .map((id) => topicById[id]);
+      const resolvedTopics = [...(primaryTopic ? [primaryTopic] : []), ...secondaryTopics];
+      const hasFiles = !!(attachmentCounts as Record<string, number>)[raw._id];
+      return (
+        <MemoryCard
+          memory={note}
+          index={index}
+          resolvedTopics={resolvedTopics.length > 0 ? resolvedTopics : undefined}
+          hasFiles={hasFiles}
+          onPress={() => {
+            openEditMemory(note);
+          }}
+          onDelete={() => {
+            void handleDelete(raw._id);
+          }}
+          onShare={() => handleShare(raw._id)}
+          onAddToReview={
+            raw.reviewOptOut ? undefined : () => token && addToReview({ token, memoryId: raw._id })
+          }
+          onComplete={() => token && completeMemory({ token, id: raw._id })}
+          onTriggerSync={() => handleTriggerReminderSync(raw._id)}
+          onRemoveSync={() => handleRemoveReminderSync(raw._id)}
+        />
+      );
+    },
+    [
+      topicById,
+      attachmentCounts,
+      openEditMemory,
+      handleDelete,
+      handleShare,
+      token,
+      addToReview,
+      completeMemory,
+      handleTriggerReminderSync,
+      handleRemoveReminderSync,
+    ],
+  );
+
+  const feedHeader = (
+    <YStack gap={14}>
+      <XStack alignItems="center" justifyContent="space-between" gap={14}>
+        <YStack flex={1} gap={3}>
+          <Text
+            color={theme.color.val}
+            fontSize={isLargeScreen ? 30 : 26}
+            lineHeight={isLargeScreen ? 34 : 30}
+            fontFamily="$heading"
+            fontWeight="700"
+          >
+            {`Hey, ${firstName}`}
+          </Text>
+        </YStack>
+        <XStack gap={10} alignItems="center">
+          {!searchMode && topReminders.length > 0 ? (
+            <Badge label={`${topReminders.length} due`} color={theme.warning.val} small />
+          ) : null}
+          <PressableScale onPress={() => setMode(resolvedMode === "dark" ? "light" : "dark")}>
+            <YStack
+              width={46}
+              height={46}
+              borderRadius={16}
+              alignItems="center"
+              justifyContent="center"
+              backgroundColor={theme.card.val}
+              borderWidth={1}
+              borderColor={theme.borderColor.val}
+            >
+              <Feather
+                name={resolvedMode === "dark" ? "sun" : "moon"}
+                size={19}
+                color={theme.color.val}
+              />
+            </YStack>
+          </PressableScale>
+        </XStack>
+      </XStack>
+
+      <SectionCard
+        title={searchMode ? "Search" : "Memory stream"}
+        action={
+          searchMode ? (
+            <XStack gap={8}>
+              <Badge label={`${filteredMemories.length} results`} color={theme.primary.val} small />
+              {exactCount > 0 ? (
+                <Badge label={`${exactCount} exact`} color={theme.success.val} small />
+              ) : null}
+            </XStack>
+          ) : (
+            <Badge label={`${totalMemories} memories`} color={theme.primary.val} small />
+          )
         }
       >
-        <SectionCard
-          title={searchMode ? "Search" : "Memory stream"}
-          action={
-            searchMode ? (
-              <XStack gap={8}>
-                <Badge
-                  label={`${filteredMemories.length} results`}
-                  color={theme.primary.val}
-                  small
-                />
-                {exactCount > 0 ? (
-                  <Badge label={`${exactCount} exact`} color={theme.success.val} small />
-                ) : null}
-              </XStack>
-            ) : (
-              <Badge label={`${totalMemories} memories`} color={theme.primary.val} small />
-            )
+        <SearchBar
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          isSearching={isSearching}
+          placeholder="Search memories, people, places..."
+        />
+        <TopicPills
+          selected={selectedTopic}
+          onSelect={setSelectedTopic}
+          topics={
+            activeTopicSummaries as Array<{
+              _id: string;
+              name: string;
+              icon?: string | null;
+              color?: string | null;
+              memoryCount: number;
+            }>
           }
-        >
-          <SearchBar
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            isSearching={isSearching}
-            placeholder="Search memories, people, places..."
-          />
-          <TopicPills
-            selected={selectedTopic}
-            onSelect={setSelectedTopic}
-            topics={
-              activeTopicSummaries as Array<{
-                _id: string;
-                name: string;
-                icon?: string | null;
-                color?: string | null;
-                memoryCount: number;
-              }>
-            }
-            onSync={handleSyncTopics}
-            isSyncing={isSyncingTopics}
-          />
-          {searchMode ? (
-            <XStack gap={10} alignItems="center" marginTop={8}>
-              {isSearching ? (
-                <Animated.View entering={FadeIn.duration(300)}>
-                  <XStack gap={6} alignItems="center">
-                    <PulsingDot color={theme.primary.val} />
-                    <Text fontSize={12} color="$colorMuted">
-                      Finding deeper matches…
-                    </Text>
-                  </XStack>
-                </Animated.View>
-              ) : (
-                <Animated.View entering={FadeIn.duration(300)}>
-                  <XStack gap={8} alignItems="center">
-                    <Badge
-                      label={isSemanticCached ? "⚡ Fast" : "✓ Full scan"}
-                      color={isSemanticCached ? statusAccentColors.warning : theme.primary.val}
-                      small
-                    />
-                    {isSemanticCached && (
-                      <PressableScale
-                        onPress={() => {
-                          setIsSearching(true);
-                          setIsSemanticCached(false);
-                          semanticSearch({
-                            token: token!,
-                            query: trimmedSearchQuery,
-                            limit: 12,
-                            forceDeepSearch: true,
-                          })
-                            .then((r) => {
-                              setSemanticResults(r.results as MemoryItem[]);
-                              setIsSemanticCached(false);
-                            })
-                            .finally(() => setIsSearching(false));
-                        }}
-                      >
-                        <XStack
-                          paddingHorizontal={10}
-                          paddingVertical={4}
-                          borderRadius={20}
-                          borderWidth={1}
-                          borderColor={theme.primary.val + "50"}
-                          backgroundColor={theme.primary.val + "12"}
-                          gap={5}
-                          alignItems="center"
-                        >
-                          <Feather name="refresh-cw" size={10} color={theme.primary.val} />
-                          <Text
-                            fontSize={12}
-                            fontFamily={FontFamily.semiBold}
-                            color={theme.primary.val}
-                          >
-                            Deep scan
-                          </Text>
-                        </XStack>
-                      </PressableScale>
-                    )}
-                  </XStack>
-                </Animated.View>
-              )}
-            </XStack>
-          ) : null}
-
-          {!searchMode ? (
-            <PressableScale onPress={openHomeOverview}>
-              <XStack
-                alignItems="center"
-                justifyContent="space-between"
-                gap={12}
-                paddingTop={14}
-                borderTopWidth={1}
-                borderTopColor={theme.borderColor.val}
-              >
-                <YStack flex={1} gap={4}>
-                  <Text fontSize={13} fontWeight="700" color="$color">
-                    {upcomingReminders.length > 0
-                      ? `${upcomingReminders.length} coming up`
-                      : "Nothing scheduled soon"}
+          onSync={handleSyncTopics}
+          isSyncing={isSyncingTopics}
+        />
+        {searchMode ? (
+          <XStack gap={10} alignItems="center" marginTop={8}>
+            {isSearching ? (
+              <Animated.View entering={FadeIn.duration(300)}>
+                <XStack gap={6} alignItems="center">
+                  <PulsingDot color={theme.primary.val} />
+                  <Text fontSize={12} color={theme.colorMuted.val}>
+                    Finding deeper matches…
                   </Text>
-                  <Text fontSize={12} lineHeight={18} color="$colorMuted" numberOfLines={2}>
-                    {topReminders.length > 0
-                      ? `${topReminders.length} due now`
-                      : "No immediate follow-ups"}
-                    {" · "}
-                    {upcomingReminders.length > 0
-                      ? `Next: ${upcomingReminders[0].title || "Untitled memory"}`
-                      : `Recent activity: ${recentActivity} this week`}
-                  </Text>
-                </YStack>
-                <XStack alignItems="center" gap={6}>
-                  <Text fontSize={12} fontWeight="700" color="$primary">
-                    Overview
-                  </Text>
-                  <Feather name="chevron-right" size={14} color={theme.primary.val} />
                 </XStack>
-              </XStack>
-            </PressableScale>
-          ) : null}
-        </SectionCard>
-
-        {!searchMode && topReminders.length > 0 ? (
-          <SectionCard
-            title="Due now"
-            action={<Badge label={`${topReminders.length}`} color={theme.warning.val} small />}
-          >
-            <YStack gap={10}>
-              {topReminders.map((memory) => {
-                const note = toMemoryNote(memory);
-                const resolvedTopics = note.topicIds?.map((id) => topicById[id]).filter(Boolean) as
-                  Array<{ name: string; color?: string | null }> | undefined;
-                const syncBadge = getReminderSyncBadge(memory, theme);
-                const hasGoogleSyncInfo = !!(
-                  memory.googleSyncStatus ||
-                  memory.googleEventId ||
-                  memory.googleSyncMessage
-                );
-                const showTriggerSyncAction =
-                  calendarSyncEnabled &&
-                  (!hasGoogleSyncInfo || memory.googleSyncStatus === "failed");
-                const showRemoveSyncAction = calendarSyncEnabled && hasGoogleSyncInfo;
-                return (
-                  <ContextMenu
-                    key={memory._id}
-                    openOn="press"
-                    preview={
-                      <CardBody
-                        memory={note}
-                        resolvedTopics={resolvedTopics}
-                        showActions={false}
-                        framed={false}
-                      />
-                    }
-                    previewFrame
-                    items={[
-                      {
-                        label: "Mark as Completed",
-                        icon: "check-circle",
-                        iconColor: statusAccentColors.successStrong,
-                        onPress: () => token && completeMemory({ token, id: memory._id }),
-                      } satisfies import("@/components/ui/ContextMenu").ContextMenuItemDef,
-                      ...(showTriggerSyncAction
-                        ? [
-                            {
-                              label:
-                                memory.googleSyncStatus === "failed"
-                                  ? "Retry Google Sync"
-                                  : "Trigger Google Sync",
-                              icon: "refresh-cw",
-                              iconColor: theme.primary.val,
-                              onPress: () => handleTriggerReminderSync(memory._id),
-                            } satisfies import("@/components/ui/ContextMenu").ContextMenuItemDef,
-                          ]
-                        : []),
-                      ...(showRemoveSyncAction
-                        ? [
-                            {
-                              label: "Remove Google Sync",
-                              icon: "link-2",
-                              destructive: true,
-                              onPress: () => handleRemoveReminderSync(memory._id),
-                            } satisfies import("@/components/ui/ContextMenu").ContextMenuItemDef,
-                          ]
-                        : []),
-                      {
-                        label: "Edit Memory",
-                        icon: "edit-2",
-                        onPress: () => {
-                          openEditMemory(toMemoryNote(memory));
-                        },
-                      } satisfies import("@/components/ui/ContextMenu").ContextMenuItemDef,
-                      {
-                        label: "Share",
-                        icon: "share-2",
-                        onPress: () => handleShare(memory._id),
-                      } satisfies import("@/components/ui/ContextMenu").ContextMenuItemDef,
-                      {
-                        label: "Delete",
-                        icon: "trash-2",
-                        destructive: true,
-                        onPress: () => handleDelete(memory._id),
-                      } satisfies import("@/components/ui/ContextMenu").ContextMenuItemDef,
-                    ]}
-                  >
-                    <XStack
-                      alignItems="center"
-                      gap={12}
-                      padding={14}
-                      borderRadius={20}
-                      backgroundColor="$background"
-                      borderWidth={1}
-                      borderColor="$borderColor"
+              </Animated.View>
+            ) : (
+              <Animated.View entering={FadeIn.duration(300)}>
+                <XStack gap={8} alignItems="center">
+                  <Badge
+                    label={isSemanticCached ? "⚡ Fast" : "✓ Full scan"}
+                    color={isSemanticCached ? semantic.status.warning : theme.primary.val}
+                    small
+                  />
+                  {isSemanticCached && (
+                    <PressableScale
+                      onPress={() => {
+                        setIsSearching(true);
+                        setIsSemanticCached(false);
+                        semanticSearch({
+                          token: token!,
+                          query: trimmedSearchQuery,
+                          limit: 12,
+                          forceDeepSearch: true,
+                        })
+                          .then((r) => {
+                            setSemanticResults(r.results as MemoryItem[]);
+                            setIsSemanticCached(false);
+                          })
+                          .finally(() => setIsSearching(false));
+                      }}
                     >
-                      <YStack
-                        width={42}
-                        height={42}
-                        borderRadius={14}
+                      <XStack
+                        paddingHorizontal={10}
+                        paddingVertical={4}
+                        borderRadius={20}
+                        borderWidth={1}
+                        borderColor={theme.primary.val + "50"}
+                        backgroundColor={theme.primary.val + "12"}
+                        gap={5}
                         alignItems="center"
-                        justifyContent="center"
-                        backgroundColor={theme.warning.val + "18"}
                       >
-                        <Feather name="bell" size={16} color={theme.warning.val} />
-                      </YStack>
-                      <YStack flex={1} gap={3}>
-                        <Text fontSize={15} fontWeight="700" color="$color" numberOfLines={1}>
-                          {memory.title || "Untitled memory"}
+                        <Feather name="refresh-cw" size={10} color={theme.primary.val} />
+                        <Text
+                          fontSize={12}
+                          fontFamily={FontFamily.semiBold}
+                          color={theme.primary.val}
+                        >
+                          Deep scan
                         </Text>
-                        <XStack alignItems="center" gap={8}>
-                          <Text fontSize={13} color="$colorMuted" numberOfLines={1}>
-                            {new Date(getReminderDate(memory)!).toLocaleString(undefined, {
-                              month: "short",
-                              day: "numeric",
-                              hour: "numeric",
-                              minute: "2-digit",
-                            })}
-                          </Text>
-                          {syncBadge ? (
-                            <Badge label={syncBadge.label} color={syncBadge.color} small />
-                          ) : null}
-                        </XStack>
-                      </YStack>
-                      <Feather name="chevron-right" size={18} color={theme.colorMuted.val} />
-                    </XStack>
-                  </ContextMenu>
-                );
-              })}
-            </YStack>
-          </SectionCard>
+                      </XStack>
+                    </PressableScale>
+                  )}
+                </XStack>
+              </Animated.View>
+            )}
+          </XStack>
         ) : null}
 
+        {!searchMode ? (
+          <PressableScale onPress={openHomeOverview}>
+            <XStack
+              alignItems="center"
+              justifyContent="space-between"
+              gap={12}
+              paddingTop={14}
+              borderTopWidth={1}
+              borderTopColor={theme.borderColor.val}
+            >
+              <YStack flex={1} gap={4}>
+                <Text fontSize={13} fontWeight="700" color={theme.color.val}>
+                  {upcomingReminders.length > 0
+                    ? `${upcomingReminders.length} coming up`
+                    : "Nothing scheduled soon"}
+                </Text>
+                <Text fontSize={12} lineHeight={18} color={theme.colorMuted.val} numberOfLines={2}>
+                  {topReminders.length > 0
+                    ? `${topReminders.length} due now`
+                    : "No immediate follow-ups"}
+                  {" · "}
+                  {upcomingReminders.length > 0
+                    ? `Next: ${upcomingReminders[0].title || "Untitled memory"}`
+                    : `Recent activity: ${recentActivity} this week`}
+                </Text>
+              </YStack>
+              <XStack alignItems="center" gap={6}>
+                <Text fontSize={12} fontWeight="700" color={theme.primary.val}>
+                  Overview
+                </Text>
+                <Feather name="chevron-right" size={14} color={theme.primary.val} />
+              </XStack>
+            </XStack>
+          </PressableScale>
+        ) : null}
+      </SectionCard>
+
+      {!searchMode && topReminders.length > 0 ? (
         <SectionCard
-          title={searchMode ? "Results" : "Recent"}
-          action={
-            !searchMode && hiddenFeedCount > 0 ? (
-              <PressableScale onPress={() => setShowFullFeed((value) => !value)}>
-                <XStack alignItems="center" gap={6}>
-                  <Text fontSize={13} fontWeight="700" color="$primary">
-                    {showFullFeed ? "Show less" : `Show ${hiddenFeedCount} more`}
-                  </Text>
-                  <Feather
-                    name={showFullFeed ? "chevron-up" : "chevron-down"}
-                    size={14}
-                    color={theme.primary.val}
-                  />
-                </XStack>
-              </PressableScale>
-            ) : null
-          }
+          title="Due now"
+          action={<Badge label={`${topReminders.length}`} color={theme.warning.val} small />}
         >
-          {isLoading ? (
+          <YStack gap={10}>
+            {topReminders.map((memory) => {
+              const note = toMemoryNote(memory);
+              const resolvedTopics = note.topicIds?.map((id) => topicById[id]).filter(Boolean) as
+                Array<{ name: string; color?: string | null }> | undefined;
+              const syncBadge = getReminderSyncBadge(memory, theme);
+              const hasGoogleSyncInfo = !!(
+                memory.googleSyncStatus ||
+                memory.googleEventId ||
+                memory.googleSyncMessage
+              );
+              const showTriggerSyncAction =
+                calendarSyncEnabled && (!hasGoogleSyncInfo || memory.googleSyncStatus === "failed");
+              const showRemoveSyncAction = calendarSyncEnabled && hasGoogleSyncInfo;
+              return (
+                <ContextMenu
+                  key={memory._id}
+                  openOn="press"
+                  preview={
+                    <CardBody
+                      memory={note}
+                      resolvedTopics={resolvedTopics}
+                      showActions={false}
+                      framed={false}
+                    />
+                  }
+                  previewFrame
+                  items={[
+                    {
+                      label: "Mark as Completed",
+                      icon: "check-circle",
+                      iconColor: semantic.status.successStrong,
+                      onPress: () => token && completeMemory({ token, id: memory._id }),
+                    } satisfies import("@/components/ui/ContextMenu").ContextMenuItemDef,
+                    ...(showTriggerSyncAction
+                      ? [
+                          {
+                            label:
+                              memory.googleSyncStatus === "failed"
+                                ? "Retry Google Sync"
+                                : "Trigger Google Sync",
+                            icon: "refresh-cw",
+                            iconColor: theme.primary.val,
+                            onPress: () => handleTriggerReminderSync(memory._id),
+                          } satisfies import("@/components/ui/ContextMenu").ContextMenuItemDef,
+                        ]
+                      : []),
+                    ...(showRemoveSyncAction
+                      ? [
+                          {
+                            label: "Remove Google Sync",
+                            icon: "link-2",
+                            destructive: true,
+                            onPress: () => handleRemoveReminderSync(memory._id),
+                          } satisfies import("@/components/ui/ContextMenu").ContextMenuItemDef,
+                        ]
+                      : []),
+                    {
+                      label: "Edit Memory",
+                      icon: "edit-2",
+                      onPress: () => {
+                        openEditMemory(toMemoryNote(memory));
+                      },
+                    } satisfies import("@/components/ui/ContextMenu").ContextMenuItemDef,
+                    {
+                      label: "Share",
+                      icon: "share-2",
+                      onPress: () => handleShare(memory._id),
+                    } satisfies import("@/components/ui/ContextMenu").ContextMenuItemDef,
+                    {
+                      label: "Delete",
+                      icon: "trash-2",
+                      destructive: true,
+                      onPress: () => handleDelete(memory._id),
+                    } satisfies import("@/components/ui/ContextMenu").ContextMenuItemDef,
+                  ]}
+                >
+                  <XStack
+                    alignItems="center"
+                    gap={12}
+                    padding={14}
+                    borderRadius={20}
+                    backgroundColor={theme.background.val}
+                    borderWidth={1}
+                    borderColor={theme.borderColor.val}
+                  >
+                    <YStack
+                      width={42}
+                      height={42}
+                      borderRadius={14}
+                      alignItems="center"
+                      justifyContent="center"
+                      backgroundColor={theme.warning.val + "18"}
+                    >
+                      <Feather name="bell" size={16} color={theme.warning.val} />
+                    </YStack>
+                    <YStack flex={1} gap={3}>
+                      <Text
+                        fontSize={15}
+                        fontWeight="700"
+                        color={theme.color.val}
+                        numberOfLines={1}
+                      >
+                        {memory.title || "Untitled memory"}
+                      </Text>
+                      <XStack alignItems="center" gap={8}>
+                        <Text fontSize={13} color={theme.colorMuted.val} numberOfLines={1}>
+                          {new Date(getReminderDate(memory)!).toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </Text>
+                        {syncBadge ? (
+                          <Badge label={syncBadge.label} color={syncBadge.color} small />
+                        ) : null}
+                      </XStack>
+                    </YStack>
+                    <Feather name="chevron-right" size={18} color={theme.colorMuted.val} />
+                  </XStack>
+                </ContextMenu>
+              );
+            })}
+          </YStack>
+        </SectionCard>
+      ) : null}
+
+      <XStack alignItems="center" justifyContent="space-between" gap={12}>
+        <Text color={theme.color.val} fontSize={16} fontFamily="$heading" fontWeight="700">
+          {searchMode ? "Results" : "Recent"}
+        </Text>
+        {!searchMode && hiddenFeedCount > 0 ? (
+          <PressableScale onPress={() => setShowFullFeed((value) => !value)}>
+            <XStack alignItems="center" gap={6}>
+              <Text fontSize={13} fontWeight="700" color={theme.primary.val}>
+                {showFullFeed ? "Show less" : `Show ${hiddenFeedCount} more`}
+              </Text>
+              <Feather
+                name={showFullFeed ? "chevron-up" : "chevron-down"}
+                size={14}
+                color={theme.primary.val}
+              />
+            </XStack>
+          </PressableScale>
+        ) : null}
+      </XStack>
+    </YStack>
+  );
+
+  return (
+    <YStack flex={1} backgroundColor={theme.background.val}>
+      <FlatList<FeedRow>
+        data={isLoading ? [] : visibleFeed}
+        keyExtractor={feedKeyExtractor}
+        renderItem={renderFeedItem}
+        ItemSeparatorComponent={() => <YStack height={12} />}
+        ListHeaderComponent={feedHeader}
+        ListHeaderComponentStyle={{ marginBottom: 12 }}
+        ListEmptyComponent={
+          isLoading ? (
             <YStack gap={12}>
               <SkeletonCard />
               <SkeletonCard />
               <SkeletonCard />
             </YStack>
-          ) : transformedMemories.length === 0 ? (
+          ) : (
             <EmptyState
               icon="layers"
               title={
@@ -807,49 +888,21 @@ export default function HomeScreen() {
                     : "Capture your first memory to start the stream."
               }
             />
-          ) : (
-            <YStack gap={12}>
-              {visibleFeed.map(({ raw, note }, index) => {
-                const primaryTopic = note.primaryTopicId
-                  ? topicById[note.primaryTopicId]
-                  : undefined;
-                const secondaryTopics = (note.topicIds ?? [])
-                  .filter((id) => id !== note.primaryTopicId && topicById[id])
-                  .map((id) => topicById[id]);
-                const resolvedTopics = [
-                  ...(primaryTopic ? [primaryTopic] : []),
-                  ...secondaryTopics,
-                ];
-                const hasFiles = !!(attachmentCounts as Record<string, number>)[raw._id];
-                return (
-                  <MemoryCard
-                    key={raw._id}
-                    memory={note}
-                    index={index}
-                    resolvedTopics={resolvedTopics.length > 0 ? resolvedTopics : undefined}
-                    hasFiles={hasFiles}
-                    onPress={() => {
-                      openEditMemory(note);
-                    }}
-                    onDelete={() => {
-                      void handleDelete(raw._id);
-                    }}
-                    onShare={() => handleShare(raw._id)}
-                    onAddToReview={
-                      raw.reviewOptOut
-                        ? undefined
-                        : () => token && addToReview({ token, memoryId: raw._id })
-                    }
-                    onComplete={() => token && completeMemory({ token, id: raw._id })}
-                    onTriggerSync={() => handleTriggerReminderSync(raw._id)}
-                    onRemoveSync={() => handleRemoveReminderSync(raw._id)}
-                  />
-                );
-              })}
-            </YStack>
-          )}
-        </SectionCard>
-      </AppScreen>
-    </>
+          )
+        }
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        style={{
+          width: "100%",
+          maxWidth: isLargeScreen ? 1100 : undefined,
+          alignSelf: "center",
+        }}
+        contentContainerStyle={{
+          paddingTop: 10,
+          paddingBottom: tabBarPadding,
+          paddingHorizontal: 16,
+        }}
+      />
+    </YStack>
   );
 }

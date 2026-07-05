@@ -11,7 +11,7 @@ import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
 import { useColors } from "@/hooks/useColors";
 import { useDrivePreviewUrls } from "@/hooks/useDrivePreviewUrls";
 import { useAppToast } from "@/components/ui/toast";
-import { statusAccentColors } from "@/constants/colors";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
 import { useUIStore } from "@/store/ui";
 import { canUseGoogleDrive } from "@/lib/googleIntegration";
 
@@ -38,15 +38,9 @@ type AttachmentDoc = {
 
 type FilterType = "all" | "image" | "document";
 
-const processingColors = {
-  pending: statusAccentColors.warning,
-  processing: statusAccentColors.info,
-  completed: statusAccentColors.success,
-  failed: statusAccentColors.error,
-};
-
 export default function FilesScreen() {
   const colors = useColors();
+  const semantic = useSemanticColors();
   const auth = useAuth();
   const token = auth.token;
   const { showToast } = useAppToast();
@@ -76,6 +70,20 @@ export default function FilesScreen() {
   const previewUrls = useDrivePreviewUrls(attachments, token);
 
   const driveConnected = canUseGoogleDrive(googleIntegration ?? null);
+  const processingColors = React.useMemo(
+    () => ({
+      pending: semantic.documentStatus.pending,
+      processing: semantic.documentStatus.processing,
+      completed: semantic.documentStatus.completed,
+      failed: semantic.documentStatus.failed,
+    }),
+    [
+      semantic.documentStatus.completed,
+      semantic.documentStatus.failed,
+      semantic.documentStatus.pending,
+      semantic.documentStatus.processing,
+    ],
+  );
 
   const renderItem = useCallback(
     ({ item }: { item: AttachmentDoc; index: number }) => {

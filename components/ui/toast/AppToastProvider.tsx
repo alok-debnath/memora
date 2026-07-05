@@ -12,10 +12,11 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Text, useTheme, View, XStack, YStack } from "tamagui";
-import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
+import { Text, View, XStack, YStack } from "tamagui";
 import { useTopOverlayHost } from "@/components/ui/BackdropBlurProvider";
 import { appShadow } from "@/components/ui/themeHelpers";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
+import { useAppTheme } from "@/hooks/useAppTheme";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -63,14 +64,6 @@ const DEFAULT_DURATION = 4000;
 const MANUAL_CLOSE_DURATION = 24 * 60 * 60 * 1000;
 const MAX_TOASTS = 2;
 const SWIPE_DISMISS_THRESHOLD = 50;
-
-const TONE_COLORS: Record<AppToastTone, string> = {
-  default: integrationAccentColors.reasoning,
-  info: statusAccentColors.info,
-  success: statusAccentColors.success,
-  warning: statusAccentColors.warning,
-  error: statusAccentColors.error,
-};
 
 export const AppToastContext = createContext<AppToastContextValue | null>(null);
 
@@ -161,7 +154,8 @@ function AnimatedToast({
   onDismiss: (id: string) => void;
   maxWidth: number;
 }) {
-  const theme = useTheme();
+  const theme = useAppTheme();
+  const semantic = useSemanticColors();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const translateY = useSharedValue(0);
   const isDismissing = useRef(false);
@@ -206,7 +200,16 @@ function AnimatedToast({
     transform: [{ translateY: translateY.value }],
   }));
 
-  const toneColor = TONE_COLORS[toast.tone];
+  const toneColor =
+    toast.tone === "info"
+      ? semantic.status.info
+      : toast.tone === "success"
+        ? semantic.status.success
+        : toast.tone === "warning"
+          ? semantic.status.warning
+          : toast.tone === "error"
+            ? semantic.status.error
+            : semantic.integration.reasoning;
 
   return (
     <Animated.View entering={ENTER} exiting={EXIT} layout={LinearTransition.duration(250)}>
@@ -216,9 +219,9 @@ function AnimatedToast({
           swipeStyle,
           {
             maxWidth,
-            backgroundColor: theme.backgroundStrong?.val,
-            borderColor: theme.borderColor?.val,
-            ...appShadow(theme.shadowColor?.val ?? "#000000", "sm"),
+            backgroundColor: theme.backgroundStrong.val,
+            borderColor: theme.borderColor.val,
+            ...appShadow(theme.shadowColor.val, "sm"),
           },
         ]}
         {...panResponder.panHandlers}
@@ -233,13 +236,13 @@ function AnimatedToast({
               fontSize={13}
               fontWeight="600"
               fontFamily="$body"
-              color="$color"
+              color={theme.color.val}
               numberOfLines={2}
             >
               {toast.title}
             </Text>
             {toast.message ? (
-              <Text fontSize={12} fontFamily="$body" color="$colorMuted" numberOfLines={3}>
+              <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val} numberOfLines={3}>
                 {toast.message}
               </Text>
             ) : null}
@@ -285,11 +288,11 @@ function AnimatedToast({
                 height={26}
                 borderRadius={13}
                 borderWidth={1}
-                borderColor="$borderColor"
+                borderColor={theme.borderColor.val}
                 alignItems="center"
                 justifyContent="center"
               >
-                <Feather name="x" size={14} color={theme.colorMuted?.val} />
+                <Feather name="x" size={14} color={theme.colorMuted.val} />
               </View>
             </Pressable>
           ) : null}

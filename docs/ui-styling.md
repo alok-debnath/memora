@@ -13,7 +13,7 @@ Memora now treats Tamagui as the primary styling system for app UI.
   - `InlineNotice`
   - `AppScreen` / `SectionCard`
 - Prefer semantic variants and tones over passing arbitrary colors.
-- Keep gradients centralized in `constants/colors.ts`.
+- Keep palette generation and gradients centralized in `constants/themePalettes.ts`.
 
 ## Allowed `StyleSheet` Usage
 
@@ -27,7 +27,7 @@ Memora now treats Tamagui as the primary styling system for app UI.
 
 - raw hex or `rgba(...)` literals inside shared UI/auth components
 - screen-local button/input/badge/card styling when a shared primitive exists
-- duplicating light/dark palettes outside `tamagui.config.ts`
+- duplicating light/dark palettes outside `constants/themePalettes.ts`
 
 ## Current Enforcement Scope
 

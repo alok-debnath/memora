@@ -20,15 +20,15 @@ export function StatCard({ emoji, count, label }: StatCardProps) {
       paddingHorizontal={14}
       borderWidth={1}
       gap={6}
-      backgroundColor="$card"
-      borderColor="$borderColor"
+      backgroundColor={theme.surfaceElevated.val}
+      borderColor={theme.borderColor.val}
       style={appShadow(theme.shadowColor.val, "xs")}
     >
       <Text fontSize={22}>{emoji}</Text>
-      <Text fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">
+      <Text fontSize={24} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
         {count}
       </Text>
-      <Text fontSize={12} fontFamily="$body" color="$colorMuted">
+      <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val}>
         {label}
       </Text>
     </YStack>

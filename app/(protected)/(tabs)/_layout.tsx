@@ -610,12 +610,12 @@ function DesktopSidebarLayout() {
       style={{ flex: 1, backgroundColor: theme.background.val }}
       edges={["top", "bottom"]}
     >
-      <XStack flex={1} backgroundColor="$background">
+      <XStack flex={1} backgroundColor={theme.background.val}>
         <YStack
           width={292}
           borderRightWidth={1}
-          borderRightColor="$borderColor"
-          backgroundColor="$background"
+          borderRightColor={theme.borderColor.val}
+          backgroundColor={theme.background.val}
           paddingHorizontal={20}
           paddingTop={18}
           paddingBottom={20}
@@ -624,9 +624,9 @@ function DesktopSidebarLayout() {
             borderRadius={28}
             padding={18}
             marginBottom={18}
-            backgroundColor="$card"
+            backgroundColor={theme.card.val}
             borderWidth={1}
-            borderColor="$borderColor"
+            borderColor={theme.borderColor.val}
             gap={16}
           >
             <XStack alignItems="center" gap={12}>
@@ -641,10 +641,10 @@ function DesktopSidebarLayout() {
                 <Feather name="layers" size={20} color={theme.primary.val} />
               </YStack>
               <YStack flex={1}>
-                <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
+                <Text fontSize={22} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                   Memora
                 </Text>
-                <Text fontSize={12} color="$colorMuted">
+                <Text fontSize={12} color={theme.colorMuted.val}>
                   Memory studio
                 </Text>
               </YStack>
@@ -659,12 +659,12 @@ function DesktopSidebarLayout() {
                 fontSize={11}
                 letterSpacing={1}
                 textTransform="uppercase"
-                color="$primary"
+                color={theme.primary.val}
                 fontWeight="700"
               >
                 Quick Capture
               </Text>
-              <Text fontSize={13} lineHeight={19} color="$colorMuted">
+              <Text fontSize={13} lineHeight={19} color={theme.colorMuted.val}>
                 Capture notes, voice snippets, reminders, and AI chat from one command surface.
               </Text>
             </YStack>
@@ -709,11 +709,11 @@ function DesktopSidebarLayout() {
                       fontSize={15}
                       fontFamily="$body"
                       fontWeight={active ? "700" : "500"}
-                      color={active ? "$primary" : "$color"}
+                      color={active ? theme.primary.val : theme.color.val}
                     >
                       {item.title}
                     </Text>
-                    <Text fontSize={12} color="$colorMuted">
+                    <Text fontSize={12} color={theme.colorMuted.val}>
                       {item.title === "Home"
                         ? "Live memories and reminders"
                         : item.title === "Diary"
@@ -745,8 +745,8 @@ function DesktopSidebarLayout() {
             borderRadius={32}
             overflow="hidden"
             borderWidth={1}
-            borderColor="$borderColor"
-            backgroundColor="$background"
+            borderColor={theme.borderColor.val}
+            backgroundColor={theme.background.val}
           >
             <TabSlot style={{ flex: 1, backgroundColor: theme.background.val }} />
           </YStack>

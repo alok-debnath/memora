@@ -7,8 +7,9 @@ import { api } from "@/convex/_generated/api";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { useAdminState } from "@/components/admin/AdminStateContext";
+import { useAppTheme } from "@/hooks/useAppTheme";
 import { InteractiveTimelineChart } from "@/components/admin/InteractiveTimelineChart";
-import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
 
 function formatCompact(value: number) {
   return new Intl.NumberFormat(undefined, {
@@ -26,13 +27,15 @@ function formatUsdMicros(value: number) {
 }
 
 export default function AdminAnalyticsLabScreen() {
+  const theme = useAppTheme();
+  const semantic = useSemanticColors();
   const { range, segmentFamily, compareMode, refreshKey, setSelectedTimepoint } = useAdminState();
   const data = useQuery(api.admin.analyticsLab, { range, segmentFamily, compareMode, refreshKey });
 
   if (!data) {
     return (
       <YStack alignItems="center" paddingVertical={44}>
-        <ActivityIndicator color={statusAccentColors.info} />
+        <ActivityIndicator color={semantic.status.info} />
       </YStack>
     );
   }
@@ -61,8 +64,8 @@ export default function AdminAnalyticsLabScreen() {
             primaryLabel="Searches"
             secondaryLabel="AI requests"
             compareLabel="Prev AI requests"
-            barColor={statusAccentColors.info}
-            lineColor={integrationAccentColors.openai}
+            barColor={semantic.status.info}
+            lineColor={semantic.integration.openai}
             onSelectPoint={(point) => setSelectedTimepoint(point?.label ?? null)}
           />
         </Card>
@@ -71,26 +74,44 @@ export default function AdminAnalyticsLabScreen() {
       <YStack>
         <XStack gap={10} flexWrap="wrap">
           <Card style={{ borderRadius: 22, flex: 1, minWidth: 180 }}>
-            <Text fontSize={12} color="$colorMuted">
+            <Text fontSize={12} color={theme.colorMuted.val}>
               AI in range
             </Text>
-            <Text marginTop={4} fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">
+            <Text
+              marginTop={4}
+              fontSize={24}
+              fontFamily="$heading"
+              fontWeight="700"
+              color={theme.color.val}
+            >
               {formatCompact(totalAi)}
             </Text>
           </Card>
           <Card style={{ borderRadius: 22, flex: 1, minWidth: 180 }}>
-            <Text fontSize={12} color="$colorMuted">
+            <Text fontSize={12} color={theme.colorMuted.val}>
               Searches in range
             </Text>
-            <Text marginTop={4} fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">
+            <Text
+              marginTop={4}
+              fontSize={24}
+              fontFamily="$heading"
+              fontWeight="700"
+              color={theme.color.val}
+            >
               {formatCompact(totalSearches)}
             </Text>
           </Card>
           <Card style={{ borderRadius: 22, flex: 1, minWidth: 180 }}>
-            <Text fontSize={12} color="$colorMuted">
+            <Text fontSize={12} color={theme.colorMuted.val}>
               Estimated cost
             </Text>
-            <Text marginTop={4} fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">
+            <Text
+              marginTop={4}
+              fontSize={24}
+              fontFamily="$heading"
+              fontWeight="700"
+              color={theme.color.val}
+            >
               {formatUsdMicros(totalCost)}
             </Text>
           </Card>
@@ -99,25 +120,25 @@ export default function AdminAnalyticsLabScreen() {
 
       <Card style={{ borderRadius: 24 }}>
         <YStack gap={10}>
-          <Text fontSize={16} fontFamily="$heading" fontWeight="700" color="$color">
+          <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
             Segment Distribution
           </Text>
           {data.segments.length === 0 ? (
-            <Text fontSize={13} color="$colorMuted">
+            <Text fontSize={13} color={theme.colorMuted.val}>
               No segment data available.
             </Text>
           ) : (
             data.segments.map((segment: any) => (
               <XStack key={segment.key} justifyContent="space-between" alignItems="center">
                 <YStack>
-                  <Text fontSize={13} fontWeight="700" color="$color">
+                  <Text fontSize={13} fontWeight="700" color={theme.color.val}>
                     {segment.label}
                   </Text>
-                  <Text fontSize={11} color="$colorMuted">
+                  <Text fontSize={11} color={theme.colorMuted.val}>
                     {segment.key}
                   </Text>
                 </YStack>
-                <Badge label={formatCompact(segment.users)} color={statusAccentColors.info} />
+                <Badge label={formatCompact(segment.users)} color={semantic.status.info} />
               </XStack>
             ))
           )}

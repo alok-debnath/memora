@@ -43,7 +43,7 @@ export function PickerField({
   return (
     <YStack flex={1} flexBasis={stacked ? "100%" : undefined} gap={4}>
       <Text
-        color="$colorMuted"
+        color={theme.colorMuted.val}
         fontSize={11}
         fontFamily="$body"
         fontWeight="600"
@@ -57,8 +57,8 @@ export function PickerField({
       {/* Trigger */}
       <Pressable onPress={() => setOpen((o) => !o)}>
         <XStack
-          borderColor={open ? "$primary" : "$borderColor"}
-          backgroundColor="$card"
+          borderColor={open ? theme.primary.val : theme.borderColor.val}
+          backgroundColor={theme.card.val}
           borderWidth={0.5}
           borderRadius={12}
           paddingHorizontal={12}
@@ -76,7 +76,7 @@ export function PickerField({
           )}
           <Text
             flex={1}
-            color={selectedOption ? "$color" : "$colorMuted"}
+            color={selectedOption ? theme.color.val : theme.colorMuted.val}
             fontSize={14}
             fontFamily="$body"
             numberOfLines={1}
@@ -95,8 +95,8 @@ export function PickerField({
       {open && (
         <YStack
           borderWidth={0.5}
-          borderColor="$borderColor"
-          backgroundColor="$card"
+          borderColor={theme.borderColor.val}
+          backgroundColor={theme.card.val}
           borderRadius={12}
           overflow="hidden"
         >
@@ -107,9 +107,9 @@ export function PickerField({
                 paddingVertical={10}
                 alignItems="center"
                 gap={8}
-                backgroundColor={value === null ? "$accent" : "transparent"}
+                backgroundColor={value === null ? theme.accent.val : "transparent"}
               >
-                <Text flex={1} color="$colorMuted" fontSize={14} fontFamily="$body">
+                <Text flex={1} color={theme.colorMuted.val} fontSize={14} fontFamily="$body">
                   None
                 </Text>
                 {value === null && <Feather name="check" size={14} color={theme.primary.val} />}
@@ -123,9 +123,9 @@ export function PickerField({
                 paddingVertical={10}
                 alignItems="center"
                 gap={8}
-                backgroundColor={value === option.value ? "$accent" : "transparent"}
+                backgroundColor={value === option.value ? theme.accent.val : "transparent"}
                 borderTopWidth={idx > 0 || allowClear ? 0.5 : 0}
-                borderTopColor="$borderColor"
+                borderTopColor={theme.borderColor.val}
               >
                 {option.icon && (
                   <Feather
@@ -139,7 +139,7 @@ export function PickerField({
                 )}
                 <Text
                   flex={1}
-                  color={value === option.value ? "$primary" : "$color"}
+                  color={value === option.value ? theme.primary.val : theme.color.val}
                   fontSize={14}
                   fontFamily="$body"
                   numberOfLines={1}

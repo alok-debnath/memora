@@ -82,10 +82,16 @@ export default function TimelineScreen() {
       >
         <YStack flex={1} gap={6}>
           <Badge label="Chronological" color={theme.primary.val} />
-          <Text fontSize={28} lineHeight={32} fontFamily="$heading" fontWeight="700" color="$color">
+          <Text
+            fontSize={28}
+            lineHeight={32}
+            fontFamily="$heading"
+            fontWeight="700"
+            color={theme.color.val}
+          >
             Timeline
           </Text>
-          <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
+          <Text fontSize={14} lineHeight={20} fontFamily="$body" color={theme.colorMuted.val}>
             Review memories in time order, or narrow the story with a search.
           </Text>
         </YStack>
@@ -98,10 +104,10 @@ export default function TimelineScreen() {
               borderRadius: 18,
             }}
           >
-            <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
+            <Text fontSize={22} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
               {sorted.length}
             </Text>
-            <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">
+            <Text fontSize={11} fontFamily="$body" marginTop={4} color={theme.colorMuted.val}>
               visible
             </Text>
           </Card>
@@ -113,10 +119,10 @@ export default function TimelineScreen() {
               borderRadius: 18,
             }}
           >
-            <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
+            <Text fontSize={22} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
               {sectionCount}
             </Text>
-            <Text fontSize={11} fontFamily="$body" marginTop={4} color="$colorMuted">
+            <Text fontSize={11} fontFamily="$body" marginTop={4} color={theme.colorMuted.val}>
               sections
             </Text>
           </Card>
@@ -139,7 +145,7 @@ export default function TimelineScreen() {
         Object.entries(groups).map(([label, items]) => (
           <YStack key={label}>
             <Text
-              color="$colorMuted"
+              color={theme.colorMuted.val}
               fontSize={11}
               fontFamily="$body"
               fontWeight="600"

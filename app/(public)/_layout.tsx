@@ -1,14 +1,14 @@
 import { Stack } from "expo-router";
-import { useTheme } from "tamagui";
+import { useAppTheme } from "@/hooks/useAppTheme";
 
 export default function PublicLayout() {
-  const theme = useTheme();
+  const theme = useAppTheme();
   return (
     <Stack
       screenOptions={{
         headerShown: false,
         freezeOnBlur: true,
-        contentStyle: { backgroundColor: theme.background?.val },
+        contentStyle: { backgroundColor: theme.background.val },
       }}
     >
       <Stack.Screen name="(auth)" />

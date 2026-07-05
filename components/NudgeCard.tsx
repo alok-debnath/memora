@@ -44,7 +44,7 @@ export function NudgeCard({ title, message, onDismiss }: NudgeCardProps) {
           fontSize={14}
           fontFamily="$heading"
           fontWeight="600"
-          color="$color"
+          color={theme.color.val}
           numberOfLines={1}
         >
           {title}
@@ -63,7 +63,13 @@ export function NudgeCard({ title, message, onDismiss }: NudgeCardProps) {
           <Feather name="x" size={16} color={theme.colorMuted.val} />
         </PressableScale>
       </XStack>
-      <Text fontSize={13} fontFamily="$body" lineHeight={19} color="$colorMuted" numberOfLines={3}>
+      <Text
+        fontSize={13}
+        fontFamily="$body"
+        lineHeight={19}
+        color={theme.colorMuted.val}
+        numberOfLines={3}
+      >
         {message}
       </Text>
     </PressableScale>

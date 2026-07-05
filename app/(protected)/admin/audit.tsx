@@ -9,8 +9,10 @@ import { Badge } from "@/components/ui/Badge";
 import { AppTextField } from "@/components/ui/AppTextField";
 import { AppButton } from "@/components/ui/AppButton";
 import { useAdminState } from "@/components/admin/AdminStateContext";
+import { useAppTheme } from "@/hooks/useAppTheme";
 
 export default function AdminAuditScreen() {
+  const theme = useAppTheme();
   const { range, refreshKey, setSelectedEntity } = useAdminState();
   const [actionQuery, setActionQuery] = React.useState("");
   const [targetQuery, setTargetQuery] = React.useState("");
@@ -55,27 +57,27 @@ export default function AdminAuditScreen() {
         <Card style={{ borderRadius: 24 }}>
           <YStack gap={10}>
             <XStack alignItems="center" justifyContent="space-between">
-              <Text fontSize={16} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 Recent Admin Actions
               </Text>
               <Badge label={`${logs.page.length} entries`} />
             </XStack>
             {logs.page.length === 0 ? (
-              <Text fontSize={13} color="$colorMuted">
+              <Text fontSize={13} color={theme.colorMuted.val}>
                 No admin actions logged yet.
               </Text>
             ) : (
               logs.page.map((entry: any) => (
                 <XStack key={entry._id} alignItems="center" justifyContent="space-between" gap={10}>
                   <YStack flex={1}>
-                    <Text fontSize={13} fontWeight="700" color="$color">
+                    <Text fontSize={13} fontWeight="700" color={theme.color.val}>
                       {entry.action}
                     </Text>
-                    <Text fontSize={11} color="$colorMuted">
+                    <Text fontSize={11} color={theme.colorMuted.val}>
                       {entry.targetType}
                       {entry.targetId ? ` · ${entry.targetId}` : ""}
                     </Text>
-                    <Text fontSize={11} color="$colorMuted">
+                    <Text fontSize={11} color={theme.colorMuted.val}>
                       {new Date(entry.createdAt).toLocaleString()}
                     </Text>
                   </YStack>

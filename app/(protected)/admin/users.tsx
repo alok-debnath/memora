@@ -12,7 +12,8 @@ import { AppButton } from "@/components/ui/AppButton";
 import { Badge } from "@/components/ui/Badge";
 import { useAppToast } from "@/components/ui/toast";
 import { useAdminState } from "@/components/admin/AdminStateContext";
-import { statusAccentColors } from "@/constants/colors";
+import { useAppTheme } from "@/hooks/useAppTheme";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
 
 function formatCompact(value: number) {
   return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(
@@ -29,6 +30,8 @@ function formatUsdMicros(value: number) {
 }
 
 export default function AdminUsersScreen() {
+  const theme = useAppTheme();
+  const semantic = useSemanticColors();
   const { showToast } = useAppToast();
   const [search, setSearch] = useState("");
   const { range, refreshKey, selectedEntity, setSelectedEntity } = useAdminState();
@@ -71,13 +74,13 @@ export default function AdminUsersScreen() {
 
       {!list ? (
         <YStack alignItems="center" paddingVertical={40}>
-          <ActivityIndicator color={statusAccentColors.info} />
+          <ActivityIndicator color={semantic.status.info} />
         </YStack>
       ) : (
         <XStack gap={10} alignItems="flex-start" flexWrap="wrap">
           <Card style={{ borderRadius: 24, flex: 1, minWidth: 280 }}>
             <YStack gap={10}>
-              <Text fontSize={16} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 Users ({users.length})
               </Text>
               <ScrollView style={{ maxHeight: 460 }}>
@@ -90,22 +93,22 @@ export default function AdminUsersScreen() {
                         style={{
                           borderRadius: 14,
                           borderWidth: 1,
-                          borderColor: selectedRow ? statusAccentColors.info : undefined,
+                          borderColor: selectedRow ? semantic.status.info : undefined,
                         }}
                       >
                         <XStack alignItems="center" justifyContent="space-between" gap={8}>
                           <YStack flex={1}>
-                            <Text fontSize={13} fontWeight="700" color="$color">
+                            <Text fontSize={13} fontWeight="700" color={theme.color.val}>
                               {user.name}
                             </Text>
-                            <Text fontSize={11} color="$colorMuted">
+                            <Text fontSize={11} color={theme.colorMuted.val}>
                               {user.email}
                             </Text>
                             <XStack gap={6} marginTop={4} flexWrap="wrap">
                               <Badge label={`${formatCompact(user.stats.aiRequests)} AI`} />
                               <Badge label={`${formatCompact(user.stats.searches)} search`} />
                               {user.watch ? (
-                                <Badge label="Watch" color={statusAccentColors.warning} />
+                                <Badge label="Watch" color={semantic.status.warning} />
                               ) : null}
                             </XStack>
                           </YStack>
@@ -130,17 +133,17 @@ export default function AdminUsersScreen() {
           <Card style={{ borderRadius: 24, flex: 1, minWidth: 300 }}>
             {!selectedUserId || !selected ? (
               <YStack alignItems="center" justifyContent="center" minHeight={240} gap={8}>
-                <Feather name="user" size={20} color={statusAccentColors.info} />
-                <Text fontSize={13} color="$colorMuted">
+                <Feather name="user" size={20} color={semantic.status.info} />
+                <Text fontSize={13} color={theme.colorMuted.val}>
                   Select a user to view detail and actions.
                 </Text>
               </YStack>
             ) : (
               <YStack gap={12}>
-                <Text fontSize={17} fontFamily="$heading" fontWeight="700" color="$color">
+                <Text fontSize={17} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                   {selected.profile.name}
                 </Text>
-                <Text fontSize={12} color="$colorMuted">
+                <Text fontSize={12} color={theme.colorMuted.val}>
                   {selected.profile.email}
                 </Text>
 
@@ -150,11 +153,11 @@ export default function AdminUsersScreen() {
                   <Badge label={`${formatCompact(selected.summary.aiRequests)} AI req`} />
                   <Badge
                     label={formatUsdMicros(selected.summary.aiCostUsdMicros)}
-                    color={statusAccentColors.info}
+                    color={semantic.status.info}
                   />
                   <Badge
                     label={`${selected.sessions.activeCount} sessions`}
-                    color={statusAccentColors.warning}
+                    color={semantic.status.warning}
                   />
                 </XStack>
 
@@ -190,21 +193,21 @@ export default function AdminUsersScreen() {
                   />
                 </XStack>
 
-                <Text fontSize={13} fontFamily="$heading" fontWeight="700" color="$color">
+                <Text fontSize={13} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                   Recent AI Events
                 </Text>
                 <YStack gap={8}>
                   {selected.recentAiEvents.slice(0, 8).map((event: any) => (
                     <XStack key={event._id} justifyContent="space-between" gap={8}>
                       <YStack flex={1}>
-                        <Text fontSize={12} fontWeight="700" color="$color">
+                        <Text fontSize={12} fontWeight="700" color={theme.color.val}>
                           {event.feature} · {event.model}
                         </Text>
-                        <Text fontSize={11} color="$colorMuted">
+                        <Text fontSize={11} color={theme.colorMuted.val}>
                           {new Date(event.occurredAt).toLocaleString()} · {event.status}
                         </Text>
                       </YStack>
-                      <Text fontSize={11} color="$colorMuted">
+                      <Text fontSize={11} color={theme.colorMuted.val}>
                         {formatCompact(event.totalTokens)} tok
                       </Text>
                     </XStack>

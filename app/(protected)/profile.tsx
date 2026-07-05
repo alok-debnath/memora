@@ -11,7 +11,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
-import { useThemeStore } from "@/store/theme";
 import { Card } from "@/components/ui/Card";
 import { SectionLabel } from "@/components/ui/SectionLabel";
 import { PressableScale } from "@/components/ui/PressableScale";
@@ -21,7 +20,6 @@ import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
 import { useAppToast } from "@/components/ui/toast";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { FontFamily } from "@/constants/fonts";
-import { brandGradients } from "@/constants/colors";
 import { Dropdown, type IDropdownRef } from "react-native-element-dropdown";
 import { getTimeZones } from "@vvo/tzdb";
 import * as Google from "expo-auth-session/providers/google";
@@ -104,10 +102,10 @@ function IntegrationFeatureRow({
         <Feather name={icon} size={16} color={theme.primary.val} />
       </YStack>
       <YStack flex={1} gap={2}>
-        <Text fontSize={14} fontFamily="$body" fontWeight="600" color="$color">
+        <Text fontSize={14} fontFamily="$body" fontWeight="600" color={theme.color.val}>
           {title}
         </Text>
-        <Text fontSize={12} fontFamily="$body" lineHeight={17} color="$colorMuted">
+        <Text fontSize={12} fontFamily="$body" lineHeight={17} color={theme.colorMuted.val}>
           {description}
         </Text>
       </YStack>
@@ -164,7 +162,7 @@ function TimePreferenceField({
         textTransform="uppercase"
         letterSpacing={0.8}
         marginLeft={4}
-        color="$colorMuted"
+        color={theme.colorMuted.val}
       >
         {label}
       </Text>
@@ -195,7 +193,7 @@ function TimePreferenceField({
             },
           ]}
         >
-          <Text fontSize={15} fontFamily="$body" color="$color">
+          <Text fontSize={15} fontFamily="$body" color={theme.color.val}>
             {value || placeholder}
           </Text>
           <DateTimePicker
@@ -220,7 +218,7 @@ function TimePreferenceField({
               },
             ]}
           >
-            <Text fontSize={15} fontFamily="$body" color="$color">
+            <Text fontSize={15} fontFamily="$body" color={theme.color.val}>
               {value || placeholder}
             </Text>
           </Pressable>
@@ -250,7 +248,6 @@ export default function ProfileScreen() {
   const { showToast } = useAppToast();
   const { confirm } = useAppConfirm();
   const { user, token, logout } = useAuth();
-  const { mode, setMode, resolvedMode } = useThemeStore();
   const [displayName, setDisplayName] = React.useState(user?.name ?? "");
   const [timezone, setTimezone] = React.useState(
     user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
@@ -743,7 +740,7 @@ export default function ProfileScreen() {
           <XStack alignItems="flex-start" justifyContent="space-between" gap={14}>
             <XStack alignItems="center" gap={14} flex={1}>
               <LinearGradient
-                colors={[brandGradients.ember[0], brandGradients.ember[1]] as const}
+                colors={[theme.primary.val, theme.primaryHover.val] as const}
                 style={styles.avatar}
               >
                 <Text style={[styles.avatarText, { color: theme.textInverse.val }]}>
@@ -752,10 +749,15 @@ export default function ProfileScreen() {
               </LinearGradient>
               <YStack flex={1} gap={6}>
                 <Badge label="Memora account" color={theme.primary.val} />
-                <Text fontSize={22} fontFamily="$heading" fontWeight="700" color="$color">
+                <Text fontSize={22} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                   {user?.name || "User"}
                 </Text>
-                <Text fontSize={14} fontFamily="$body" color="$colorMuted" numberOfLines={1}>
+                <Text
+                  fontSize={14}
+                  fontFamily="$body"
+                  color={theme.colorMuted.val}
+                  numberOfLines={1}
+                >
                   {user?.email || ""}
                 </Text>
               </YStack>
@@ -770,10 +772,10 @@ export default function ProfileScreen() {
                 borderRadius: 18,
               }}
             >
-              <Text fontSize={20} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text fontSize={20} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 {totalMemories}
               </Text>
-              <Text fontSize={11} fontFamily="$body" marginTop={2} color="$colorMuted">
+              <Text fontSize={11} fontFamily="$body" marginTop={2} color={theme.colorMuted.val}>
                 Memories
               </Text>
             </Card>
@@ -785,10 +787,10 @@ export default function ProfileScreen() {
                 borderRadius: 18,
               }}
             >
-              <Text fontSize={20} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text fontSize={20} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 {diaryStats?.totalEntries ?? 0}
               </Text>
-              <Text fontSize={11} fontFamily="$body" marginTop={2} color="$colorMuted">
+              <Text fontSize={11} fontFamily="$body" marginTop={2} color={theme.colorMuted.val}>
                 Diary
               </Text>
             </Card>
@@ -800,10 +802,10 @@ export default function ProfileScreen() {
                 borderRadius: 18,
               }}
             >
-              <Text fontSize={20} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text fontSize={20} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 {totalReminders}
               </Text>
-              <Text fontSize={11} fontFamily="$body" marginTop={2} color="$colorMuted">
+              <Text fontSize={11} fontFamily="$body" marginTop={2} color={theme.colorMuted.val}>
                 Reminders
               </Text>
             </Card>
@@ -822,7 +824,7 @@ export default function ProfileScreen() {
               textTransform="uppercase"
               letterSpacing={0.8}
               marginLeft={4}
-              color="$colorMuted"
+              color={theme.colorMuted.val}
             >
               Display Name
             </Text>
@@ -849,7 +851,7 @@ export default function ProfileScreen() {
               textTransform="uppercase"
               letterSpacing={0.8}
               marginLeft={4}
-              color="$colorMuted"
+              color={theme.colorMuted.val}
             >
               Timezone
             </Text>
@@ -968,69 +970,11 @@ export default function ProfileScreen() {
       </YStack>
 
       <YStack>
-        <SectionLabel>APPEARANCE</SectionLabel>
-        <Card style={styles.groupCard}>
-          <YStack flex={1}>
-            <Text fontSize={15} fontFamily="$body" color="$color">
-              Theme
-            </Text>
-            <Text
-              fontSize={12}
-              fontFamily="$body"
-              marginTop={3}
-              lineHeight={18}
-              color="$colorMuted"
-            >
-              Follow your system or force light or dark mode. Active: {resolvedMode}
-            </Text>
-          </YStack>
-          <XStack gap={8} marginTop={16}>
-            {[
-              { key: "system", label: "System", icon: "smartphone" as const },
-              { key: "light", label: "Light", icon: "sun" as const },
-              { key: "dark", label: "Dark", icon: "moon" as const },
-            ].map((option) => {
-              const isActive = mode === option.key;
-              return (
-                <PressableScale
-                  key={option.key}
-                  onPress={() => setMode(option.key as "system" | "light" | "dark")}
-                  style={[
-                    styles.themeChip,
-                    {
-                      backgroundColor: isActive ? theme.primary.val + "18" : theme.secondary.val,
-                      borderColor: isActive ? theme.primary.val : theme.borderColor.val,
-                    },
-                  ]}
-                >
-                  <Feather
-                    name={option.icon}
-                    size={16}
-                    color={isActive ? theme.primary.val : theme.colorMuted.val}
-                  />
-                  <Text
-                    fontSize={13}
-                    fontFamily="$heading"
-                    fontWeight="600"
-                    style={{
-                      color: isActive ? theme.primary.val : theme.color.val,
-                    }}
-                  >
-                    {option.label}
-                  </Text>
-                </PressableScale>
-              );
-            })}
-          </XStack>
-        </Card>
-      </YStack>
-
-      <YStack>
         <SectionLabel>NOTIFICATIONS</SectionLabel>
         <Card style={styles.groupCard}>
           <XStack alignItems="center" gap={12} paddingVertical={10}>
             <YStack flex={1}>
-              <Text fontSize={15} fontFamily="$body" color="$color">
+              <Text fontSize={15} fontFamily="$body" color={theme.color.val}>
                 Daily Review
               </Text>
               <Text
@@ -1038,7 +982,7 @@ export default function ProfileScreen() {
                 fontFamily="$body"
                 marginTop={3}
                 lineHeight={18}
-                color="$colorMuted"
+                color={theme.colorMuted.val}
               >
                 Review memories every day at {notificationPrefs?.dailyReviewTime ?? "09:00"}.
               </Text>
@@ -1062,10 +1006,10 @@ export default function ProfileScreen() {
               onChange={(value) => updatePreference({ dailyReviewTime: value })}
             />
           </YStack>
-          <YStack height={StyleSheet.hairlineWidth} backgroundColor="$borderColor" />
+          <YStack height={StyleSheet.hairlineWidth} backgroundColor={theme.borderColor.val} />
           <XStack alignItems="center" gap={12} paddingVertical={10}>
             <YStack flex={1}>
-              <Text fontSize={15} fontFamily="$body" color="$color">
+              <Text fontSize={15} fontFamily="$body" color={theme.color.val}>
                 Weekly Digest
               </Text>
               <Text
@@ -1073,7 +1017,7 @@ export default function ProfileScreen() {
                 fontFamily="$body"
                 marginTop={3}
                 lineHeight={18}
-                color="$colorMuted"
+                color={theme.colorMuted.val}
               >
                 Summarize your week every {notificationPrefs?.weeklyDigestDay ?? "Sunday"}.
               </Text>
@@ -1097,7 +1041,7 @@ export default function ProfileScreen() {
                 textTransform="uppercase"
                 letterSpacing={0.8}
                 marginLeft={4}
-                color="$colorMuted"
+                color={theme.colorMuted.val}
               >
                 Weekly Digest Day
               </Text>
@@ -1118,10 +1062,10 @@ export default function ProfileScreen() {
               />
             </YStack>
           </YStack>
-          <YStack height={StyleSheet.hairlineWidth} backgroundColor="$borderColor" />
+          <YStack height={StyleSheet.hairlineWidth} backgroundColor={theme.borderColor.val} />
           <XStack alignItems="center" gap={12} paddingVertical={10}>
             <YStack flex={1}>
-              <Text fontSize={15} fontFamily="$body" color="$color">
+              <Text fontSize={15} fontFamily="$body" color={theme.color.val}>
                 AI Nudges
               </Text>
               <Text
@@ -1129,7 +1073,7 @@ export default function ProfileScreen() {
                 fontFamily="$body"
                 marginTop={3}
                 lineHeight={18}
-                color="$colorMuted"
+                color={theme.colorMuted.val}
               >
                 Smart suggestions based on your patterns.
               </Text>
@@ -1144,10 +1088,10 @@ export default function ProfileScreen() {
               thumbColor={theme.textInverse.val}
             />
           </XStack>
-          <YStack height={StyleSheet.hairlineWidth} backgroundColor="$borderColor" />
+          <YStack height={StyleSheet.hairlineWidth} backgroundColor={theme.borderColor.val} />
           <XStack alignItems="center" gap={12} paddingVertical={10}>
             <YStack flex={1}>
-              <Text fontSize={15} fontFamily="$body" color="$color">
+              <Text fontSize={15} fontFamily="$body" color={theme.color.val}>
                 Push Notifications
               </Text>
               <Text
@@ -1155,7 +1099,7 @@ export default function ProfileScreen() {
                 fontFamily="$body"
                 marginTop={3}
                 lineHeight={18}
-                color="$colorMuted"
+                color={theme.colorMuted.val}
               >
                 Enable reminder and review alerts on supported devices.
               </Text>
@@ -1170,10 +1114,10 @@ export default function ProfileScreen() {
               thumbColor={theme.textInverse.val}
             />
           </XStack>
-          <YStack height={StyleSheet.hairlineWidth} backgroundColor="$borderColor" />
+          <YStack height={StyleSheet.hairlineWidth} backgroundColor={theme.borderColor.val} />
           <XStack alignItems="center" gap={12} paddingVertical={10}>
             <YStack flex={1}>
-              <Text fontSize={15} fontFamily="$body" color="$color">
+              <Text fontSize={15} fontFamily="$body" color={theme.color.val}>
                 Capsule Alerts
               </Text>
               <Text
@@ -1181,7 +1125,7 @@ export default function ProfileScreen() {
                 fontFamily="$body"
                 marginTop={3}
                 lineHeight={18}
-                color="$colorMuted"
+                color={theme.colorMuted.val}
               >
                 Get notified when future memories unlock.
               </Text>
@@ -1205,7 +1149,7 @@ export default function ProfileScreen() {
           <XStack alignItems="center" gap={12} paddingVertical={4}>
             <YStack flex={1}>
               <XStack alignItems="center" gap={8}>
-                <Text fontSize={15} fontFamily="$body" color="$color">
+                <Text fontSize={15} fontFamily="$body" color={theme.color.val}>
                   Google
                 </Text>
                 {googleIntegration?.connected && (
@@ -1217,7 +1161,7 @@ export default function ProfileScreen() {
                 fontFamily="$body"
                 marginTop={3}
                 lineHeight={18}
-                color="$colorMuted"
+                color={theme.colorMuted.val}
               >
                 Sync reminders to Google Calendar and enable file attachments via Google Drive.
               </Text>
@@ -1256,7 +1200,7 @@ export default function ProfileScreen() {
                   fontWeight="600"
                   letterSpacing={0.8}
                   textTransform="uppercase"
-                  color="$colorMuted"
+                  color={theme.colorMuted.val}
                 >
                   Google Capabilities
                 </Text>
@@ -1269,7 +1213,7 @@ export default function ProfileScreen() {
                 />
               </XStack>
 
-              <YStack height={StyleSheet.hairlineWidth} backgroundColor="$borderColor" />
+              <YStack height={StyleSheet.hairlineWidth} backgroundColor={theme.borderColor.val} />
 
               <YStack padding={14} gap={12}>
                 {googleIntegration.hasCalendarScope ? (
@@ -1289,7 +1233,10 @@ export default function ProfileScreen() {
                 ) : null}
 
                 {googleIntegration.hasCalendarScope && googleIntegration.hasDriveScope ? (
-                  <YStack height={StyleSheet.hairlineWidth} backgroundColor="$borderColor" />
+                  <YStack
+                    height={StyleSheet.hairlineWidth}
+                    backgroundColor={theme.borderColor.val}
+                  />
                 ) : null}
 
                 {googleIntegration.hasDriveScope ? (
@@ -1318,7 +1265,7 @@ export default function ProfileScreen() {
         <Card style={styles.groupCard}>
           <XStack alignItems="center" gap={12} paddingVertical={4}>
             <YStack flex={1}>
-              <Text fontSize={15} fontFamily="$body" color="$color">
+              <Text fontSize={15} fontFamily="$body" color={theme.color.val}>
                 Bring Your Own Key
               </Text>
               <Text
@@ -1326,7 +1273,7 @@ export default function ProfileScreen() {
                 fontFamily="$body"
                 marginTop={3}
                 lineHeight={18}
-                color="$colorMuted"
+                color={theme.colorMuted.val}
               >
                 Use one provider for supported AI capabilities and skip Memora pricing on those
                 requests.
@@ -1337,7 +1284,7 @@ export default function ProfileScreen() {
                   fontFamily="$body"
                   marginTop={4}
                   lineHeight={18}
-                  color="$colorMuted"
+                  color={theme.colorMuted.val}
                 >
                   Rebuilding embeddings in the background: {embeddingRebuildProcessed} /{" "}
                   {embeddingRebuildTotal || "?"}. Search falls back to keyword matching until this
@@ -1361,7 +1308,7 @@ export default function ProfileScreen() {
             <>
               <YStack
                 height={StyleSheet.hairlineWidth}
-                backgroundColor="$borderColor"
+                backgroundColor={theme.borderColor.val}
                 marginTop={14}
               />
 
@@ -1403,7 +1350,7 @@ export default function ProfileScreen() {
                   textTransform="uppercase"
                   letterSpacing={0.8}
                   marginLeft={4}
-                  color="$colorMuted"
+                  color={theme.colorMuted.val}
                 >
                   API Key
                 </Text>
@@ -1435,7 +1382,7 @@ export default function ProfileScreen() {
                     textTransform="uppercase"
                     letterSpacing={0.8}
                     marginLeft={4}
-                    color="$colorMuted"
+                    color={theme.colorMuted.val}
                   >
                     Base URL
                   </Text>
@@ -1466,7 +1413,7 @@ export default function ProfileScreen() {
                   textTransform="uppercase"
                   letterSpacing={0.8}
                   marginLeft={4}
-                  color="$colorMuted"
+                  color={theme.colorMuted.val}
                 >
                   Models
                 </Text>
@@ -1477,7 +1424,7 @@ export default function ProfileScreen() {
                     ) ?? [];
                   return (
                     <YStack key={capability} gap={8}>
-                      <Text fontSize={13} fontFamily="$body" color="$color">
+                      <Text fontSize={13} fontFamily="$body" color={theme.color.val}>
                         {formatCapabilityLabel(capability)}
                       </Text>
                       <XStack flexWrap="wrap" gap={8}>
@@ -1551,7 +1498,7 @@ export default function ProfileScreen() {
                 gap={8}
               >
                 <XStack alignItems="center" justifyContent="space-between">
-                  <Text fontSize={14} fontFamily="$body" fontWeight="600" color="$color">
+                  <Text fontSize={14} fontFamily="$body" fontWeight="600" color={theme.color.val}>
                     {selectedAiProvider === "openai" ? "OpenAI" : "Google"} status
                   </Text>
                   {selectedAiConfig?.configured ? (
@@ -1564,19 +1511,24 @@ export default function ProfileScreen() {
                     <Badge label="No key" color={theme.borderColor.val} small />
                   )}
                 </XStack>
-                <Text fontSize={12} fontFamily="$body" lineHeight={18} color="$colorMuted">
+                <Text fontSize={12} fontFamily="$body" lineHeight={18} color={theme.colorMuted.val}>
                   {selectedAiConfig?.lastValidationStatus === "valid"
                     ? (selectedAiConfig.lastValidationMessage ?? "Last validation succeeded.")
                     : (selectedAiConfig?.lastValidationMessage ??
                       "Your key is encrypted server-side and only used to execute your AI requests.")}
                 </Text>
                 {aiProviderSettings?.preference?.embeddingRebuildStatus === "failed" ? (
-                  <Text fontSize={12} fontFamily="$body" lineHeight={18} color="$destructive">
+                  <Text
+                    fontSize={12}
+                    fontFamily="$body"
+                    lineHeight={18}
+                    color={theme.destructive.val}
+                  >
                     {aiProviderSettings?.preference?.embeddingRebuildError ||
                       "Embedding rebuild failed. Search will keep using the last ready vectors."}
                   </Text>
                 ) : null}
-                <Text fontSize={12} fontFamily="$body" lineHeight={18} color="$colorMuted">
+                <Text fontSize={12} fontFamily="$body" lineHeight={18} color={theme.colorMuted.val}>
                   Last 30 days: Memora{" "}
                   {formatUsdMicros(aiUsageOverview?.totals?.totalAiMemoraCostUsdMicros ?? 0)} /{" "}
                   {aiUsageOverview?.totals?.totalAiMemoraRequests ?? 0} ops, your key{" "}
@@ -1596,7 +1548,7 @@ export default function ProfileScreen() {
                     alignSelf="flex-start"
                   >
                     <Feather name="bar-chart-2" size={14} color={theme.primary.val} />
-                    <Text fontSize={12} fontFamily="$body" fontWeight="600" color="$color">
+                    <Text fontSize={12} fontFamily="$body" fontWeight="600" color={theme.color.val}>
                       View AI usage
                     </Text>
                   </XStack>
@@ -1611,10 +1563,10 @@ export default function ProfileScreen() {
                     justifyContent="space-between"
                     paddingVertical={6}
                   >
-                    <Text fontSize={13} fontFamily="$body" color="$color">
+                    <Text fontSize={13} fontFamily="$body" color={theme.color.val}>
                       {item.capability.replace(/_/g, " ")}
                     </Text>
-                    <Text fontSize={12} fontFamily="$body" color="$colorMuted">
+                    <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val}>
                       {item.label}
                     </Text>
                   </XStack>
@@ -1629,7 +1581,7 @@ export default function ProfileScreen() {
         <SectionLabel>DATA</SectionLabel>
         <Card style={styles.groupCard}>
           <YStack flex={1}>
-            <Text fontSize={15} fontFamily="$body" color="$color">
+            <Text fontSize={15} fontFamily="$body" color={theme.color.val}>
               Export Your Data
             </Text>
             <Text
@@ -1637,7 +1589,7 @@ export default function ProfileScreen() {
               fontFamily="$body"
               marginTop={3}
               lineHeight={18}
-              color="$colorMuted"
+              color={theme.colorMuted.val}
             >
               Download memories, diary entries, and your current profile snapshot.
             </Text>
@@ -1656,7 +1608,7 @@ export default function ProfileScreen() {
         <Card>
           <PressableScale onPress={handleLogout} style={styles.settingRow}>
             <Feather name="log-out" size={18} color={theme.color.val} />
-            <Text fontSize={15} fontFamily="$body" color="$color">
+            <Text fontSize={15} fontFamily="$body" color={theme.color.val}>
               Log Out
             </Text>
           </PressableScale>
@@ -1668,7 +1620,7 @@ export default function ProfileScreen() {
         <Card>
           <PressableScale onPress={handleDeleteAccount} style={styles.settingRow}>
             <Feather name="trash-2" size={18} color={theme.destructive.val} />
-            <Text fontSize={15} fontFamily="$body" color="$destructive">
+            <Text fontSize={15} fontFamily="$body" color={theme.destructive.val}>
               Delete Account
             </Text>
           </PressableScale>
@@ -1766,14 +1718,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     paddingVertical: 10,
-  },
-  themeChip: {
-    flex: 1,
-    minHeight: 50,
-    borderRadius: 16,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
   },
 });

@@ -13,9 +13,9 @@ export default function NotFoundScreen() {
         alignItems="center"
         justifyContent="center"
         padding={20}
-        backgroundColor="$background"
+        backgroundColor={theme.background.val}
       >
-        <Text fontSize={20} fontWeight="700" color="$color">
+        <Text fontSize={20} fontWeight="700" color={theme.color.val}>
           This screen doesn&apos;t exist.
         </Text>
 

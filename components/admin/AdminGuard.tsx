@@ -5,15 +5,16 @@ import { useQuery } from "convex/react";
 
 import { api } from "@/convex/_generated/api";
 import { Card } from "@/components/ui/Card";
-import { navigationAccentColors } from "@/constants/colors";
+import { useAppTheme } from "@/hooks/useAppTheme";
 
 export function AdminGuard({ children }: { children: React.ReactNode }) {
+  const theme = useAppTheme();
   const adminStatus = useQuery(api.auth.getAdminStatus);
 
   if (adminStatus === undefined) {
     return (
       <YStack alignItems="center" paddingVertical={36}>
-        <ActivityIndicator color={navigationAccentColors.admin} />
+        <ActivityIndicator color={theme.destructive.val} />
       </YStack>
     );
   }
@@ -22,10 +23,10 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
     return (
       <Card style={{ borderRadius: 24 }}>
         <YStack gap={10} alignItems="center" paddingVertical={18}>
-          <Text fontSize={18} fontFamily="$heading" fontWeight="700" color="$color">
+          <Text fontSize={18} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
             Admin access required
           </Text>
-          <Text fontSize={13} lineHeight={18} color="$colorMuted" textAlign="center">
+          <Text fontSize={13} lineHeight={18} color={theme.colorMuted.val} textAlign="center">
             This section is restricted to admin accounts.
           </Text>
         </YStack>

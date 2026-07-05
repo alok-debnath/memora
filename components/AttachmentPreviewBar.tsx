@@ -5,7 +5,6 @@ import { Feather } from "@/lib/icons";
 import { useColors } from "@/hooks/useColors";
 import { Text } from "tamagui";
 import type { PendingAttachment } from "@/hooks/useFileAttachments";
-import { statusAccentColors } from "@/constants/colors";
 import { appShadow } from "@/components/ui/themeHelpers";
 
 type AttachmentPreviewBarProps = {
@@ -105,7 +104,7 @@ function AttachmentSquare({ attachment, colors, onRemove, onPress }: AttachmentS
 
       {isError && (
         <View style={[styles.overlay, { backgroundColor: colors.surfaceDangerSoft }]}>
-          <Feather name="alert-circle" size={20} color={statusAccentColors.error} />
+          <Feather name="alert-circle" size={20} color={colors.error} />
         </View>
       )}
 

@@ -32,7 +32,7 @@ export function TagInput({ value, onChange, placeholder = "Add tag...", label }:
     <YStack gap={6}>
       {label && (
         <Text
-          color="$colorMuted"
+          color={theme.colorMuted.val}
           fontSize={11}
           fontFamily="$body"
           fontWeight="600"
@@ -45,8 +45,8 @@ export function TagInput({ value, onChange, placeholder = "Add tag...", label }:
       )}
       <YStack
         borderWidth={0.5}
-        borderColor="$borderColor"
-        backgroundColor="$card"
+        borderColor={theme.borderColor.val}
+        backgroundColor={theme.card.val}
         borderRadius={12}
         padding={10}
         minHeight={44}
@@ -55,14 +55,14 @@ export function TagInput({ value, onChange, placeholder = "Add tag...", label }:
           {value.map((tag) => (
             <XStack
               key={tag}
-              backgroundColor="$secondary"
+              backgroundColor={theme.secondary.val}
               borderRadius={20}
               paddingHorizontal={10}
               paddingVertical={4}
               alignItems="center"
               gap={4}
             >
-              <Text color="$color" fontSize={13} fontFamily="$body" fontWeight="500">
+              <Text color={theme.color.val} fontSize={13} fontFamily="$body" fontWeight="500">
                 {tag}
               </Text>
               <Pressable onPress={() => removeTag(tag)} hitSlop={6}>

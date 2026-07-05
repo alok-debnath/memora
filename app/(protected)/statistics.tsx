@@ -27,7 +27,7 @@ import { PressableScale } from "@/components/ui/PressableScale";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
-import { integrationAccentColors, statAccentColors, statusAccentColors } from "@/constants/colors";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
 import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 
 type RangeKey = "7d" | "30d" | "90d";
@@ -126,6 +126,7 @@ function KPI({
   hint: string;
   width: number;
 }) {
+  const theme = useAppTheme();
   return (
     <Card style={{ width, borderRadius: 24 }}>
       <XStack alignItems="flex-start" justifyContent="space-between">
@@ -139,14 +140,20 @@ function KPI({
         >
           <Feather name={icon} size={18} color={tone} />
         </YStack>
-        <Text fontSize={11} fontFamily="$body" color="$colorMuted">
+        <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val}>
           {hint}
         </Text>
       </XStack>
-      <Text marginTop={16} fontSize={26} fontFamily="$heading" fontWeight="700" color="$color">
+      <Text
+        marginTop={16}
+        fontSize={26}
+        fontFamily="$heading"
+        fontWeight="700"
+        color={theme.color.val}
+      >
         {value}
       </Text>
-      <Text marginTop={4} fontSize={12} fontFamily="$body" color="$colorMuted">
+      <Text marginTop={4} fontSize={12} fontFamily="$body" color={theme.colorMuted.val}>
         {label}
       </Text>
     </Card>
@@ -309,6 +316,7 @@ function DetailToggle({
   onPress: () => void;
   tone: string;
 }) {
+  const theme = useAppTheme();
   return (
     <PressableScale onPress={onPress}>
       <XStack
@@ -319,14 +327,14 @@ function DetailToggle({
         borderRadius={999}
         borderWidth={1}
         borderColor={active ? tone : withAlpha(tone, "24")}
-        backgroundColor={active ? withAlpha(tone, "14") : "$background"}
+        backgroundColor={active ? withAlpha(tone, "14") : theme.background.val}
       >
         <Feather name={icon} size={14} color={tone} />
         <Text
           fontSize={12}
           fontFamily="$body"
           fontWeight={active ? "700" : "500"}
-          color={active ? tone : "$colorMuted"}
+          color={active ? tone : theme.colorMuted.val}
         >
           {label}
         </Text>
@@ -361,6 +369,7 @@ function getDetailPanelMeta(
 
 export default function AnalyticsScreen() {
   const theme = useAppTheme();
+  const semantic = useSemanticColors();
   const insets = useSafeAreaInsets();
   const isLargeScreen = useIsLargeScreen();
   const modalRef = useRef<BottomSheetModal>(null);
@@ -492,11 +501,11 @@ export default function AnalyticsScreen() {
                 lineHeight={34}
                 fontFamily="$heading"
                 fontWeight="700"
-                color="$color"
+                color={theme.color.val}
               >
                 Usage overview
               </Text>
-              <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
+              <Text fontSize={14} lineHeight={20} fontFamily="$body" color={theme.colorMuted.val}>
                 {summaryLine}
               </Text>
             </YStack>
@@ -507,11 +516,11 @@ export default function AnalyticsScreen() {
             <Badge label={`Tracking since ${formatTrackedDate(overview?.trackingStartedAt)}`} />
             <Badge
               label={`${Math.round((overview?.rangeTotals.searchCacheHitRate ?? 0) * 100)}% search cache hit`}
-              color={statusAccentColors.info}
+              color={semantic.status.info}
             />
             <Badge
               label={`${formatBilledToLabel(spendSource)} spend view`}
-              color={integrationAccentColors.openai}
+              color={semantic.integration.openai}
             />
           </XStack>
         </Card>
@@ -535,7 +544,7 @@ export default function AnalyticsScreen() {
             label="AI spend"
             value={formatUsdMicros(overview?.rangeTotals.aiCostUsdMicros ?? 0)}
             hint={`${formatCompactNumber(overview?.rangeTotals.aiRequests ?? 0)} requests`}
-            tone={integrationAccentColors.openai}
+            tone={semantic.integration.openai}
             width={kpiWidth}
           />
         </YStack>
@@ -545,7 +554,7 @@ export default function AnalyticsScreen() {
             label="Searches"
             value={formatCompactNumber(overview?.rangeTotals.searches ?? 0)}
             hint={`${formatCompactNumber(overview?.rangeTotals.deepSearches ?? 0)} deep scans`}
-            tone={statAccentColors.diary}
+            tone={semantic.stat.diary}
             width={kpiWidth}
           />
         </YStack>
@@ -565,7 +574,7 @@ export default function AnalyticsScreen() {
             label="AI backend ops"
             value={formatCompactNumber(overview?.rangeTotals.aiRequests ?? 0)}
             hint={`${formatCompactNumber(overview?.rangeTotals.backgroundAiOperations ?? 0)} background`}
-            tone={statusAccentColors.warning}
+            tone={semantic.status.warning}
             width={kpiWidth}
           />
         </YStack>
@@ -588,10 +597,10 @@ export default function AnalyticsScreen() {
               marginBottom={12}
             >
               <YStack gap={2} flex={1} minWidth={isCompact ? "100%" : 0}>
-                <Text fontSize={18} fontFamily="$heading" fontWeight="700" color="$color">
+                <Text fontSize={18} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                   Search vs AI load
                 </Text>
-                <Text fontSize={13} fontFamily="$body" color="$colorMuted">
+                <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val}>
                   Search demand and AI backend pressure plotted together across the selected window.
                 </Text>
               </YStack>
@@ -605,7 +614,7 @@ export default function AnalyticsScreen() {
                       backgroundColor: theme.primary.val,
                     }}
                   />
-                  <Text fontSize={12} color="$colorMuted">
+                  <Text fontSize={12} color={theme.colorMuted.val}>
                     Searches
                   </Text>
                 </XStack>
@@ -615,10 +624,10 @@ export default function AnalyticsScreen() {
                       width: 10,
                       height: 10,
                       borderRadius: 5,
-                      backgroundColor: integrationAccentColors.openai,
+                      backgroundColor: semantic.integration.openai,
                     }}
                   />
-                  <Text fontSize={12} color="$colorMuted">
+                  <Text fontSize={12} color={theme.colorMuted.val}>
                     AI calls
                   </Text>
                 </XStack>
@@ -634,10 +643,10 @@ export default function AnalyticsScreen() {
                 borderWidth={1}
                 borderColor={withAlpha(theme.primary.val, "18")}
               >
-                <Text fontSize={11} color="$colorMuted">
+                <Text fontSize={11} color={theme.colorMuted.val}>
                   Searches in range
                 </Text>
-                <Text fontSize={18} fontFamily="$heading" fontWeight="700" color="$color">
+                <Text fontSize={18} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                   {formatCompactNumber(usageFlowStats.searches)}
                 </Text>
               </YStack>
@@ -646,14 +655,14 @@ export default function AnalyticsScreen() {
                 paddingHorizontal={12}
                 paddingVertical={10}
                 borderRadius={18}
-                backgroundColor={withAlpha(integrationAccentColors.openai, "10")}
+                backgroundColor={withAlpha(semantic.integration.openai, "10")}
                 borderWidth={1}
-                borderColor={withAlpha(integrationAccentColors.openai, "18")}
+                borderColor={withAlpha(semantic.integration.openai, "18")}
               >
-                <Text fontSize={11} color="$colorMuted">
+                <Text fontSize={11} color={theme.colorMuted.val}>
                   AI calls in range
                 </Text>
-                <Text fontSize={18} fontFamily="$heading" fontWeight="700" color="$color">
+                <Text fontSize={18} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                   {formatCompactNumber(usageFlowStats.aiRequests)}
                 </Text>
               </YStack>
@@ -663,20 +672,20 @@ export default function AnalyticsScreen() {
                 paddingHorizontal={12}
                 paddingVertical={10}
                 borderRadius={18}
-                backgroundColor="$background"
+                backgroundColor={theme.background.val}
                 borderWidth={1}
-                borderColor="$borderColor"
+                borderColor={theme.borderColor.val}
               >
-                <Text fontSize={11} color="$colorMuted">
+                <Text fontSize={11} color={theme.colorMuted.val}>
                   Peak days
                 </Text>
-                <Text fontSize={13} fontFamily="$body" fontWeight="600" color="$color">
+                <Text fontSize={13} fontFamily="$body" fontWeight="600" color={theme.color.val}>
                   Search peak:{" "}
                   {usageFlowStats.peakSearchDay
                     ? `${formatDateLabel(usageFlowStats.peakSearchDay.dayKey)}`
                     : "No data"}
                 </Text>
-                <Text fontSize={12} color="$colorMuted">
+                <Text fontSize={12} color={theme.colorMuted.val}>
                   AI peak:{" "}
                   {usageFlowStats.peakAiDay
                     ? formatDateLabel(usageFlowStats.peakAiDay.dayKey)
@@ -691,10 +700,10 @@ export default function AnalyticsScreen() {
               renderItem={() => (
                 <YStack>
                   <XStack justifyContent="space-between" alignItems="center" marginBottom={8}>
-                    <Text fontSize={10} color="$colorMuted">
+                    <Text fontSize={10} color={theme.colorMuted.val}>
                       {formatCompactNumber(usageFlowScale.maxSearches)} searches
                     </Text>
-                    <Text fontSize={10} color="$colorMuted">
+                    <Text fontSize={10} color={theme.colorMuted.val}>
                       {formatCompactNumber(usageFlowScale.maxAiCalls)} AI calls
                     </Text>
                   </XStack>
@@ -705,7 +714,7 @@ export default function AnalyticsScreen() {
                       secondaryValue: item.aiRequests,
                     }))}
                     barColor={theme.primary.val}
-                    lineColor={integrationAccentColors.openai}
+                    lineColor={semantic.integration.openai}
                   />
                 </YStack>
               )}
@@ -722,7 +731,7 @@ export default function AnalyticsScreen() {
         <Card style={{ borderRadius: 26 }}>
           <YStack gap={10} marginBottom={16}>
             <XStack alignItems="center" justifyContent="space-between" gap={12} flexWrap="wrap">
-              <Text fontSize={18} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text fontSize={18} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 AI detail views
               </Text>
               {detailPanel !== "none" ? (
@@ -738,7 +747,7 @@ export default function AnalyticsScreen() {
                 />
               ) : null}
             </XStack>
-            <Text fontSize={13} fontFamily="$body" color="$colorMuted">
+            <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val}>
               Choose a detailed view here. Costs and usage below are filtered to{" "}
               {formatBilledToLabel(spendSource).toLowerCase()} traffic.
             </Text>
@@ -759,7 +768,7 @@ export default function AnalyticsScreen() {
                 onPress={() =>
                   setDetailPanel((current) => (current === "models" ? "none" : "models"))
                 }
-                tone={integrationAccentColors.openai}
+                tone={semantic.integration.openai}
               />
               <DetailToggle
                 icon="clock"
@@ -768,44 +777,44 @@ export default function AnalyticsScreen() {
                 onPress={() =>
                   setDetailPanel((current) => (current === "events" ? "none" : "events"))
                 }
-                tone={statusAccentColors.info}
+                tone={semantic.status.info}
               />
             </XStack>
           </YStack>
 
           <XStack justifyContent="space-between" gap={16} flexWrap="wrap">
             <YStack flex={1} gap={10}>
-              <Text fontSize={17} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text fontSize={17} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 Model spend and token load
               </Text>
-              <Text fontSize={13} color="$colorMuted" lineHeight={18}>
+              <Text fontSize={13} color={theme.colorMuted.val} lineHeight={18}>
                 User-visible actions stay compact here. Detailed pipeline work, fallback chains, and
                 recent operations live in the drilldowns.
               </Text>
               <XStack gap={10} flexWrap="wrap">
                 <Badge
                   label={`${formatCompactNumber(overview?.rangeTotals.aiInputTokens ?? 0)} input tokens`}
-                  color={integrationAccentColors.openai}
+                  color={semantic.integration.openai}
                 />
                 <Badge
                   label={`${formatCompactNumber(overview?.rangeTotals.aiOutputTokens ?? 0)} output tokens`}
                 />
                 <Badge
                   label={`${formatCompactNumber(overview?.rangeTotals.aiRequests ?? 0)} backend ops`}
-                  color={statusAccentColors.info}
+                  color={semantic.status.info}
                 />
                 <Badge
                   label={`${Math.round((overview?.rangeTotals.failureRate ?? 0) * 100)}% failure rate`}
                   color={
                     (overview?.rangeTotals.failureRate ?? 0) > 0.08
-                      ? statusAccentColors.error
-                      : statusAccentColors.success
+                      ? semantic.status.error
+                      : semantic.status.success
                   }
                 />
                 {actionToOpRatio ? (
                   <Badge
                     label={`${actionToOpRatio.toFixed(1)} ops / action`}
-                    color={statusAccentColors.warning}
+                    color={semantic.status.warning}
                   />
                 ) : null}
               </XStack>
@@ -815,22 +824,22 @@ export default function AnalyticsScreen() {
               paddingHorizontal={14}
               paddingVertical={12}
               borderRadius={18}
-              backgroundColor={withAlpha(integrationAccentColors.openai, "12")}
+              backgroundColor={withAlpha(semantic.integration.openai, "12")}
               gap={4}
             >
-              <Text fontSize={12} color="$colorMuted">
+              <Text fontSize={12} color={theme.colorMuted.val}>
                 Top model
               </Text>
-              <Text fontSize={15} fontFamily="$body" fontWeight="700" color="$color">
+              <Text fontSize={15} fontFamily="$body" fontWeight="700" color={theme.color.val}>
                 {overview?.topModel?.model ?? "No data"}
               </Text>
-              <Text fontSize={12} color="$colorMuted">
+              <Text fontSize={12} color={theme.colorMuted.val}>
                 {overview?.topModel?.feature
                   ? formatFeatureLabel(overview.topModel.feature)
                   : "Waiting for tracked usage"}
               </Text>
               {topBackgroundFeature ? (
-                <Text fontSize={12} color="$colorMuted">
+                <Text fontSize={12} color={theme.colorMuted.val}>
                   Top background: {formatFeatureLabel(topBackgroundFeature.feature)}
                 </Text>
               ) : null}
@@ -849,26 +858,26 @@ export default function AnalyticsScreen() {
                     width={10}
                     height={10}
                     borderRadius={5}
-                    backgroundColor={integrationAccentColors.openai}
+                    backgroundColor={semantic.integration.openai}
                   />
                   <YStack flex={1}>
-                    <Text fontSize={13} fontWeight="600" color="$color">
+                    <Text fontSize={13} fontWeight="600" color={theme.color.val}>
                       {item.model}
                     </Text>
-                    <Text fontSize={12} color="$colorMuted">
+                    <Text fontSize={12} color={theme.colorMuted.val}>
                       {formatFeatureLabel(item.feature)} · {formatStageLabel(item.stage)} ·{" "}
                       {formatBilledToLabel(item.billedTo)} · {formatCompactNumber(item.requests)}{" "}
                       calls
                     </Text>
                   </YStack>
-                  <Text fontSize={13} fontWeight="700" color="$color">
+                  <Text fontSize={13} fontWeight="700" color={theme.color.val}>
                     {formatUsdMicros(item.costUsdMicros)}
                   </Text>
                 </XStack>
               ))}
             </YStack>
           ) : (
-            <Text marginTop={16} fontSize={13} color="$colorMuted">
+            <Text marginTop={16} fontSize={13} color={theme.colorMuted.val}>
               AI tracking starts from the rollout of this analytics update.
             </Text>
           )}
@@ -886,10 +895,10 @@ export default function AnalyticsScreen() {
               borderRadius={18}
               backgroundColor={withAlpha(theme.primary.val, "10")}
             >
-              <Text fontSize={12} color="$colorMuted">
+              <Text fontSize={12} color={theme.colorMuted.val}>
                 Cache hit rate
               </Text>
-              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 {Math.round((overview?.rangeTotals.searchCacheHitRate ?? 0) * 100)}%
               </Text>
             </YStack>
@@ -898,12 +907,12 @@ export default function AnalyticsScreen() {
               minWidth={110}
               padding={14}
               borderRadius={18}
-              backgroundColor={withAlpha(statusAccentColors.success, "10")}
+              backgroundColor={withAlpha(semantic.status.success, "10")}
             >
-              <Text fontSize={12} color="$colorMuted">
+              <Text fontSize={12} color={theme.colorMuted.val}>
                 Avg latency
               </Text>
-              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 {Math.round(overview?.rangeTotals.avgSearchLatencyMs ?? 0)} ms
               </Text>
             </YStack>
@@ -912,12 +921,12 @@ export default function AnalyticsScreen() {
               minWidth={110}
               padding={14}
               borderRadius={18}
-              backgroundColor={withAlpha(statusAccentColors.warning, "10")}
+              backgroundColor={withAlpha(semantic.status.warning, "10")}
             >
-              <Text fontSize={12} color="$colorMuted">
+              <Text fontSize={12} color={theme.colorMuted.val}>
                 Vector / full-text
               </Text>
-              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 {formatCompactNumber(overview?.rangeTotals.vectorSearches ?? 0)}/
                 {formatCompactNumber(overview?.rangeTotals.fullTextSearches ?? 0)}
               </Text>
@@ -977,11 +986,11 @@ export default function AnalyticsScreen() {
         >
           <XStack alignItems="center" justifyContent="space-between" gap={12}>
             <YStack flex={1} minWidth={0} gap={2}>
-              <Text fontSize={18} fontWeight="700" color="$color">
+              <Text fontSize={18} fontWeight="700" color={theme.color.val}>
                 {detailMeta?.title ?? "AI Details"}
               </Text>
               {detailMeta?.subtitle ? (
-                <Text fontSize={13} lineHeight={18} color="$colorMuted">
+                <Text fontSize={13} lineHeight={18} color={theme.colorMuted.val}>
                   {detailMeta.subtitle}
                 </Text>
               ) : null}
@@ -996,7 +1005,7 @@ export default function AnalyticsScreen() {
           {detailPanel === "features" ? (
             <Card style={{ borderRadius: 18, borderWidth: 0 }}>
               <YStack gap={12}>
-                <Text fontSize={13} color="$colorMuted">
+                <Text fontSize={13} color={theme.colorMuted.val}>
                   {formatCompactNumber(overview?.rangeTotals.aiActions ?? 0)} user-visible actions
                   triggered {formatCompactNumber(overview?.rangeTotals.aiRequests ?? 0)} backend AI
                   operations in this range.
@@ -1011,13 +1020,13 @@ export default function AnalyticsScreen() {
                       backgroundColor={withAlpha(
                         item.visibility === "user_visible"
                           ? theme.primary.val
-                          : integrationAccentColors.openai,
+                          : semantic.integration.openai,
                         "08",
                       )}
                       style={appShadow(
                         item.visibility === "user_visible"
                           ? theme.primary.val
-                          : integrationAccentColors.openai,
+                          : semantic.integration.openai,
                         "hairline",
                       )}
                     >
@@ -1029,14 +1038,14 @@ export default function AnalyticsScreen() {
                           backgroundColor={
                             item.visibility === "user_visible"
                               ? theme.primary.val
-                              : integrationAccentColors.openai
+                              : semantic.integration.openai
                           }
                         />
                         <YStack flex={1}>
-                          <Text fontSize={13} fontWeight="700" color="$color">
+                          <Text fontSize={13} fontWeight="700" color={theme.color.val}>
                             {formatFeatureLabel(item.feature)}
                           </Text>
-                          <Text fontSize={12} color="$colorMuted">
+                          <Text fontSize={12} color={theme.colorMuted.val}>
                             {formatStageLabel(item.stage)} ·{" "}
                             {item.visibility === "user_visible" ? "user visible" : "background"} ·{" "}
                             {formatBilledToLabel(item.billedTo)} ·{" "}
@@ -1044,10 +1053,10 @@ export default function AnalyticsScreen() {
                           </Text>
                         </YStack>
                         <YStack alignItems="flex-end">
-                          <Text fontSize={13} fontWeight="700" color="$color">
+                          <Text fontSize={13} fontWeight="700" color={theme.color.val}>
                             {formatUsdMicros(item.costUsdMicros)}
                           </Text>
-                          <Text fontSize={11} color="$colorMuted">
+                          <Text fontSize={11} color={theme.colorMuted.val}>
                             {formatCompactNumber(item.totalTokens)} tokens
                           </Text>
                         </YStack>
@@ -1055,7 +1064,7 @@ export default function AnalyticsScreen() {
                       <XStack gap={8} flexWrap="wrap">
                         <Badge
                           label={`${formatCompactNumber(item.inputTokens)} in`}
-                          color={integrationAccentColors.openai}
+                          color={semantic.integration.openai}
                         />
                         <Badge label={`${formatCompactNumber(item.outputTokens)} out`} />
                         <Badge
@@ -1063,16 +1072,14 @@ export default function AnalyticsScreen() {
                             item.requests > 0 ? ((item.errors ?? 0) / item.requests) * 100 : 0,
                           )}% failures`}
                           color={
-                            (item.errors ?? 0) > 0
-                              ? statusAccentColors.error
-                              : statusAccentColors.success
+                            (item.errors ?? 0) > 0 ? semantic.status.error : semantic.status.success
                           }
                         />
                       </XStack>
                     </YStack>
                   ))
                 ) : (
-                  <Text fontSize={13} color="$colorMuted">
+                  <Text fontSize={13} color={theme.colorMuted.val}>
                     No feature-level AI data yet for this range.
                   </Text>
                 )}
@@ -1091,26 +1098,26 @@ export default function AnalyticsScreen() {
                       gap={10}
                     >
                       <YStack flex={1}>
-                        <Text fontSize={13} fontWeight="700" color="$color">
+                        <Text fontSize={13} fontWeight="700" color={theme.color.val}>
                           {item.model}
                         </Text>
-                        <Text fontSize={12} color="$colorMuted">
+                        <Text fontSize={12} color={theme.colorMuted.val}>
                           {formatFeatureLabel(item.feature)} · {formatStageLabel(item.stage)} ·{" "}
                           {formatBilledToLabel(item.billedTo)}
                         </Text>
                       </YStack>
                       <YStack alignItems="flex-end">
-                        <Text fontSize={13} fontWeight="700" color="$color">
+                        <Text fontSize={13} fontWeight="700" color={theme.color.val}>
                           {formatUsdMicros(item.costUsdMicros)}
                         </Text>
-                        <Text fontSize={11} color="$colorMuted">
+                        <Text fontSize={11} color={theme.colorMuted.val}>
                           {formatCompactNumber(item.totalTokens)} tokens
                         </Text>
                       </YStack>
                     </XStack>
                   ))
                 ) : (
-                  <Text fontSize={13} color="$colorMuted">
+                  <Text fontSize={13} color={theme.colorMuted.val}>
                     No model-level AI data yet for this range.
                   </Text>
                 )}
@@ -1130,25 +1137,25 @@ export default function AnalyticsScreen() {
                         borderRadius={6}
                         backgroundColor={
                           event.status === "error"
-                            ? statusAccentColors.error
-                            : integrationAccentColors.openai
+                            ? semantic.status.error
+                            : semantic.integration.openai
                         }
                       />
                       <YStack flex={1}>
-                        <Text fontSize={13} fontWeight="700" color="$color">
+                        <Text fontSize={13} fontWeight="700" color={theme.color.val}>
                           {event.model}
                         </Text>
-                        <Text fontSize={12} color="$colorMuted">
+                        <Text fontSize={12} color={theme.colorMuted.val}>
                           {formatFeatureLabel(event.feature)} · {formatStageLabel(event.stage)} ·{" "}
                           {formatBilledToLabel(event.billedTo)} ·{" "}
                           {new Date(event.occurredAt).toLocaleString()}
                         </Text>
                       </YStack>
                       <YStack alignItems="flex-end">
-                        <Text fontSize={12} fontWeight="700" color="$color">
+                        <Text fontSize={12} fontWeight="700" color={theme.color.val}>
                           {event.costUsdMicros ? formatUsdMicros(event.costUsdMicros) : "n/a"}
                         </Text>
-                        <Text fontSize={11} color="$colorMuted">
+                        <Text fontSize={11} color={theme.colorMuted.val}>
                           {event.totalTokens
                             ? `${formatCompactNumber(event.totalTokens)} tok`
                             : (event.visibility ?? event.status)}
@@ -1157,7 +1164,7 @@ export default function AnalyticsScreen() {
                     </XStack>
                   ))
                 ) : (
-                  <Text fontSize={13} color="$colorMuted">
+                  <Text fontSize={13} color={theme.colorMuted.val}>
                     No recent AI events yet.
                   </Text>
                 )}

@@ -22,7 +22,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { PageHero } from "@/components/ui/PageHero";
 import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
-import { reviewQualityColors } from "@/constants/colors";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -55,12 +55,14 @@ function previewInterval(card: ReviewCard, quality: number): number {
   return Math.round(card.intervalDays * ef);
 }
 
-const RATINGS = [
-  { label: "Again", emoji: "🔴", quality: 1, color: reviewQualityColors.again },
-  { label: "Hard", emoji: "🟡", quality: 2, color: reviewQualityColors.hard },
-  { label: "Good", emoji: "🔵", quality: 3, color: reviewQualityColors.good },
-  { label: "Easy", emoji: "🟢", quality: 5, color: reviewQualityColors.easy },
+const RATING_DEFS = [
+  { label: "Again", emoji: "🔴", quality: 1, tone: "again" },
+  { label: "Hard", emoji: "🟡", quality: 2, tone: "hard" },
+  { label: "Good", emoji: "🔵", quality: 3, tone: "good" },
+  { label: "Easy", emoji: "🟢", quality: 5, tone: "easy" },
 ] as const;
+
+type RatingOption = (typeof RATING_DEFS)[number] & { color: string };
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
@@ -109,7 +111,7 @@ function CardFront({
     <YStack flex={1} justifyContent="space-between" padding={22}>
       <XStack justifyContent="space-between" alignItems="center">
         <Badge label="Question" tone="primary" />
-        <Text fontSize={12} fontFamily="$body" color="$colorMuted">
+        <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val}>
           {cardIndex + 1} / {cardCount}
         </Text>
       </XStack>
@@ -120,7 +122,7 @@ function CardFront({
           fontFamily="$heading"
           fontWeight="700"
           textAlign="center"
-          color="$color"
+          color={theme.color.val}
           lineHeight={30}
           marginBottom={20}
         >
@@ -135,7 +137,7 @@ function CardFront({
           backgroundColor={theme.primary.val + "14"}
         >
           <Feather name="eye" size={14} color={theme.primary.val} />
-          <Text fontSize={13} fontFamily="$body" color="$primary" fontWeight="600">
+          <Text fontSize={13} fontFamily="$body" color={theme.primary.val} fontWeight="600">
             Tap to reveal answer
           </Text>
         </XStack>
@@ -149,7 +151,7 @@ function CardFront({
             borderRadius={999}
             backgroundColor={theme.primary.val + "15"}
           >
-            <Text fontSize={11} fontFamily="$body" color="$primary">
+            <Text fontSize={11} fontFamily="$body" color={theme.primary.val}>
               {card.memory.lifeArea}
             </Text>
           </XStack>
@@ -168,7 +170,7 @@ function CardBack({ card }: { card: ReviewCard }) {
         <Badge label="Answer" tone="success" />
         <XStack alignItems="center" gap={4}>
           <Feather name="refresh-cw" size={12} color={theme.colorMuted.val} />
-          <Text fontSize={11} fontFamily="$body" color="$colorMuted">
+          <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val}>
             {Math.round(card.intervalDays)}d interval
           </Text>
         </XStack>
@@ -184,14 +186,20 @@ function CardBack({ card }: { card: ReviewCard }) {
           fontFamily="$heading"
           fontWeight="700"
           textAlign="center"
-          color="$color"
+          color={theme.color.val}
           lineHeight={24}
           marginBottom={14}
         >
           {card.memory.title}
         </Text>
         {card.memory.content ? (
-          <Text fontSize={14} fontFamily="$body" textAlign="center" lineHeight={22} color="$color">
+          <Text
+            fontSize={14}
+            fontFamily="$body"
+            textAlign="center"
+            lineHeight={22}
+            color={theme.color.val}
+          >
             {card.memory.content}
           </Text>
         ) : (
@@ -199,7 +207,7 @@ function CardBack({ card }: { card: ReviewCard }) {
             fontSize={13}
             fontFamily="$body"
             textAlign="center"
-            color="$colorMuted"
+            color={theme.colorMuted.val}
             fontStyle="italic"
           >
             No additional content stored.
@@ -215,7 +223,7 @@ function CardBack({ card }: { card: ReviewCard }) {
             borderRadius={999}
             backgroundColor={theme.primary.val + "15"}
           >
-            <Text fontSize={11} fontFamily="$body" color="$primary">
+            <Text fontSize={11} fontFamily="$body" color={theme.primary.val}>
               {card.memory.lifeArea}
             </Text>
           </XStack>
@@ -227,7 +235,7 @@ function CardBack({ card }: { card: ReviewCard }) {
             borderRadius={999}
             backgroundColor={theme.secondary.val}
           >
-            <Text fontSize={11} fontFamily="$body" color="$colorMuted">
+            <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val}>
               importance: {card.memory.importance}
             </Text>
           </XStack>
@@ -243,7 +251,7 @@ function RatingButton({
   card,
   onPress,
 }: {
-  rating: (typeof RATINGS)[number];
+  rating: RatingOption;
   card: ReviewCard;
   onPress: () => void;
 }) {
@@ -307,7 +315,7 @@ function SessionComplete({
           fontSize={28}
           fontFamily="$heading"
           fontWeight="700"
-          color="$color"
+          color={theme.color.val}
           textAlign="center"
         >
           Session complete!
@@ -315,7 +323,7 @@ function SessionComplete({
         <Text
           fontSize={15}
           fontFamily="$body"
-          color="$colorMuted"
+          color={theme.colorMuted.val}
           textAlign="center"
           lineHeight={22}
         >
@@ -326,19 +334,19 @@ function SessionComplete({
         <Card style={{ width: "100%", marginTop: 16 }}>
           <XStack justifyContent="space-around">
             <YStack alignItems="center" gap={4}>
-              <Text fontSize={28} fontFamily="$heading" fontWeight="800" color="$primary">
+              <Text fontSize={28} fontFamily="$heading" fontWeight="800" color={theme.primary.val}>
                 {totalReviewed}
               </Text>
-              <Text fontSize={12} fontFamily="$body" color="$colorMuted">
+              <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val}>
                 Reviewed
               </Text>
             </YStack>
-            <YStack width={1} backgroundColor="$borderColor" />
+            <YStack width={1} backgroundColor={theme.borderColor.val} />
             <YStack alignItems="center" gap={4}>
               <Text fontSize={28} fontFamily="$heading" fontWeight="800" color={theme.success.val}>
                 ✓
               </Text>
-              <Text fontSize={12} fontFamily="$body" color="$colorMuted">
+              <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val}>
                 All done
               </Text>
             </YStack>
@@ -354,7 +362,7 @@ function SessionComplete({
             fontSize={15}
             fontFamily="$body"
             fontWeight="700"
-            color="$textInverse"
+            color={theme.textInverse.val}
             marginLeft={8}
           >
             Check for more
@@ -373,7 +381,13 @@ function UpcomingRow({ card }: { card: ReviewCard }) {
     <Card style={{ paddingVertical: 14, paddingHorizontal: 16 }}>
       <XStack justifyContent="space-between" alignItems="flex-start" gap={12}>
         <YStack flex={1} gap={6}>
-          <Text fontSize={15} fontFamily="$body" fontWeight="600" color="$color" numberOfLines={2}>
+          <Text
+            fontSize={15}
+            fontFamily="$body"
+            fontWeight="600"
+            color={theme.color.val}
+            numberOfLines={2}
+          >
             {card.memory.title}
           </Text>
           <XStack gap={6} alignItems="center">
@@ -384,12 +398,12 @@ function UpcomingRow({ card }: { card: ReviewCard }) {
                 borderRadius={999}
                 backgroundColor={theme.primary.val + "14"}
               >
-                <Text fontSize={10} fontFamily="$body" color="$primary">
+                <Text fontSize={10} fontFamily="$body" color={theme.primary.val}>
                   {card.memory.lifeArea}
                 </Text>
               </XStack>
             )}
-            <Text fontSize={11} fontFamily="$body" color="$colorMuted">
+            <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val}>
               {Math.round(card.intervalDays)}d interval
             </Text>
           </XStack>
@@ -404,7 +418,7 @@ function UpcomingRow({ card }: { card: ReviewCard }) {
             gap={4}
           >
             <Feather name="clock" size={11} color={theme.primary.val} />
-            <Text fontSize={11} fontFamily="$body" fontWeight="600" color="$primary">
+            <Text fontSize={11} fontFamily="$body" fontWeight="600" color={theme.primary.val}>
               {relTime}
             </Text>
           </XStack>
@@ -418,8 +432,22 @@ function UpcomingRow({ card }: { card: ReviewCard }) {
 
 export default function ReviewScreen() {
   const theme = useAppTheme();
+  const semantic = useSemanticColors();
   const { token } = useAuth();
   const tabBarPadding = useTabBarBottomPadding();
+  const ratings = useMemo<RatingOption[]>(
+    () =>
+      RATING_DEFS.map((rating) => ({
+        ...rating,
+        color: semantic.reviewQuality[rating.tone],
+      })),
+    [
+      semantic.reviewQuality.again,
+      semantic.reviewQuality.easy,
+      semantic.reviewQuality.good,
+      semantic.reviewQuality.hard,
+    ],
+  );
 
   const dueCards = useQuery(api.review.getDue, token ? { token, limit: 50 } : "skip") ?? [];
   const allCards = useQuery(api.review.list, token ? { token, limit: 100 } : "skip") ?? [];
@@ -539,7 +567,7 @@ export default function ReviewScreen() {
   const isLoading = dueCards === undefined || allCards === undefined;
 
   return (
-    <YStack flex={1} backgroundColor="$background">
+    <YStack flex={1} backgroundColor={theme.background.val}>
       {/* ── Header ─────────────────────────────────────────── */}
       <YStack paddingHorizontal={16} paddingTop={12} paddingBottom={4}>
         <PageHero
@@ -582,7 +610,7 @@ export default function ReviewScreen() {
                 fontSize={16}
                 fontFamily="$heading"
                 fontWeight="700"
-                color="$color"
+                color={theme.color.val}
                 marginBottom={4}
               >
                 Upcoming
@@ -637,14 +665,14 @@ export default function ReviewScreen() {
               <Text
                 fontSize={12}
                 fontFamily="$body"
-                color="$colorMuted"
+                color={theme.colorMuted.val}
                 textAlign="center"
                 marginBottom={10}
               >
                 How well did you remember this?
               </Text>
               <XStack gap={8} width="100%">
-                {RATINGS.map((r) => (
+                {ratings.map((r) => (
                   <RatingButton
                     key={r.label}
                     rating={r}
@@ -669,7 +697,7 @@ export default function ReviewScreen() {
               ]}
             >
               <Feather name="x-circle" size={15} color={theme.colorMuted.val} />
-              <Text fontSize={13} fontFamily="$body" color="$colorMuted" marginLeft={6}>
+              <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val} marginLeft={6}>
                 Remove from queue
               </Text>
             </PressableScale>

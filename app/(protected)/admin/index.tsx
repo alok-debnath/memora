@@ -7,8 +7,9 @@ import { api } from "@/convex/_generated/api";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { useAdminState } from "@/components/admin/AdminStateContext";
+import { useAppTheme } from "@/hooks/useAppTheme";
 import { InteractiveTimelineChart } from "@/components/admin/InteractiveTimelineChart";
-import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
 
 function formatCompact(value: number) {
   return new Intl.NumberFormat(undefined, {
@@ -32,12 +33,19 @@ function Kpi({
   hint: string;
   color: string;
 }) {
+  const theme = useAppTheme();
   return (
     <Card style={{ borderRadius: 20, flex: 1, minWidth: 150 }}>
-      <Text fontSize={12} color="$colorMuted">
+      <Text fontSize={12} color={theme.colorMuted.val}>
         {label}
       </Text>
-      <Text marginTop={4} fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">
+      <Text
+        marginTop={4}
+        fontSize={24}
+        fontFamily="$heading"
+        fontWeight="700"
+        color={theme.color.val}
+      >
         {value}
       </Text>
       <Text marginTop={1} fontSize={11} color={color}>
@@ -48,13 +56,15 @@ function Kpi({
 }
 
 export default function AdminOverviewScreen() {
+  const theme = useAppTheme();
+  const semantic = useSemanticColors();
   const { range, compareMode, refreshKey, setSelectedTimepoint } = useAdminState();
   const data = useQuery(api.admin.dashboardOverview, { range, compareMode, refreshKey });
 
   if (!data) {
     return (
       <YStack alignItems="center" paddingVertical={44}>
-        <ActivityIndicator color={integrationAccentColors.openai} />
+        <ActivityIndicator color={semantic.integration.openai} />
       </YStack>
     );
   }
@@ -65,16 +75,16 @@ export default function AdminOverviewScreen() {
         <YStack>
           <Card style={{ borderRadius: 20 }}>
             <YStack gap={8}>
-              <Text fontSize={15} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text fontSize={15} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 Anomaly Strip
               </Text>
               {data.anomalies.map((item: any) => (
                 <XStack key={item.key} alignItems="center" justifyContent="space-between" gap={8}>
                   <YStack flex={1}>
-                    <Text fontSize={12} fontWeight="700" color="$color">
+                    <Text fontSize={12} fontWeight="700" color={theme.color.val}>
                       {item.title}
                     </Text>
-                    <Text fontSize={11} color="$colorMuted">
+                    <Text fontSize={11} color={theme.colorMuted.val}>
                       {item.message}
                     </Text>
                   </YStack>
@@ -82,10 +92,10 @@ export default function AdminOverviewScreen() {
                     label={item.severity}
                     color={
                       item.severity === "critical"
-                        ? statusAccentColors.error
+                        ? semantic.status.error
                         : item.severity === "warning"
-                          ? statusAccentColors.warning
-                          : statusAccentColors.info
+                          ? semantic.status.warning
+                          : semantic.status.info
                     }
                   />
                 </XStack>
@@ -101,7 +111,7 @@ export default function AdminOverviewScreen() {
             label="AI requests"
             value={formatCompact(data.current.aiRequests)}
             hint={`${formatCompact(data.current.aiErrors)} errors`}
-            color={integrationAccentColors.openai}
+            color={semantic.integration.openai}
           />
           <Kpi
             label="Failure rate"
@@ -109,21 +119,21 @@ export default function AdminOverviewScreen() {
             hint={`Prev ${formatPct(data.previous.aiFailureRate)}`}
             color={
               data.current.aiFailureRate > data.previous.aiFailureRate
-                ? statusAccentColors.error
-                : statusAccentColors.success
+                ? semantic.status.error
+                : semantic.status.success
             }
           />
           <Kpi
             label="Searches"
             value={formatCompact(data.current.searches)}
             hint={`${formatCompact(data.current.deepSearches)} deep`}
-            color={statusAccentColors.info}
+            color={semantic.status.info}
           />
           <Kpi
             label="Open alerts"
             value={formatCompact(data.openIncidents)}
             hint="Threshold breaches"
-            color={statusAccentColors.warning}
+            color={semantic.status.warning}
           />
         </XStack>
       </YStack>
@@ -145,8 +155,8 @@ export default function AdminOverviewScreen() {
           primaryLabel="Searches"
           secondaryLabel="AI requests"
           compareLabel="Prev AI requests"
-          barColor={statusAccentColors.info}
-          lineColor={integrationAccentColors.openai}
+          barColor={semantic.status.info}
+          lineColor={semantic.integration.openai}
           onSelectPoint={(point) => setSelectedTimepoint(point?.label ?? null)}
         />
       </Card>
@@ -155,24 +165,22 @@ export default function AdminOverviewScreen() {
         <XStack gap={10} flexWrap="wrap" alignItems="stretch">
           <Card style={{ borderRadius: 24, flex: 1, minWidth: 260 }}>
             <YStack gap={10}>
-              <Text fontSize={16} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 Provider Comparison
               </Text>
               {data.comparison.provider.map((row: any) => (
                 <XStack key={row.key} justifyContent="space-between" alignItems="center">
                   <YStack>
-                    <Text fontSize={13} fontWeight="700" color="$color">
+                    <Text fontSize={13} fontWeight="700" color={theme.color.val}>
                       {row.key}
                     </Text>
-                    <Text fontSize={11} color="$colorMuted">
+                    <Text fontSize={11} color={theme.colorMuted.val}>
                       {formatCompact(row.requests)} calls
                     </Text>
                   </YStack>
                   <Badge
                     label={formatPct(row.failureRate)}
-                    color={
-                      row.failureRate > 0.08 ? statusAccentColors.error : statusAccentColors.success
-                    }
+                    color={row.failureRate > 0.08 ? semantic.status.error : semantic.status.success}
                   />
                 </XStack>
               ))}
@@ -181,24 +189,22 @@ export default function AdminOverviewScreen() {
 
           <Card style={{ borderRadius: 24, flex: 1, minWidth: 260 }}>
             <YStack gap={10}>
-              <Text fontSize={16} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 Capability Comparison
               </Text>
               {data.comparison.capability.map((row: any) => (
                 <XStack key={row.key} justifyContent="space-between" alignItems="center">
                   <YStack>
-                    <Text fontSize={13} fontWeight="700" color="$color">
+                    <Text fontSize={13} fontWeight="700" color={theme.color.val}>
                       {row.key}
                     </Text>
-                    <Text fontSize={11} color="$colorMuted">
+                    <Text fontSize={11} color={theme.colorMuted.val}>
                       {formatCompact(row.requests)} calls
                     </Text>
                   </YStack>
                   <Badge
                     label={formatPct(row.failureRate)}
-                    color={
-                      row.failureRate > 0.08 ? statusAccentColors.error : statusAccentColors.success
-                    }
+                    color={row.failureRate > 0.08 ? semantic.status.error : semantic.status.success}
                   />
                 </XStack>
               ))}

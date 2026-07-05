@@ -14,6 +14,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { logDevError } from "@/lib/devLog";
 import { appShadow } from "@/components/ui/themeHelpers";
+import { createThemeColors } from "@/constants/themePalettes";
+import { useThemeStore } from "@/store/theme";
 
 export type ErrorFallbackProps = {
   error: Error;
@@ -23,20 +25,22 @@ export type ErrorFallbackProps = {
 export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
+  const fallbackMode = colorScheme === "dark" ? "dark" : "light";
+  const resolvedMode = useThemeStore((state) => state.resolvedMode);
+  const resolvedAccentColor = useThemeStore((state) => state.resolvedAccentColor);
+  const theme = createThemeColors(resolvedAccentColor, resolvedMode ?? fallbackMode);
 
-  // Static palette — this component renders OUTSIDE TamaguiProvider so
-  // useAppTheme/useTheme would throw. Use hardcoded system-aware values.
+  // This renders outside TamaguiProvider, so use the persisted theme store directly.
   const palette = {
-    background: isDark ? "#0F0F0F" : "#FFFFFF",
-    backgroundSecondary: isDark ? "#1C1C1E" : "#F2F2F7",
-    text: isDark ? "#F5F5F5" : "#1C1C1E",
-    textSecondary: isDark ? "#8E8E93" : "#6C6C70",
-    link: "#C98522",
-    buttonText: "#FFFFFF",
-    divider: isDark ? "#38383A" : "#C6C6C8",
-    shadow: "#000000",
-    overlay: "rgba(0,0,0,0.5)",
+    background: theme.background,
+    backgroundSecondary: theme.secondary,
+    text: theme.color,
+    textSecondary: theme.colorMuted,
+    link: theme.primary,
+    buttonText: theme.textInverse,
+    divider: theme.borderColor,
+    shadow: theme.shadowColor,
+    overlay: theme.overlay,
   };
 
   const [isModalVisible, setIsModalVisible] = useState(false);

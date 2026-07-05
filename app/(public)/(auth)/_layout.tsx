@@ -1,10 +1,10 @@
 import { Redirect, Stack } from "expo-router";
-import { useTheme } from "tamagui";
 
 import { useAuth } from "@/hooks/useAuth";
+import { useAppTheme } from "@/hooks/useAppTheme";
 
 export default function AuthLayout() {
-  const theme = useTheme();
+  const theme = useAppTheme();
   const { user, isLoading, hasSeenOnboarding } = useAuth();
 
   if (!hasSeenOnboarding) {
@@ -21,7 +21,7 @@ export default function AuthLayout() {
         headerShown: false,
         animation: "simple_push",
         freezeOnBlur: true,
-        contentStyle: { backgroundColor: theme.background?.val },
+        contentStyle: { backgroundColor: theme.background.val },
       }}
     >
       <Stack.Screen name="login" />

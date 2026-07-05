@@ -17,9 +17,9 @@ export function EmptyState({ icon, title, description }: EmptyStateProps) {
       justifyContent="center"
       paddingVertical={56}
       paddingHorizontal={28}
-      backgroundColor="$card"
+      backgroundColor={theme.surfaceElevated.val}
       borderWidth={1}
-      borderColor="$borderColor"
+      borderColor={theme.borderColor.val}
       borderRadius={28}
       gap={8}
     >
@@ -34,11 +34,17 @@ export function EmptyState({ icon, title, description }: EmptyStateProps) {
       >
         <Feather name={icon} size={32} color={theme.primary.val} />
       </YStack>
-      <Text color="$color" fontSize={20} fontFamily="$heading" fontWeight="700" textAlign="center">
+      <Text
+        color={theme.color.val}
+        fontSize={20}
+        fontFamily="$heading"
+        fontWeight="700"
+        textAlign="center"
+      >
         {title}
       </Text>
       <Text
-        color="$colorMuted"
+        color={theme.colorMuted.val}
         fontSize={14}
         fontFamily="$body"
         textAlign="center"

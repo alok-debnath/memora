@@ -39,10 +39,16 @@ export const ChatHeader = React.memo(function ChatHeader({
           <Feather name="cpu" size={17} color={theme.primary.val} />
         </XStack>
         <YStack flex={1} minWidth={0}>
-          <Text fontSize={17} fontFamily="$body" fontWeight="700" color="$color" numberOfLines={1}>
+          <Text
+            fontSize={17}
+            fontFamily="$body"
+            fontWeight="700"
+            color={theme.color.val}
+            numberOfLines={1}
+          >
             Memora
           </Text>
-          <Text fontSize={12} fontFamily="$body" color="$colorMuted" numberOfLines={1}>
+          <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val} numberOfLines={1}>
             {messageCount === 0
               ? "Ask anything about your memories"
               : `${messageCount} ${messageCount === 1 ? "message" : "messages"}`}
@@ -55,7 +61,7 @@ export const ChatHeader = React.memo(function ChatHeader({
           <PressableScale onPress={onClear}>
             <XStack alignItems="center" gap={6} paddingHorizontal={10} height={36}>
               <Feather name="trash-2" size={13} color={theme.colorMuted.val} />
-              <Text fontSize={12} fontFamily="$body" color="$colorMuted">
+              <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val}>
                 Clear
               </Text>
             </XStack>

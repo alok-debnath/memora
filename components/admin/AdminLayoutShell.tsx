@@ -16,7 +16,7 @@ import { AdminGuard } from "@/components/admin/AdminGuard";
 import { useAdminState } from "@/components/admin/AdminStateContext";
 import { ADMIN_ROUTES, ADMIN_ROUTE_META } from "@/components/admin/adminNavigation";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { navigationAccentColors, statusAccentColors } from "@/constants/colors";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
 
 const RANGE_OPTIONS = [
   { value: "7d" as const, label: "7D" },
@@ -49,6 +49,8 @@ function resolveWorkflow(pathname: string) {
 
 export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
   const theme = useAppTheme();
+  const semantic = useSemanticColors();
+  const adminColor = theme.destructive.val;
   const pathname = usePathname();
   const {
     range,
@@ -89,17 +91,17 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
           <Card style={{ borderRadius: 26 }}>
             <XStack alignItems="flex-start" justifyContent="space-between" gap={10}>
               <YStack gap={6} flex={1}>
-                <Badge label="Admin Control Center" color={navigationAccentColors.admin} />
+                <Badge label="Admin Control Center" color={adminColor} />
                 <Text
                   fontSize={26}
                   lineHeight={30}
                   fontFamily="$heading"
                   fontWeight="700"
-                  color="$color"
+                  color={theme.color.val}
                 >
                   {meta.title}
                 </Text>
-                <Text fontSize={13} lineHeight={19} color="$colorMuted">
+                <Text fontSize={13} lineHeight={19} color={theme.colorMuted.val}>
                   {meta.subtitle}
                 </Text>
               </YStack>
@@ -109,9 +111,9 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
                 borderRadius={16}
                 alignItems="center"
                 justifyContent="center"
-                backgroundColor={navigationAccentColors.admin + "18"}
+                backgroundColor={withAlpha(adminColor, "18")}
               >
-                <Feather name="shield" size={20} color={navigationAccentColors.admin} />
+                <Feather name="shield" size={20} color={adminColor} />
               </YStack>
             </XStack>
           </Card>
@@ -143,25 +145,19 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
                         paddingVertical={9}
                         borderRadius={12}
                         borderWidth={1}
-                        borderColor={
-                          active
-                            ? navigationAccentColors.admin
-                            : withAlpha(theme.shadowColor.val, "22")
-                        }
-                        backgroundColor={
-                          active ? navigationAccentColors.admin + "18" : "transparent"
-                        }
+                        borderColor={active ? adminColor : withAlpha(theme.shadowColor.val, "22")}
+                        backgroundColor={active ? withAlpha(adminColor, "18") : "transparent"}
                       >
                         <Feather
                           name={route.icon}
                           size={13}
-                          color={active ? navigationAccentColors.admin : statusAccentColors.neutral}
+                          color={active ? adminColor : semantic.status.neutral}
                         />
                         <Text
                           fontSize={12}
                           fontFamily="$body"
                           fontWeight={active ? "700" : "500"}
-                          color={active ? navigationAccentColors.admin : "$colorMuted"}
+                          color={active ? adminColor : theme.colorMuted.val}
                         >
                           {route.label}
                         </Text>
@@ -281,7 +277,7 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
                     value={compareMode}
                     onChange={setCompareMode}
                   />
-                  <Text fontSize={11} color="$colorMuted">
+                  <Text fontSize={11} color={theme.colorMuted.val}>
                     With previous period overlays last window values on charts for direct
                     comparison.
                   </Text>
@@ -289,7 +285,7 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
               ) : null}
               <XStack gap={8} alignItems="center">
                 <YStack flex={1}>
-                  <Text fontSize={11} color="$colorMuted">
+                  <Text fontSize={11} color={theme.colorMuted.val}>
                     Refresh reloads current admin data immediately.
                   </Text>
                 </YStack>
@@ -303,8 +299,13 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
                     borderWidth={1}
                     borderColor={withAlpha(theme.shadowColor.val, "22")}
                   >
-                    <Feather name="refresh-cw" size={13} color={statusAccentColors.neutral} />
-                    <Text fontSize={12} fontFamily="$body" fontWeight="600" color="$colorMuted">
+                    <Feather name="refresh-cw" size={13} color={semantic.status.neutral} />
+                    <Text
+                      fontSize={12}
+                      fontFamily="$body"
+                      fontWeight="600"
+                      color={theme.colorMuted.val}
+                    >
                       Refresh
                     </Text>
                   </XStack>

@@ -15,8 +15,8 @@ import {
 import Animated from "react-native-reanimated";
 import { Text, XStack, YStack } from "tamagui";
 import { FontFamily } from "@/constants/fonts";
-import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
 import { Feather } from "@/lib/icons";
 import { appShadow } from "@/components/ui/themeHelpers";
 import type { ProgressStatus } from "./types";
@@ -43,11 +43,15 @@ const CHAT = {
 
 const getBubbleShadow = (shadowColor: string) => appShadow(shadowColor, "xs");
 
-function getAccentColor(status: ProgressStatus, fallback: string) {
+function getAccentColor(
+  status: ProgressStatus,
+  fallback: string,
+  semantic: ReturnType<typeof useSemanticColors>,
+) {
   const phase = (status.phase ?? "").toLowerCase();
-  if (phase === "writing") return statusAccentColors.warning;
-  if (phase === "finalizing") return statusAccentColors.success;
-  if (phase === "analyzing") return integrationAccentColors.reasoning;
+  if (phase === "writing") return semantic.status.warning;
+  if (phase === "finalizing") return semantic.status.success;
+  if (phase === "analyzing") return semantic.integration.reasoning;
   return fallback;
 }
 
@@ -195,9 +199,9 @@ export function ThinkingIndicator() {
             paddingVertical={12}
             borderRadius={CHAT.bubbleRadius}
             borderBottomLeftRadius={6}
-            backgroundColor="$backgroundStrong"
+            backgroundColor={theme.backgroundStrong.val}
             borderWidth={1}
-            borderColor="$borderColor"
+            borderColor={theme.borderColor.val}
             gap={8}
             style={getBubbleShadow(theme.shadowColor.val)}
           >
@@ -215,13 +219,13 @@ export function ThinkingIndicator() {
                 <Feather name="cpu" size={13} color={theme.primary.val} />
               </View>
               <YStack gap={1}>
-                <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
+                <Text fontSize={13} fontFamily={FontFamily.semiBold} color={theme.color.val}>
                   Thinking
                 </Text>
                 <AnimatedSwapText
                   text={THINKING_MESSAGES[phraseIndex]}
                   fontSize={11}
-                  color="$colorMuted"
+                  color={theme.colorMuted.val}
                   maxWidth={230}
                   numberOfLines={1}
                 />
@@ -236,6 +240,7 @@ export function ThinkingIndicator() {
 
 export function ToolProgressBubble({ status }: { status: ProgressStatus }) {
   const theme = useAppTheme();
+  const semantic = useSemanticColors();
   const shimmer = useSharedValue(0);
   const [elapsedLabel, setElapsedLabel] = useState(() => formatElapsedTime(status.startedAt));
 
@@ -259,7 +264,7 @@ export function ToolProgressBubble({ status }: { status: ProgressStatus }) {
   }));
   const title = getProgressTitle(status);
   const iconName = getProgressIcon(status);
-  const accentColor = getAccentColor(status, theme.primary.val);
+  const accentColor = getAccentColor(status, theme.primary.val, semantic);
   const events = getUsefulEvents(status);
   const latestEvent = events[events.length - 1];
   const metaLabel = formatMetaLabel(status);
@@ -276,9 +281,9 @@ export function ToolProgressBubble({ status }: { status: ProgressStatus }) {
             paddingHorizontal={12}
             paddingVertical={10}
             borderRadius={22}
-            backgroundColor="$backgroundStrong"
+            backgroundColor={theme.backgroundStrong.val}
             borderWidth={1}
-            borderColor="$borderColor"
+            borderColor={theme.borderColor.val}
             style={[
               getBubbleShadow(theme.shadowColor.val),
               { minWidth: 200, maxWidth: 320, position: "relative" },
@@ -310,7 +315,7 @@ export function ToolProgressBubble({ status }: { status: ProgressStatus }) {
                     numberOfLines={1}
                   />
                   {elapsedLabel ? (
-                    <Text fontSize={9} color="$colorMuted" opacity={0.6}>
+                    <Text fontSize={9} color={theme.colorMuted.val} opacity={0.6}>
                       {elapsedLabel}
                     </Text>
                   ) : null}
@@ -319,7 +324,7 @@ export function ToolProgressBubble({ status }: { status: ProgressStatus }) {
                 <XStack gap={5} alignItems="center" paddingRight={4}>
                   <Text
                     fontSize={11}
-                    color="$colorMuted"
+                    color={theme.colorMuted.val}
                     numberOfLines={1}
                     opacity={0.84}
                     flexShrink={1}
@@ -337,7 +342,12 @@ export function ToolProgressBubble({ status }: { status: ProgressStatus }) {
                           opacity: 0.2,
                         }}
                       />
-                      <Text fontSize={10} color="$colorMuted" opacity={0.6} numberOfLines={1}>
+                      <Text
+                        fontSize={10}
+                        color={theme.colorMuted.val}
+                        opacity={0.6}
+                        numberOfLines={1}
+                      >
                         {metaLabel}
                       </Text>
                     </>
@@ -360,7 +370,7 @@ export function ToolProgressBubble({ status }: { status: ProgressStatus }) {
                   />
                   <Text
                     fontSize={10}
-                    color="$colorMuted"
+                    color={theme.colorMuted.val}
                     opacity={0.7}
                     numberOfLines={1}
                     paddingRight={10}

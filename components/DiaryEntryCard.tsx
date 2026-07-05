@@ -5,19 +5,24 @@ import { Card } from "./ui/Card";
 import { Badge } from "./ui/Badge";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
 import { moodIcons, moodLabels } from "@/constants/categories";
-import { moodColors, statusAccentColors } from "@/constants/colors";
 import type { DiaryEntry } from "@/types/memory";
 
 interface DiaryEntryCardProps {
   entry: DiaryEntry;
-  onDelete?: () => void;
+  onDelete?: (id: DiaryEntry["id"]) => void;
   index?: number;
 }
 
-export function DiaryEntryCard({ entry, onDelete }: DiaryEntryCardProps) {
+export const DiaryEntryCard = React.memo(function DiaryEntryCard({
+  entry,
+  onDelete,
+}: DiaryEntryCardProps) {
   const theme = useAppTheme();
+  const semantic = useSemanticColors();
   const entryDate = new Date(entry.createdAt);
+  const moodColor = entry.mood ? semantic.mood[entry.mood] : undefined;
 
   return (
     <Card
@@ -32,20 +37,15 @@ export function DiaryEntryCard({ entry, onDelete }: DiaryEntryCardProps) {
           <XStack alignItems="center" gap={8} flexWrap="wrap">
             {entry.mood && (
               <XStack
-                backgroundColor={moodColors[entry.mood] + "18"}
+                backgroundColor={moodColor + "18"}
                 alignItems="center"
                 paddingHorizontal={10}
                 paddingVertical={5}
                 borderRadius={999}
                 gap={4}
               >
-                <Feather name={moodIcons[entry.mood]} size={14} color={moodColors[entry.mood]} />
-                <Text
-                  fontSize={12}
-                  fontFamily="$body"
-                  fontWeight="600"
-                  color={moodColors[entry.mood]}
-                >
+                <Feather name={moodIcons[entry.mood]} size={14} color={moodColor} />
+                <Text fontSize={12} fontFamily="$body" fontWeight="600" color={moodColor}>
                   {moodLabels[entry.mood]}
                 </Text>
               </XStack>
@@ -55,21 +55,27 @@ export function DiaryEntryCard({ entry, onDelete }: DiaryEntryCardProps) {
                 label={`Energy ${entry.energyLevel}`}
                 color={
                   entry.energyLevel === "high"
-                    ? statusAccentColors.success
+                    ? semantic.status.success
                     : entry.energyLevel === "medium"
-                      ? statusAccentColors.warning
-                      : statusAccentColors.error
+                      ? semantic.status.warning
+                      : semantic.status.error
                 }
                 small
               />
             )}
           </XStack>
-          <Text fontSize={15} fontFamily="$body" lineHeight={22} color="$color" numberOfLines={4}>
+          <Text
+            fontSize={15}
+            fontFamily="$body"
+            lineHeight={22}
+            color={theme.color.val}
+            numberOfLines={4}
+          >
             {entry.correctedText || entry.rawText}
           </Text>
         </YStack>
         <XStack gap={8} alignItems="center">
-          <Text fontSize={12} fontFamily="$body" color="$colorMuted">
+          <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val}>
             {entryDate.toLocaleDateString(undefined, {
               month: "short",
               day: "numeric",
@@ -77,7 +83,7 @@ export function DiaryEntryCard({ entry, onDelete }: DiaryEntryCardProps) {
           </Text>
           {onDelete && (
             <Pressable
-              onPress={onDelete}
+              onPress={() => onDelete(entry.id)}
               style={{
                 width: 32,
                 height: 32,
@@ -117,7 +123,7 @@ export function DiaryEntryCard({ entry, onDelete }: DiaryEntryCardProps) {
             fontSize={12}
             fontFamily="$body"
             lineHeight={17}
-            color="$color"
+            color={theme.color.val}
             numberOfLines={2}
           >
             {entry.structuredInsights[0].insight}
@@ -126,4 +132,4 @@ export function DiaryEntryCard({ entry, onDelete }: DiaryEntryCardProps) {
       )}
     </Card>
   );
-}
+});

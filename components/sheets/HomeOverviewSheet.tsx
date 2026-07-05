@@ -82,14 +82,14 @@ function MetricTile({ value, label }: { value: number; label: string }) {
       minWidth={0}
       padding={12}
       borderRadius={16}
-      backgroundColor="$card"
+      backgroundColor={theme.card.val}
       gap={2}
       style={appShadow(theme.shadowColor.val, "xs")}
     >
-      <Text fontSize={20} fontFamily="$heading" fontWeight="700" color="$color">
+      <Text fontSize={20} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
         {value}
       </Text>
-      <Text fontSize={12} color="$colorMuted">
+      <Text fontSize={12} color={theme.colorMuted.val}>
         {label}
       </Text>
     </YStack>
@@ -218,10 +218,10 @@ export function HomeOverviewSheet() {
         <YStack gap={18}>
           <XStack alignItems="center" justifyContent="space-between" gap={12}>
             <YStack flex={1} minWidth={0} gap={2}>
-              <Text fontSize={18} fontWeight="700" color="$color">
+              <Text fontSize={18} fontWeight="700" color={theme.color.val}>
                 Overview
               </Text>
-              <Text fontSize={13} lineHeight={18} color="$colorMuted">
+              <Text fontSize={13} lineHeight={18} color={theme.colorMuted.val}>
                 Recent memory activity and reminders
               </Text>
             </YStack>
@@ -268,10 +268,15 @@ export function HomeOverviewSheet() {
                     gap={12}
                   >
                     <YStack flex={1} gap={2}>
-                      <Text fontSize={14} fontWeight="700" color="$color" numberOfLines={1}>
+                      <Text
+                        fontSize={14}
+                        fontWeight="700"
+                        color={theme.color.val}
+                        numberOfLines={1}
+                      >
                         {memory.title || "Untitled memory"}
                       </Text>
-                      <Text fontSize={12} color="$colorMuted">
+                      <Text fontSize={12} color={theme.colorMuted.val}>
                         {new Date(getReminderDate(memory)!).toLocaleString(undefined, {
                           month: "short",
                           day: "numeric",
@@ -285,7 +290,7 @@ export function HomeOverviewSheet() {
                 ))}
               </YStack>
             ) : (
-              <Text fontSize={13} lineHeight={20} color="$colorMuted">
+              <Text fontSize={13} lineHeight={20} color={theme.colorMuted.val}>
                 Nothing needs attention immediately.
               </Text>
             )}
@@ -304,7 +309,7 @@ export function HomeOverviewSheet() {
                   justifyContent="center"
                   backgroundColor={theme.primary.val + "22"}
                 >
-                  <Text fontSize={12} fontWeight="700" color="$primary">
+                  <Text fontSize={12} fontWeight="700" color={theme.primary.val}>
                     {upcomingReminders.length}
                   </Text>
                 </YStack>
@@ -319,15 +324,17 @@ export function HomeOverviewSheet() {
                     paddingVertical={6}
                     borderRadius={999}
                     backgroundColor={
-                      upcomingRange === range ? theme.primary.val + "22" : "$secondary"
+                      upcomingRange === range ? theme.primary.val + "22" : theme.secondary.val
                     }
                     borderWidth={1}
-                    borderColor={upcomingRange === range ? theme.primary.val : "$borderColor"}
+                    borderColor={
+                      upcomingRange === range ? theme.primary.val : theme.borderColor.val
+                    }
                   >
                     <Text
                       fontSize={12}
                       fontWeight="700"
-                      color={upcomingRange === range ? "$primary" : "$colorMuted"}
+                      color={upcomingRange === range ? theme.primary.val : theme.colorMuted.val}
                       textTransform="capitalize"
                     >
                       {range}
@@ -346,10 +353,15 @@ export function HomeOverviewSheet() {
                     gap={12}
                   >
                     <YStack flex={1} gap={2}>
-                      <Text fontSize={14} fontWeight="700" color="$color" numberOfLines={1}>
+                      <Text
+                        fontSize={14}
+                        fontWeight="700"
+                        color={theme.color.val}
+                        numberOfLines={1}
+                      >
                         {memory.title || "Untitled memory"}
                       </Text>
-                      <Text fontSize={12} color="$colorMuted">
+                      <Text fontSize={12} color={theme.colorMuted.val}>
                         {new Date(getReminderDate(memory)!).toLocaleString(undefined, {
                           weekday: "short",
                           month: "short",
@@ -364,7 +376,7 @@ export function HomeOverviewSheet() {
                 ))}
               </YStack>
             ) : (
-              <Text fontSize={13} lineHeight={20} color="$colorMuted">
+              <Text fontSize={13} lineHeight={20} color={theme.colorMuted.val}>
                 No reminders in this range.
               </Text>
             )}

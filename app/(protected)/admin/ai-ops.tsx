@@ -9,7 +9,8 @@ import { AppButton } from "@/components/ui/AppButton";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { useAppToast } from "@/components/ui/toast";
 import { useAdminState } from "@/components/admin/AdminStateContext";
-import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
+import { useAppTheme } from "@/hooks/useAppTheme";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
 
 function formatCompact(value: number) {
   return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(
@@ -38,6 +39,8 @@ const PROVIDER_PRIMARY_MAX_WIDTH = 88;
 const MODEL_PRIMARY_MAX_WIDTH = 98;
 
 export default function AdminAiOpsScreen() {
+  const theme = useAppTheme();
+  const semantic = useSemanticColors();
   const { showToast } = useAppToast();
   const { range, refreshKey, setSelectedEntity } = useAdminState();
 
@@ -101,7 +104,7 @@ export default function AdminAiOpsScreen() {
   if (!data) {
     return (
       <YStack alignItems="center" paddingVertical={40}>
-        <ActivityIndicator color={integrationAccentColors.openai} />
+        <ActivityIndicator color={semantic.integration.openai} />
       </YStack>
     );
   }
@@ -112,7 +115,7 @@ export default function AdminAiOpsScreen() {
         <XStack gap={10} flexWrap="wrap">
           <Card style={{ borderRadius: 24, flex: 1, minWidth: 260 }}>
             <YStack gap={10}>
-              <Text fontSize={16} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 Provider Reliability
               </Text>
               <YStack gap={10}>
@@ -124,22 +127,22 @@ export default function AdminAiOpsScreen() {
                     maxWidth={PROVIDER_PRIMARY_MAX_WIDTH}
                     minWidth={0}
                   >
-                    <Text fontSize={11} fontWeight="700" color="$colorMuted">
+                    <Text fontSize={11} fontWeight="700" color={theme.colorMuted.val}>
                       Provider
                     </Text>
                   </YStack>
                   <YStack width={providerCostColumnWidth} alignItems="flex-end">
-                    <Text fontSize={11} fontWeight="700" color="$colorMuted">
+                    <Text fontSize={11} fontWeight="700" color={theme.colorMuted.val}>
                       Cost
                     </Text>
                   </YStack>
                   <YStack width={providerFailureColumnWidth} alignItems="flex-end">
-                    <Text fontSize={11} fontWeight="700" color="$colorMuted">
+                    <Text fontSize={11} fontWeight="700" color={theme.colorMuted.val}>
                       Failure
                     </Text>
                   </YStack>
                   <YStack width={providerActionColumnWidth} alignItems="center">
-                    <Text fontSize={11} fontWeight="700" color="$colorMuted">
+                    <Text fontSize={11} fontWeight="700" color={theme.colorMuted.val}>
                       Action
                     </Text>
                   </YStack>
@@ -153,15 +156,15 @@ export default function AdminAiOpsScreen() {
                       maxWidth={PROVIDER_PRIMARY_MAX_WIDTH}
                       minWidth={0}
                     >
-                      <Text fontSize={13} fontWeight="700" color="$color">
+                      <Text fontSize={13} fontWeight="700" color={theme.color.val}>
                         {row.key}
                       </Text>
-                      <Text fontSize={11} color="$colorMuted">
+                      <Text fontSize={11} color={theme.colorMuted.val}>
                         {formatCompact(row.requests)} calls · {Math.round(row.avgLatencyMs)}ms avg
                       </Text>
                     </YStack>
                     <YStack width={providerCostColumnWidth} alignItems="flex-end">
-                      <Text fontSize={12} fontWeight="700" color="$color">
+                      <Text fontSize={12} fontWeight="700" color={theme.color.val}>
                         {formatUsdMicros(row.costUsdMicros)}
                       </Text>
                     </YStack>
@@ -170,9 +173,7 @@ export default function AdminAiOpsScreen() {
                         fontSize={12}
                         fontWeight="700"
                         color={
-                          row.failureRate > 0.08
-                            ? statusAccentColors.error
-                            : statusAccentColors.success
+                          row.failureRate > 0.08 ? semantic.status.error : semantic.status.success
                         }
                       >
                         {(row.failureRate * 100).toFixed(2)}%
@@ -185,7 +186,7 @@ export default function AdminAiOpsScreen() {
                         <Text
                           fontSize={13}
                           lineHeight={16}
-                          color={statusAccentColors.warningStrong}
+                          color={semantic.status.warningStrong}
                           fontFamily="$body"
                           fontWeight="700"
                         >
@@ -201,7 +202,7 @@ export default function AdminAiOpsScreen() {
 
           <Card style={{ borderRadius: 24, flex: 1, minWidth: 260 }}>
             <YStack gap={10}>
-              <Text fontSize={16} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 Top Models
               </Text>
               <YStack gap={10}>
@@ -213,22 +214,22 @@ export default function AdminAiOpsScreen() {
                     maxWidth={MODEL_PRIMARY_MAX_WIDTH}
                     minWidth={0}
                   >
-                    <Text fontSize={11} fontWeight="700" color="$colorMuted">
+                    <Text fontSize={11} fontWeight="700" color={theme.colorMuted.val}>
                       Model
                     </Text>
                   </YStack>
                   <YStack width={modelCostColumnWidth} alignItems="flex-end">
-                    <Text fontSize={11} fontWeight="700" color="$colorMuted">
+                    <Text fontSize={11} fontWeight="700" color={theme.colorMuted.val}>
                       Cost
                     </Text>
                   </YStack>
                   <YStack width={modelFailureColumnWidth} alignItems="flex-end">
-                    <Text fontSize={11} fontWeight="700" color="$colorMuted">
+                    <Text fontSize={11} fontWeight="700" color={theme.colorMuted.val}>
                       Failure
                     </Text>
                   </YStack>
                   <YStack width={modelActionColumnWidth} alignItems="center">
-                    <Text fontSize={11} fontWeight="700" color="$colorMuted">
+                    <Text fontSize={11} fontWeight="700" color={theme.colorMuted.val}>
                       Action
                     </Text>
                   </YStack>
@@ -242,20 +243,20 @@ export default function AdminAiOpsScreen() {
                       maxWidth={MODEL_PRIMARY_MAX_WIDTH}
                       minWidth={0}
                     >
-                      <Text fontSize={13} fontWeight="700" color="$color">
+                      <Text fontSize={13} fontWeight="700" color={theme.color.val}>
                         {row.model}
                       </Text>
-                      <Text fontSize={11} color="$colorMuted">
+                      <Text fontSize={11} color={theme.colorMuted.val}>
                         {row.provider} · {formatCompact(row.requests)} calls
                       </Text>
                     </YStack>
                     <YStack width={modelCostColumnWidth} alignItems="flex-end">
-                      <Text fontSize={12} fontWeight="700" color="$color">
+                      <Text fontSize={12} fontWeight="700" color={theme.color.val}>
                         {formatUsdMicros(row.costUsdMicros)}
                       </Text>
                     </YStack>
                     <YStack width={modelFailureColumnWidth} alignItems="flex-end">
-                      <Text fontSize={11} color="$colorMuted">
+                      <Text fontSize={11} color={theme.colorMuted.val}>
                         {(row.failureRate * 100).toFixed(1)}% fail
                       </Text>
                     </YStack>
@@ -268,7 +269,7 @@ export default function AdminAiOpsScreen() {
                         <Text
                           fontSize={13}
                           lineHeight={16}
-                          color={statusAccentColors.warningStrong}
+                          color={semantic.status.warningStrong}
                           fontFamily="$body"
                           fontWeight="700"
                         >
@@ -286,7 +287,7 @@ export default function AdminAiOpsScreen() {
 
       <Card style={{ borderRadius: 24 }}>
         <YStack gap={10}>
-          <Text fontSize={16} fontFamily="$heading" fontWeight="700" color="$color">
+          <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
             Routing Controls
           </Text>
           {data.routing.map((route: any) => (
@@ -297,10 +298,10 @@ export default function AdminAiOpsScreen() {
               gap={8}
             >
               <YStack flex={1}>
-                <Text fontSize={13} fontWeight="700" color="$color">
+                <Text fontSize={13} fontWeight="700" color={theme.color.val}>
                   {route.capability}
                 </Text>
-                <Text fontSize={11} color="$colorMuted">
+                <Text fontSize={11} color={theme.colorMuted.val}>
                   {route.provider} / {route.model}
                   {route.fallbackEnabled && route.fallbackProvider && route.fallbackModel
                     ? ` · fallback ${route.fallbackProvider}/${route.fallbackModel}`

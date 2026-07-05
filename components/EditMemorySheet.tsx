@@ -43,7 +43,7 @@ import { TimeCapsuleToggle } from "./ui/TimeCapsuleToggle";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { useAppConfirm } from "./ui/confirm/AppConfirmProvider";
 import { FontFamily } from "@/constants/fonts";
-import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
 import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import type { MemoryNote } from "@/types/memory";
 import { getReminderDate, inferMemoryEntryKind } from "@/types/memoryKind";
@@ -107,6 +107,7 @@ function createInitialState(memory?: MemoryNote) {
 
 export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemorySheetProps) {
   const theme = useAppTheme();
+  const semantic = useSemanticColors();
   const insets = useSafeAreaInsets();
   const isLargeScreen = useIsLargeScreen();
   const modalRef = useRef<BottomSheetModal>(null);
@@ -379,12 +380,12 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                 fontSize={18}
                 fontFamily="$body"
                 fontWeight="700"
-                color="$color"
+                color={theme.color.val}
                 numberOfLines={1}
               >
                 Edit Memory
               </Text>
-              <Text fontSize={13} lineHeight={18} color="$colorMuted" numberOfLines={2}>
+              <Text fontSize={13} lineHeight={18} color={theme.colorMuted.val} numberOfLines={2}>
                 {memory?.title ? `Editing ${memory.title}` : "Update details, reminders, and files"}
               </Text>
             </YStack>
@@ -422,18 +423,18 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
           (memory?.importance === "critical" || memory?.importance === "high") && (
             <YStack
               borderWidth={0.5}
-              borderColor="$borderColor"
-              backgroundColor="$card"
+              borderColor={theme.borderColor.val}
+              backgroundColor={theme.card.val}
               borderRadius={14}
               overflow="hidden"
             >
               <XStack alignItems="center" gap={12} padding={14}>
                 <Feather name="repeat" size={18} color={theme.colorMuted.val} />
                 <YStack flex={1}>
-                  <Text color="$color" fontSize={14} fontFamily="$body" fontWeight="600">
+                  <Text color={theme.color.val} fontSize={14} fontFamily="$body" fontWeight="600">
                     Spaced Review
                   </Text>
-                  <Text color="$colorMuted" fontSize={12} fontFamily="$body" marginTop={1}>
+                  <Text color={theme.colorMuted.val} fontSize={12} fontFamily="$body" marginTop={1}>
                     Surfaces in review sessions
                   </Text>
                 </YStack>
@@ -458,7 +459,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                 letterSpacing={0.8}
                 marginLeft={4}
                 textTransform="uppercase"
-                color="$colorMuted"
+                color={theme.colorMuted.val}
               >
                 TITLE
               </Text>
@@ -490,7 +491,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                 letterSpacing={0.8}
                 marginLeft={4}
                 textTransform="uppercase"
-                color="$colorMuted"
+                color={theme.colorMuted.val}
               >
                 CONTENT
               </Text>
@@ -541,7 +542,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                 letterSpacing={0.8}
                 marginLeft={4}
                 textTransform="uppercase"
-                color="$colorMuted"
+                color={theme.colorMuted.val}
               >
                 TYPE
               </Text>
@@ -570,7 +571,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                     letterSpacing={0.8}
                     marginLeft={4}
                     textTransform="uppercase"
-                    color="$colorMuted"
+                    color={theme.colorMuted.val}
                   >
                     REMINDER
                   </Text>
@@ -582,8 +583,8 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                       borderRadius={12}
                       paddingHorizontal={12}
                       paddingVertical={10}
-                      borderColor="$borderColor"
-                      backgroundColor="$card"
+                      borderColor={theme.borderColor.val}
+                      backgroundColor={theme.card.val}
                     >
                       <Feather name="calendar" size={14} color={theme.colorMuted.val} />
                       <input
@@ -648,8 +649,8 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                           borderWidth={0.5}
                           borderRadius={16}
                           padding={14}
-                          borderColor="$borderColor"
-                          backgroundColor="$card"
+                          borderColor={theme.borderColor.val}
+                          backgroundColor={theme.card.val}
                         >
                           <XStack alignItems="center" justifyContent="space-between" gap={12}>
                             <YStack gap={2} flex={1}>
@@ -657,11 +658,11 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                                 fontSize={15}
                                 fontFamily="$heading"
                                 fontWeight="600"
-                                color="$color"
+                                color={theme.color.val}
                               >
                                 Set Reminder
                               </Text>
-                              <Text fontSize={12} color="$colorMuted">
+                              <Text fontSize={12} color={theme.colorMuted.val}>
                                 Pick a date and time directly inside the sheet.
                               </Text>
                             </YStack>
@@ -672,10 +673,10 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                                   paddingVertical={6}
                                   borderRadius={999}
                                   borderWidth={1}
-                                  borderColor="$borderColor"
-                                  backgroundColor="$background"
+                                  borderColor={theme.borderColor.val}
+                                  backgroundColor={theme.background.val}
                                 >
-                                  <Text fontSize={12} fontWeight="600" color="$colorMuted">
+                                  <Text fontSize={12} fontWeight="600" color={theme.colorMuted.val}>
                                     Clear
                                   </Text>
                                 </XStack>
@@ -705,7 +706,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                                   letterSpacing={0.8}
                                   marginLeft={4}
                                   textTransform="uppercase"
-                                  color="$colorMuted"
+                                  color={theme.colorMuted.val}
                                 >
                                   DATE
                                 </Text>
@@ -732,7 +733,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                                   letterSpacing={0.8}
                                   marginLeft={4}
                                   textTransform="uppercase"
-                                  color="$colorMuted"
+                                  color={theme.colorMuted.val}
                                 >
                                   TIME
                                 </Text>
@@ -771,15 +772,20 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                   borderWidth={0.5}
                   borderRadius={14}
                   padding={14}
-                  borderColor="$borderColor"
-                  backgroundColor="$card"
+                  borderColor={theme.borderColor.val}
+                  backgroundColor={theme.card.val}
                 >
                   <Feather name="refresh-cw" size={16} color={theme.colorMuted.val} />
                   <YStack flex={1}>
-                    <Text fontSize={14} fontFamily="$body" fontWeight="600" color="$color">
+                    <Text fontSize={14} fontFamily="$body" fontWeight="600" color={theme.color.val}>
                       Recurring
                     </Text>
-                    <Text fontSize={12} fontFamily="$body" marginTop={1} color="$colorMuted">
+                    <Text
+                      fontSize={12}
+                      fontFamily="$body"
+                      marginTop={1}
+                      color={theme.colorMuted.val}
+                    >
                       Repeat this reminder
                     </Text>
                   </YStack>
@@ -860,20 +866,20 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                   paddingVertical={5}
                   borderRadius={20}
                   borderWidth={1}
-                  borderColor={withAlpha(integrationAccentColors.googleDrive, "40")}
-                  backgroundColor={withAlpha(integrationAccentColors.googleDrive, "12")}
+                  borderColor={withAlpha(semantic.integration.googleDrive, "40")}
+                  backgroundColor={withAlpha(semantic.integration.googleDrive, "12")}
                 >
                   <FontAwesome5
                     name="google-drive"
                     iconStyle="brand"
                     size={12}
-                    color={integrationAccentColors.googleDrive}
+                    color={semantic.integration.googleDrive}
                   />
                   <Text
                     fontSize={11}
                     fontFamily="$body"
                     fontWeight="600"
-                    color={integrationAccentColors.googleDrive}
+                    color={semantic.integration.googleDrive}
                   >
                     in Drive
                   </Text>
@@ -888,8 +894,8 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                 borderRadius={14}
                 padding={14}
                 gap={8}
-                borderColor="$borderColor"
-                backgroundColor="$card"
+                borderColor={theme.borderColor.val}
+                backgroundColor={theme.card.val}
               >
                 <XStack alignItems="center" gap={6} marginBottom={2}>
                   <Feather name="tag" size={13} color={theme.colorMuted.val} />
@@ -899,7 +905,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                     fontWeight="600"
                     letterSpacing={0.8}
                     textTransform="uppercase"
-                    color="$colorMuted"
+                    color={theme.colorMuted.val}
                   >
                     AI Topics
                   </Text>
@@ -934,7 +940,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                     </XStack>
                   ))}
                 </XStack>
-                <Text fontSize={11} fontFamily="$body" color="$colorMuted">
+                <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val}>
                   Assigned automatically by AI. Manage via the chat.
                 </Text>
               </YStack>
@@ -947,8 +953,8 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                 borderRadius={14}
                 padding={14}
                 gap={6}
-                borderColor="$borderColor"
-                backgroundColor="$card"
+                borderColor={theme.borderColor.val}
+                backgroundColor={theme.card.val}
               >
                 <XStack alignItems="center" gap={6} marginBottom={2}>
                   <Text fontSize={14}>✨</Text>
@@ -958,18 +964,28 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                     fontWeight="600"
                     letterSpacing={0.8}
                     textTransform="uppercase"
-                    color="$colorMuted"
+                    color={theme.colorMuted.val}
                   >
                     AI INSIGHTS
                   </Text>
                 </XStack>
                 {memory.contextTags.what ? (
-                  <Text fontSize={13} fontFamily="$body" lineHeight={18} color="$colorMuted">
+                  <Text
+                    fontSize={13}
+                    fontFamily="$body"
+                    lineHeight={18}
+                    color={theme.colorMuted.val}
+                  >
                     {memory.contextTags.what}
                   </Text>
                 ) : null}
                 {memory.contextTags.why ? (
-                  <Text fontSize={13} fontFamily="$body" lineHeight={18} color="$colorMuted">
+                  <Text
+                    fontSize={13}
+                    fontFamily="$body"
+                    lineHeight={18}
+                    color={theme.colorMuted.val}
+                  >
                     Why: {memory.contextTags.why}
                   </Text>
                 ) : null}
@@ -987,7 +1003,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                     fontWeight="600"
                     letterSpacing={0.8}
                     textTransform="uppercase"
-                    color="$colorMuted"
+                    color={theme.colorMuted.val}
                   >
                     FILES
                   </Text>
@@ -1062,26 +1078,26 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                                 mlkit: {
                                   label: "device",
                                   icon: "smartphone",
-                                  color: statusAccentColors.successStrong,
-                                  bg: withAlpha(statusAccentColors.success, "1A"),
+                                  color: semantic.status.successStrong,
+                                  bg: withAlpha(semantic.status.success, "1A"),
                                 },
                                 gemini: {
                                   label: "AI",
                                   icon: "zap",
-                                  color: integrationAccentColors.reasoning,
-                                  bg: withAlpha(integrationAccentColors.reasoning, "1A"),
+                                  color: semantic.integration.reasoning,
+                                  bg: withAlpha(semantic.integration.reasoning, "1A"),
                                 },
                                 openai: {
                                   label: "AI",
                                   icon: "cpu",
-                                  color: integrationAccentColors.openai,
-                                  bg: withAlpha(integrationAccentColors.openai, "1A"),
+                                  color: semantic.integration.openai,
+                                  bg: withAlpha(semantic.integration.openai, "1A"),
                                 },
                                 "pdf-extract": {
                                   label: "text",
                                   icon: "file-text",
-                                  color: statusAccentColors.neutral,
-                                  bg: withAlpha(statusAccentColors.neutral, "1A"),
+                                  color: semantic.status.neutral,
+                                  bg: withAlpha(semantic.status.neutral, "1A"),
                                 },
                               };
                               const m = methodMap[att.extractionMethod];
@@ -1122,7 +1138,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                           onPress={() => handleDeleteExisting(att._id, att.filename)}
                           hitSlop={8}
                         >
-                          <Feather name="trash-2" size={15} color={statusAccentColors.error} />
+                          <Feather name="trash-2" size={15} color={semantic.status.error} />
                         </Pressable>
                       </XStack>
                     </XStack>
@@ -1150,7 +1166,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                   style={{ borderStyle: "dashed" }}
                 >
                   <Feather name="upload" size={16} color={theme.colorMuted.val} />
-                  <Text fontSize={13} fontFamily="$body" color="$colorMuted">
+                  <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val}>
                     Attach images or PDFs (receipts, docs, photos)
                   </Text>
                 </XStack>
@@ -1172,7 +1188,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                   }}
                 >
                   <Feather name="volume-2" size={14} color={theme.colorMuted.val} />
-                  <Text fontSize={13} fontFamily="$body" color="$colorMuted">
+                  <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val}>
                     Read Aloud
                   </Text>
                 </Pressable>
@@ -1187,7 +1203,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                   }}
                 >
                   <Feather name="trash-2" size={14} color={theme.destructive.val} />
-                  <Text fontSize={13} fontFamily="$body" color="$destructive">
+                  <Text fontSize={13} fontFamily="$body" color={theme.destructive.val}>
                     Delete
                   </Text>
                 </Pressable>
@@ -1203,7 +1219,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
             {voiceLoading ? (
               <YStack alignItems="center" justifyContent="center" gap={16} paddingVertical={60}>
                 <ActivityIndicator size="large" color={theme.primary.val} />
-                <Text fontSize={15} fontFamily="$body" color="$colorMuted">
+                <Text fontSize={15} fontFamily="$body" color={theme.colorMuted.val}>
                   Processing your edit...
                 </Text>
               </YStack>
@@ -1215,10 +1231,15 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                   onPauseChange={setIsVoicePaused}
                   inputMode="auto"
                 />
-                <Text fontSize={16} fontFamily="$body" fontWeight="600" color="$color">
+                <Text fontSize={16} fontFamily="$body" fontWeight="600" color={theme.color.val}>
                   Describe your edit
                 </Text>
-                <Text fontSize={13} fontFamily="$body" textAlign="center" color="$colorMuted">
+                <Text
+                  fontSize={13}
+                  fontFamily="$body"
+                  textAlign="center"
+                  color={theme.colorMuted.val}
+                >
                   e.g. "Change the title" · "Add a reminder for Monday"
                 </Text>
 
@@ -1226,14 +1247,14 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                 {!isVoicePaused && voiceTranscript.trim().length > 0 && (
                   <YStack
                     width="100%"
-                    backgroundColor="$accent"
+                    backgroundColor={theme.accent.val}
                     borderRadius={14}
                     borderWidth={1}
-                    borderColor="$primary"
+                    borderColor={theme.primary.val}
                     padding={14}
                     gap={10}
                   >
-                    <Text fontSize={14} fontFamily="$body" color="$color" lineHeight={20}>
+                    <Text fontSize={14} fontFamily="$body" color={theme.color.val} lineHeight={20}>
                       {voiceTranscript}
                     </Text>
                     <GradientButton
@@ -1280,21 +1301,27 @@ function TipsCard() {
       borderRadius={14}
       padding={16}
       gap={10}
-      borderColor="$borderColor"
-      backgroundColor="$card"
+      borderColor={theme.borderColor.val}
+      backgroundColor={theme.card.val}
     >
       <XStack alignItems="center" gap={6}>
         <Text fontSize={16}>💡</Text>
-        <Text fontSize={13} fontFamily="$body" fontWeight="600" color="$color">
+        <Text fontSize={13} fontFamily="$body" fontWeight="600" color={theme.color.val}>
           Tips
         </Text>
       </XStack>
       {tips.map((tip) => (
         <XStack key={tip} alignItems="flex-start" gap={6}>
-          <Text fontSize={12} marginTop={1} color="$colorMuted">
+          <Text fontSize={12} marginTop={1} color={theme.colorMuted.val}>
             •
           </Text>
-          <Text flex={1} fontSize={12} fontFamily="$body" lineHeight={17} color="$colorMuted">
+          <Text
+            flex={1}
+            fontSize={12}
+            fontFamily="$body"
+            lineHeight={17}
+            color={theme.colorMuted.val}
+          >
             {tip}
           </Text>
         </XStack>

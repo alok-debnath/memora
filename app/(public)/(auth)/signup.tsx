@@ -9,8 +9,10 @@ import { InlineNotice } from "@/components/ui/InlineNotice";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { FontFamily } from "@/constants/fonts";
 import { useAuth } from "@/hooks/useAuth";
+import { useAppTheme } from "@/hooks/useAppTheme";
 
 export default function SignupScreen() {
+  const theme = useAppTheme();
   const { signup } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -91,7 +93,7 @@ export default function SignupScreen() {
               onPress={() => setShowPassword((value) => !value)}
               style={{ paddingHorizontal: 10, paddingVertical: 8 }}
             >
-              <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$colorMuted">
+              <Text fontSize={13} fontFamily={FontFamily.semiBold} color={theme.colorMuted.val}>
                 {showPassword ? "Hide" : "Show"}
               </Text>
             </PressableScale>
@@ -112,7 +114,7 @@ export default function SignupScreen() {
               onPress={() => setShowConfirmPassword((value) => !value)}
               style={{ paddingHorizontal: 10, paddingVertical: 8 }}
             >
-              <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$colorMuted">
+              <Text fontSize={13} fontFamily={FontFamily.semiBold} color={theme.colorMuted.val}>
                 {showConfirmPassword ? "Hide" : "Show"}
               </Text>
             </PressableScale>
@@ -130,11 +132,11 @@ export default function SignupScreen() {
         />
 
         <XStack justifyContent="center" alignItems="center" gap={6} marginTop={4}>
-          <Text fontSize={14} fontFamily={FontFamily.regular} color="$colorMuted">
+          <Text fontSize={14} fontFamily={FontFamily.regular} color={theme.colorMuted.val}>
             Already have an account?
           </Text>
           <PressableScale onPress={() => router.back()}>
-            <Text fontSize={14} fontFamily={FontFamily.semiBold} color="$primary">
+            <Text fontSize={14} fontFamily={FontFamily.semiBold} color={theme.primary.val}>
               Sign In
             </Text>
           </PressableScale>

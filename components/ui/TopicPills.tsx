@@ -87,7 +87,7 @@ export function TopicPills({ selected, onSelect, topics, onSync, isSyncing }: To
           fontSize={13}
           fontFamily="$body"
           fontWeight="500"
-          color={selected === null ? theme.textInverse.val : "$colorMuted"}
+          color={selected === null ? theme.textInverse.val : theme.colorMuted.val}
         >
           All
         </Text>
@@ -122,14 +122,14 @@ export function TopicPills({ selected, onSelect, topics, onSync, isSyncing }: To
               fontSize={13}
               fontFamily="$body"
               fontWeight="500"
-              color={isSelected ? theme.textInverse.val : "$colorMuted"}
+              color={isSelected ? theme.textInverse.val : theme.colorMuted.val}
             >
               {topic.name}
             </Text>
             <Text
               fontSize={11}
               fontFamily="$body"
-              color={isSelected ? withAlpha(theme.textInverse.val, "B3") : "$colorMuted"}
+              color={isSelected ? withAlpha(theme.textInverse.val, "B3") : theme.colorMuted.val}
             >
               {topic.memoryCount}
             </Text>
@@ -157,7 +157,7 @@ export function TopicPills({ selected, onSelect, topics, onSync, isSyncing }: To
           <Animated.View style={spinStyle}>
             <Feather name="refresh-cw" size={13} color={syncIconColor} />
           </Animated.View>
-          <Text fontSize={13} fontFamily="$body" fontWeight="500" color="$colorMuted">
+          <Text fontSize={13} fontFamily="$body" fontWeight="500" color={theme.colorMuted.val}>
             {isSyncing ? "Syncing…" : "Sync"}
           </Text>
         </PressableScale>

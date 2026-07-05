@@ -74,7 +74,7 @@ Convex agent skills for common tasks can be installed by running
 ## Theming and UI Enforcement
 
 - For app UI, prefer theme tokens and semantic colors from `useAppTheme()` over raw color literals.
-- Keep gradients and reusable brand/accent colors centralized in `constants/colors.ts`.
+- Keep palette generation, gradients, and reusable brand/accent colors centralized in `constants/themePalettes.ts`.
 - In shared UI/auth components, avoid introducing ad-hoc hex colors when an existing token or centralized color exists.
 - Prefer existing shared primitives (`components/ui`) for buttons, inputs, cards, and notices before building screen-local variants.
 - Use `StyleSheet` only where it adds clear value (animation helpers, absolute fills, React Native interop, or platform edge cases), consistent with `docs/ui-styling.md`.

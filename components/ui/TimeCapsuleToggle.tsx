@@ -49,18 +49,18 @@ export function TimeCapsuleToggle({
   return (
     <YStack
       borderWidth={0.5}
-      borderColor="$borderColor"
-      backgroundColor="$card"
+      borderColor={theme.borderColor.val}
+      backgroundColor={theme.card.val}
       borderRadius={14}
       overflow="hidden"
     >
       <XStack alignItems="center" gap={12} padding={14}>
         <Feather name="lock" size={18} color={theme.colorMuted.val} />
         <YStack flex={1}>
-          <Text color="$color" fontSize={14} fontFamily="$body" fontWeight="600">
+          <Text color={theme.color.val} fontSize={14} fontFamily="$body" fontWeight="600">
             Time Capsule
           </Text>
-          <Text color="$colorMuted" fontSize={12} fontFamily="$body" marginTop={1}>
+          <Text color={theme.colorMuted.val} fontSize={12} fontFamily="$body" marginTop={1}>
             Lock until a future date
           </Text>
         </YStack>
@@ -77,11 +77,11 @@ export function TimeCapsuleToggle({
           paddingHorizontal={14}
           paddingVertical={10}
           borderTopWidth={0.5}
-          borderTopColor="$borderColor"
+          borderTopColor={theme.borderColor.val}
         >
           <XStack alignItems="center" gap={8}>
             <Feather name="calendar" size={14} color={theme.colorMuted.val} />
-            <Text flex={1} color="$color" fontSize={14} fontFamily="$body">
+            <Text flex={1} color={theme.color.val} fontSize={14} fontFamily="$body">
               {date ? dayjs(date).format("MMM D, YYYY - h:mm A") : "Select unlock date"}
             </Text>
           </XStack>

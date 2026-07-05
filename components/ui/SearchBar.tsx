@@ -47,8 +47,8 @@ export function SearchBar({
 
   return (
     <XStack
-      backgroundColor="$card"
-      borderColor="$borderColor"
+      backgroundColor={theme.surfaceElevated.val}
+      borderColor={theme.borderColor.val}
       borderWidth={1}
       borderRadius={18}
       paddingHorizontal={14}
@@ -82,6 +82,7 @@ export function SearchBar({
             fontFamily: FontFamily.regular,
             padding: 0,
             color: theme.color.val,
+            backgroundColor: theme.surfaceElevated.val,
             // Android centres text within its own internal padding by default
             textAlignVertical: "center",
             includeFontPadding: false,
@@ -93,7 +94,7 @@ export function SearchBar({
         <Animated.View style={[sparkleStyle, { alignSelf: "center" }]}>
           <XStack alignItems="center" gap={6}>
             <Feather name="zap" size={15} color={theme.primary.val} />
-            <Text fontSize={12} color="$primary" fontWeight="600">
+            <Text fontSize={12} color={theme.primary.val} fontWeight="600">
               Searching
             </Text>
           </XStack>

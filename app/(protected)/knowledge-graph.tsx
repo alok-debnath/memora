@@ -370,11 +370,11 @@ export default function KnowledgeGraphScreen() {
               lineHeight={30}
               fontFamily="$heading"
               fontWeight="700"
-              color="$color"
+              color={theme.color.val}
             >
               Knowledge graph
             </Text>
-            <Text fontSize={13} lineHeight={19} fontFamily="$body" color="$colorMuted">
+            <Text fontSize={13} lineHeight={19} fontFamily="$body" color={theme.colorMuted.val}>
               {mode === "memories"
                 ? "Memories linked by shared topics and people."
                 : "Topic clusters derived from your AI taxonomy."}
@@ -388,15 +388,15 @@ export default function KnowledgeGraphScreen() {
               alignItems="center"
               paddingVertical={10}
               borderRadius={14}
-              backgroundColor="$background"
+              backgroundColor={theme.background.val}
               borderWidth={1}
-              borderColor="$borderColor"
+              borderColor={theme.borderColor.val}
               gap={2}
             >
-              <Text fontSize={20} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text fontSize={20} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 {nodeCount}
               </Text>
-              <Text fontSize={10} fontFamily="$body" color="$colorMuted">
+              <Text fontSize={10} fontFamily="$body" color={theme.colorMuted.val}>
                 {mode === "memories" ? "memories" : "topics"}
               </Text>
             </YStack>
@@ -405,15 +405,15 @@ export default function KnowledgeGraphScreen() {
               alignItems="center"
               paddingVertical={10}
               borderRadius={14}
-              backgroundColor="$background"
+              backgroundColor={theme.background.val}
               borderWidth={1}
-              borderColor="$borderColor"
+              borderColor={theme.borderColor.val}
               gap={2}
             >
-              <Text fontSize={20} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text fontSize={20} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 {edgeCount}
               </Text>
-              <Text fontSize={10} fontFamily="$body" color="$colorMuted">
+              <Text fontSize={10} fontFamily="$body" color={theme.colorMuted.val}>
                 connections
               </Text>
             </YStack>
@@ -423,15 +423,15 @@ export default function KnowledgeGraphScreen() {
                 alignItems="center"
                 paddingVertical={10}
                 borderRadius={14}
-                backgroundColor="$background"
+                backgroundColor={theme.background.val}
                 borderWidth={1}
-                borderColor="$borderColor"
+                borderColor={theme.borderColor.val}
                 gap={2}
               >
-                <Text fontSize={20} fontFamily="$heading" fontWeight="700" color="$color">
+                <Text fontSize={20} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                   {clusterCount}
                 </Text>
-                <Text fontSize={10} fontFamily="$body" color="$colorMuted">
+                <Text fontSize={10} fontFamily="$body" color={theme.colorMuted.val}>
                   clusters
                 </Text>
               </YStack>
@@ -441,15 +441,15 @@ export default function KnowledgeGraphScreen() {
                 alignItems="center"
                 paddingVertical={10}
                 borderRadius={14}
-                backgroundColor="$background"
+                backgroundColor={theme.background.val}
                 borderWidth={1}
-                borderColor="$borderColor"
+                borderColor={theme.borderColor.val}
                 gap={2}
               >
-                <Text fontSize={20} fontFamily="$heading" fontWeight="700" color="$color">
+                <Text fontSize={20} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                   {topics.length}
                 </Text>
-                <Text fontSize={10} fontFamily="$body" color="$colorMuted">
+                <Text fontSize={10} fontFamily="$body" color={theme.colorMuted.val}>
                   total topics
                 </Text>
               </YStack>
@@ -535,7 +535,7 @@ export default function KnowledgeGraphScreen() {
                 fontSize={12}
                 fontFamily="$body"
                 fontWeight="500"
-                color={filterTopicId === null ? theme.textInverse.val : "$colorMuted"}
+                color={filterTopicId === null ? theme.textInverse.val : theme.colorMuted.val}
               >
                 All
               </Text>
@@ -577,14 +577,14 @@ export default function KnowledgeGraphScreen() {
                       fontSize={12}
                       fontFamily="$body"
                       fontWeight="500"
-                      color={active ? theme.textInverse.val : "$colorMuted"}
+                      color={active ? theme.textInverse.val : theme.colorMuted.val}
                     >
                       {t.name}
                     </Text>
                     <Text
                       fontSize={10}
                       fontFamily="$body"
-                      color={active ? withAlpha(theme.textInverse.val, "B3") : "$colorMuted"}
+                      color={active ? withAlpha(theme.textInverse.val, "B3") : theme.colorMuted.val}
                     >
                       {t.memoryCount}
                     </Text>
@@ -748,7 +748,7 @@ export default function KnowledgeGraphScreen() {
               <XStack gap={12} paddingTop={4} flexWrap="wrap">
                 <XStack alignItems="center" gap={4}>
                   <YStack width={16} height={2} backgroundColor={theme.primary.val} opacity={0.5} />
-                  <Text fontSize={10} fontFamily="$body" color="$colorMuted">
+                  <Text fontSize={10} fontFamily="$body" color={theme.colorMuted.val}>
                     shared topic
                   </Text>
                 </XStack>
@@ -762,7 +762,7 @@ export default function KnowledgeGraphScreen() {
                       opacity: 0.5,
                     }}
                   />
-                  <Text fontSize={10} fontFamily="$body" color="$colorMuted">
+                  <Text fontSize={10} fontFamily="$body" color={theme.colorMuted.val}>
                     shared person
                   </Text>
                 </XStack>
@@ -820,14 +820,19 @@ export default function KnowledgeGraphScreen() {
                   </XStack>
                 )}
                 <YStack gap={6}>
-                  <Text fontSize={16} fontFamily="$heading" fontWeight="700" color="$color">
+                  <Text
+                    fontSize={16}
+                    fontFamily="$heading"
+                    fontWeight="700"
+                    color={theme.color.val}
+                  >
                     {selectedMemory.title}
                   </Text>
                   <Text
                     fontSize={13}
                     fontFamily="$body"
                     lineHeight={20}
-                    color="$colorMuted"
+                    color={theme.colorMuted.val}
                     numberOfLines={4}
                   >
                     {selectedMemory.content}
@@ -837,7 +842,7 @@ export default function KnowledgeGraphScreen() {
                   {getReminderDate(selectedMemory) && (
                     <XStack alignItems="center" gap={4}>
                       <Feather name="bell" size={11} color={theme.primary.val} />
-                      <Text fontSize={11} fontFamily="$body" color="$primary">
+                      <Text fontSize={11} fontFamily="$body" color={theme.primary.val}>
                         {new Date(getReminderDate(selectedMemory)!).toLocaleDateString(undefined, {
                           month: "short",
                           day: "numeric",
@@ -848,14 +853,14 @@ export default function KnowledgeGraphScreen() {
                   {(selectedMemory.people?.length ?? 0) > 0 && (
                     <XStack alignItems="center" gap={4}>
                       <Feather name="users" size={11} color={theme.colorMuted.val} />
-                      <Text fontSize={11} fontFamily="$body" color="$colorMuted">
+                      <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val}>
                         {selectedMemory.people!.slice(0, 2).join(", ")}
                       </Text>
                     </XStack>
                   )}
                   <XStack alignItems="center" gap={4}>
                     <Feather name="link-2" size={11} color={theme.colorMuted.val} />
-                    <Text fontSize={11} fontFamily="$body" color="$colorMuted">
+                    <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val}>
                       {memoryGraph?.edges.filter(
                         (e) => e.source === selectedMemory._id || e.target === selectedMemory._id,
                       ).length ?? 0}{" "}
@@ -887,10 +892,15 @@ export default function KnowledgeGraphScreen() {
                     />
                   </YStack>
                   <YStack flex={1} gap={2}>
-                    <Text fontSize={17} fontFamily="$heading" fontWeight="700" color="$color">
+                    <Text
+                      fontSize={17}
+                      fontFamily="$heading"
+                      fontWeight="700"
+                      color={theme.color.val}
+                    >
                       {selectedTopic.name}
                     </Text>
-                    <Text fontSize={12} fontFamily="$body" color="$colorMuted">
+                    <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val}>
                       {selectedTopic.memoryCount}{" "}
                       {selectedTopic.memoryCount === 1 ? "memory" : "memories"}
                     </Text>
@@ -915,7 +925,12 @@ export default function KnowledgeGraphScreen() {
                   </YStack>
                 </XStack>
                 {selectedTopic.description ? (
-                  <Text fontSize={13} fontFamily="$body" lineHeight={19} color="$colorMuted">
+                  <Text
+                    fontSize={13}
+                    fontFamily="$body"
+                    lineHeight={19}
+                    color={theme.colorMuted.val}
+                  >
                     {selectedTopic.description}
                   </Text>
                 ) : null}
@@ -927,7 +942,7 @@ export default function KnowledgeGraphScreen() {
                       fontWeight="600"
                       textTransform="uppercase"
                       letterSpacing={0.8}
-                      color="$colorMuted"
+                      color={theme.colorMuted.val}
                     >
                       Related topics
                     </Text>
@@ -982,7 +997,12 @@ export default function KnowledgeGraphScreen() {
           {mode === "topics" && !selectedTopic && (topicGraph?.nodes.length ?? 0) > 0 && (
             <YStack>
               <YStack gap={8}>
-                <Text fontSize={13} fontFamily="$body" fontWeight="600" color="$colorMuted">
+                <Text
+                  fontSize={13}
+                  fontFamily="$body"
+                  fontWeight="600"
+                  color={theme.colorMuted.val}
+                >
                   Tap any node to explore · {topicGraph!.nodes.length} topics
                 </Text>
                 <XStack flexWrap="wrap" gap={6}>

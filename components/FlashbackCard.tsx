@@ -55,7 +55,7 @@ export function FlashbackCard({ memory, onPress }: FlashbackCardProps) {
             alignSelf="flex-start"
           >
             <Feather name="clock" size={12} color={theme.primary.val} />
-            <Text fontSize={11} fontFamily="$body" fontWeight="600" color="$primary">
+            <Text fontSize={11} fontFamily="$body" fontWeight="600" color={theme.primary.val}>
               {yearsAgo === 1 ? "1 year ago" : `${yearsAgo} years ago`}
             </Text>
           </XStack>
@@ -64,7 +64,7 @@ export function FlashbackCard({ memory, onPress }: FlashbackCardProps) {
           fontSize={15}
           fontFamily="$heading"
           fontWeight="600"
-          color="$color"
+          color={theme.color.val}
           numberOfLines={1}
           marginBottom={6}
         >
@@ -74,7 +74,7 @@ export function FlashbackCard({ memory, onPress }: FlashbackCardProps) {
           fontSize={12}
           fontFamily="$body"
           lineHeight={18}
-          color="$colorMuted"
+          color={theme.colorMuted.val}
           numberOfLines={3}
         >
           {memory.content}

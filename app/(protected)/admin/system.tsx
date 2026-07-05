@@ -9,7 +9,8 @@ import { AppButton } from "@/components/ui/AppButton";
 import { Badge } from "@/components/ui/Badge";
 import { useAppToast } from "@/components/ui/toast";
 import { useAdminState } from "@/components/admin/AdminStateContext";
-import { statusAccentColors } from "@/constants/colors";
+import { useAppTheme } from "@/hooks/useAppTheme";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
 
 function formatCompact(value: number) {
   return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(
@@ -18,6 +19,8 @@ function formatCompact(value: number) {
 }
 
 export default function AdminSystemScreen() {
+  const theme = useAppTheme();
+  const semantic = useSemanticColors();
   const { showToast } = useAppToast();
   const { range, refreshKey, setSelectedEntity } = useAdminState();
 
@@ -37,7 +40,7 @@ export default function AdminSystemScreen() {
   if (!health) {
     return (
       <YStack alignItems="center" paddingVertical={40}>
-        <ActivityIndicator color={statusAccentColors.info} />
+        <ActivityIndicator color={semantic.status.info} />
       </YStack>
     );
   }
@@ -48,30 +51,30 @@ export default function AdminSystemScreen() {
         <XStack gap={10} flexWrap="wrap">
           <Card style={{ borderRadius: 22, flex: 1, minWidth: 220 }}>
             <YStack gap={5}>
-              <Text fontSize={12} color="$colorMuted">
+              <Text fontSize={12} color={theme.colorMuted.val}>
                 AI failure rate
               </Text>
-              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 {(health.snapshot.aiFailureRate * 100).toFixed(2)}%
               </Text>
             </YStack>
           </Card>
           <Card style={{ borderRadius: 22, flex: 1, minWidth: 220 }}>
             <YStack gap={5}>
-              <Text fontSize={12} color="$colorMuted">
+              <Text fontSize={12} color={theme.colorMuted.val}>
                 Search latency
               </Text>
-              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 {Math.round(health.snapshot.avgSearchLatencyMs)}ms
               </Text>
             </YStack>
           </Card>
           <Card style={{ borderRadius: 22, flex: 1, minWidth: 220 }}>
             <YStack gap={5}>
-              <Text fontSize={12} color="$colorMuted">
+              <Text fontSize={12} color={theme.colorMuted.val}>
                 Active embedding rebuilds
               </Text>
-              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 {formatCompact(health.embeddingRebuilds.active)}
               </Text>
             </YStack>
@@ -81,7 +84,7 @@ export default function AdminSystemScreen() {
 
       <Card style={{ borderRadius: 24 }}>
         <YStack gap={10}>
-          <Text fontSize={16} fontFamily="$heading" fontWeight="700" color="$color">
+          <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
             Alert Rules
           </Text>
           <XStack gap={8} flexWrap="wrap">
@@ -120,14 +123,14 @@ export default function AdminSystemScreen() {
             {(rules ?? []).map((rule: any) => (
               <XStack key={rule.key} alignItems="center" justifyContent="space-between">
                 <YStack>
-                  <Text fontSize={13} fontWeight="700" color="$color">
+                  <Text fontSize={13} fontWeight="700" color={theme.color.val}>
                     {rule.title}
                   </Text>
-                  <Text fontSize={11} color="$colorMuted">
+                  <Text fontSize={11} color={theme.colorMuted.val}>
                     {rule.metricKey} {rule.comparison} {rule.threshold}
                   </Text>
                 </YStack>
-                <Badge label={rule.severity} color={statusAccentColors.warning} />
+                <Badge label={rule.severity} color={semantic.status.warning} />
               </XStack>
             ))}
           </YStack>
@@ -136,21 +139,21 @@ export default function AdminSystemScreen() {
 
       <Card style={{ borderRadius: 24 }}>
         <YStack gap={10}>
-          <Text fontSize={16} fontFamily="$heading" fontWeight="700" color="$color">
+          <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
             Open Incidents
           </Text>
           {(incidents?.page ?? []).length === 0 ? (
-            <Text fontSize={13} color="$colorMuted">
+            <Text fontSize={13} color={theme.colorMuted.val}>
               No open incidents.
             </Text>
           ) : (
             (incidents?.page ?? []).map((incident: any) => (
               <XStack key={incident._id} alignItems="center" justifyContent="space-between" gap={8}>
                 <YStack flex={1}>
-                  <Text fontSize={13} fontWeight="700" color="$color">
+                  <Text fontSize={13} fontWeight="700" color={theme.color.val}>
                     {incident.ruleKey}
                   </Text>
-                  <Text fontSize={11} color="$colorMuted">
+                  <Text fontSize={11} color={theme.colorMuted.val}>
                     {incident.metricKey}: {incident.value.toFixed(3)} threshold {incident.threshold}
                   </Text>
                 </YStack>
@@ -172,16 +175,16 @@ export default function AdminSystemScreen() {
 
       <Card style={{ borderRadius: 24 }}>
         <YStack gap={10}>
-          <Text fontSize={16} fontFamily="$heading" fontWeight="700" color="$color">
+          <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
             Maintenance Jobs
           </Text>
           {health.jobs.map((job: any) => (
             <XStack key={job.key} alignItems="center" justifyContent="space-between" gap={8}>
               <YStack flex={1}>
-                <Text fontSize={13} fontWeight="700" color="$color">
+                <Text fontSize={13} fontWeight="700" color={theme.color.val}>
                   {job.title}
                 </Text>
-                <Text fontSize={11} color="$colorMuted">
+                <Text fontSize={11} color={theme.colorMuted.val}>
                   {job.detail}
                 </Text>
               </YStack>

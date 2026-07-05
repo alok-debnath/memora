@@ -28,12 +28,6 @@ import { Text, XStack, YStack } from "tamagui";
 
 import { AppButton } from "@/components/ui/AppButton";
 import { withAlpha } from "@/components/ui/themeHelpers";
-import {
-  brandGradients,
-  integrationAccentColors,
-  onboardingBackdropColors,
-  statAccentColors,
-} from "@/constants/colors";
 import { FontFamily } from "@/constants/fonts";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -50,15 +44,15 @@ type IntroSlide = {
   bg: string;
 };
 
-const SLIDES: IntroSlide[] = [
+type IntroSlideBase = Omit<IntroSlide, "accent" | "bg">;
+
+const BASE_SLIDES: IntroSlideBase[] = [
   {
     id: "capture",
     kicker: "Capture quickly",
     title: "Save moments in seconds",
     body: "Speak or type and keep moving. Memora turns quick thoughts into clean entries you can return to.",
     icon: "mic",
-    accent: brandGradients.ember[1],
-    bg: onboardingBackdropColors.capture,
   },
   {
     id: "organize",
@@ -66,8 +60,6 @@ const SLIDES: IntroSlide[] = [
     title: "AI adds context instantly",
     body: "People, places, moods, and actions are extracted automatically so each memory stays structured.",
     icon: "cpu",
-    accent: statAccentColors.memories,
-    bg: onboardingBackdropColors.organize,
   },
   {
     id: "recall",
@@ -75,8 +67,6 @@ const SLIDES: IntroSlide[] = [
     title: "Find what you meant",
     body: "Use natural language to jump to the right memory instead of searching folder by folder.",
     icon: "search",
-    accent: brandGradients.golden[0],
-    bg: onboardingBackdropColors.recall,
   },
   {
     id: "private",
@@ -84,8 +74,6 @@ const SLIDES: IntroSlide[] = [
     title: "Private by default",
     body: "Your data is used to run Memora, not sold as advertising data. See our Privacy Policy for details.",
     icon: "lock",
-    accent: integrationAccentColors.reasoning,
-    bg: onboardingBackdropColors.private,
   },
 ];
 
@@ -242,13 +230,13 @@ function SlideCard({
             <Text
               fontSize={36}
               lineHeight={40}
-              color="$color"
+              color={theme.color.val}
               fontFamily="$heading"
               fontWeight="800"
             >
               {item.title}
             </Text>
-            <Text fontSize={16} lineHeight={24} color="$colorMuted">
+            <Text fontSize={16} lineHeight={24} color={theme.colorMuted.val}>
               {item.body}
             </Text>
           </YStack>
@@ -263,6 +251,38 @@ export function OnboardingScreen() {
   const isLargeScreen = useIsLargeScreen();
   const resolvedMode = useThemeStore((state) => state.resolvedMode);
   const isDark = resolvedMode === "dark";
+  const slides = React.useMemo<IntroSlide[]>(
+    () =>
+      BASE_SLIDES.map((slide, index) => {
+        const accents = [
+          theme.primary.val,
+          theme.info.val,
+          theme.primaryHover.val,
+          theme.focusRing.val,
+        ];
+        const backgrounds = [
+          theme.background.val,
+          theme.surfaceAccent.val,
+          theme.secondary.val,
+          theme.backgroundStrong.val,
+        ];
+        return {
+          ...slide,
+          accent: accents[index] ?? theme.primary.val,
+          bg: backgrounds[index] ?? theme.background.val,
+        };
+      }),
+    [
+      theme.background.val,
+      theme.backgroundStrong.val,
+      theme.focusRing.val,
+      theme.info.val,
+      theme.primary.val,
+      theme.primaryHover.val,
+      theme.secondary.val,
+      theme.surfaceAccent.val,
+    ],
+  );
   const { width } = useWindowDimensions();
   const listRef = useRef<Animated.FlatList<IntroSlide>>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -279,13 +299,13 @@ export function OnboardingScreen() {
   useAnimatedReaction(
     () => Math.round(scrollX.value / Math.max(width, 1)),
     (next, prev) => {
-      if (next === prev || next < 0 || next >= SLIDES.length) return;
+      if (next === prev || next < 0 || next >= slides.length) return;
       runOnJS(setCurrentIndex)(next);
       if (Platform.OS !== "web") {
         runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
       }
     },
-    [width],
+    [slides.length, width],
   );
 
   const onScroll = useAnimatedScrollHandler((event) => {
@@ -301,7 +321,7 @@ export function OnboardingScreen() {
   }, [setOnboardingSeen]);
 
   const handleNext = useCallback(() => {
-    if (currentIndex >= SLIDES.length - 1) {
+    if (currentIndex >= slides.length - 1) {
       completeOnboarding();
       return;
     }
@@ -310,21 +330,21 @@ export function OnboardingScreen() {
       offset: (currentIndex + 1) * width,
       animated: true,
     });
-  }, [completeOnboarding, currentIndex, width]);
+  }, [completeOnboarding, currentIndex, slides.length, width]);
 
   const backgroundStyle = useAnimatedStyle(() => {
-    const inputRange = SLIDES.map((_, i) => i * width);
+    const inputRange = slides.map((_, i) => i * width);
     return {
       backgroundColor: interpolateColor(
         scrollX.value,
         inputRange,
-        SLIDES.map((slide) => slide.bg),
+        slides.map((slide) => slide.bg),
       ),
     };
   });
 
   const railFillStyle = useAnimatedStyle(() => {
-    const max = Math.max((SLIDES.length - 1) * width, 1);
+    const max = Math.max((slides.length - 1) * width, 1);
     const progress = interpolate(scrollX.value, [0, max], [0, 1], Extrapolation.CLAMP);
     return {
       transform: [
@@ -347,7 +367,7 @@ export function OnboardingScreen() {
       style={{ flex: 1, backgroundColor: theme.background.val }}
       edges={["top", "bottom"]}
     >
-      <YStack flex={1} backgroundColor="$background">
+      <YStack flex={1} backgroundColor={theme.background.val}>
         <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, backgroundStyle]} />
         <LinearGradient
           pointerEvents="none"
@@ -393,7 +413,7 @@ export function OnboardingScreen() {
               >
                 <Feather name="sunrise" size={14} color={theme.textInverse.val} />
               </YStack>
-              <Text fontSize={12} letterSpacing={2} color="$textInverse">
+              <Text fontSize={12} letterSpacing={2} color={theme.textInverse.val}>
                 MEMORA
               </Text>
             </XStack>
@@ -401,7 +421,7 @@ export function OnboardingScreen() {
               Capture your life without friction
             </Text>
           </YStack>
-          {currentIndex < SLIDES.length - 1 ? (
+          {currentIndex < slides.length - 1 ? (
             <Pressable onPress={completeOnboarding} hitSlop={12}>
               <YStack
                 borderWidth={1}
@@ -411,7 +431,7 @@ export function OnboardingScreen() {
                 paddingHorizontal={14}
                 paddingVertical={8}
               >
-                <Text color="$textInverse" fontFamily={FontFamily.medium} fontSize={14}>
+                <Text color={theme.textInverse.val} fontFamily={FontFamily.medium} fontSize={14}>
                   Skip
                 </Text>
               </YStack>
@@ -423,7 +443,7 @@ export function OnboardingScreen() {
 
         <Animated.FlatList
           ref={listRef}
-          data={SLIDES}
+          data={slides}
           horizontal
           pagingEnabled
           bounces={false}
@@ -433,9 +453,9 @@ export function OnboardingScreen() {
           onScroll={onScroll}
           scrollEventThrottle={16}
           decelerationRate="fast"
-          initialNumToRender={SLIDES.length}
-          windowSize={SLIDES.length}
-          maxToRenderPerBatch={SLIDES.length}
+          initialNumToRender={slides.length}
+          windowSize={slides.length}
+          maxToRenderPerBatch={slides.length}
           removeClippedSubviews={false}
         />
 
@@ -478,7 +498,7 @@ export function OnboardingScreen() {
               fontSize={12}
               fontFamily={FontFamily.medium}
             >
-              {String(currentIndex + 1).padStart(2, "0")} / {String(SLIDES.length).padStart(2, "0")}
+              {String(currentIndex + 1).padStart(2, "0")} / {String(slides.length).padStart(2, "0")}
             </Text>
             <Text color={withAlpha(theme.textInverse.val, "CC")} fontSize={12}>
               Swipe to explore
@@ -486,9 +506,9 @@ export function OnboardingScreen() {
           </XStack>
 
           <AppButton
-            title={currentIndex === SLIDES.length - 1 ? "Get Started" : "Next"}
+            title={currentIndex === slides.length - 1 ? "Get Started" : "Next"}
             onPress={handleNext}
-            icon={currentIndex === SLIDES.length - 1 ? "check" : "arrow-right"}
+            icon={currentIndex === slides.length - 1 ? "check" : "arrow-right"}
             size="lg"
             variant="gradient"
             fullWidth

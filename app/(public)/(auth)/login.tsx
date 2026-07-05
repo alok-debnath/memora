@@ -9,8 +9,10 @@ import { InlineNotice } from "@/components/ui/InlineNotice";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { FontFamily } from "@/constants/fonts";
 import { useAuth } from "@/hooks/useAuth";
+import { useAppTheme } from "@/hooks/useAppTheme";
 
 export default function LoginScreen() {
+  const theme = useAppTheme();
   const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -66,7 +68,7 @@ export default function LoginScreen() {
               onPress={() => setShowPassword((value) => !value)}
               style={{ paddingHorizontal: 10, paddingVertical: 8 }}
             >
-              <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$colorMuted">
+              <Text fontSize={13} fontFamily={FontFamily.semiBold} color={theme.colorMuted.val}>
                 {showPassword ? "Hide" : "Show"}
               </Text>
             </PressableScale>
@@ -85,16 +87,16 @@ export default function LoginScreen() {
 
         <XStack justifyContent="space-between" alignItems="center" marginTop={2}>
           <PressableScale onPress={() => router.push("/(public)/(auth)/forgot-password")}>
-            <Text fontSize={14} fontFamily={FontFamily.semiBold} color="$primary">
+            <Text fontSize={14} fontFamily={FontFamily.semiBold} color={theme.primary.val}>
               Forgot password?
             </Text>
           </PressableScale>
           <XStack alignItems="center" gap={6}>
-            <Text fontSize={14} fontFamily={FontFamily.regular} color="$colorMuted">
+            <Text fontSize={14} fontFamily={FontFamily.regular} color={theme.colorMuted.val}>
               New here?
             </Text>
             <PressableScale onPress={() => router.push("/(public)/(auth)/signup")}>
-              <Text fontSize={14} fontFamily={FontFamily.semiBold} color="$primary">
+              <Text fontSize={14} fontFamily={FontFamily.semiBold} color={theme.primary.val}>
                 Sign Up
               </Text>
             </PressableScale>

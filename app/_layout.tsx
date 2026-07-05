@@ -29,7 +29,9 @@ import { useAuthState, AuthContext } from "@/hooks/useAuth";
 import { OnboardingScreen } from "@/components/OnboardingScreen";
 import { authClient } from "@/lib/auth-client";
 import { logDevError } from "@/lib/devLog";
-import tamaguiConfig from "@/tamagui.config";
+import { createAppTamaguiConfig } from "@/tamagui.config";
+import { createThemeColors, MEMORA_ACCENT } from "@/constants/themePalettes";
+import { AppThemeProvider } from "@/hooks/useAppTheme";
 import { AppToastProvider, AppToastRenderer } from "@/components/ui/toast";
 import { AppConfirmProvider } from "@/components/ui/confirm/AppConfirmProvider";
 import { BackdropBlurProvider, TopOverlayProvider } from "@/components/ui/BackdropBlurProvider";
@@ -43,8 +45,32 @@ const convex = new ConvexReactClient(CONVEX_URL, {
 
 function RootLayoutNav() {
   const systemMode = useColorScheme() === "dark" ? "dark" : "light";
-  const { resolvedMode, loadTheme, hasLoaded: themeLoaded, setSystemMode } = useThemeStore();
+  const {
+    resolvedMode,
+    resolvedAccentColor,
+    loadTheme,
+    hasLoaded: themeLoaded,
+    setSystemMode,
+  } = useThemeStore();
   const auth = useAuthState();
+  // Base Tamagui config stays fixed to MEMORA_ACCENT and is never recreated —
+  // all user-selected accent colors flow through AppThemeProvider/useAppTheme()
+  // instead, which re-renders live off the theme store. defaultTheme={resolvedMode}
+  // below switches the active light/dark theme reactively without remounting.
+  // This used to key the TamaguiProvider on mode+accent, forcing a full app
+  // remount (losing nav state, retriggering every useQuery) on every toggle.
+  const dynamicThemes = React.useMemo(
+    () => ({
+      light: createThemeColors(MEMORA_ACCENT, "light"),
+      dark: createThemeColors(MEMORA_ACCENT, "dark"),
+    }),
+    [],
+  );
+  const tamaguiConfig = React.useMemo(() => createAppTamaguiConfig(dynamicThemes), [dynamicThemes]);
+  const rootTheme = React.useMemo(
+    () => createThemeColors(resolvedAccentColor, resolvedMode),
+    [resolvedAccentColor, resolvedMode],
+  );
 
   useEffect(() => {
     loadTheme();
@@ -59,51 +85,52 @@ function RootLayoutNav() {
   if (!auth.hasSeenOnboarding) {
     return (
       <TamaguiProvider config={tamaguiConfig} defaultTheme={resolvedMode}>
-        <AppConfirmProvider>
-          <TopOverlayProvider>
-            <BottomSheetModalProvider>
-              <BackdropBlurProvider>
-                <AuthContext.Provider value={auth}>
-                  <OnboardingScreen />
-                  <AppToastRenderer />
-                </AuthContext.Provider>
-              </BackdropBlurProvider>
-            </BottomSheetModalProvider>
-          </TopOverlayProvider>
-        </AppConfirmProvider>
+        <AppThemeProvider>
+          <AppConfirmProvider>
+            <TopOverlayProvider>
+              <BottomSheetModalProvider>
+                <BackdropBlurProvider>
+                  <AuthContext.Provider value={auth}>
+                    <OnboardingScreen />
+                    <AppToastRenderer />
+                  </AuthContext.Provider>
+                </BackdropBlurProvider>
+              </BottomSheetModalProvider>
+            </TopOverlayProvider>
+          </AppConfirmProvider>
+        </AppThemeProvider>
       </TamaguiProvider>
     );
   }
 
   return (
     <TamaguiProvider config={tamaguiConfig} defaultTheme={resolvedMode}>
-      <AppConfirmProvider>
-        <TopOverlayProvider>
-          <BottomSheetModalProvider>
-            <BackdropBlurProvider>
-              <AuthContext.Provider value={auth}>
-                <StatusBar style={resolvedMode === "dark" ? "light" : "dark"} />
-                <Stack
-                  screenOptions={{
-                    headerShown: false,
-                    freezeOnBlur: true,
-                    contentStyle: {
-                      backgroundColor:
-                        resolvedMode === "dark"
-                          ? tamaguiConfig.themes.dark.background.val
-                          : tamaguiConfig.themes.light.background.val,
-                    },
-                  }}
-                >
-                  <Stack.Screen name="(public)" options={{ headerShown: false }} />
-                  <Stack.Screen name="(protected)" options={{ headerShown: false }} />
-                </Stack>
-                <AppToastRenderer />
-              </AuthContext.Provider>
-            </BackdropBlurProvider>
-          </BottomSheetModalProvider>
-        </TopOverlayProvider>
-      </AppConfirmProvider>
+      <AppThemeProvider>
+        <AppConfirmProvider>
+          <TopOverlayProvider>
+            <BottomSheetModalProvider>
+              <BackdropBlurProvider>
+                <AuthContext.Provider value={auth}>
+                  <StatusBar style={resolvedMode === "dark" ? "light" : "dark"} />
+                  <Stack
+                    screenOptions={{
+                      headerShown: false,
+                      freezeOnBlur: true,
+                      contentStyle: {
+                        backgroundColor: rootTheme.background,
+                      },
+                    }}
+                  >
+                    <Stack.Screen name="(public)" options={{ headerShown: false }} />
+                    <Stack.Screen name="(protected)" options={{ headerShown: false }} />
+                  </Stack>
+                  <AppToastRenderer />
+                </AuthContext.Provider>
+              </BackdropBlurProvider>
+            </BottomSheetModalProvider>
+          </TopOverlayProvider>
+        </AppConfirmProvider>
+      </AppThemeProvider>
     </TamaguiProvider>
   );
 }

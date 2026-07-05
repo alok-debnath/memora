@@ -59,13 +59,6 @@ export const importanceLabels: Record<Importance, string> = {
   low: "Low",
 };
 
-export const importanceColors: Record<Importance, string> = {
-  critical: "#DC2626",
-  high: "#F59E0B",
-  normal: "#3B82F6",
-  low: "#6B7280",
-};
-
 export const lifeAreaLabels: Record<LifeArea, string> = {
   career: "Career",
   family: "Family",

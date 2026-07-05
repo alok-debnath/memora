@@ -5,7 +5,6 @@ import { XStack, YStack, Text } from "tamagui";
 import { useQuery } from "convex/react";
 
 import { api } from "@/convex/_generated/api";
-import { navigationAccentColors } from "@/constants/colors";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { AppScreen } from "@/components/ui/AppScreen";
@@ -18,7 +17,6 @@ interface MenuItem {
   label: string;
   description: string;
   route: string;
-  color: string;
 }
 
 const menuItems: MenuItem[] = [
@@ -27,49 +25,48 @@ const menuItems: MenuItem[] = [
     label: "Timeline",
     description: "Chronological memory view",
     route: "/timeline",
-    color: navigationAccentColors.timeline,
   },
   {
     icon: "bell",
     label: "Reminders",
     description: "Upcoming and past reminders",
     route: "/reminders",
-    color: navigationAccentColors.reminders,
   },
   {
     icon: "paperclip",
     label: "Files",
     description: "Images and documents stored in Google Drive",
     route: "/documents",
-    color: navigationAccentColors.documents,
   },
   {
     icon: "share-2",
     label: "Knowledge Graph",
     description: "Visual memory connections",
     route: "/knowledge-graph",
-    color: navigationAccentColors.knowledgeGraph,
   },
   {
     icon: "bar-chart-2",
     label: "Analytics",
     description: "Usage, AI spend, storage, and trends",
     route: "/statistics",
-    color: navigationAccentColors.statistics,
+  },
+  {
+    icon: "settings",
+    label: "App Settings",
+    description: "Appearance and app preferences",
+    route: "/settings",
   },
   {
     icon: "archive",
     label: "Data",
     description: "Deleted memories and clean-slate controls",
     route: "/data",
-    color: navigationAccentColors.data,
   },
   {
     icon: "user",
     label: "Profile",
     description: "Settings and preferences",
     route: "/profile",
-    color: navigationAccentColors.profile,
   },
 ];
 
@@ -78,7 +75,6 @@ const adminItem: MenuItem = {
   label: "Admin Console",
   description: "AI routing, model config, and platform settings",
   route: "/admin",
-  color: navigationAccentColors.admin,
 };
 
 export default function MoreScreen() {
@@ -111,7 +107,7 @@ export default function MoreScreen() {
                 fontSize={11}
                 fontFamily="$body"
                 fontWeight="700"
-                color="$colorMuted"
+                color={theme.colorMuted.val}
                 textTransform="uppercase"
                 marginLeft={4}
               >
@@ -120,6 +116,8 @@ export default function MoreScreen() {
               <SurfaceCard variant="frosted" padding={0} radius={18} style={{ overflow: "hidden" }}>
                 {group.items.map((item, i) => {
                   const isLast = i === group.items.length - 1;
+                  const itemColor =
+                    item.route === "/admin" ? theme.destructive.val : theme.primary.val;
                   return (
                     <PressableScale
                       key={item.route}
@@ -131,13 +129,13 @@ export default function MoreScreen() {
                         paddingHorizontal={14}
                         paddingVertical={12}
                         borderBottomWidth={isLast ? 0 : 1}
-                        borderBottomColor="$borderSubtle"
+                        borderBottomColor={theme.borderSubtle.val}
                       >
                         <YStack
                           width={32}
                           height={32}
                           borderRadius={9}
-                          backgroundColor={item.color}
+                          backgroundColor={itemColor}
                           alignItems="center"
                           justifyContent="center"
                         >
@@ -145,12 +143,17 @@ export default function MoreScreen() {
                         </YStack>
                         <YStack flex={1} minWidth={0} gap={1}>
                           <XStack alignItems="center" gap={8}>
-                            <Text fontSize={15} fontFamily="$body" fontWeight="600" color="$color">
+                            <Text
+                              fontSize={15}
+                              fontFamily="$body"
+                              fontWeight="600"
+                              color={theme.color.val}
+                            >
                               {item.label}
                             </Text>
                             {item.route === "/admin" && (
                               <YStack
-                                backgroundColor={withAlpha(navigationAccentColors.admin, "18")}
+                                backgroundColor={withAlpha(theme.destructive.val, "18")}
                                 borderRadius={7}
                                 paddingHorizontal={7}
                                 paddingVertical={2}
@@ -159,7 +162,7 @@ export default function MoreScreen() {
                                   fontSize={9}
                                   fontFamily="$body"
                                   fontWeight="700"
-                                  color={navigationAccentColors.admin}
+                                  color={theme.destructive.val}
                                   textTransform="uppercase"
                                   letterSpacing={0.8}
                                 >
@@ -171,7 +174,7 @@ export default function MoreScreen() {
                           <Text
                             fontSize={12}
                             fontFamily="$body"
-                            color="$colorMuted"
+                            color={theme.colorMuted.val}
                             numberOfLines={1}
                           >
                             {item.description}

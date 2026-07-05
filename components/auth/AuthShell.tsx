@@ -40,7 +40,7 @@ export function AuthShell({ title, subtitle, children, accentIcon = "zap" }: Aut
   const isLargeScreen = useIsLargeScreen();
 
   return (
-    <YStack flex={1} backgroundColor="$background">
+    <YStack flex={1} backgroundColor={theme.background.val}>
       <LinearGradient
         colors={[
           withAlpha(theme.surfaceAccent.val, "F2"),
@@ -134,12 +134,12 @@ export function AuthShell({ title, subtitle, children, accentIcon = "zap" }: Aut
                             <Text
                               fontSize={11}
                               letterSpacing={1.8}
-                              color="$primary"
+                              color={theme.primary.val}
                               fontWeight="700"
                             >
                               MEMORA
                             </Text>
-                            <Text fontSize={12} color="$colorMuted">
+                            <Text fontSize={12} color={theme.colorMuted.val}>
                               Memory studio
                             </Text>
                           </YStack>
@@ -150,11 +150,11 @@ export function AuthShell({ title, subtitle, children, accentIcon = "zap" }: Aut
                           lineHeight={44}
                           fontFamily="$heading"
                           fontWeight="800"
-                          color="$color"
+                          color={theme.color.val}
                         >
                           Calm memory, modern workspace.
                         </Text>
-                        <Text fontSize={15} lineHeight={23} color="$colorMuted">
+                        <Text fontSize={15} lineHeight={23} color={theme.colorMuted.val}>
                           Capture, revisit, and refine your memories with a focused workflow.
                         </Text>
                       </YStack>
@@ -183,10 +183,10 @@ export function AuthShell({ title, subtitle, children, accentIcon = "zap" }: Aut
                               <Feather name={point.icon} size={15} color={theme.primary.val} />
                             </YStack>
                             <YStack flex={1}>
-                              <Text fontSize={14} fontWeight="700" color="$color">
+                              <Text fontSize={14} fontWeight="700" color={theme.color.val}>
                                 {point.label}
                               </Text>
-                              <Text fontSize={12} color="$colorMuted">
+                              <Text fontSize={12} color={theme.colorMuted.val}>
                                 {point.detail}
                               </Text>
                             </YStack>
@@ -232,10 +232,15 @@ export function AuthShell({ title, subtitle, children, accentIcon = "zap" }: Aut
                           <Feather name={accentIcon} size={22} color={theme.primary.val} />
                         </YStack>
                         <YStack gap={2}>
-                          <Text fontSize={11} letterSpacing={1.8} color="$primary" fontWeight="700">
+                          <Text
+                            fontSize={11}
+                            letterSpacing={1.8}
+                            color={theme.primary.val}
+                            fontWeight="700"
+                          >
                             ACCESS
                           </Text>
-                          <Text fontSize={12} color="$colorMuted">
+                          <Text fontSize={12} color={theme.colorMuted.val}>
                             Secure sign in
                           </Text>
                         </YStack>
@@ -247,12 +252,12 @@ export function AuthShell({ title, subtitle, children, accentIcon = "zap" }: Aut
                           lineHeight={44}
                           fontFamily="$heading"
                           fontWeight="800"
-                          color="$color"
+                          color={theme.color.val}
                         >
                           {title}
                         </Text>
                         {subtitle ? (
-                          <Text fontSize={15} lineHeight={23} color="$colorMuted">
+                          <Text fontSize={15} lineHeight={23} color={theme.colorMuted.val}>
                             {subtitle}
                           </Text>
                         ) : null}
@@ -307,12 +312,12 @@ export function AuthShell({ title, subtitle, children, accentIcon = "zap" }: Aut
                             <Text
                               fontSize={11}
                               letterSpacing={1.8}
-                              color="$primary"
+                              color={theme.primary.val}
                               fontWeight="700"
                             >
                               MEMORA
                             </Text>
-                            <Text fontSize={12} color="$colorMuted">
+                            <Text fontSize={12} color={theme.colorMuted.val}>
                               Secure access
                             </Text>
                           </YStack>
@@ -325,7 +330,7 @@ export function AuthShell({ title, subtitle, children, accentIcon = "zap" }: Aut
                           paddingHorizontal={10}
                           paddingVertical={5}
                         >
-                          <Text fontSize={11} color="$colorMuted" fontWeight="600">
+                          <Text fontSize={11} color={theme.colorMuted.val} fontWeight="600">
                             Private
                           </Text>
                         </YStack>
@@ -337,12 +342,12 @@ export function AuthShell({ title, subtitle, children, accentIcon = "zap" }: Aut
                           lineHeight={38}
                           fontFamily="$heading"
                           fontWeight="800"
-                          color="$color"
+                          color={theme.color.val}
                         >
                           {title}
                         </Text>
                         {subtitle ? (
-                          <Text fontSize={15} lineHeight={22} color="$colorMuted">
+                          <Text fontSize={15} lineHeight={22} color={theme.colorMuted.val}>
                             {subtitle}
                           </Text>
                         ) : null}

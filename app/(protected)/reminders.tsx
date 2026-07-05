@@ -118,10 +118,16 @@ export default function RemindersScreen() {
       >
         <YStack flex={1} gap={6}>
           <Badge label="Time aware" color={theme.primary.val} />
-          <Text fontSize={28} lineHeight={32} fontFamily="$heading" fontWeight="700" color="$color">
+          <Text
+            fontSize={28}
+            lineHeight={32}
+            fontFamily="$heading"
+            fontWeight="700"
+            color={theme.color.val}
+          >
             Reminders
           </Text>
-          <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
+          <Text fontSize={14} lineHeight={20} fontFamily="$body" color={theme.colorMuted.val}>
             Keep the pending moments in view. Overdue items are surfaced first so nothing slips.
           </Text>
         </YStack>
@@ -136,10 +142,10 @@ export default function RemindersScreen() {
                 borderRadius: 18,
               }}
             >
-              <Text fontSize={20} fontFamily="$heading" fontWeight="700" color="$color">
+              <Text fontSize={20} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 {metric.value}
               </Text>
-              <Text fontSize={11} fontFamily="$body" marginTop={2} color="$colorMuted">
+              <Text fontSize={11} fontFamily="$body" marginTop={2} color={theme.colorMuted.val}>
                 {metric.label.toLowerCase()}
               </Text>
             </Card>
@@ -175,7 +181,7 @@ export default function RemindersScreen() {
                 fontSize={13}
                 fontFamily="$body"
                 fontWeight={active ? "600" : "400"}
-                color={active ? "$primary" : "$colorMuted"}
+                color={active ? theme.primary.val : theme.colorMuted.val}
               >
                 {f.label}
               </Text>
@@ -193,7 +199,7 @@ export default function RemindersScreen() {
                     fontSize={10}
                     fontFamily="$body"
                     fontWeight="600"
-                    color={active ? "$textInverse" : "$color"}
+                    color={active ? theme.textInverse.val : theme.color.val}
                   >
                     {count}
                   </Text>
@@ -235,12 +241,17 @@ export default function RemindersScreen() {
                       fontSize={15}
                       fontFamily="$heading"
                       fontWeight="600"
-                      color="$color"
+                      color={theme.color.val}
                       numberOfLines={1}
                     >
                       {m.title}
                     </Text>
-                    <Text fontSize={12} fontFamily="$body" marginTop={2} color="$colorMuted">
+                    <Text
+                      fontSize={12}
+                      fontFamily="$body"
+                      marginTop={2}
+                      color={theme.colorMuted.val}
+                    >
                       {new Date(getReminderDate(m)!).toLocaleString(undefined, {
                         weekday: "short",
                         month: "short",

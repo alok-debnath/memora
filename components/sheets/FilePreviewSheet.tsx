@@ -18,19 +18,13 @@ import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { useAppToast } from "@/components/ui/toast";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { statusAccentColors } from "@/constants/colors";
 import { appShadow } from "@/components/ui/themeHelpers";
 import { selectSheetOpen, selectSheetPayload, useUIStore } from "@/store/ui";
-
-const processingColors = {
-  pending: statusAccentColors.warning,
-  processing: statusAccentColors.info,
-  completed: statusAccentColors.success,
-  failed: statusAccentColors.error,
-};
+import { useSemanticColors } from "@/hooks/useSemanticColors";
 
 export function FilePreviewSheet() {
   const colors = useColors();
+  const semantic = useSemanticColors();
   const insets = useSafeAreaInsets();
   const isLargeScreen = useIsLargeScreen();
   const modalRef = useRef<BottomSheetModal>(null);
@@ -77,6 +71,20 @@ export function FilePreviewSheet() {
   }, [attachment?.driveWebViewLink]);
 
   const isOpen = open && !!attachment;
+  const processingColors = React.useMemo(
+    () => ({
+      pending: semantic.documentStatus.pending,
+      processing: semantic.documentStatus.processing,
+      completed: semantic.documentStatus.completed,
+      failed: semantic.documentStatus.failed,
+    }),
+    [
+      semantic.documentStatus.completed,
+      semantic.documentStatus.failed,
+      semantic.documentStatus.pending,
+      semantic.documentStatus.processing,
+    ],
+  );
 
   const handleDismiss = useCallback(() => {
     presentedRef.current = false;

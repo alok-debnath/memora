@@ -15,7 +15,7 @@ import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { statusAccentColors } from "@/constants/colors";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
 
 function formatTs(value?: number, fallback = "Recently") {
   if (!value) return fallback;
@@ -73,19 +73,25 @@ function MemoryRow({
         <Feather name={icon} size={18} color={accentColor} />
       </YStack>
       <YStack flex={1} gap={3}>
-        <Text fontSize={15} fontFamily="$body" fontWeight="600" color="$color" numberOfLines={1}>
+        <Text
+          fontSize={15}
+          fontFamily="$body"
+          fontWeight="600"
+          color={theme.color.val}
+          numberOfLines={1}
+        >
           {title?.trim() || "Untitled memory"}
         </Text>
         <Text
           fontSize={12}
           fontFamily="$body"
-          color="$colorMuted"
+          color={theme.colorMuted.val}
           lineHeight={18}
           numberOfLines={2}
         >
           {content?.trim() || "No preview available"}
         </Text>
-        <Text fontSize={11} fontFamily="$body" color="$colorMuted">
+        <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val}>
           {timestampLabel} {formatTs(timestamp)}
         </Text>
       </YStack>
@@ -190,7 +196,7 @@ function TabPill({
         fontSize={13}
         fontFamily="$body"
         fontWeight={active ? "700" : "500"}
-        color={active ? "$primary" : "$colorMuted"}
+        color={active ? theme.primary.val : theme.colorMuted.val}
       >
         {label}
       </Text>
@@ -207,7 +213,7 @@ function TabPill({
             fontSize={10}
             fontFamily="$body"
             fontWeight="700"
-            color={active ? "$textInverse" : "$colorMuted"}
+            color={active ? theme.textInverse.val : theme.colorMuted.val}
           >
             {count}
           </Text>
@@ -221,6 +227,7 @@ function TabPill({
 
 export default function DataScreen() {
   const theme = useAppTheme();
+  const semantic = useSemanticColors();
   const { token } = useAuth();
   const { confirm } = useAppConfirm();
   const [activeTab, setActiveTab] = useState<"deleted" | "completed">("deleted");
@@ -340,11 +347,11 @@ export default function DataScreen() {
                 lineHeight={30}
                 fontFamily="$heading"
                 fontWeight="700"
-                color="$color"
+                color={theme.color.val}
               >
                 Manage your memory vault
               </Text>
-              <Text fontSize={14} lineHeight={20} fontFamily="$body" color="$colorMuted">
+              <Text fontSize={14} lineHeight={20} fontFamily="$body" color={theme.colorMuted.val}>
                 View deleted memories, completed reminders, and manage your data.
               </Text>
             </YStack>
@@ -392,10 +399,15 @@ export default function DataScreen() {
             <YStack>
               <YStack gap={14}>
                 <YStack gap={4}>
-                  <Text fontSize={17} fontFamily="$heading" fontWeight="700" color="$color">
+                  <Text
+                    fontSize={17}
+                    fontFamily="$heading"
+                    fontWeight="700"
+                    color={theme.color.val}
+                  >
                     Deleted memories
                   </Text>
-                  <Text fontSize={13} fontFamily="$body" color="$colorMuted">
+                  <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val}>
                     Deleted memories are moved to trash and stay here until you remove them forever.
                     You can restore any item at any time — there is no auto-expiry.
                   </Text>
@@ -436,7 +448,12 @@ export default function DataScreen() {
                         backgroundColor: theme.destructive.val + "16",
                       }}
                     >
-                      <Text fontSize={12} fontFamily="$body" fontWeight="700" color="$destructive">
+                      <Text
+                        fontSize={12}
+                        fontFamily="$body"
+                        fontWeight="700"
+                        color={theme.destructive.val}
+                      >
                         Delete all forever
                       </Text>
                     </PressableScale>
@@ -457,7 +474,7 @@ export default function DataScreen() {
                         content={memory.content}
                         timestamp={memory.deletedAt}
                         timestampLabel="Deleted"
-                        accentColor={statusAccentColors.warningStrong}
+                        accentColor={semantic.status.warningStrong}
                         icon="archive"
                         menuOpen={openMenuId === memory._id}
                         onMenuToggle={() =>
@@ -487,10 +504,15 @@ export default function DataScreen() {
             <YStack>
               <YStack gap={14}>
                 <YStack gap={4}>
-                  <Text fontSize={17} fontFamily="$heading" fontWeight="700" color="$color">
+                  <Text
+                    fontSize={17}
+                    fontFamily="$heading"
+                    fontWeight="700"
+                    color={theme.color.val}
+                  >
                     Completed reminders
                   </Text>
-                  <Text fontSize={13} fontFamily="$body" color="$colorMuted">
+                  <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val}>
                     Reminders you have marked as done. Restore to re-activate or permanently remove.
                   </Text>
                 </YStack>
@@ -505,7 +527,12 @@ export default function DataScreen() {
                         backgroundColor: theme.destructive.val + "16",
                       }}
                     >
-                      <Text fontSize={12} fontFamily="$body" fontWeight="700" color="$destructive">
+                      <Text
+                        fontSize={12}
+                        fontFamily="$body"
+                        fontWeight="700"
+                        color={theme.destructive.val}
+                      >
                         Clear all forever
                       </Text>
                     </PressableScale>
@@ -526,7 +553,7 @@ export default function DataScreen() {
                         content={memory.content}
                         timestamp={memory.completedAt}
                         timestampLabel="Completed"
-                        accentColor={statusAccentColors.successStrong}
+                        accentColor={semantic.status.successStrong}
                         icon="check-circle"
                         menuOpen={openMenuId === memory._id}
                         onMenuToggle={() =>
@@ -557,10 +584,10 @@ export default function DataScreen() {
       <Card style={{ padding: 18, borderRadius: 26 }}>
         <YStack gap={14}>
           <YStack gap={4}>
-            <Text fontSize={18} fontFamily="$heading" fontWeight="700" color="$color">
+            <Text fontSize={18} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
               Clean slate
             </Text>
-            <Text fontSize={13} fontFamily="$body" color="$colorMuted">
+            <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val}>
               Removes all memories, reminders, review cards, topic links, attachments, and
               deleted/completed items.
             </Text>
