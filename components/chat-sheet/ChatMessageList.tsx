@@ -10,7 +10,17 @@ function EmptyState() {
   const theme = useAppTheme();
 
   return (
-    <YStack flex={1} alignItems="center" justifyContent="center" paddingHorizontal={32} gap={14}>
+    // Inverted FlatList rotates its scroll content 180deg, so anything
+    // rendered inside it (including this empty state) renders upside down
+    // unless counter-rotated the same way.
+    <YStack
+      flex={1}
+      alignItems="center"
+      justifyContent="center"
+      paddingHorizontal={32}
+      gap={14}
+      style={{ transform: [{ rotate: "180deg" }] }}
+    >
       <XStack
         width={56}
         height={56}

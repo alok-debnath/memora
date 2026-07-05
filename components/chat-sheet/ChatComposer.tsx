@@ -1,8 +1,8 @@
 import React, { type ComponentRef, useCallback, useEffect, useRef, useState } from "react";
-import { Platform, Pressable } from "react-native";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
-import { XStack, YStack, Text } from "tamagui";
+import { YStack, Text } from "tamagui";
 import { Feather } from "@/lib/icons";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { FontFamily } from "@/constants/fonts";
@@ -123,105 +123,128 @@ export const ChatComposer = React.memo(function ChatComposer({
         <AttachmentPreviewBar attachments={attachments} onRemove={onRemoveAttachment} />
       ) : null}
 
-      <XStack
-        alignItems="center"
-        gap={4}
-        minHeight={54}
-        paddingHorizontal={6}
+      <YStack
         borderRadius={27}
         borderWidth={1}
         borderColor={isVoice ? withAlpha(theme.primary.val, "30") : theme.borderSubtle.val}
         backgroundColor={theme.card.val}
         style={appShadow(theme.color.val, "sm")}
       >
-        {isVoice ? (
-          <>
-            <VoiceRecorder
-              ref={recorderRef}
-              variant="pill"
-              autoStart
-              onTranscription={() => {}}
-              onTranscriptionComplete={handleVoiceTranscript}
-              onCancel={() => setMode("keyboard")}
-              inputMode="auto"
-            />
-            <Pressable
-              onPress={() => {
-                if (recorderRef.current) recorderRef.current.cancel();
-                else setMode("keyboard");
-              }}
-              hitSlop={8}
-              style={{ paddingHorizontal: 10 }}
-            >
-              {({ pressed }) => (
-                <Text
-                  fontSize={13}
-                  fontFamily="$body"
-                  fontWeight="600"
-                  color="$colorMuted"
-                  opacity={pressed ? 0.6 : 1}
-                >
-                  Cancel
-                </Text>
-              )}
-            </Pressable>
-          </>
-        ) : (
-          <>
-            <AttachmentPickerButton
-              onPickImages={onPickImages}
-              onPickCamera={onPickCamera}
-              onPickDocument={onPickDocument}
-              driveConnected={driveConnected}
-              onRequestDriveAccess={onRequestDriveAccess}
-              size={20}
-            />
+        {/* Plain RN row, not a Tamagui XStack: mixing Tamagui's prop-driven
+          alignItems with a raw `style` override (the shadow above) let the
+          row fall back to CSS's default align-items:stretch, which silently
+          stretched every child to the row's full height — invisible on the
+          icon-only buttons, but it turned the filled send button into a
+          rectangle. A plain View with an explicit flex style has no such
+          ambiguity. */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 4,
+            minHeight: 54,
+            paddingHorizontal: 6,
+          }}
+        >
+          {isVoice ? (
+            <>
+              <VoiceRecorder
+                ref={recorderRef}
+                variant="pill"
+                autoStart
+                onTranscription={() => {}}
+                onTranscriptionComplete={handleVoiceTranscript}
+                onCancel={() => setMode("keyboard")}
+                inputMode="auto"
+              />
+              <Pressable
+                onPress={() => {
+                  if (recorderRef.current) recorderRef.current.cancel();
+                  else setMode("keyboard");
+                }}
+                hitSlop={8}
+                style={{ paddingHorizontal: 10 }}
+              >
+                {({ pressed }) => (
+                  <Text
+                    fontSize={13}
+                    fontFamily="$body"
+                    fontWeight="600"
+                    color="$colorMuted"
+                    opacity={pressed ? 0.6 : 1}
+                  >
+                    Cancel
+                  </Text>
+                )}
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <AttachmentPickerButton
+                onPickImages={onPickImages}
+                onPickCamera={onPickCamera}
+                onPickDocument={onPickDocument}
+                driveConnected={driveConnected}
+                onRequestDriveAccess={onRequestDriveAccess}
+                size={20}
+              />
 
-            <BottomSheetTextInput
-              ref={inputRef}
-              value={text}
-              onChangeText={setText}
-              placeholder="Ask Memora anything..."
-              placeholderTextColor={theme.colorMuted.val}
-              multiline
-              editable={!isSending}
-              style={{
-                flex: 1,
-                minHeight: 40,
-                maxHeight: 120,
-                paddingHorizontal: 8,
-                paddingVertical: 10,
-                fontSize: 15,
-                fontFamily: FontFamily.regular,
-                color: theme.color.val,
-                backgroundColor: "transparent",
-              }}
-            />
+              <BottomSheetTextInput
+                ref={inputRef}
+                value={text}
+                onChangeText={setText}
+                placeholder="Ask Memora anything..."
+                placeholderTextColor={theme.colorMuted.val}
+                multiline
+                editable={!isSending}
+                style={{
+                  flex: 1,
+                  minHeight: 40,
+                  maxHeight: 120,
+                  paddingHorizontal: 8,
+                  paddingVertical: 10,
+                  fontSize: 15,
+                  fontFamily: FontFamily.regular,
+                  color: theme.color.val,
+                  backgroundColor: "transparent",
+                }}
+              />
 
-            <GhostIconButton icon="mic" onPress={() => setMode("voice")} />
+              <GhostIconButton icon="mic" onPress={() => setMode("voice")} />
 
-            <Pressable onPress={submit} disabled={!canSend} hitSlop={6}>
-              {({ pressed }) => (
-                <XStack
-                  alignItems="center"
-                  justifyContent="center"
-                  width={36}
-                  height={36}
-                  borderRadius={18}
-                  backgroundColor={canSend ? theme.primary.val : "transparent"}
-                  opacity={pressed ? 0.8 : 1}
-                >
-                  <Feather
-                    name="arrow-up"
-                    size={17}
-                    color={canSend ? theme.textInverse.val : theme.colorMuted.val}
-                  />
-                </XStack>
-              )}
-            </Pressable>
-          </>
-        )}
-      </XStack>
+              <Pressable onPress={submit} disabled={!canSend} hitSlop={6}>
+                {({ pressed }) => (
+                  <View
+                    style={[
+                      styles.sendButton,
+                      {
+                        backgroundColor: canSend ? theme.primary.val : theme.borderColor.val,
+                        opacity: pressed ? 0.8 : 1,
+                      },
+                    ]}
+                  >
+                    <Feather
+                      name="arrow-up"
+                      size={17}
+                      color={canSend ? theme.textInverse.val : theme.colorMuted.val}
+                    />
+                  </View>
+                )}
+              </Pressable>
+            </>
+          )}
+        </View>
+      </YStack>
     </YStack>
   );
+});
+
+const styles = StyleSheet.create({
+  sendButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });
