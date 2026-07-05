@@ -14,6 +14,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, useTheme, View, XStack, YStack } from "tamagui";
 import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
+import { useTopOverlayHost } from "@/components/ui/BackdropBlurProvider";
 import { appShadow } from "@/components/ui/themeHelpers";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -359,6 +360,8 @@ export function AppToastProvider({ children }: { children: React.ReactNode }) {
 export function AppToastRenderer() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const host = useTopOverlayHost();
+  const overlayId = "app-toast-renderer";
   const [toasts, setLocalToasts] = useState<AppToastItem[]>(getToasts);
 
   useEffect(() => subscribe(setLocalToasts), []);
@@ -372,26 +375,45 @@ export function AppToastRenderer() {
 
   const maxWidth = Math.min(620, Math.max(width - 24, 0));
 
-  if (toasts.length === 0) return null;
+  const content = useMemo(() => {
+    if (toasts.length === 0) return null;
 
-  const content = (
-    <Animated.View
-      pointerEvents="box-none"
-      style={[
-        Platform.OS === "web" ? styles.viewportWeb : styles.viewportNative,
-        { top: insets.top + 10 },
-      ]}
-    >
-      {toasts.map((toast) => (
-        <AnimatedToast key={toast.id} toast={toast} onDismiss={dismissToast} maxWidth={maxWidth} />
-      ))}
-    </Animated.View>
-  );
+    return (
+      <Animated.View
+        pointerEvents="box-none"
+        style={[
+          Platform.OS === "web" ? styles.viewportWeb : styles.viewportNative,
+          { top: insets.top + 10 },
+        ]}
+      >
+        {toasts.map((toast) => (
+          <AnimatedToast
+            key={toast.id}
+            toast={toast}
+            onDismiss={dismissToast}
+            maxWidth={maxWidth}
+          />
+        ))}
+      </Animated.View>
+    );
+  }, [dismissToast, insets.top, maxWidth, toasts]);
+
+  useEffect(() => {
+    if (!host) return;
+    if (!content) {
+      host.removeOverlay(overlayId);
+      return;
+    }
+    host.setOverlay(overlayId, content);
+    return () => host.removeOverlay(overlayId);
+  }, [content, host]);
 
   if (Platform.OS === "web" && typeof document !== "undefined") {
+    if (!content) return null;
     return createPortal(content, document.body);
   }
 
+  if (host) return null;
   return content;
 }
 
