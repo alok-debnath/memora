@@ -356,7 +356,12 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
       enableBlurKeyboardOnGesture
-      android_keyboardInputMode="adjustResize"
+      // AndroidManifest sets adjustResize, but Android edge-to-edge (mandatory
+      // on targetSdk 35+) stops the OS from actually resizing the window.
+      // "adjustResize" here would make gorhom assume the OS handled it and
+      // zero out its keyboard compensation, so the sheet never lifts above
+      // the keyboard; "adjustPan" makes it compute and apply its own.
+      android_keyboardInputMode="adjustPan"
       stackBehavior="push"
       backdropComponent={renderBackdrop}
       backgroundStyle={{ backgroundColor: theme.surface.val }}
@@ -1230,6 +1235,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                   onTranscriptionComplete={setVoiceTranscript}
                   onPauseChange={setIsVoicePaused}
                   inputMode="auto"
+                  inBottomSheet
                 />
                 <Text fontSize={16} fontFamily="$body" fontWeight="600" color={theme.color.val}>
                   Describe your edit

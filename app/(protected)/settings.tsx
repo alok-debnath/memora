@@ -1,20 +1,16 @@
 import React from "react";
-import { Platform, StyleSheet, TextInput } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
+import { Platform, StyleSheet } from "react-native";
 import { Text, XStack, YStack } from "tamagui";
 
 import { AppScreen } from "@/components/ui/AppScreen";
 import { Card } from "@/components/ui/Card";
+import { HexColorPicker } from "@/components/ui/HexColorPicker";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { SectionLabel } from "@/components/ui/SectionLabel";
-import { useAppToast } from "@/components/ui/toast";
 import { withAlpha } from "@/components/ui/themeHelpers";
-import { FontFamily } from "@/constants/fonts";
 import {
   MEMORA_ACCENT,
-  createThemeGradient,
   getAndroidSystemAccentColor,
-  isValidThemeHex,
   themeAccentPresets,
   type ThemeAccentSource,
   type ThemeMode,
@@ -42,7 +38,6 @@ type AccentOption = {
 
 export default function AppSettingsScreen() {
   const theme = useAppTheme();
-  const { showToast } = useAppToast();
   const {
     mode,
     resolvedMode,
@@ -52,14 +47,9 @@ export default function AppSettingsScreen() {
     resolvedAccentColor,
     setMode,
     setAccentSource,
-    setCustomColor,
   } = useThemeStore();
-  const [customInput, setCustomInput] = React.useState(customColor);
+  const [pickerColor, setPickerColor] = React.useState(customColor);
   const androidSystemColor = getAndroidSystemAccentColor();
-  const previewGradient = React.useMemo(
-    () => createThemeGradient(resolvedAccentColor, resolvedMode),
-    [resolvedAccentColor, resolvedMode],
-  );
 
   const accentOptions: AccentOption[] = [
     { key: "memora", label: "Memora", color: MEMORA_ACCENT, icon: "star" },
@@ -78,19 +68,20 @@ export default function AppSettingsScreen() {
       : []),
   ];
 
-  function applyCustomColor() {
-    const normalized = customInput.trim().toUpperCase();
-    if (!isValidThemeHex(normalized)) {
-      showToast({
-        title: "Invalid color",
-        message: "Use # followed by six hex digits.",
-        tone: "error",
-      });
-      return;
-    }
-    setCustomColor(normalized);
-    showToast({ title: "Theme updated", tone: "success" });
-  }
+  // Shared by preset taps and the hex picker's release commit — both are just
+  // "apply this hex under this source" (setAccentSource("custom", hex) is
+  // equivalent to setCustomColor(hex)). Full app re-theme (palette rebuild +
+  // persistence) only runs here, never per drag frame — see HexColorPicker's
+  // onChange vs onChangeEnd docs.
+  const applyAccent = React.useCallback(
+    (source: ThemeAccentSource, hex: string) => {
+      const normalized = hex.toUpperCase();
+      if (source === "custom" && normalized === resolvedAccentColor.toUpperCase()) return;
+      setAccentSource(source, normalized);
+      setPickerColor(normalized);
+    },
+    [resolvedAccentColor, setAccentSource],
+  );
 
   return (
     <AppScreen showBack title="App Settings">
@@ -149,32 +140,6 @@ export default function AppSettingsScreen() {
           <SectionLabel>Color</SectionLabel>
           <Card style={styles.groupCard}>
             <YStack gap={16}>
-              <LinearGradient
-                colors={[...previewGradient]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.preview}
-              >
-                <YStack gap={4}>
-                  <Text
-                    fontSize={12}
-                    fontFamily="$body"
-                    fontWeight="700"
-                    color={theme.textInverse.val}
-                  >
-                    Active Accent
-                  </Text>
-                  <Text
-                    fontSize={24}
-                    fontFamily="$heading"
-                    fontWeight="800"
-                    color={theme.textInverse.val}
-                  >
-                    {resolvedAccentColor}
-                  </Text>
-                </YStack>
-              </LinearGradient>
-
               <XStack flexWrap="wrap" gap={10}>
                 {accentOptions.map((option) => {
                   const isActive =
@@ -183,7 +148,7 @@ export default function AppSettingsScreen() {
                   return (
                     <PressableScale
                       key={`${option.key}-${option.color}`}
-                      onPress={() => setAccentSource(option.key, option.color)}
+                      onPress={() => applyAccent(option.key, option.color)}
                       style={[
                         styles.swatchButton,
                         {
@@ -219,7 +184,7 @@ export default function AppSettingsScreen() {
                 })}
               </XStack>
 
-              <YStack gap={8}>
+              <YStack gap={10}>
                 <Text
                   fontSize={12}
                   fontFamily="$heading"
@@ -228,37 +193,11 @@ export default function AppSettingsScreen() {
                 >
                   Custom Hex
                 </Text>
-                <XStack gap={8} alignItems="center">
-                  <TextInput
-                    value={customInput}
-                    onChangeText={setCustomInput}
-                    autoCapitalize="characters"
-                    autoCorrect={false}
-                    maxLength={7}
-                    placeholder="Accent hex"
-                    placeholderTextColor={theme.colorMuted.val}
-                    style={[
-                      styles.input,
-                      {
-                        color: theme.color.val,
-                        borderColor: theme.borderColor.val,
-                        backgroundColor: theme.secondary.val,
-                      },
-                    ]}
-                  />
-                  <PressableScale
-                    onPress={applyCustomColor}
-                    style={[
-                      styles.applyButton,
-                      {
-                        backgroundColor: theme.primary.val,
-                        borderColor: withAlpha(theme.textInverse.val, "2B"),
-                      },
-                    ]}
-                  >
-                    <Feather name="check" size={17} color={theme.textInverse.val} />
-                  </PressableScale>
-                </XStack>
+                <HexColorPicker
+                  value={pickerColor}
+                  onChange={setPickerColor}
+                  onChangeEnd={(hex) => applyAccent("custom", hex)}
+                />
               </YStack>
             </YStack>
           </Card>
@@ -279,12 +218,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
   },
-  preview: {
-    minHeight: 116,
-    borderRadius: 18,
-    padding: 16,
-    justifyContent: "flex-end",
-  },
   swatchButton: {
     minHeight: 48,
     borderRadius: 15,
@@ -293,22 +226,5 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-  },
-  input: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    fontSize: 15,
-    fontFamily: FontFamily.medium,
-  },
-  applyButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
   },
 });

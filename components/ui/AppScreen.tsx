@@ -1,5 +1,5 @@
 import React from "react";
-import { ScrollView, type ScrollViewProps, StyleSheet, View } from "react-native";
+import { type ScrollViewProps, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
@@ -11,6 +11,7 @@ import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { PressableScale } from "@/components/ui/PressableScale";
+import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import { spacing } from "@/constants/uiTokens";
 
@@ -196,9 +197,8 @@ export function AppScreen({
   const scrollBody = (
     <>
       {floatingHeader}
-      <ScrollView
+      <KeyboardAwareScrollViewCompat
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
         {...scrollProps}
         contentContainerStyle={[
           {
@@ -219,7 +219,7 @@ export function AppScreen({
           {hero}
           {children}
         </YStack>
-      </ScrollView>
+      </KeyboardAwareScrollViewCompat>
     </>
   );
 

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { TextInput, Pressable } from "react-native";
+import { Pressable } from "react-native";
+import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { Feather } from "@/lib/icons";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -71,7 +72,7 @@ export function TagInput({ value, onChange, placeholder = "Add tag...", label }:
             </XStack>
           ))}
           <XStack flex={1} minWidth={80} alignItems="center" gap={4}>
-            <TextInput
+            <BottomSheetTextInput
               value={input}
               onChangeText={setInput}
               onSubmitEditing={addTag}

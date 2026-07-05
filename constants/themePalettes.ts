@@ -101,86 +101,137 @@ function rgbToHex(r: number, g: number, b: number) {
   return `#${toHexPart(r)}${toHexPart(g)}${toHexPart(b)}`;
 }
 
-function mix(color: string, target: string, amount: number) {
-  const from = hexToRgb(color);
-  const to = hexToRgb(target);
-  return rgbToHex(
-    from.r + (to.r - from.r) * amount,
-    from.g + (to.g - from.g) * amount,
-    from.b + (to.b - from.b) * amount,
-  );
+// ─── OKLab/OKLCH color math ───────────────────────────────────────────────────
+//
+// HSL is perceptually uneven: the same numeric saturation/lightness look far
+// more vivid for blue/violet seeds than for yellow/green seeds, because HSL
+// has no model of human-perceived brightness or colorfulness. OKLab/OKLCH
+// (Björn Ottosson, 2020) fixes that — L tracks perceived lightness uniformly
+// across all hues, so any custom accent hex a user picks produces an equally
+// balanced, equally vivid palette instead of some hues looking muddy.
+//
+// This does the conversion math directly (sRGB -> linear -> OKLab -> OKLCH)
+// rather than pulling in a color library, since it's ~40 lines of pure
+// arithmetic — same cost class as the HSL math it replaces.
+
+const MAX_OKLCH_CHROMA = 0.37; // practical ceiling for in-gamut sRGB chroma across hues
+
+function srgbChannelToLinear(value: number) {
+  const c = value / 255;
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
 }
 
-function rgbToHsl(color: string) {
+function linearChannelToSrgb(value: number) {
+  const c = value <= 0.0031308 ? value * 12.92 : 1.055 * Math.pow(value, 1 / 2.4) - 0.055;
+  return clamp(c * 255);
+}
+
+function linearSrgbToOklab(r: number, g: number, b: number) {
+  const l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b;
+  const m = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b;
+  const s = 0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b;
+
+  const l_ = Math.cbrt(l);
+  const m_ = Math.cbrt(m);
+  const s_ = Math.cbrt(s);
+
+  return {
+    L: 0.2104542553 * l_ + 0.793617785 * m_ - 0.0040720468 * s_,
+    a: 1.9779984951 * l_ - 2.428592205 * m_ + 0.4505937099 * s_,
+    b: 0.0259040371 * l_ + 0.7827717662 * m_ - 0.808675766 * s_,
+  };
+}
+
+function oklabToLinearSrgb(L: number, a: number, b: number) {
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = L - 0.0894841775 * a - 1.291485548 * b;
+
+  const l = l_ * l_ * l_;
+  const m = m_ * m_ * m_;
+  const s = s_ * s_ * s_;
+
+  return {
+    r: 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    g: -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    b: -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  };
+}
+
+type Oklab = { L: number; a: number; b: number };
+type Oklch = { L: number; C: number; H: number };
+
+function hexToOklab(color: string): Oklab {
   const { r, g, b } = hexToRgb(color);
-  const r1 = r / 255;
-  const g1 = g / 255;
-  const b1 = b / 255;
-  const max = Math.max(r1, g1, b1);
-  const min = Math.min(r1, g1, b1);
-  const lightness = (max + min) / 2;
-  const delta = max - min;
-
-  if (delta === 0) {
-    return { h: 0, s: 0, l: lightness };
-  }
-
-  const saturation = delta / (1 - Math.abs(2 * lightness - 1));
-  let hue = 0;
-  if (max === r1) hue = ((g1 - b1) / delta) % 6;
-  else if (max === g1) hue = (b1 - r1) / delta + 2;
-  else hue = (r1 - g1) / delta + 4;
-
-  return { h: (hue * 60 + 360) % 360, s: saturation, l: lightness };
+  return linearSrgbToOklab(srgbChannelToLinear(r), srgbChannelToLinear(g), srgbChannelToLinear(b));
 }
 
-function hslToHex(h: number, s: number, l: number) {
-  const chroma = (1 - Math.abs(2 * l - 1)) * s;
-  const x = chroma * (1 - Math.abs(((h / 60) % 2) - 1));
-  const m = l - chroma / 2;
-  let r = 0;
-  let g = 0;
-  let b = 0;
+function oklabToHex(lab: Oklab) {
+  const { r, g, b } = oklabToLinearSrgb(lab.L, lab.a, lab.b);
+  return rgbToHex(linearChannelToSrgb(r), linearChannelToSrgb(g), linearChannelToSrgb(b));
+}
 
-  if (h < 60) {
-    r = chroma;
-    g = x;
-  } else if (h < 120) {
-    r = x;
-    g = chroma;
-  } else if (h < 180) {
-    g = chroma;
-    b = x;
-  } else if (h < 240) {
-    g = x;
-    b = chroma;
-  } else if (h < 300) {
-    r = x;
-    b = chroma;
-  } else {
-    r = chroma;
-    b = x;
-  }
+function oklabToOklch(lab: Oklab): Oklch {
+  const C = Math.sqrt(lab.a * lab.a + lab.b * lab.b);
+  const hueRad = Math.atan2(lab.b, lab.a);
+  const H = ((hueRad * 180) / Math.PI + 360) % 360;
+  return { L: lab.L, C, H };
+}
 
-  return rgbToHex((r + m) * 255, (g + m) * 255, (b + m) * 255);
+function oklchToOklab(lch: Oklch): Oklab {
+  const hueRad = (lch.H * Math.PI) / 180;
+  return { L: lch.L, a: lch.C * Math.cos(hueRad), b: lch.C * Math.sin(hueRad) };
+}
+
+function hexToOklch(color: string): Oklch {
+  return oklabToOklch(hexToOklab(color));
+}
+
+function oklchToHex(L: number, C: number, H: number) {
+  return oklabToHex(oklchToOklab({ L, C, H }));
+}
+
+/** Perceptually-uniform blend (OKLab-space lerp) — avoids the grey/brown
+ * midpoint that a plain RGB mix produces between complementary-ish hues. */
+function mix(color: string, target: string, amount: number) {
+  const from = hexToOklab(color);
+  const to = hexToOklab(target);
+  return oklabToHex({
+    L: from.L + (to.L - from.L) * amount,
+    a: from.a + (to.a - from.a) * amount,
+    b: from.b + (to.b - from.b) * amount,
+  });
 }
 
 function tuneSeed(seed: string, mode: ResolvedThemeMode) {
-  const { h, s } = rgbToHsl(seed);
-  const tunedSaturation = Math.max(0.42, Math.min(0.82, s));
+  const { C, H } = hexToOklch(seed);
+  const tunedChroma = Math.max(0.42 * MAX_OKLCH_CHROMA, Math.min(0.82 * MAX_OKLCH_CHROMA, C));
   const tunedLightness = mode === "dark" ? 0.64 : 0.42;
-  return hslToHex(h, tunedSaturation, tunedLightness);
+  return oklchToHex(tunedLightness, tunedChroma, H);
 }
 
-function tone(seed: string, saturationMultiplier: number, lightness: number, minSaturation = 0) {
-  const { h, s } = rgbToHsl(seed);
-  const nextSaturation = Math.max(minSaturation, Math.min(0.88, s * saturationMultiplier));
-  return hslToHex(h, nextSaturation, lightness);
+/** Derives a new tone from `seed`'s hue: `lightness` is an OKLab L (0 black,
+ * 1 white — same meaning across every hue, unlike HSL lightness). `chroma` is
+ * scaled from the seed's own OKLCH chroma so muted accents stay muted and
+ * vivid accents stay vivid, floored by `minChroma` (both expressed as
+ * fractions of `MAX_OKLCH_CHROMA`, matching the old 0–1 HSL-saturation scale
+ * these call sites were tuned against). */
+function tone(seed: string, chromaMultiplier: number, lightness: number, minChroma = 0) {
+  const { C, H } = hexToOklch(seed);
+  const nextChroma = Math.max(
+    minChroma * MAX_OKLCH_CHROMA,
+    Math.min(MAX_OKLCH_CHROMA, C * chromaMultiplier),
+  );
+  return oklchToHex(lightness, nextChroma, H);
 }
 
-function hueTone(seed: string, hueOffset: number, saturation: number, lightness: number) {
-  const { h } = rgbToHsl(seed);
-  return hslToHex((h + hueOffset + 360) % 360, saturation, lightness);
+/** Semantic tone at a fixed absolute hue (true red/green/amber/blue), not
+ * relative to the seed's hue — so destructive/success/warning/info keep
+ * their meaning no matter what accent color the user picks, instead of
+ * drifting toward/colliding with it. `saturation`/`lightness` are fractions
+ * of `MAX_OKLCH_CHROMA` / OKLab L respectively. */
+function fixedHueTone(hueDeg: number, saturation: number, lightness: number) {
+  return oklchToHex(lightness, saturation * MAX_OKLCH_CHROMA, hueDeg);
 }
 
 function transparent(color: string) {
@@ -291,11 +342,17 @@ export function createThemeColors(seedColor: string, mode: ResolvedThemeMode): T
     isDark ? 0.12 : 0.1,
   );
   const focusRing = isDark ? primaryHover : primary;
-  const destructive = hueTone(seedColor, 150, isDark ? 0.72 : 0.68, isDark ? 0.68 : 0.42);
-  const destructiveHover = hueTone(seedColor, 150, isDark ? 0.76 : 0.72, isDark ? 0.76 : 0.5);
-  const success = hueTone(seedColor, 105, isDark ? 0.64 : 0.58, isDark ? 0.66 : 0.36);
-  const warning = hueTone(seedColor, 35, isDark ? 0.76 : 0.68, isDark ? 0.67 : 0.4);
-  const info = hueTone(seedColor, 210, isDark ? 0.66 : 0.62, isDark ? 0.68 : 0.42);
+  // Fixed absolute hues (not seed-relative) so these keep their true-red/
+  // true-green/true-amber/true-blue meaning regardless of the chosen accent.
+  const HUE_DESTRUCTIVE = 25; // red
+  const HUE_SUCCESS = 145; // green
+  const HUE_WARNING = 75; // amber
+  const HUE_INFO = 250; // blue
+  const destructive = fixedHueTone(HUE_DESTRUCTIVE, isDark ? 0.72 : 0.68, isDark ? 0.68 : 0.42);
+  const destructiveHover = fixedHueTone(HUE_DESTRUCTIVE, isDark ? 0.76 : 0.72, isDark ? 0.76 : 0.5);
+  const success = fixedHueTone(HUE_SUCCESS, isDark ? 0.64 : 0.58, isDark ? 0.66 : 0.36);
+  const warning = fixedHueTone(HUE_WARNING, isDark ? 0.76 : 0.68, isDark ? 0.67 : 0.4);
+  const info = fixedHueTone(HUE_INFO, isDark ? 0.66 : 0.62, isDark ? 0.68 : 0.42);
   const shadowColor = mix(primary, isDark ? background : color, isDark ? 0.6 : 0.5);
 
   return {
