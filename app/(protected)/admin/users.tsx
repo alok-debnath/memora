@@ -63,7 +63,7 @@ export default function AdminUsersScreen() {
   return (
     <>
       <YStack>
-        <Card style={{ borderRadius: 20 }}>
+        <Card style={{ borderRadius: 16 }}>
           <AppTextField
             placeholder="Search by name or email"
             value={search}
@@ -78,7 +78,7 @@ export default function AdminUsersScreen() {
         </YStack>
       ) : (
         <XStack gap={10} alignItems="flex-start" flexWrap="wrap">
-          <Card style={{ borderRadius: 24, flex: 1, minWidth: 280 }}>
+          <Card style={{ borderRadius: 16, flex: 1, minWidth: 280 }}>
             <YStack gap={10}>
               <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 Users ({users.length})
@@ -130,7 +130,7 @@ export default function AdminUsersScreen() {
             </YStack>
           </Card>
 
-          <Card style={{ borderRadius: 24, flex: 1, minWidth: 300 }}>
+          <Card style={{ borderRadius: 16, flex: 1, minWidth: 300 }}>
             {!selectedUserId || !selected ? (
               <YStack alignItems="center" justifyContent="center" minHeight={240} gap={8}>
                 <Feather name="user" size={20} color={semantic.status.info} />

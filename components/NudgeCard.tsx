@@ -20,7 +20,7 @@ export function NudgeCard({ title, message, onDismiss }: NudgeCardProps) {
       style={{
         width: 268,
         padding: 14,
-        borderRadius: 20,
+        borderRadius: 16,
         borderWidth: 1,
         backgroundColor: theme.accent.val,
         borderColor: theme.borderColor.val,

@@ -49,7 +49,7 @@ export default function AdminSystemScreen() {
     <>
       <YStack>
         <XStack gap={10} flexWrap="wrap">
-          <Card style={{ borderRadius: 22, flex: 1, minWidth: 220 }}>
+          <Card style={{ borderRadius: 16, flex: 1, minWidth: 220 }}>
             <YStack gap={5}>
               <Text fontSize={12} color={theme.colorMuted.val}>
                 AI failure rate
@@ -59,7 +59,7 @@ export default function AdminSystemScreen() {
               </Text>
             </YStack>
           </Card>
-          <Card style={{ borderRadius: 22, flex: 1, minWidth: 220 }}>
+          <Card style={{ borderRadius: 16, flex: 1, minWidth: 220 }}>
             <YStack gap={5}>
               <Text fontSize={12} color={theme.colorMuted.val}>
                 Search latency
@@ -69,7 +69,7 @@ export default function AdminSystemScreen() {
               </Text>
             </YStack>
           </Card>
-          <Card style={{ borderRadius: 22, flex: 1, minWidth: 220 }}>
+          <Card style={{ borderRadius: 16, flex: 1, minWidth: 220 }}>
             <YStack gap={5}>
               <Text fontSize={12} color={theme.colorMuted.val}>
                 Active embedding rebuilds
@@ -82,7 +82,7 @@ export default function AdminSystemScreen() {
         </XStack>
       </YStack>
 
-      <Card style={{ borderRadius: 24 }}>
+      <Card style={{ borderRadius: 16 }}>
         <YStack gap={10}>
           <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
             Alert Rules
@@ -137,7 +137,7 @@ export default function AdminSystemScreen() {
         </YStack>
       </Card>
 
-      <Card style={{ borderRadius: 24 }}>
+      <Card style={{ borderRadius: 16 }}>
         <YStack gap={10}>
           <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
             Open Incidents
@@ -173,7 +173,7 @@ export default function AdminSystemScreen() {
         </YStack>
       </Card>
 
-      <Card style={{ borderRadius: 24 }}>
+      <Card style={{ borderRadius: 16 }}>
         <YStack gap={10}>
           <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
             Maintenance Jobs

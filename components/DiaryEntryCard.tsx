@@ -27,7 +27,7 @@ export const DiaryEntryCard = React.memo(function DiaryEntryCard({
   return (
     <Card
       style={{
-        borderRadius: 24,
+        borderRadius: 16,
         borderColor: theme.primary.val + "18",
         backgroundColor: theme.card.val,
       }}

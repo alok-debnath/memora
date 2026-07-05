@@ -130,6 +130,7 @@ export default function DiaryScreen() {
 
   return (
     <AppScreen
+      safeTop={false}
       hero={
         <PageHero
           eyebrow="Daily capture"
@@ -139,7 +140,7 @@ export default function DiaryScreen() {
         />
       }
     >
-      <SurfaceCard variant="frosted" radius={16} padding={14}>
+      <SurfaceCard variant="solid" radius={16} padding={14}>
         <YStack gap={12}>
           <XStack gap={8}>
             <Pressable

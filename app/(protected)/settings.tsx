@@ -3,8 +3,8 @@ import { Platform, StyleSheet, TextInput } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Text, XStack, YStack } from "tamagui";
 
+import { AppScreen } from "@/components/ui/AppScreen";
 import { Card } from "@/components/ui/Card";
-import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { SectionLabel } from "@/components/ui/SectionLabel";
 import { useAppToast } from "@/components/ui/toast";
@@ -93,7 +93,7 @@ export default function AppSettingsScreen() {
   }
 
   return (
-    <MorePageScaffold title="App Settings" staticHeader>
+    <AppScreen showBack title="App Settings">
       <YStack gap={16}>
         <YStack>
           <SectionLabel>Appearance</SectionLabel>
@@ -264,7 +264,7 @@ export default function AppSettingsScreen() {
           </Card>
         </YStack>
       </YStack>
-    </MorePageScaffold>
+    </AppScreen>
   );
 }
 
@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
   preview: {
     minHeight: 116,
     borderRadius: 18,
-    padding: 18,
+    padding: 16,
     justifyContent: "flex-end",
   },
   swatchButton: {

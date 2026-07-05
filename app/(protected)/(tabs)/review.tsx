@@ -20,6 +20,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { AppScreen } from "@/components/ui/AppScreen";
 import { PageHero } from "@/components/ui/PageHero";
 import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
 import { useSemanticColors } from "@/hooks/useSemanticColors";
@@ -567,19 +568,24 @@ export default function ReviewScreen() {
   const isLoading = dueCards === undefined || allCards === undefined;
 
   return (
-    <YStack flex={1} backgroundColor={theme.background.val}>
-      {/* ── Header ─────────────────────────────────────────── */}
-      <YStack paddingHorizontal={16} paddingTop={12} paddingBottom={4}>
+    <AppScreen
+      noScroll
+      safeTop={false}
+      hero={
         <PageHero
           eyebrow="Spaced repetition"
           title="Review queue"
           description="Reveal each card, rate your recall, and let SM-2 schedule the next review."
           icon="refresh-cw"
         />
-
-        {/* Progress bar — only show when session is active */}
-        {sessionQueue.length > 0 && !sessionDone && <ProgressBar progress={progress} />}
-      </YStack>
+      }
+    >
+      {/* Progress bar — only show when session is active */}
+      {sessionQueue.length > 0 && !sessionDone && (
+        <YStack paddingHorizontal={16} paddingTop={12}>
+          <ProgressBar progress={progress} />
+        </YStack>
+      )}
 
       {/* ── Body ───────────────────────────────────────────── */}
       {sessionDone ? (
@@ -704,7 +710,7 @@ export default function ReviewScreen() {
           </Animated.View>
         </YStack>
       )}
-    </YStack>
+    </AppScreen>
   );
 }
 

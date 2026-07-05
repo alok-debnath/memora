@@ -259,15 +259,27 @@ export function HomeOverviewSheet() {
             }
           >
             {topReminders.length > 0 ? (
-              <YStack gap={10}>
-                {topReminders.map((memory) => (
+              <YStack>
+                {topReminders.map((memory, i) => (
                   <XStack
                     key={memory._id}
                     alignItems="center"
-                    justifyContent="space-between"
                     gap={12}
+                    paddingVertical={10}
+                    borderBottomWidth={i === topReminders.length - 1 ? 0 : 1}
+                    borderBottomColor={theme.borderSubtle.val}
                   >
-                    <YStack flex={1} gap={2}>
+                    <YStack
+                      width={32}
+                      height={32}
+                      borderRadius={9}
+                      alignItems="center"
+                      justifyContent="center"
+                      backgroundColor={theme.warning.val}
+                    >
+                      <Feather name="bell" size={16} color={theme.textInverse.val} />
+                    </YStack>
+                    <YStack flex={1} gap={2} minWidth={0}>
                       <Text
                         fontSize={14}
                         fontWeight="700"
@@ -344,15 +356,27 @@ export function HomeOverviewSheet() {
               ))}
             </XStack>
             {upcomingReminders.length > 0 ? (
-              <YStack gap={10}>
-                {(upcomingReminders as MemoryItem[]).map((memory) => (
+              <YStack>
+                {(upcomingReminders as MemoryItem[]).map((memory, i) => (
                   <XStack
                     key={memory._id}
                     alignItems="center"
-                    justifyContent="space-between"
                     gap={12}
+                    paddingVertical={10}
+                    borderBottomWidth={i === upcomingReminders.length - 1 ? 0 : 1}
+                    borderBottomColor={theme.borderSubtle.val}
                   >
-                    <YStack flex={1} gap={2}>
+                    <YStack
+                      width={32}
+                      height={32}
+                      borderRadius={9}
+                      alignItems="center"
+                      justifyContent="center"
+                      backgroundColor={theme.primary.val}
+                    >
+                      <Feather name="clock" size={16} color={theme.textInverse.val} />
+                    </YStack>
+                    <YStack flex={1} gap={2} minWidth={0}>
                       <Text
                         fontSize={14}
                         fontWeight="700"

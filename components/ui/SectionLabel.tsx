@@ -15,9 +15,8 @@ export function SectionLabel({ children, marginBottom = 8 }: SectionLabelProps) 
       color={theme.colorMuted.val}
       fontSize={11}
       fontFamily="$body"
-      fontWeight="600"
+      fontWeight="700"
       textTransform="uppercase"
-      letterSpacing={1.2}
       marginBottom={marginBottom}
       marginLeft={4}
     >

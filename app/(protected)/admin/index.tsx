@@ -35,7 +35,7 @@ function Kpi({
 }) {
   const theme = useAppTheme();
   return (
-    <Card style={{ borderRadius: 20, flex: 1, minWidth: 150 }}>
+    <Card style={{ borderRadius: 16, flex: 1, minWidth: 150 }}>
       <Text fontSize={12} color={theme.colorMuted.val}>
         {label}
       </Text>
@@ -73,7 +73,7 @@ export default function AdminOverviewScreen() {
     <>
       {data.anomalies.length > 0 ? (
         <YStack>
-          <Card style={{ borderRadius: 20 }}>
+          <Card style={{ borderRadius: 16 }}>
             <YStack gap={8}>
               <Text fontSize={15} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 Anomaly Strip
@@ -138,7 +138,7 @@ export default function AdminOverviewScreen() {
         </XStack>
       </YStack>
 
-      <Card style={{ borderRadius: 24 }}>
+      <Card style={{ borderRadius: 16 }}>
         <InteractiveTimelineChart
           title="Traffic Pressure"
           subtitle={`Tap any point to inspect day-level AI/search load. ${
@@ -163,7 +163,7 @@ export default function AdminOverviewScreen() {
 
       <YStack>
         <XStack gap={10} flexWrap="wrap" alignItems="stretch">
-          <Card style={{ borderRadius: 24, flex: 1, minWidth: 260 }}>
+          <Card style={{ borderRadius: 16, flex: 1, minWidth: 260 }}>
             <YStack gap={10}>
               <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 Provider Comparison
@@ -187,7 +187,7 @@ export default function AdminOverviewScreen() {
             </YStack>
           </Card>
 
-          <Card style={{ borderRadius: 24, flex: 1, minWidth: 260 }}>
+          <Card style={{ borderRadius: 16, flex: 1, minWidth: 260 }}>
             <YStack gap={10}>
               <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 Capability Comparison

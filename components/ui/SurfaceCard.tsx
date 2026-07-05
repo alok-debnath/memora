@@ -11,6 +11,7 @@ import {
   type AppShadowLevel,
   type SurfaceTone,
 } from "@/components/ui/themeHelpers";
+import { radius as radiusTokens, spacing } from "@/constants/uiTokens";
 
 type SurfaceCardProps = {
   children: React.ReactNode;
@@ -26,12 +27,12 @@ type SurfaceCardProps = {
 export function SurfaceCard({
   children,
   tone = "default",
-  padding = 18,
+  padding = spacing.lg,
   style,
   shadowed,
   shadowLevel,
   variant = "frosted",
-  radius = 16,
+  radius = radiusTokens.md,
 }: SurfaceCardProps) {
   const theme = useAppTheme();
   const surface = getSurfaceColors(theme, tone);

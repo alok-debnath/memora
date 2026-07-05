@@ -113,7 +113,7 @@ export default function AdminAiOpsScreen() {
     <>
       <YStack>
         <XStack gap={10} flexWrap="wrap">
-          <Card style={{ borderRadius: 24, flex: 1, minWidth: 260 }}>
+          <Card style={{ borderRadius: 16, flex: 1, minWidth: 260 }}>
             <YStack gap={10}>
               <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 Provider Reliability
@@ -200,7 +200,7 @@ export default function AdminAiOpsScreen() {
             </YStack>
           </Card>
 
-          <Card style={{ borderRadius: 24, flex: 1, minWidth: 260 }}>
+          <Card style={{ borderRadius: 16, flex: 1, minWidth: 260 }}>
             <YStack gap={10}>
               <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 Top Models
@@ -285,7 +285,7 @@ export default function AdminAiOpsScreen() {
         </XStack>
       </YStack>
 
-      <Card style={{ borderRadius: 24 }}>
+      <Card style={{ borderRadius: 16 }}>
         <YStack gap={10}>
           <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
             Routing Controls

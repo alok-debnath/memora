@@ -4,12 +4,9 @@ import { Text, XStack, YStack } from "tamagui";
 
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { withAlpha } from "@/components/ui/themeHelpers";
+import { StatStrip, type StatStripItem } from "@/components/ui/StatStrip";
 
-type PageHeroStat = {
-  label: string;
-  value: string | number;
-  color?: string;
-};
+type PageHeroStat = StatStripItem;
 
 type PageHeroProps = {
   eyebrow?: string;
@@ -78,38 +75,7 @@ export function PageHero({
         {action ?? (icon ? <HeroIcon icon={icon} color={accent} /> : null)}
       </XStack>
 
-      {stats?.length ? (
-        <XStack
-          gap={0}
-          borderRadius={14}
-          borderWidth={1}
-          borderColor={theme.borderSubtle.val}
-          backgroundColor={theme.backgroundStrong.val}
-          overflow="hidden"
-        >
-          {stats.map((stat, index) => {
-            const color = stat.color ?? accent;
-            return (
-              <YStack
-                key={`${stat.label}-${stat.value}`}
-                flex={1}
-                paddingHorizontal={10}
-                paddingVertical={8}
-                borderLeftWidth={index === 0 ? 0 : 1}
-                borderLeftColor={theme.borderSubtle.val}
-                gap={1}
-              >
-                <Text fontSize={15} fontFamily="$heading" fontWeight="700" color={color}>
-                  {stat.value}
-                </Text>
-                <Text fontSize={10} fontFamily="$body" color={theme.colorMuted.val}>
-                  {stat.label}
-                </Text>
-              </YStack>
-            );
-          })}
-        </XStack>
-      ) : null}
+      {stats?.length ? <StatStrip items={stats} accent={accent} /> : null}
     </YStack>
   );
 }

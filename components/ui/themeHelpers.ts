@@ -19,11 +19,11 @@ export function withAlpha(color: string, alphaHex: string) {
 export type AppShadowLevel = "hairline" | "xs" | "sm" | "md" | "lg";
 
 const shadowLevels: Record<AppShadowLevel, { y: number; blur: number; alpha: string }> = {
-  hairline: { y: 1, blur: 6, alpha: "14" },
-  xs: { y: 3, blur: 12, alpha: "1C" },
-  sm: { y: 6, blur: 20, alpha: "24" },
-  md: { y: 12, blur: 32, alpha: "2B" },
-  lg: { y: 18, blur: 46, alpha: "38" },
+  hairline: { y: 1, blur: 4, alpha: "0F" },
+  xs: { y: 2, blur: 8, alpha: "14" },
+  sm: { y: 4, blur: 16, alpha: "1C" },
+  md: { y: 8, blur: 24, alpha: "24" },
+  lg: { y: 14, blur: 36, alpha: "30" },
 };
 
 export function appShadow(color: string, level: AppShadowLevel = "sm"): ViewStyle {
@@ -107,7 +107,7 @@ export function getSurfaceColors(theme: AppTheme, tone: SurfaceTone) {
     default:
       return {
         background: theme.surface.val,
-        border: theme.borderColor.val,
+        border: theme.borderSubtle.val,
       };
   }
 }

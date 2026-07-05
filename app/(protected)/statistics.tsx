@@ -18,7 +18,7 @@ import Svg, {
 import { Text, XStack, YStack } from "tamagui";
 
 import { api } from "@/convex/_generated/api";
-import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
+import { AppScreen } from "@/components/ui/AppScreen";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { SectionLabel } from "@/components/ui/SectionLabel";
@@ -77,15 +77,6 @@ function formatDateLabel(dayKey: string) {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-function formatTrackedDate(timestamp: number | null | undefined) {
-  if (!timestamp) return "not tracking yet";
-  return new Date(timestamp).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
 function formatFeatureLabel(feature: string) {
   const map: Record<string, string> = {
     memory_chat: "Chat assistant",
@@ -128,7 +119,7 @@ function KPI({
 }) {
   const theme = useAppTheme();
   return (
-    <Card style={{ width, borderRadius: 24 }}>
+    <Card style={{ width, borderRadius: 16 }}>
       <XStack alignItems="flex-start" justifyContent="space-between">
         <YStack
           width={42}
@@ -428,11 +419,6 @@ export default function AnalyticsScreen() {
   );
   const recentEvents = recentEventsResult?.page ?? [];
 
-  const summaryLine = useMemo(() => {
-    if (!overview) return "Loading telemetry and history…";
-    return `${formatBilledToLabel(spendSource)}: ${formatCompactNumber(overview.rangeTotals.aiRequests ?? 0)} backend ops, ${formatUsdMicros(overview.rangeTotals.aiCostUsdMicros)} estimated cost.`;
-  }, [overview, spendSource]);
-
   const topModels = useMemo(() => aiBreakdown.slice(0, 5), [aiBreakdown]);
   const topBackgroundFeature = useMemo(
     () => aiFeatureBreakdown.find((item) => item.visibility === "background") ?? null,
@@ -479,52 +465,17 @@ export default function AnalyticsScreen() {
   }, [overview]);
 
   return (
-    <MorePageScaffold
-      title="Analytics"
-      staticHeader
-      scrollProps={{ contentContainerStyle: { gap: 18 } }}
-    >
-      <YStack>
-        <Card
-          style={{
-            borderRadius: 28,
-            padding: 20,
-            backgroundColor: theme.card.val,
-            overflow: "hidden",
-          }}
-        >
-          <XStack justifyContent="space-between" gap={14}>
-            <YStack flex={1} gap={6}>
-              <Badge label="Analytics" color={theme.primary.val} />
-              <Text
-                fontSize={30}
-                lineHeight={34}
-                fontFamily="$heading"
-                fontWeight="700"
-                color={theme.color.val}
-              >
-                Usage overview
-              </Text>
-              <Text fontSize={14} lineHeight={20} fontFamily="$body" color={theme.colorMuted.val}>
-                {summaryLine}
-              </Text>
-            </YStack>
-          </XStack>
-
-          <XStack marginTop={18} gap={10} flexWrap="wrap">
-            <Badge label={`${overview?.consistency.activeDays ?? 0} active days`} />
-            <Badge label={`Tracking since ${formatTrackedDate(overview?.trackingStartedAt)}`} />
-            <Badge
-              label={`${Math.round((overview?.rangeTotals.searchCacheHitRate ?? 0) * 100)}% search cache hit`}
-              color={semantic.status.info}
-            />
-            <Badge
-              label={`${formatBilledToLabel(spendSource)} spend view`}
-              color={semantic.integration.openai}
-            />
-          </XStack>
-        </Card>
-      </YStack>
+    <AppScreen showBack title="Analytics" scrollProps={{ contentContainerStyle: { gap: 14 } }}>
+      <XStack gap={10} flexWrap="wrap">
+        <Badge
+          label={`${Math.round((overview?.rangeTotals.searchCacheHitRate ?? 0) * 100)}% search cache hit`}
+          color={semantic.status.info}
+        />
+        <Badge
+          label={`${formatBilledToLabel(spendSource)} spend view`}
+          color={semantic.integration.openai}
+        />
+      </XStack>
 
       <YStack>
         <YStack gap={10}>
@@ -584,7 +535,7 @@ export default function AnalyticsScreen() {
         <SectionLabel>Usage Flow</SectionLabel>
         <Card
           style={{
-            borderRadius: 26,
+            borderRadius: 16,
             overflow: "hidden",
           }}
         >
@@ -633,15 +584,13 @@ export default function AnalyticsScreen() {
                 </XStack>
               </XStack>
             </XStack>
-            <XStack gap={10} flexWrap="wrap" marginBottom={14}>
+            <XStack gap={10} flexWrap="wrap" marginBottom={10}>
               <YStack
                 minWidth={isCompact ? 132 : 148}
                 paddingHorizontal={12}
                 paddingVertical={10}
-                borderRadius={18}
+                borderRadius={14}
                 backgroundColor={withAlpha(theme.primary.val, "10")}
-                borderWidth={1}
-                borderColor={withAlpha(theme.primary.val, "18")}
               >
                 <Text fontSize={11} color={theme.colorMuted.val}>
                   Searches in range
@@ -654,10 +603,8 @@ export default function AnalyticsScreen() {
                 minWidth={isCompact ? 132 : 148}
                 paddingHorizontal={12}
                 paddingVertical={10}
-                borderRadius={18}
+                borderRadius={14}
                 backgroundColor={withAlpha(semantic.integration.openai, "10")}
-                borderWidth={1}
-                borderColor={withAlpha(semantic.integration.openai, "18")}
               >
                 <Text fontSize={11} color={theme.colorMuted.val}>
                   AI calls in range
@@ -671,10 +618,8 @@ export default function AnalyticsScreen() {
                 minWidth={isCompact ? "100%" : 220}
                 paddingHorizontal={12}
                 paddingVertical={10}
-                borderRadius={18}
-                backgroundColor={theme.background.val}
-                borderWidth={1}
-                borderColor={theme.borderColor.val}
+                borderRadius={14}
+                backgroundColor={theme.backgroundStrong.val}
               >
                 <Text fontSize={11} color={theme.colorMuted.val}>
                   Peak days
@@ -728,7 +673,7 @@ export default function AnalyticsScreen() {
 
       <YStack>
         <SectionLabel>AI Usage</SectionLabel>
-        <Card style={{ borderRadius: 26 }}>
+        <Card style={{ borderRadius: 16 }}>
           <YStack gap={10} marginBottom={16}>
             <XStack alignItems="center" justifyContent="space-between" gap={12} flexWrap="wrap">
               <Text fontSize={18} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
@@ -886,7 +831,7 @@ export default function AnalyticsScreen() {
 
       <YStack>
         <SectionLabel>Search & Retrieval</SectionLabel>
-        <Card style={{ borderRadius: 26 }}>
+        <Card style={{ borderRadius: 16 }}>
           <XStack flexWrap="wrap" gap={10}>
             <YStack
               flex={1}
@@ -1003,7 +948,7 @@ export default function AnalyticsScreen() {
           </XStack>
 
           {detailPanel === "features" ? (
-            <Card style={{ borderRadius: 18, borderWidth: 0 }}>
+            <Card style={{ borderRadius: 16 }}>
               <YStack gap={12}>
                 <Text fontSize={13} color={theme.colorMuted.val}>
                   {formatCompactNumber(overview?.rangeTotals.aiActions ?? 0)} user-visible actions
@@ -1088,7 +1033,7 @@ export default function AnalyticsScreen() {
           ) : null}
 
           {detailPanel === "models" ? (
-            <Card style={{ borderRadius: 18, borderWidth: 0 }}>
+            <Card style={{ borderRadius: 16 }}>
               <YStack gap={12}>
                 {aiBreakdown.length > 0 ? (
                   aiBreakdown.map((item, index) => (
@@ -1126,7 +1071,7 @@ export default function AnalyticsScreen() {
           ) : null}
 
           {detailPanel === "events" ? (
-            <Card style={{ borderRadius: 18, borderWidth: 0 }}>
+            <Card style={{ borderRadius: 16 }}>
               <YStack gap={12}>
                 {recentEvents.length > 0 ? (
                   recentEvents.map((event) => (
@@ -1173,6 +1118,6 @@ export default function AnalyticsScreen() {
           ) : null}
         </BottomSheetScrollView>
       </BottomSheetModal>
-    </MorePageScaffold>
+    </AppScreen>
   );
 }

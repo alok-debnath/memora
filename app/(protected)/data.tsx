@@ -6,16 +6,16 @@ import { Text, XStack, YStack } from "tamagui";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { PressableScale } from "@/components/ui/PressableScale";
-import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
+import { AppScreen } from "@/components/ui/AppScreen";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useSemanticColors } from "@/hooks/useSemanticColors";
+import { appShadow } from "@/components/ui/themeHelpers";
 
 function formatTs(value?: number, fallback = "Recently") {
   if (!value) return fallback;
@@ -56,21 +56,22 @@ function MemoryRow({
       alignItems="center"
       gap={12}
       padding={14}
-      borderRadius={18}
+      borderRadius={16}
       borderWidth={1}
       borderColor={theme.borderColor.val}
       backgroundColor={theme.background.val}
       position="relative"
+      style={appShadow(theme.shadowColor.val, "xs")}
     >
       <YStack
-        width={40}
-        height={40}
-        borderRadius={12}
+        width={32}
+        height={32}
+        borderRadius={9}
         alignItems="center"
         justifyContent="center"
-        backgroundColor={accentColor + "18"}
+        backgroundColor={accentColor}
       >
-        <Feather name={icon} size={18} color={accentColor} />
+        <Feather name={icon} size={16} color={theme.textInverse.val} />
       </YStack>
       <YStack flex={1} gap={3}>
         <Text
@@ -335,42 +336,9 @@ export default function DataScreen() {
   // ── render ────────────────────────────────────────────────────────────────
 
   return (
-    <MorePageScaffold title="Data" staticHeader>
-      {/* Header card */}
-      <Card style={{ padding: 18, borderRadius: 26 }}>
-        <YStack gap={14}>
-          <XStack alignItems="flex-start" justifyContent="space-between" gap={12}>
-            <YStack flex={1} gap={6}>
-              <Badge label="Data Controls" color={theme.primary.val} />
-              <Text
-                fontSize={24}
-                lineHeight={30}
-                fontFamily="$heading"
-                fontWeight="700"
-                color={theme.color.val}
-              >
-                Manage your memory vault
-              </Text>
-              <Text fontSize={14} lineHeight={20} fontFamily="$body" color={theme.colorMuted.val}>
-                View deleted memories, completed reminders, and manage your data.
-              </Text>
-            </YStack>
-            <YStack
-              width={52}
-              height={52}
-              borderRadius={18}
-              alignItems="center"
-              justifyContent="center"
-              backgroundColor={theme.primary.val + "18"}
-            >
-              <Feather name="database" size={22} color={theme.primary.val} />
-            </YStack>
-          </XStack>
-        </YStack>
-      </Card>
-
+    <AppScreen showBack title="Data">
       {/* Tabbed deleted / completed section */}
-      <Card style={{ padding: 18, borderRadius: 26 }}>
+      <Card style={{ padding: 16, borderRadius: 16 }}>
         <YStack gap={14}>
           {/* Tab pills */}
           <XStack backgroundColor={theme.secondary.val} borderRadius={14} padding={4} gap={4}>
@@ -581,7 +549,7 @@ export default function DataScreen() {
       </Card>
 
       {/* Clean slate */}
-      <Card style={{ padding: 18, borderRadius: 26 }}>
+      <Card style={{ padding: 16, borderRadius: 16 }}>
         <YStack gap={14}>
           <YStack gap={4}>
             <Text fontSize={18} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
@@ -599,6 +567,6 @@ export default function DataScreen() {
           />
         </YStack>
       </Card>
-    </MorePageScaffold>
+    </AppScreen>
   );
 }

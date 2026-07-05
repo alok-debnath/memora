@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { XStack, YStack, Text } from "tamagui";
+import { YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -7,9 +7,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { MemoryCard } from "@/components/MemoryCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SearchBar } from "@/components/ui/SearchBar";
-import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
-import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
+import { SectionLabel } from "@/components/ui/SectionLabel";
+import { AppScreen } from "@/components/ui/AppScreen";
 import type { MemoryNote } from "@/types/memory";
 
 function groupByDate(
@@ -71,64 +70,7 @@ export default function TimelineScreen() {
   const sectionCount = Object.keys(groups).length;
 
   return (
-    <MorePageScaffold title="Timeline" staticHeader>
-      <Card
-        style={{
-          padding: 18,
-          borderRadius: 24,
-          backgroundColor: theme.card.val,
-          marginBottom: 14,
-        }}
-      >
-        <YStack flex={1} gap={6}>
-          <Badge label="Chronological" color={theme.primary.val} />
-          <Text
-            fontSize={28}
-            lineHeight={32}
-            fontFamily="$heading"
-            fontWeight="700"
-            color={theme.color.val}
-          >
-            Timeline
-          </Text>
-          <Text fontSize={14} lineHeight={20} fontFamily="$body" color={theme.colorMuted.val}>
-            Review memories in time order, or narrow the story with a search.
-          </Text>
-        </YStack>
-        <XStack gap={10} marginTop={16}>
-          <Card
-            style={{
-              flex: 1,
-              alignItems: "center",
-              paddingVertical: 12,
-              borderRadius: 18,
-            }}
-          >
-            <Text fontSize={22} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-              {sorted.length}
-            </Text>
-            <Text fontSize={11} fontFamily="$body" marginTop={4} color={theme.colorMuted.val}>
-              visible
-            </Text>
-          </Card>
-          <Card
-            style={{
-              flex: 1,
-              alignItems: "center",
-              paddingVertical: 12,
-              borderRadius: 18,
-            }}
-          >
-            <Text fontSize={22} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-              {sectionCount}
-            </Text>
-            <Text fontSize={11} fontFamily="$body" marginTop={4} color={theme.colorMuted.val}>
-              sections
-            </Text>
-          </Card>
-        </XStack>
-      </Card>
-
+    <AppScreen showBack title="Timeline">
       <SearchBar
         value={searchQuery}
         onChangeText={setSearchQuery}
@@ -144,19 +86,7 @@ export default function TimelineScreen() {
       ) : (
         Object.entries(groups).map(([label, items]) => (
           <YStack key={label}>
-            <Text
-              color={theme.colorMuted.val}
-              fontSize={11}
-              fontFamily="$body"
-              fontWeight="600"
-              textTransform="uppercase"
-              letterSpacing={1.2}
-              marginTop={16}
-              marginBottom={10}
-              marginLeft={4}
-            >
-              {label}
-            </Text>
+            <SectionLabel>{label}</SectionLabel>
             <YStack gap={10}>
               {items.map((m, i: number) => (
                 <MemoryCard
@@ -187,6 +117,6 @@ export default function TimelineScreen() {
           </YStack>
         ))
       )}
-    </MorePageScaffold>
+    </AppScreen>
   );
 }

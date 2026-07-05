@@ -7,13 +7,14 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/useAuth";
-import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
+import { AppScreen } from "@/components/ui/AppScreen";
 import { useColors } from "@/hooks/useColors";
 import { useDrivePreviewUrls } from "@/hooks/useDrivePreviewUrls";
 import { useAppToast } from "@/components/ui/toast";
 import { useSemanticColors } from "@/hooks/useSemanticColors";
 import { useUIStore } from "@/store/ui";
 import { canUseGoogleDrive } from "@/lib/googleIntegration";
+import { appShadow } from "@/components/ui/themeHelpers";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const GRID_PADDING = 16;
@@ -47,7 +48,6 @@ export default function FilesScreen() {
   const openFilePreview = useUIStore((state) => state.openFilePreview);
 
   const [filter, setFilter] = useState<FilterType>("all");
-  const [contentTopPadding, setContentTopPadding] = useState(86);
 
   const googleIntegration = useQuery(
     api.integrations.getGoogleIntegration,
@@ -99,6 +99,7 @@ export default function FilesScreen() {
           }}
           style={({ pressed }) => [
             styles.card,
+            appShadow(colors.shadow, "xs"),
             {
               backgroundColor: colors.surface,
               borderColor: colors.border,
@@ -211,19 +212,14 @@ export default function FilesScreen() {
   );
 
   return (
-    <MorePageScaffold
-      title="Files"
-      noScroll
-      staticHeader
-      onContentTopPadding={setContentTopPadding}
-    >
+    <AppScreen showBack title="Files" noScroll>
       <FlatList
         data={attachments}
         renderItem={renderItem}
         keyExtractor={(item) => item._id}
         numColumns={2}
         columnWrapperStyle={styles.columnWrapper}
-        contentContainerStyle={[styles.gridContent, { paddingTop: contentTopPadding }]}
+        contentContainerStyle={styles.gridContent}
         ListHeaderComponent={listHeader}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={isLoading} tintColor={colors.primary} />}
@@ -241,7 +237,7 @@ export default function FilesScreen() {
           ) : null
         }
       />
-    </MorePageScaffold>
+    </AppScreen>
   );
 }
 
@@ -279,7 +275,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: CARD_SIZE,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     overflow: "hidden",
   },

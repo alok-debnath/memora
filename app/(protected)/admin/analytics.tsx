@@ -47,7 +47,7 @@ export default function AdminAnalyticsLabScreen() {
   return (
     <>
       <YStack>
-        <Card style={{ borderRadius: 24 }}>
+        <Card style={{ borderRadius: 16 }}>
           <InteractiveTimelineChart
             title="Segment Timeline"
             subtitle={`Live ${segmentFamily} lens. Tap points for day-level comparison. ${
@@ -73,7 +73,7 @@ export default function AdminAnalyticsLabScreen() {
 
       <YStack>
         <XStack gap={10} flexWrap="wrap">
-          <Card style={{ borderRadius: 22, flex: 1, minWidth: 180 }}>
+          <Card style={{ borderRadius: 16, flex: 1, minWidth: 180 }}>
             <Text fontSize={12} color={theme.colorMuted.val}>
               AI in range
             </Text>
@@ -87,7 +87,7 @@ export default function AdminAnalyticsLabScreen() {
               {formatCompact(totalAi)}
             </Text>
           </Card>
-          <Card style={{ borderRadius: 22, flex: 1, minWidth: 180 }}>
+          <Card style={{ borderRadius: 16, flex: 1, minWidth: 180 }}>
             <Text fontSize={12} color={theme.colorMuted.val}>
               Searches in range
             </Text>
@@ -101,7 +101,7 @@ export default function AdminAnalyticsLabScreen() {
               {formatCompact(totalSearches)}
             </Text>
           </Card>
-          <Card style={{ borderRadius: 22, flex: 1, minWidth: 180 }}>
+          <Card style={{ borderRadius: 16, flex: 1, minWidth: 180 }}>
             <Text fontSize={12} color={theme.colorMuted.val}>
               Estimated cost
             </Text>
@@ -118,7 +118,7 @@ export default function AdminAnalyticsLabScreen() {
         </XStack>
       </YStack>
 
-      <Card style={{ borderRadius: 24 }}>
+      <Card style={{ borderRadius: 16 }}>
         <YStack gap={10}>
           <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
             Segment Distribution

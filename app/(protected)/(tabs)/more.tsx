@@ -90,6 +90,7 @@ export default function MoreScreen() {
 
   return (
     <AppScreen
+      safeTop={false}
       hero={
         <PageHero
           eyebrow="Navigation"

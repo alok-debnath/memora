@@ -37,7 +37,7 @@ export function FlashbackCard({ memory, onPress }: FlashbackCardProps) {
         style={{
           width: 236,
           padding: 16,
-          borderRadius: 20,
+          borderRadius: 16,
           borderWidth: 1,
           borderColor: theme.primary.val + "24",
           marginRight: 12,

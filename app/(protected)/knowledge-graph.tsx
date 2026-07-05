@@ -13,10 +13,10 @@ import { getReminderDate } from "@/types/memoryKind";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
-import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
+import { AppScreen } from "@/components/ui/AppScreen";
 import { withAlpha } from "@/components/ui/themeHelpers";
+import { spacing } from "@/constants/uiTokens";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -330,134 +330,17 @@ export default function KnowledgeGraphScreen() {
     mode === "topics" && selectedId ? topics.find((t) => t._id === selectedId) : null;
 
   const activeGraph = mode === "memories" ? memoryGraph : topicGraph;
-  const nodeCount = activeGraph?.nodes.length ?? 0;
-  const edgeCount = activeGraph?.edges.length ?? 0;
-
-  // Compute number of connected components (clusters) for memory graph
-  const clusterCount = useMemo(() => {
-    if (!memoryGraph) return 0;
-    const parent: Record<string, string> = {};
-    const find = (x: string): string => {
-      if (!parent[x]) parent[x] = x;
-      if (parent[x] !== x) parent[x] = find(parent[x]);
-      return parent[x];
-    };
-    const union = (a: string, b: string) => {
-      parent[find(a)] = find(b);
-    };
-    for (const n of memoryGraph.nodes) find(n.id);
-    for (const e of memoryGraph.edges) union(e.source, e.target);
-    return new Set(memoryGraph.nodes.map((n) => find(n.id))).size;
-  }, [memoryGraph]);
 
   const handleNodePress = (id: string) => {
     setSelectedId((prev) => (prev === id ? null : id));
   };
 
   return (
-    <MorePageScaffold
+    <AppScreen
+      showBack
       title="Knowledge Graph"
-      staticHeader
-      scrollProps={{ contentContainerStyle: { gap: 12, paddingBottom: 32 } }}
+      scrollProps={{ contentContainerStyle: { gap: spacing.md, paddingBottom: 32 } }}
     >
-      {/* ── Header ── */}
-      <YStack>
-        <Card style={{ padding: 18, borderRadius: 24 }}>
-          <YStack flex={1} gap={5}>
-            <Badge label="Mind Map" color={theme.primary.val} />
-            <Text
-              fontSize={26}
-              lineHeight={30}
-              fontFamily="$heading"
-              fontWeight="700"
-              color={theme.color.val}
-            >
-              Knowledge graph
-            </Text>
-            <Text fontSize={13} lineHeight={19} fontFamily="$body" color={theme.colorMuted.val}>
-              {mode === "memories"
-                ? "Memories linked by shared topics and people."
-                : "Topic clusters derived from your AI taxonomy."}
-            </Text>
-          </YStack>
-
-          {/* Stats row */}
-          <XStack gap={8} marginTop={14}>
-            <YStack
-              flex={1}
-              alignItems="center"
-              paddingVertical={10}
-              borderRadius={14}
-              backgroundColor={theme.background.val}
-              borderWidth={1}
-              borderColor={theme.borderColor.val}
-              gap={2}
-            >
-              <Text fontSize={20} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-                {nodeCount}
-              </Text>
-              <Text fontSize={10} fontFamily="$body" color={theme.colorMuted.val}>
-                {mode === "memories" ? "memories" : "topics"}
-              </Text>
-            </YStack>
-            <YStack
-              flex={1}
-              alignItems="center"
-              paddingVertical={10}
-              borderRadius={14}
-              backgroundColor={theme.background.val}
-              borderWidth={1}
-              borderColor={theme.borderColor.val}
-              gap={2}
-            >
-              <Text fontSize={20} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-                {edgeCount}
-              </Text>
-              <Text fontSize={10} fontFamily="$body" color={theme.colorMuted.val}>
-                connections
-              </Text>
-            </YStack>
-            {mode === "memories" ? (
-              <YStack
-                flex={1}
-                alignItems="center"
-                paddingVertical={10}
-                borderRadius={14}
-                backgroundColor={theme.background.val}
-                borderWidth={1}
-                borderColor={theme.borderColor.val}
-                gap={2}
-              >
-                <Text fontSize={20} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-                  {clusterCount}
-                </Text>
-                <Text fontSize={10} fontFamily="$body" color={theme.colorMuted.val}>
-                  clusters
-                </Text>
-              </YStack>
-            ) : (
-              <YStack
-                flex={1}
-                alignItems="center"
-                paddingVertical={10}
-                borderRadius={14}
-                backgroundColor={theme.background.val}
-                borderWidth={1}
-                borderColor={theme.borderColor.val}
-                gap={2}
-              >
-                <Text fontSize={20} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-                  {topics.length}
-                </Text>
-                <Text fontSize={10} fontFamily="$body" color={theme.colorMuted.val}>
-                  total topics
-                </Text>
-              </YStack>
-            )}
-          </XStack>
-        </Card>
-      </YStack>
-
       {/* ── Mode Selector ── */}
       <SegmentedControl
         options={[
@@ -609,7 +492,7 @@ export default function KnowledgeGraphScreen() {
         />
       ) : (
         <YStack>
-          <Card style={{ padding: 8, overflow: "hidden", borderRadius: 20 }}>
+          <Card style={{ padding: 8, overflow: "hidden", borderRadius: 16 }}>
             <Svg width={svgWidth} height={svgHeight} style={{ alignSelf: "center" }}>
               {/* Memory Network edges */}
               {mode === "memories" &&
@@ -773,7 +656,7 @@ export default function KnowledgeGraphScreen() {
           {/* ── Selected Memory Panel ── */}
           {selectedMemory && mode === "memories" && (
             <YStack>
-              <Card style={{ marginTop: 4, borderRadius: 20, gap: 12 }}>
+              <Card style={{ marginTop: 4, borderRadius: 16, gap: 12 }}>
                 {/* Topic badges */}
                 {(selectedMemory.primaryTopicId || (selectedMemory.topicIds?.length ?? 0) > 0) && (
                   <XStack gap={6} flexWrap="wrap">
@@ -875,7 +758,7 @@ export default function KnowledgeGraphScreen() {
           {/* ── Selected Topic Panel ── */}
           {selectedTopic && mode === "topics" && (
             <YStack>
-              <Card style={{ marginTop: 4, borderRadius: 20, gap: 12 }}>
+              <Card style={{ marginTop: 4, borderRadius: 16, gap: 12 }}>
                 <XStack alignItems="center" gap={10}>
                   <YStack
                     width={44}
@@ -1040,6 +923,6 @@ export default function KnowledgeGraphScreen() {
           )}
         </YStack>
       )}
-    </MorePageScaffold>
+    </AppScreen>
   );
 }

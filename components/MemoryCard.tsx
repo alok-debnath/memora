@@ -7,7 +7,7 @@ import type { MemoryNote } from "@/types/memory";
 import { getReminderDate, isReminder } from "@/types/memoryKind";
 import { ContextMenu, type ContextMenuItemDef } from "./ui/ContextMenu";
 import { useSemanticColors } from "@/hooks/useSemanticColors";
-import { withAlpha } from "@/components/ui/themeHelpers";
+import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 
 interface MemoryCardProps {
   memory: MemoryNote;
@@ -98,6 +98,7 @@ export const CardBody = React.memo(function CardBody({
       padding={16}
       position="relative"
       overflow={framed ? "hidden" : "visible"}
+      style={framed ? appShadow(theme.shadowColor.val, "xs") : undefined}
     >
       {isLocked && (
         <YStack
