@@ -2,8 +2,8 @@ import { BlurView } from "expo-blur";
 import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from "expo-glass-effect";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
-import { Tabs, usePathname, Slot } from "expo-router";
-import { useAppRouter as useRouter } from "@/hooks/useAppRouter";
+import { usePathname } from "expo-router";
+import { Tabs, TabList, TabTrigger, TabSlot, useTabTrigger } from "expo-router/ui";
 import { Feather } from "@/lib/icons";
 import React, { useEffect, useId, useMemo, useRef } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
@@ -108,9 +108,14 @@ type TabItemProps = {
   mutedColor: string;
 };
 
+type NavTrigger = {
+  name: NavItemName;
+  isFocused: boolean;
+  onPress: () => void;
+};
+
 type FloatingTabBarProps = {
-  activeRouteName: NavItemName;
-  onNavigate: (routeName: NavItemName) => void;
+  triggers: NavTrigger[];
   onPressAdd: () => void;
   androidBlurTarget?: React.RefObject<View | null>;
 };
@@ -289,12 +294,7 @@ function useIsNativeLiquidGlassEnabled() {
 
 // ─── FloatingTabBar ───────────────────────────────────────────────────────────
 
-function FloatingTabBar({
-  activeRouteName,
-  onNavigate,
-  onPressAdd,
-  androidBlurTarget,
-}: FloatingTabBarProps) {
+function FloatingTabBar({ triggers, onPressAdd, androidBlurTarget }: FloatingTabBarProps) {
   const insets = useSafeAreaInsets();
   const theme = useAppTheme();
   const resolvedMode = useThemeStore((s) => s.resolvedMode);
@@ -305,6 +305,7 @@ function FloatingTabBar({
   const primaryColor = theme.primary.val;
   const mutedColor = theme.colorMuted.val;
 
+  const activeRouteName = triggers.find((t) => t.isFocused)?.name ?? "index";
   const displayIndex = ROUTE_DISPLAY_INDEX[activeRouteName] ?? 0;
 
   // Sliding active indicator
@@ -378,13 +379,11 @@ function FloatingTabBar({
     ? withAlpha(theme.backgroundStrong.val, "47")
     : withAlpha(theme.card.val, "3D");
 
-  const handleTabPress = (routeName: NavItemName) => {
+  const handleTabPress = (trigger: NavTrigger) => {
     if (Platform.OS !== "web") {
       void Haptics.selectionAsync();
     }
-    if (activeRouteName !== routeName) {
-      onNavigate(routeName);
-    }
+    trigger.onPress();
   };
 
   // Transparent wrapper tells React Navigation how much vertical space to reserve,
@@ -462,33 +461,39 @@ function FloatingTabBar({
           {/* Tab items row */}
           <View style={styles.row}>
             {/* Home, Diary */}
-            {NAV_ITEMS.slice(0, 2).map((item) => (
-              <TabItem
-                key={item.name}
-                icon={item.icon}
-                title={item.title}
-                isFocused={activeRouteName === item.name}
-                onPress={() => handleTabPress(item.name)}
-                primaryColor={primaryColor}
-                mutedColor={mutedColor}
-              />
-            ))}
+            {NAV_ITEMS.slice(0, 2).map((item) => {
+              const trigger = triggers.find((t) => t.name === item.name)!;
+              return (
+                <TabItem
+                  key={item.name}
+                  icon={item.icon}
+                  title={item.title}
+                  isFocused={trigger.isFocused}
+                  onPress={() => handleTabPress(trigger)}
+                  primaryColor={primaryColor}
+                  mutedColor={mutedColor}
+                />
+              );
+            })}
 
             {/* Center + button */}
             <PlusButton onPress={onPressAdd} primaryColor={primaryColor} />
 
             {/* Review, More */}
-            {NAV_ITEMS.slice(2).map((item) => (
-              <TabItem
-                key={item.name}
-                icon={item.icon}
-                title={item.title}
-                isFocused={activeRouteName === item.name}
-                onPress={() => handleTabPress(item.name)}
-                primaryColor={primaryColor}
-                mutedColor={mutedColor}
-              />
-            ))}
+            {NAV_ITEMS.slice(2).map((item) => {
+              const trigger = triggers.find((t) => t.name === item.name)!;
+              return (
+                <TabItem
+                  key={item.name}
+                  icon={item.icon}
+                  title={item.title}
+                  isFocused={trigger.isFocused}
+                  onPress={() => handleTabPress(trigger)}
+                  primaryColor={primaryColor}
+                  mutedColor={mutedColor}
+                />
+              );
+            })}
           </View>
         </View>
       </Animated.View>
@@ -506,38 +511,24 @@ function isTabRootPath(pathname: string) {
   );
 }
 
-function routeNameFromPathname(pathname: string): NavItemName {
-  if (pathname === "/" || pathname === "/index") return "index";
-  if (pathname === "/diary") return "diary";
-  if (pathname === "/review") return "review";
-  if (pathname === "/more") return "more";
-  return "index";
-}
-
 type MobileTabBarOverlayProps = {
-  activeRouteName: NavItemName;
-  onNavigate: (routeName: NavItemName) => void;
+  triggers: NavTrigger[];
   onPressAdd: () => void;
 };
 
-function MobileTabBarOverlay({
-  activeRouteName,
-  onNavigate,
-  onPressAdd,
-}: MobileTabBarOverlayProps) {
+function MobileTabBarOverlay({ triggers, onPressAdd }: MobileTabBarOverlayProps) {
   const host = useBackdropBlurHost();
   const overlayId = useId();
 
   const overlayNode = useMemo(
     () => (
       <FloatingTabBar
-        activeRouteName={activeRouteName}
-        onNavigate={onNavigate}
+        triggers={triggers}
         onPressAdd={onPressAdd}
         androidBlurTarget={host?.blurTargetRef}
       />
     ),
-    [activeRouteName, host?.blurTargetRef, onNavigate, onPressAdd],
+    [triggers, host?.blurTargetRef, onPressAdd],
   );
 
   useEffect(() => {
@@ -550,23 +541,47 @@ function MobileTabBarOverlay({
   return overlayNode;
 }
 
+function useNavTriggers(): NavTrigger[] {
+  const index = useTabTrigger({ name: "index" });
+  const diary = useTabTrigger({ name: "diary" });
+  const review = useTabTrigger({ name: "review" });
+  const more = useTabTrigger({ name: "more" });
+
+  return useMemo(
+    () => [
+      {
+        name: "index" as const,
+        isFocused: index.trigger?.isFocused ?? false,
+        onPress: () => index.switchTab("index", {}),
+      },
+      {
+        name: "diary" as const,
+        isFocused: diary.trigger?.isFocused ?? false,
+        onPress: () => diary.switchTab("diary", {}),
+      },
+      {
+        name: "review" as const,
+        isFocused: review.trigger?.isFocused ?? false,
+        onPress: () => review.switchTab("review", {}),
+      },
+      {
+        name: "more" as const,
+        isFocused: more.trigger?.isFocused ?? false,
+        onPress: () => more.switchTab("more", {}),
+      },
+    ],
+    [index, diary, review, more],
+  );
+}
+
 // ─── Custom floating pill layout (mobile + web) ───────────────────────────────
 
-function CustomTabLayout() {
+function MobileTabLayout() {
   const theme = useAppTheme();
-  const router = useRouter();
-  const pathname = usePathname();
   const openCommand = useUIStore((s) => s.openCommand);
+  const pathname = usePathname();
   const showTabBar = isTabRootPath(pathname);
-  const activeRouteName = routeNameFromPathname(pathname);
-
-  const handleNavigate = React.useCallback(
-    (routeName: NavItemName) => {
-      const path = routeName === "index" ? "/" : `/${routeName}`;
-      (router.navigate as (href: string) => void)(path);
-    },
-    [router],
-  );
+  const triggers = useNavTriggers();
 
   const handlePressAdd = React.useCallback(() => {
     if (Platform.OS !== "web") {
@@ -577,35 +592,8 @@ function CustomTabLayout() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top"]}>
-      <Tabs
-        screenOptions={{
-          headerShown: false,
-          sceneStyle: { backgroundColor: theme.background.val },
-          // Prevent React Navigation from rendering its own opaque tab bar background
-          tabBarStyle: {
-            position: "absolute",
-            backgroundColor: "transparent",
-            borderTopWidth: 0,
-            elevation: 0,
-            boxShadow: "none",
-            height: 0,
-          },
-        }}
-        tabBar={() => null}
-      >
-        {NAV_ITEMS.map((item) => (
-          <Tabs.Screen key={item.name} name={item.name} options={{ title: item.title }} />
-        ))}
-        {/* __fab.tsx exists for file-system routing but is not a nav tab */}
-        <Tabs.Screen name="__fab" options={{ href: null }} />
-      </Tabs>
-      {showTabBar ? (
-        <MobileTabBarOverlay
-          activeRouteName={activeRouteName}
-          onNavigate={handleNavigate}
-          onPressAdd={handlePressAdd}
-        />
-      ) : null}
+      <TabSlot style={{ flex: 1, backgroundColor: theme.background.val }} />
+      {showTabBar ? <MobileTabBarOverlay triggers={triggers} onPressAdd={handlePressAdd} /> : null}
     </SafeAreaView>
   );
 }
@@ -614,19 +602,8 @@ function CustomTabLayout() {
 
 function DesktopSidebarLayout() {
   const theme = useAppTheme();
-  const router = useRouter();
-  const pathname = usePathname();
   const openCommand = useUIStore((s) => s.openCommand);
-
-  const isActive = (name: string) => {
-    if (name === "index") return pathname === "/" || pathname === "/index";
-    return pathname === `/${name}` || pathname.startsWith(`/${name}/`);
-  };
-
-  const navigateTo = (name: string) => {
-    const path = name === "index" ? "/" : `/${name}`;
-    (router.navigate as (href: string) => void)(path);
-  };
+  const triggers = useNavTriggers();
 
   return (
     <SafeAreaView
@@ -695,11 +672,12 @@ function DesktopSidebarLayout() {
 
           <YStack gap={8}>
             {NAV_ITEMS.map((item) => {
-              const active = isActive(item.name);
+              const trigger = triggers.find((t) => t.name === item.name)!;
+              const active = trigger.isFocused;
               return (
                 <Pressable
                   key={item.name}
-                  onPress={() => navigateTo(item.name)}
+                  onPress={trigger.onPress}
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
@@ -770,7 +748,7 @@ function DesktopSidebarLayout() {
             borderColor="$borderColor"
             backgroundColor="$background"
           >
-            <Slot />
+            <TabSlot style={{ flex: 1, backgroundColor: theme.background.val }} />
           </YStack>
         </YStack>
       </XStack>
@@ -779,17 +757,37 @@ function DesktopSidebarLayout() {
 }
 
 // ─── Root export ──────────────────────────────────────────────────────────────
+// Single <Tabs> instance shared by both the mobile floating pill bar and the
+// desktop sidebar, so route focus/switching always goes through one engine.
 
 export default function TabLayout() {
   const isLargeScreen = useIsLargeScreen();
 
-  if (isLargeScreen) return <DesktopSidebarLayout />;
-  return <CustomTabLayout />;
+  return (
+    <Tabs>
+      <TabList style={styles.hiddenTabList}>
+        {NAV_ITEMS.map((item) => (
+          <TabTrigger
+            key={item.name}
+            name={item.name}
+            href={item.name === "index" ? "/" : `/${item.name}`}
+          />
+        ))}
+        {/* __fab.tsx exists for file-system routing but is not a nav tab */}
+        <TabTrigger name="__fab" href="/__fab" />
+      </TabList>
+      {isLargeScreen ? <DesktopSidebarLayout /> : <MobileTabLayout />}
+    </Tabs>
+  );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  // Route table only — the floating pill bar renders the real buttons.
+  hiddenTabList: {
+    display: "none",
+  },
   // Outer shell: shadow only (no overflow:hidden — that breaks shadow on Android)
   outerContainer: {
     width: BAR_W,

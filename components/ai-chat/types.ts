@@ -1,8 +1,4 @@
-import type { PendingAttachment } from "@/hooks/useFileAttachments";
-import type { useAppTheme } from "@/hooks/useAppTheme";
 import type { Id } from "@/convex/_generated/dataModel";
-import type { BottomSheetFlatListMethods } from "@gorhom/bottom-sheet";
-import type { ListRenderItemInfo } from "react-native";
 
 export type ChatMsg = {
   _id: string;
@@ -15,27 +11,6 @@ export type ChatMsg = {
     type: string;
     mimeType: string;
   }>;
-};
-
-export type AIChatController = {
-  theme: ReturnType<typeof useAppTheme>;
-  messages: ChatMsg[];
-  displayMessages: AIChatDisplayItem[];
-  renderMessage: (info: ListRenderItemInfo<AIChatDisplayItem>) => React.ReactElement | null;
-  keyExtractor: (item: AIChatDisplayItem) => string;
-  flatListRef: React.RefObject<BottomSheetFlatListMethods | null>;
-  handleClearChat: () => void;
-  isSending: boolean;
-  chatInputMode?: "voice" | "keyboard";
-  setChatInputMode?: (mode: "voice" | "keyboard") => void;
-  attachments: PendingAttachment[];
-  onRemoveAttachment: (id: string) => void;
-  onPickImages: () => void;
-  onPickCamera: () => void;
-  onPickDocument: () => void;
-  driveConnected: boolean;
-  onRequestDriveAccess: () => void;
-  handleSend: (text: string, isVoice?: boolean) => Promise<void>;
 };
 
 export type DeletionItem = {
@@ -151,5 +126,3 @@ export type ToolProgressDisplayItem = {
 };
 
 export type AIChatDisplayItem = ChatMsg | ThinkingDisplayItem | ToolProgressDisplayItem;
-
-export const CHAT_BOTTOM_SPACING = 20;

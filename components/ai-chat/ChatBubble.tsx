@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { Linking, Pressable, View } from "react-native";
+import { Keyboard, Linking, Pressable, View } from "react-native";
+import { TouchableWithoutFeedback } from "@gorhom/bottom-sheet";
 import { Markdown } from "@believer/react-native-markdown-display";
 import Animated, {
   FadeIn,
@@ -104,7 +105,7 @@ export const ChatBubble = React.memo(function ChatBubble({
   isUser: boolean;
   mdStyles: MarkdownStyle;
   speakingId: string | null;
-  onSpeak: (id: string, text: string) => void;
+  onSpeak?: (id: string, text: string) => void;
   onCopy: (text: string) => void;
   token?: string | null;
   deletionItems?: DeletionItem[];
@@ -147,8 +148,12 @@ export const ChatBubble = React.memo(function ChatBubble({
             alignSelf={isUser ? "flex-end" : "flex-start"}
             maxWidth="100%"
           >
-            <Pressable onLongPress={handleLongPress} delayLongPress={400} style={{ flexShrink: 1 }}>
-              <Animated.View style={bubbleStyle}>
+            <TouchableWithoutFeedback
+              onPress={() => Keyboard.dismiss()}
+              onLongPress={handleLongPress}
+              delayLongPress={400}
+            >
+              <Animated.View style={[bubbleStyle, { flexShrink: 1 }]}>
                 {isUser ? (
                   <YStack
                     borderRadius={CHAT.bubbleRadius}
@@ -240,9 +245,9 @@ export const ChatBubble = React.memo(function ChatBubble({
                   </YStack>
                 )}
               </Animated.View>
-            </Pressable>
+            </TouchableWithoutFeedback>
 
-            {!isUser ? (
+            {!isUser && onSpeak ? (
               <Animated.View entering={isSpeaking ? ZoomIn.duration(200) : FadeIn.duration(200)}>
                 <Pressable
                   onPress={() => onSpeak(msg._id, extractSpeakableText(msg.content ?? ""))}

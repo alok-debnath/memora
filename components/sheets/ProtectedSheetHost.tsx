@@ -4,7 +4,7 @@ import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppToast } from "@/components/ui/toast";
 import { selectSheetOpen, selectSheetPayload, useUIStore } from "@/store/ui";
-import { UnifiedCommandPanel } from "@/components/UnifiedCommandPanel";
+import { ChatSheet } from "@/components/chat-sheet/ChatSheet";
 import { EditMemorySheet } from "@/components/EditMemorySheet";
 import { FilePreviewSheet } from "@/components/sheets/FilePreviewSheet";
 import { HomeOverviewSheet } from "@/components/sheets/HomeOverviewSheet";
@@ -45,7 +45,7 @@ export function ProtectedSheetHost() {
 
   return (
     <>
-      <UnifiedCommandPanel visible={isCommandOpen} onClose={closeCommand} />
+      <ChatSheet visible={isCommandOpen} onClose={closeCommand} />
       {editMemoryPayload?.memory ? (
         <EditMemorySheet
           key={editMemoryPayload.memory.id}

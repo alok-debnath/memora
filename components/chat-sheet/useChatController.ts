@@ -1,12 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
 import * as Haptics from "expo-haptics";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { type BottomSheetFlatListMethods, type BottomSheetFooterProps } from "@gorhom/bottom-sheet";
+import type { BottomSheetFlatListMethods } from "@gorhom/bottom-sheet";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
-import { useAppTheme } from "@/hooks/useAppTheme";
 import { useAppToast } from "@/components/ui/toast";
 import { useUIStore } from "@/store/ui";
 import { useFileAttachments } from "@/hooks/useFileAttachments";
@@ -15,30 +14,13 @@ import type { MemoryNote } from "@/types/memory";
 import { getReminderDate, inferMemoryEntryKind } from "@/types/memoryKind";
 import type { Id } from "@/convex/_generated/dataModel";
 import type {
-  AIChatController,
   AIChatDisplayItem,
   ChatMsg,
   ThinkingDisplayItem,
   ToolProgressDisplayItem,
 } from "@/components/ai-chat/types";
-import { AIChatPanel as AIChatList } from "@/components/ai-chat/ChatList";
-import { AIChatPanelFooter as AIChatFooterView } from "@/components/ai-chat/ChatFooter";
-import {
-  extractSpeakableText,
-  useAIChatMessageRenderer,
-} from "@/components/ai-chat/MessageRenderer";
-import { useAIChatSpeech } from "@/components/ai-chat/speech";
-
-interface AIChatPanelProps {
-  compact?: boolean;
-  token?: string | null;
-}
-
-interface ExtendedAIChatPanelProps extends AIChatPanelProps {
-  chatInputMode?: "voice" | "keyboard";
-  setChatInputMode?: (mode: "voice" | "keyboard") => void;
-  autoVoiceOutput?: boolean;
-}
+import { useAIChatMessageRenderer } from "@/components/ai-chat/MessageRenderer";
+import type { ChatSheetController } from "./types";
 
 function chatToMemoryNote(m: Record<string, unknown>): MemoryNote {
   return {
@@ -77,20 +59,16 @@ function isChatMessage(item: AIChatDisplayItem): item is ChatMsg {
   return item.role !== "thinking" && item.role !== "tool_progress";
 }
 
-export function useAIChatController({
-  compact,
-  token: tokenProp,
-  chatInputMode,
-  setChatInputMode,
-  autoVoiceOutput = true,
-}: ExtendedAIChatPanelProps) {
-  const theme = useAppTheme();
+// Stable fallback so memo deps don't churn while the query is loading.
+const NO_MESSAGES: ChatMsg[] = [];
+
+export function useChatController(): ChatSheetController {
   const auth = useAuth();
   const { showToast } = useAppToast();
   const openEditMemory = useUIStore((state) => state.openEditMemory);
-  const token = tokenProp ?? auth.token;
+  const token = auth.token;
 
-  const messages = useQuery(api.chat.list, token ? { token, limit: 100 } : "skip") ?? [];
+  const messages = useQuery(api.chat.list, token ? { token, limit: 100 } : "skip") ?? NO_MESSAGES;
   const searchStatus = useQuery(api.chat.getSearchStatus, token ? { token } : "skip");
   const googleIntegration = useQuery(
     api.integrations.getGoogleIntegration,
@@ -102,16 +80,23 @@ export function useAIChatController({
 
   const driveConnected = canUseGoogleDrive(googleIntegration ?? null);
   const calendarSyncEnabled = canUseGoogleCalendar(googleIntegration ?? null);
-  const fileAttachments = useFileAttachments({ token: token ?? undefined });
+  // Destructured because the hook returns a fresh object each render; the
+  // individual callbacks are stable and keep the memos below effective.
+  const {
+    attachments,
+    pickImages,
+    pickCamera,
+    pickDocument,
+    removeAttachment,
+    uploadAll: uploadAllAttachments,
+    clear: clearAttachments,
+  } = useFileAttachments({ token: token ?? undefined });
 
   const [isSending, setIsSending] = useState(false);
   const [editTargetId, setEditTargetId] = useState<Id<"memories"> | null>(null);
   const [optimisticMessage, setOptimisticMessage] = useState<ChatMsg | null>(null);
-  const { speakingId, speakMessage } = useAIChatSpeech();
 
   const flatListRef = useRef<BottomSheetFlatListMethods | null>(null);
-  const lastInputModeRef = useRef<"voice" | "keyboard">("keyboard");
-  const unreadVoiceResponsesRef = useRef<Set<string>>(new Set());
 
   const editMemoryResult = useQuery(
     api.memories.listByIds,
@@ -142,8 +127,8 @@ export function useAIChatController({
   );
 
   const handleSend = useCallback(
-    async (text: string, isVoice: boolean = false) => {
-      const hasPendingAttachments = fileAttachments.attachments.some(
+    async (text: string) => {
+      const hasPendingAttachments = attachments.some(
         (attachment) =>
           attachment.uploadStatus === "idle" || attachment.uploadStatus === "compressing",
       );
@@ -152,8 +137,6 @@ export function useAIChatController({
       if (Platform.OS !== "web") {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
-
-      lastInputModeRef.current = isVoice ? "voice" : "keyboard";
 
       setOptimisticMessage({
         _id: `optimistic_${Date.now()}`,
@@ -164,10 +147,10 @@ export function useAIChatController({
       setIsSending(true);
 
       try {
-        let uploadedAttachments: Awaited<ReturnType<typeof fileAttachments.uploadAll>> = [];
+        let uploadedAttachments: Awaited<ReturnType<typeof uploadAllAttachments>> = [];
         if (hasPendingAttachments) {
           try {
-            uploadedAttachments = await fileAttachments.uploadAll();
+            uploadedAttachments = await uploadAllAttachments();
           } catch (uploadError) {
             const message = uploadError instanceof Error ? uploadError.message : "Upload failed";
             showToast({ title: "Upload failed", message, tone: "error" });
@@ -185,7 +168,7 @@ export function useAIChatController({
           attachments: uploadedAttachments.length > 0 ? uploadedAttachments : undefined,
         });
 
-        fileAttachments.clear();
+        clearAttachments();
 
         if (Array.isArray(response?.attachmentFailures) && response.attachmentFailures.length > 0) {
           const [firstFailure] = response.attachmentFailures;
@@ -206,7 +189,7 @@ export function useAIChatController({
         setIsSending(false);
       }
     },
-    [fileAttachments, sendMessage, showToast, token],
+    [attachments, clearAttachments, sendMessage, showToast, token, uploadAllAttachments],
   );
 
   const handleRequestDriveAccess = useCallback(() => {
@@ -249,16 +232,14 @@ export function useAIChatController({
       base.push(optimisticMessage);
     }
 
-    if (isSending || searchStatus) {
-      if (searchStatus) {
-        const progressRow: ToolProgressDisplayItem = {
-          _id: "__tool_progress__",
-          role: "tool_progress",
-          status: searchStatus,
-          _creationTime: Date.now(),
-        };
-        return [...base, progressRow];
-      }
+    if (searchStatus) {
+      const progressRow: ToolProgressDisplayItem = {
+        _id: "__tool_progress__",
+        role: "tool_progress",
+        status: searchStatus,
+        _creationTime: Date.now(),
+      };
+      return [...base, progressRow];
     }
 
     if (isSending) {
@@ -288,9 +269,6 @@ export function useAIChatController({
   );
 
   const renderMessage = useAIChatMessageRenderer({
-    compact,
-    speakingId,
-    speakMessage,
     copyMessage,
     token,
     calendarSyncEnabled,
@@ -298,24 +276,14 @@ export function useAIChatController({
     onEditMemory: handleEditMemory,
   });
 
+  // The list is inverted (offset 0 = newest message), so "scroll to bottom"
+  // means scroll to offset 0.
   const prevCountRef = useRef(messages.length);
   useEffect(() => {
     if (messages.length > prevCountRef.current) {
       const timer = setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
+        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
       }, 120);
-
-      if (autoVoiceOutput && lastInputModeRef.current === "voice" && messages.length > 0) {
-        const lastMessage = messages[messages.length - 1];
-        if (
-          lastMessage &&
-          lastMessage.role !== "user" &&
-          !unreadVoiceResponsesRef.current.has(lastMessage._id)
-        ) {
-          unreadVoiceResponsesRef.current.add(lastMessage._id);
-          speakMessage(lastMessage._id, extractSpeakableText(lastMessage.content ?? ""));
-        }
-      }
 
       prevCountRef.current = messages.length;
       if (isSending) {
@@ -326,12 +294,12 @@ export function useAIChatController({
     }
 
     prevCountRef.current = messages.length;
-  }, [autoVoiceOutput, isSending, messages, speakMessage]);
+  }, [isSending, messages]);
 
   useEffect(() => {
     if (isSending || optimisticMessage) {
       const timer = setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
+        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
       }, 50);
       return () => clearTimeout(timer);
     }
@@ -339,9 +307,8 @@ export function useAIChatController({
 
   const keyExtractor = useCallback((item: AIChatDisplayItem) => item._id, []);
 
-  return useMemo<AIChatController>(
+  return useMemo<ChatSheetController>(
     () => ({
-      theme,
       messages,
       displayMessages,
       renderMessage,
@@ -349,67 +316,30 @@ export function useAIChatController({
       flatListRef,
       handleClearChat,
       isSending,
-      chatInputMode,
-      setChatInputMode,
-      attachments: fileAttachments.attachments,
-      onRemoveAttachment: fileAttachments.removeAttachment,
-      onPickImages: fileAttachments.pickImages,
-      onPickCamera: fileAttachments.pickCamera,
-      onPickDocument: fileAttachments.pickDocument,
+      attachments,
+      onRemoveAttachment: removeAttachment,
+      onPickImages: pickImages,
+      onPickCamera: pickCamera,
+      onPickDocument: pickDocument,
       driveConnected,
       onRequestDriveAccess: handleRequestDriveAccess,
       handleSend,
     }),
     [
-      chatInputMode,
+      attachments,
       displayMessages,
       driveConnected,
-      fileAttachments.attachments,
-      fileAttachments.pickCamera,
-      fileAttachments.pickDocument,
-      fileAttachments.pickImages,
-      fileAttachments.removeAttachment,
-      flatListRef,
       handleClearChat,
       handleRequestDriveAccess,
       handleSend,
       isSending,
       keyExtractor,
       messages,
+      pickCamera,
+      pickDocument,
+      pickImages,
+      removeAttachment,
       renderMessage,
-      speakMessage,
-      setChatInputMode,
-      theme,
     ],
-  );
-}
-
-export function AIChatPanel({
-  controller,
-  footerHeight = 0,
-}: {
-  controller: AIChatController;
-  footerHeight?: number;
-}) {
-  return <AIChatList controller={controller} footerHeight={footerHeight} />;
-}
-
-export function AIChatPanelFooter({
-  controller,
-  bottomInset = 0,
-  onHeightChange,
-  ...props
-}: BottomSheetFooterProps & {
-  controller: AIChatController;
-  bottomInset?: number;
-  onHeightChange?: (height: number) => void;
-}) {
-  return (
-    <AIChatFooterView
-      {...props}
-      controller={controller}
-      bottomInset={bottomInset}
-      onHeightChange={onHeightChange}
-    />
   );
 }

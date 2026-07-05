@@ -2,7 +2,7 @@
 
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
-import { action, type ActionCtx } from "../_generated/server";
+import { action, internalAction, type ActionCtx } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import {
   extractTextContent,
@@ -540,7 +540,10 @@ export const processMemory = action({
   },
 });
 
-export const captureMemory = action({
+// Internal-only: the standalone "New Memory" capture UI was removed, so this
+// is no longer part of the public API. The chat agent's create_memory tool
+// (convex/actions/memoryChat.ts) is its only caller.
+export const captureMemory = internalAction({
   args: {
     token: v.string(),
     content: v.string(),

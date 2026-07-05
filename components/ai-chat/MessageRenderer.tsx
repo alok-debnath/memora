@@ -13,8 +13,8 @@ import {
 
 type RenderMessageOptions = {
   compact?: boolean;
-  speakingId: string | null;
-  speakMessage: (id: string, text: string) => void;
+  speakingId?: string | null;
+  speakMessage?: (id: string, text: string) => void;
   copyMessage: (text: string) => void;
   token?: string | null;
   calendarSyncEnabled?: boolean;
@@ -86,7 +86,7 @@ export function useAIChatMessageRenderer({
           msg={displayMsg}
           isUser={item.role === "user"}
           mdStyles={item.role === "user" ? userMdStyles : aiMdStyles}
-          speakingId={speakingId}
+          speakingId={speakingId ?? null}
           onSpeak={speakMessage}
           onCopy={copyMessage}
           token={token}

@@ -1778,10 +1778,7 @@ export const chat = action({
               ...(typeof normalizedForWrite.importance === "string"
                 ? {
                     importance: normalizedForWrite.importance as
-                      | "critical"
-                      | "high"
-                      | "normal"
-                      | "low",
+                      "critical" | "high" | "normal" | "low",
                   }
                 : {}),
               ...(typeof normalizedForWrite.lifeArea === "string"
@@ -1899,7 +1896,7 @@ export const chat = action({
                 },
               });
             } else {
-              const created = await ctx.runAction(api.actions.processMemory.captureMemory, {
+              const created = await ctx.runAction(internal.actions.processMemory.captureMemory, {
                 token: args.token,
                 content: contentToSave,
                 currentTime: args.currentTime,
@@ -2540,12 +2537,7 @@ export const chat = action({
               await ctx.runAction(internal.actions.manageTopics.handleManageTopic, {
                 userId: session._id,
                 operation: fnArgs.operation as
-                  | "list"
-                  | "rename"
-                  | "merge"
-                  | "recolor"
-                  | "trigger_reanalysis"
-                  | "retag_memory",
+                  "list" | "rename" | "merge" | "recolor" | "trigger_reanalysis" | "retag_memory",
                 topicSlug: typeof fnArgs.topic_slug === "string" ? fnArgs.topic_slug : undefined,
                 targetSlug: typeof fnArgs.target_slug === "string" ? fnArgs.target_slug : undefined,
                 newName: typeof fnArgs.new_name === "string" ? fnArgs.new_name : undefined,
