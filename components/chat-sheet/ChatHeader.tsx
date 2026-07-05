@@ -50,19 +50,10 @@ export const ChatHeader = React.memo(function ChatHeader({
         </YStack>
       </XStack>
 
-      <XStack alignItems="center" gap={6}>
+      <XStack alignItems="center" gap={2}>
         {messageCount > 0 ? (
           <PressableScale onPress={onClear}>
-            <XStack
-              alignItems="center"
-              gap={6}
-              paddingHorizontal={10}
-              height={36}
-              borderRadius={18}
-              borderWidth={1}
-              borderColor="$borderColor"
-              backgroundColor="$card"
-            >
+            <XStack alignItems="center" gap={6} paddingHorizontal={10} height={36}>
               <Feather name="trash-2" size={13} color={theme.colorMuted.val} />
               <Text fontSize={12} fontFamily="$body" color="$colorMuted">
                 Clear
@@ -71,17 +62,8 @@ export const ChatHeader = React.memo(function ChatHeader({
           </PressableScale>
         ) : null}
         <PressableScale onPress={onClose}>
-          <YStack
-            width={36}
-            height={36}
-            borderRadius={18}
-            alignItems="center"
-            justifyContent="center"
-            backgroundColor="$card"
-            borderWidth={1}
-            borderColor="$borderColor"
-          >
-            <Feather name="x" size={16} color={theme.color.val} />
+          <YStack width={36} height={36} alignItems="center" justifyContent="center">
+            <Feather name="x" size={18} color={theme.colorMuted.val} />
           </YStack>
         </PressableScale>
       </XStack>

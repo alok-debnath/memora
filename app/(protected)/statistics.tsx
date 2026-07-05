@@ -28,7 +28,7 @@ import { useAppTheme } from "@/hooks/useAppTheme";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
 import { integrationAccentColors, statAccentColors, statusAccentColors } from "@/constants/colors";
-import { withAlpha } from "@/components/ui/themeHelpers";
+import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 
 type RangeKey = "7d" | "30d" | "90d";
 type SpendSource = "combined" | "memora" | "user_byok";
@@ -987,23 +987,14 @@ export default function AnalyticsScreen() {
               ) : null}
             </YStack>
             <PressableScale onPress={() => setDetailPanel("none")}>
-              <YStack
-                width={36}
-                height={36}
-                borderRadius={18}
-                alignItems="center"
-                justifyContent="center"
-                backgroundColor="$card"
-                borderWidth={1}
-                borderColor="$borderColor"
-              >
-                <Feather name="x" size={16} color={theme.color.val} />
+              <YStack width={36} height={36} alignItems="center" justifyContent="center">
+                <Feather name="x" size={18} color={theme.colorMuted.val} />
               </YStack>
             </PressableScale>
           </XStack>
 
           {detailPanel === "features" ? (
-            <Card style={{ borderRadius: 18 }}>
+            <Card style={{ borderRadius: 18, borderWidth: 0 }}>
               <YStack gap={12}>
                 <Text fontSize={13} color="$colorMuted">
                   {formatCompactNumber(overview?.rangeTotals.aiActions ?? 0)} user-visible actions
@@ -1023,12 +1014,11 @@ export default function AnalyticsScreen() {
                           : integrationAccentColors.openai,
                         "08",
                       )}
-                      borderWidth={1}
-                      borderColor={withAlpha(
+                      style={appShadow(
                         item.visibility === "user_visible"
                           ? theme.primary.val
                           : integrationAccentColors.openai,
-                        "20",
+                        "hairline",
                       )}
                     >
                       <XStack alignItems="center" gap={10}>
@@ -1091,7 +1081,7 @@ export default function AnalyticsScreen() {
           ) : null}
 
           {detailPanel === "models" ? (
-            <Card style={{ borderRadius: 18 }}>
+            <Card style={{ borderRadius: 18, borderWidth: 0 }}>
               <YStack gap={12}>
                 {aiBreakdown.length > 0 ? (
                   aiBreakdown.map((item, index) => (
@@ -1129,7 +1119,7 @@ export default function AnalyticsScreen() {
           ) : null}
 
           {detailPanel === "events" ? (
-            <Card style={{ borderRadius: 18 }}>
+            <Card style={{ borderRadius: 18, borderWidth: 0 }}>
               <YStack gap={12}>
                 {recentEvents.length > 0 ? (
                   recentEvents.map((event) => (

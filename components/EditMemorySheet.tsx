@@ -44,7 +44,7 @@ import { VoiceRecorder } from "./VoiceRecorder";
 import { useAppConfirm } from "./ui/confirm/AppConfirmProvider";
 import { FontFamily } from "@/constants/fonts";
 import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
-import { withAlpha } from "@/components/ui/themeHelpers";
+import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import type { MemoryNote } from "@/types/memory";
 import { getReminderDate, inferMemoryEntryKind } from "@/types/memoryKind";
 import { canUseGoogleDrive } from "@/lib/googleIntegration";
@@ -390,17 +390,8 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
             </YStack>
           </XStack>
           <PressableScale onPress={onClose}>
-            <YStack
-              width={36}
-              height={36}
-              borderRadius={18}
-              alignItems="center"
-              justifyContent="center"
-              backgroundColor="$card"
-              borderWidth={1}
-              borderColor="$borderColor"
-            >
-              <Feather name="x" size={16} color={theme.color.val} />
+            <YStack width={36} height={36} alignItems="center" justifyContent="center">
+              <Feather name="x" size={18} color={theme.colorMuted.val} />
             </YStack>
           </PressableScale>
         </XStack>
@@ -1021,9 +1012,8 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                       gap={10}
                       padding={10}
                       borderRadius={12}
-                      borderWidth={1}
-                      borderColor={colors.border}
                       backgroundColor={colors.surface}
+                      style={appShadow(colors.shadow, "xs")}
                     >
                       {att.type === "image" &&
                       (drivePreviewUrls[att.driveFileId] ?? att.driveThumbnailLink) ? (

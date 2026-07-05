@@ -19,6 +19,7 @@ import { useAppToast } from "@/components/ui/toast";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { statusAccentColors } from "@/constants/colors";
+import { appShadow } from "@/components/ui/themeHelpers";
 import { selectSheetOpen, selectSheetPayload, useUIStore } from "@/store/ui";
 
 const processingColors = {
@@ -152,17 +153,8 @@ export function FilePreviewSheet() {
                 </Text>
               </YStack>
               <BottomSheetTouchableOpacity onPress={closeFilePreview} hitSlop={8}>
-                <XStack
-                  width={36}
-                  height={36}
-                  borderRadius={18}
-                  alignItems="center"
-                  justifyContent="center"
-                  backgroundColor={colors.surface}
-                  borderWidth={1}
-                  borderColor={colors.border}
-                >
-                  <Feather name="x" size={18} color={colors.text} />
+                <XStack width={36} height={36} alignItems="center" justifyContent="center">
+                  <Feather name="x" size={18} color={colors.textSecondary} />
                 </XStack>
               </BottomSheetTouchableOpacity>
             </XStack>
@@ -171,10 +163,8 @@ export function FilePreviewSheet() {
               <YStack
                 style={[
                   styles.previewHero,
-                  {
-                    backgroundColor: colors.backgroundSecondary,
-                    borderColor: colors.border,
-                  },
+                  { backgroundColor: colors.backgroundSecondary },
+                  appShadow(colors.shadow, "xs"),
                 ]}
               >
                 {previewUri ? (
@@ -197,10 +187,8 @@ export function FilePreviewSheet() {
               <XStack
                 style={[
                   styles.documentHero,
-                  {
-                    backgroundColor: colors.backgroundSecondary,
-                    borderColor: colors.border,
-                  },
+                  { backgroundColor: colors.backgroundSecondary },
+                  appShadow(colors.shadow, "xs"),
                 ]}
                 alignItems="center"
                 justifyContent="center"
@@ -213,9 +201,8 @@ export function FilePreviewSheet() {
               gap="$3"
               padding={16}
               borderRadius={16}
-              borderWidth={1}
               backgroundColor={colors.surface}
-              borderColor={colors.border}
+              style={appShadow(colors.shadow, "xs")}
             >
               <YStack gap="$1.5">
                 <Text fontSize={18} fontWeight="700" color={colors.text}>
@@ -263,10 +250,8 @@ export function FilePreviewSheet() {
                 onPress={handleOpenDrive}
                 style={[
                   styles.actionBtn,
-                  {
-                    backgroundColor: colors.backgroundSecondary,
-                    borderColor: colors.border,
-                  },
+                  { backgroundColor: colors.backgroundSecondary },
+                  appShadow(colors.shadow, "hairline"),
                 ]}
               >
                 <Feather name="external-link" size={16} color={colors.text} />
@@ -279,10 +264,8 @@ export function FilePreviewSheet() {
                 onPress={handleDelete}
                 style={[
                   styles.actionBtn,
-                  {
-                    backgroundColor: colors.surfaceDangerSoft,
-                    borderColor: colors.textError,
-                  },
+                  { backgroundColor: colors.surfaceDangerSoft },
+                  appShadow(colors.textError, "hairline"),
                 ]}
               >
                 <Feather name="trash-2" size={16} color={colors.textError} />
@@ -326,7 +309,6 @@ const styles = StyleSheet.create({
   previewHero: {
     minHeight: 280,
     borderRadius: 16,
-    borderWidth: 1,
     overflow: "hidden",
     justifyContent: "center",
   },
@@ -337,7 +319,6 @@ const styles = StyleSheet.create({
   documentHero: {
     minHeight: 180,
     borderRadius: 16,
-    borderWidth: 1,
   },
   actionBtn: {
     flexDirection: "row",
@@ -346,6 +327,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 13,
     borderRadius: 12,
-    borderWidth: 1,
   },
 });

@@ -11,7 +11,7 @@ import { Text, XStack, YStack } from "tamagui";
 import { Badge } from "@/components/ui/Badge";
 import { FontFamily } from "@/constants/fonts";
 import { integrationAccentColors, statusAccentColors } from "@/constants/colors";
-import { withAlpha } from "@/components/ui/themeHelpers";
+import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
@@ -152,18 +152,9 @@ export function TurnBreakdownSheet() {
               Everything tracked for this completed chat turn
             </Text>
           </YStack>
-          <BottomSheetTouchableOpacity onPress={closeTurnBreakdown}>
-            <XStack
-              width={36}
-              height={36}
-              borderRadius={18}
-              alignItems="center"
-              justifyContent="center"
-              backgroundColor={theme.card.val}
-              borderWidth={1}
-              borderColor={theme.borderColor.val}
-            >
-              <Feather name="x" size={16} color={theme.color.val} />
+          <BottomSheetTouchableOpacity onPress={closeTurnBreakdown} hitSlop={8}>
+            <XStack width={36} height={36} alignItems="center" justifyContent="center">
+              <Feather name="x" size={18} color={theme.colorMuted.val} />
             </XStack>
           </BottomSheetTouchableOpacity>
         </XStack>
@@ -191,8 +182,7 @@ export function TurnBreakdownSheet() {
           padding={16}
           borderRadius={16}
           backgroundColor="$card"
-          borderWidth={1}
-          borderColor="$borderColor"
+          style={appShadow(theme.shadowColor.val, "xs")}
         >
           <Text fontSize={13} fontFamily={FontFamily.semiBold} color="$color">
             Turn summary
@@ -219,14 +209,13 @@ export function TurnBreakdownSheet() {
                   item.visibility === "user_visible"
                     ? theme.primary.val
                     : integrationAccentColors.openai,
-                  "06",
+                  "08",
                 )}
-                borderWidth={1}
-                borderColor={withAlpha(
+                style={appShadow(
                   item.visibility === "user_visible"
                     ? theme.primary.val
                     : integrationAccentColors.openai,
-                  "14",
+                  "hairline",
                 )}
               >
                 <XStack justifyContent="space-between" gap={10}>
@@ -292,10 +281,9 @@ export function TurnBreakdownSheet() {
                 item.status === "error" ? statusAccentColors.error : theme.backgroundStrong.val,
                 item.status === "error" ? "10" : "66",
               )}
-              borderWidth={1}
-              borderColor={withAlpha(
-                item.status === "error" ? statusAccentColors.error : theme.borderColor.val,
-                item.status === "error" ? "26" : "66",
+              style={appShadow(
+                item.status === "error" ? statusAccentColors.error : theme.shadowColor.val,
+                "hairline",
               )}
             >
               <YStack

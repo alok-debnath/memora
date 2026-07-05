@@ -10,6 +10,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { Badge } from "@/components/ui/Badge";
 import { SectionCard } from "@/components/ui/AppScreen";
+import { appShadow } from "@/components/ui/themeHelpers";
 import { FlashbackCard } from "@/components/FlashbackCard";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -74,6 +75,7 @@ const toMemoryNote = (m: Record<string, unknown>): MemoryNote => ({
 });
 
 function MetricTile({ value, label }: { value: number; label: string }) {
+  const theme = useAppTheme();
   return (
     <YStack
       flex={1}
@@ -81,9 +83,8 @@ function MetricTile({ value, label }: { value: number; label: string }) {
       padding={12}
       borderRadius={16}
       backgroundColor="$card"
-      borderWidth={1}
-      borderColor="$borderColor"
       gap={2}
+      style={appShadow(theme.shadowColor.val, "xs")}
     >
       <Text fontSize={20} fontFamily="$heading" fontWeight="700" color="$color">
         {value}
@@ -225,17 +226,8 @@ export function HomeOverviewSheet() {
               </Text>
             </YStack>
             <PressableScale onPress={closeHomeOverview}>
-              <YStack
-                width={36}
-                height={36}
-                borderRadius={18}
-                alignItems="center"
-                justifyContent="center"
-                backgroundColor="$card"
-                borderWidth={1}
-                borderColor="$borderColor"
-              >
-                <Feather name="x" size={16} color={theme.color.val} />
+              <YStack width={36} height={36} alignItems="center" justifyContent="center">
+                <Feather name="x" size={18} color={theme.colorMuted.val} />
               </YStack>
             </PressableScale>
           </XStack>
