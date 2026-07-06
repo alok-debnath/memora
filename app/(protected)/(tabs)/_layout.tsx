@@ -395,19 +395,21 @@ function FloatingTabBar({
 
   const glassColor = isDark
     ? withAlpha(theme.backgroundStrong.val, "86")
-    : withAlpha(theme.surfaceElevated.val, "EC");
+    : withAlpha(theme.surfaceElevated.val, "86");
   const overlayColor = isDark
     ? withAlpha(theme.background.val, "18")
-    : withAlpha(theme.background.val, "08");
+    : withAlpha(theme.background.val, "18");
   const borderColor = isDark
     ? withAlpha(theme.borderColor.val, "5C")
-    : withAlpha(theme.borderColor.val, "7A");
+    : withAlpha(theme.borderColor.val, "5C");
   const indicatorBg = isDark ? withAlpha(primaryColor, "1F") : withAlpha(primaryColor, "18");
   const indicatorBorder = isDark ? withAlpha(primaryColor, "2E") : withAlpha(primaryColor, "24");
   const blurIntensity = isDark ? 18 : 16;
+  // Same alpha as glassColor so the real blur stays visible on Android in both
+  // modes — a near-opaque fallback here used to mask the blur entirely in light mode.
   const androidFallbackColor = isDark
     ? withAlpha(theme.backgroundStrong.val, "82")
-    : withAlpha(theme.surfaceElevated.val, "EA");
+    : withAlpha(theme.surfaceElevated.val, "82");
 
   // Transparent wrapper tells React Navigation how much vertical space to reserve,
   // so screen content doesn't hide behind the floating pill.
