@@ -465,7 +465,7 @@ export default function AnalyticsScreen() {
   }, [overview]);
 
   return (
-    <AppScreen showBack title="Analytics" scrollProps={{ contentContainerStyle: { gap: 14 } }}>
+    <AppScreen showBack title="Analytics">
       <XStack gap={10} flexWrap="wrap">
         <Badge
           label={`${Math.round((overview?.rangeTotals.searchCacheHitRate ?? 0) * 100)}% search cache hit`}

@@ -9,6 +9,9 @@ export const spacing: Record<AppSpacing, number> = {
   xxl: 32,
 };
 
+/** Vertical gap between a screen's top header/hero and the content below it. */
+export const CONTENT_GAP = 14;
+
 export type AppRadius = "sm" | "md" | "lg" | "pill";
 
 export const radius: Record<AppRadius, number> = {

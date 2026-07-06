@@ -13,7 +13,7 @@ import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
-import { spacing } from "@/constants/uiTokens";
+import { CONTENT_GAP, spacing } from "@/constants/uiTokens";
 
 type AppScreenProps = {
   children: React.ReactNode;
@@ -99,7 +99,7 @@ export function AppScreen({
   const useFloatingHeader = Boolean(showBack);
 
   const inlineHeader = !useFloatingHeader && (title || subtitle || headerRight) && (
-    <XStack alignItems="center" justifyContent="space-between" gap={14}>
+    <XStack alignItems="center" justifyContent="space-between" gap={CONTENT_GAP}>
       <YStack flex={1} gap={3}>
         {title ? (
           <Text
@@ -183,14 +183,14 @@ export function AppScreen({
         width="100%"
         maxWidth={isLargeScreen ? 1100 : undefined}
         alignSelf="center"
-        gap={14}
+        gap={CONTENT_GAP}
         paddingTop={contentTopPadding}
         paddingHorizontal={padded ? spacing.lg : 0}
       >
         {inlineHeader}
         {hero}
       </YStack>
-      <View style={{ flex: 1 }}>{children}</View>
+      <View style={{ flex: 1, marginTop: inlineHeader || hero ? CONTENT_GAP : 0 }}>{children}</View>
     </>
   );
 
@@ -213,7 +213,7 @@ export function AppScreen({
           width="100%"
           maxWidth={isLargeScreen ? 1100 : undefined}
           alignSelf="center"
-          gap={14}
+          gap={CONTENT_GAP}
         >
           {inlineHeader}
           {hero}

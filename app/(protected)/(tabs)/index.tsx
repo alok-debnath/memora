@@ -29,6 +29,7 @@ import { FontFamily } from "@/constants/fonts";
 import { TopicPills } from "@/components/ui/TopicPills";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionCard } from "@/components/ui/AppScreen";
+import { CONTENT_GAP } from "@/constants/uiTokens";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
 import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
 import { PressableScale } from "@/components/ui/PressableScale";
@@ -859,7 +860,7 @@ export default function HomeScreen() {
         renderItem={renderFeedItem}
         ItemSeparatorComponent={() => <YStack height={12} />}
         ListHeaderComponent={feedHeader}
-        ListHeaderComponentStyle={{ marginBottom: 12 }}
+        ListHeaderComponentStyle={{ marginBottom: CONTENT_GAP }}
         ListEmptyComponent={
           isLoading ? (
             <YStack gap={12}>
