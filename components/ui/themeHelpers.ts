@@ -1,4 +1,4 @@
-import type { ViewStyle } from "react-native";
+import { Platform, type ViewStyle } from "react-native";
 import type { AppTheme } from "@/hooks/useAppTheme";
 
 export type StatusTone =
@@ -26,8 +26,32 @@ const shadowLevels: Record<AppShadowLevel, { y: number; blur: number; alpha: str
   lg: { y: 14, blur: 36, alpha: "30" },
 };
 
+// Stops along the falloff curve, from tight/dark near the edge to soft/faint
+// at the outer rim. t^1.5 spacing (vs. linear) front-loads stops near the
+// source, which reads closer to a true Gaussian blur than even spacing does.
+const ANDROID_SHADOW_STOPS = [0.2, 0.45, 0.7, 1] as const;
+
 export function appShadow(color: string, level: AppShadowLevel = "sm"): ViewStyle {
   const shadow = shadowLevels[level];
+  if (Platform.OS === "android") {
+    // Android's Fabric boxShadow bands visibly on a single large blur radius —
+    // stack several passes along the falloff curve so it reads as smooth.
+    const alphaNum = parseInt(shadow.alpha, 16);
+    const stopCount = ANDROID_SHADOW_STOPS.length;
+    const boxShadow = ANDROID_SHADOW_STOPS.map((t, i) => {
+      const eased = t ** 1.5;
+      const y = Math.max(1, Math.round(shadow.y * eased));
+      const blur = Math.max(1, Math.round(shadow.blur * eased));
+      // Each pass carries a slice of the total alpha so the stack sums close
+      // to the original density instead of over-darkening.
+      const alphaHex = Math.max(0, Math.min(255, Math.round((alphaNum * 1.8) / stopCount)))
+        .toString(16)
+        .padStart(2, "0")
+        .toUpperCase();
+      return `0px ${y}px ${blur}px ${withAlpha(color, alphaHex)}`;
+    }).join(", ");
+    return { boxShadow } as ViewStyle;
+  }
   return {
     boxShadow: `0px ${shadow.y}px ${shadow.blur}px ${withAlpha(color, shadow.alpha)}`,
   } as ViewStyle;
