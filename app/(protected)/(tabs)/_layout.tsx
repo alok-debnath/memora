@@ -5,7 +5,7 @@ import * as Haptics from "expo-haptics";
 import { usePathname } from "expo-router";
 import { Tabs, TabList, TabTrigger, TabSlot, useTabTrigger } from "expo-router/ui";
 import { Feather } from "@/lib/icons";
-import React, { useEffect, useId, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useId, useMemo, useRef } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
@@ -21,6 +21,7 @@ import { AppButton } from "@/components/ui/AppButton";
 import { useBackdropBlurHost } from "@/components/ui/BackdropBlurProvider";
 import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import { FontFamily } from "@/constants/fonts";
+import { radius, spacing } from "@/constants/uiTokens";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
 import { useThemeStore } from "@/store/theme";
@@ -33,21 +34,25 @@ const NAV_ITEMS = [
     name: "index" as const,
     title: "Home",
     icon: "home" as const,
+    detail: "Today and reminders",
   },
   {
     name: "diary" as const,
     title: "Diary",
     icon: "book-open" as const,
+    detail: "Daily reflection",
   },
   {
     name: "review" as const,
     title: "Review",
     icon: "refresh-cw" as const,
+    detail: "Spaced review",
   },
   {
     name: "more" as const,
     title: "More",
     icon: "more-horizontal" as const,
+    detail: "Tools and settings",
   },
 ] as const;
 
@@ -57,28 +62,27 @@ type NavItemName = (typeof NAV_ITEMS)[number]["name"];
 
 const BAR_W = 340;
 const BAR_H = 60;
-const BAR_R = 999; // Large value → OS clamps to true pill (height/2 each side)
+const BAR_R = 999; // Large value -> OS clamps to true pill (height/2 each side)
 const BAR_SIDE_PAD = 10; // Inner horizontal padding — pushes icons inward from edges
 const CONTENT_W = BAR_W - BAR_SIDE_PAD * 2; // Usable width inside side padding
 const SLOT_W = CONTENT_W / 5; // Slot width for each of 5 visual positions
-const IND_PAD_Y = 8; // Vertical inset from bar edge
-const IND_OVERLAP = 2; // How far the pill bleeds into neighboring slots (liquid glass)
-const IND_W = SLOT_W + IND_OVERLAP * 2; // Pill wider than its slot
+const IND_PAD_Y = 8;
+const IND_OVERLAP = 2;
+const IND_W = SLOT_W + IND_OVERLAP * 2;
 const IND_H = BAR_H - IND_PAD_Y * 2;
 const IND_Y = IND_PAD_Y;
 const FADE_H = 80; // Height of the fade gradient above the bar
 const BAR_BOTTOM_MARGIN = 14; // How far the pill floats above the safe-area bottom
 
 // Maps state.index (0–3) → visual slot (0, 1, 3, 4) → indicator translateX
-// Pill is centered on the slot but wider, so offset = side_pad + slot_center - half_pill
+// The active capsule is centered on the slot.
 const IND_X = [0, 1, 3, 4].map((slot) => BAR_SIDE_PAD + slot * SLOT_W + SLOT_W / 2 - IND_W / 2);
-// = [8, 76, 212, 280]
 
 // ─── Animation config (tweak here) ───────────────────────────────────────────
 // Higher damping = less oscillation. overshootClamping: true = no bounce at all.
 
 const ANIM = {
-  // Indicator pill sliding between tabs
+  // Liquid active capsule sliding between tabs
   indicator: {
     damping: 30,
     stiffness: 270,
@@ -100,10 +104,11 @@ const ANIM = {
 // ─── TabItem ──────────────────────────────────────────────────────────────────
 
 type TabItemProps = {
+  name: NavItemName;
   icon: React.ComponentProps<typeof Feather>["name"];
   title: string;
   isFocused: boolean;
-  onPress: () => void;
+  onSelect: (name: NavItemName) => void;
   primaryColor: string;
   mutedColor: string;
 };
@@ -114,8 +119,15 @@ type NavTrigger = {
   onPress: () => void;
 };
 
-type FloatingTabBarProps = {
+type NavController = {
+  activeName: NavItemName;
+  selectTab: (name: NavItemName) => void;
   triggers: NavTrigger[];
+};
+
+type FloatingTabBarProps = {
+  activeName: NavItemName;
+  onSelectTab: (name: NavItemName) => void;
   onPressAdd: () => void;
   androidBlurTarget?: React.RefObject<View | null>;
 };
@@ -131,16 +143,28 @@ type TabBarSurfaceProps = {
   androidBlurTarget?: React.RefObject<View | null>;
 };
 
-function TabItem({ icon, title, isFocused, onPress, primaryColor, mutedColor }: TabItemProps) {
+const TabItem = React.memo(function TabItem({
+  name,
+  icon,
+  title,
+  isFocused,
+  onSelect,
+  primaryColor,
+  mutedColor,
+}: TabItemProps) {
   const scale = useSharedValue(1);
   const labelOpacity = useSharedValue(isFocused ? 1 : 0);
   const labelY = useSharedValue(isFocused ? 0 : 5);
-  const iconY = useSharedValue(isFocused ? 0 : 6);
+  const iconY = useSharedValue(isFocused ? -1 : 6);
+
+  const handlePress = useCallback(() => {
+    onSelect(name);
+  }, [name, onSelect]);
 
   useEffect(() => {
     labelOpacity.value = withTiming(isFocused ? 1 : 0, { duration: 150 });
     labelY.value = withSpring(isFocused ? 0 : 5, ANIM.focus);
-    iconY.value = withSpring(isFocused ? 0 : 6, ANIM.focus);
+    iconY.value = withSpring(isFocused ? -1 : 6, ANIM.focus);
   }, [isFocused]);
 
   const pressStyle = useAnimatedStyle(() => ({
@@ -158,22 +182,22 @@ function TabItem({ icon, title, isFocused, onPress, primaryColor, mutedColor }: 
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={handlePress}
       onPressIn={() => {
-        scale.value = withSpring(0.92, ANIM.tabPressIn);
+        scale.value = withSpring(0.96, ANIM.tabPressIn);
       }}
       onPressOut={() => {
         scale.value = withSpring(1, ANIM.tabPressOut);
       }}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: isFocused }}
+      accessibilityLabel={title}
+      hitSlop={6}
       style={styles.tabItem}
     >
       <Animated.View style={[styles.tabInner, pressStyle]}>
         <Animated.View style={iconStyle}>
-          <Feather
-            name={icon}
-            size={isFocused ? 18 : 17}
-            color={isFocused ? primaryColor : mutedColor}
-          />
+          <Feather name={icon} size={19} color={isFocused ? primaryColor : mutedColor} />
         </Animated.View>
         <Animated.Text
           style={[
@@ -188,11 +212,17 @@ function TabItem({ icon, title, isFocused, onPress, primaryColor, mutedColor }: 
       </Animated.View>
     </Pressable>
   );
-}
+});
 
 // ─── PlusButton ───────────────────────────────────────────────────────────────
 
-function PlusButton({ onPress, primaryColor }: { onPress: () => void; primaryColor: string }) {
+const PlusButton = React.memo(function PlusButton({
+  onPress,
+  primaryColor,
+}: {
+  onPress: () => void;
+  primaryColor: string;
+}) {
   const theme = useAppTheme();
   const scale = useSharedValue(1);
 
@@ -210,14 +240,27 @@ function PlusButton({ onPress, primaryColor }: { onPress: () => void; primaryCol
         onPressOut={() => {
           scale.value = withSpring(1, ANIM.plusPressOut);
         }}
+        accessibilityRole="button"
+        accessibilityLabel="New memory"
+        hitSlop={8}
       >
-        <Animated.View style={[styles.plusButton, { backgroundColor: primaryColor }, animStyle]}>
+        <Animated.View
+          style={[
+            styles.plusButton,
+            {
+              backgroundColor: primaryColor,
+              borderColor: withAlpha(theme.textInverse.val, "24"),
+            },
+            appShadow(theme.shadowColor.val, "sm"),
+            animStyle,
+          ]}
+        >
           <Feather name="plus" size={22} color={theme.textInverse.val} />
         </Animated.View>
       </Pressable>
     </View>
   );
-}
+});
 
 // Maps route name → display index (0–3), ignoring hidden __fab route
 const ROUTE_DISPLAY_INDEX: Record<string, number> = {
@@ -227,7 +270,7 @@ const ROUTE_DISPLAY_INDEX: Record<string, number> = {
   more: 3,
 };
 
-function TabBarSurface({
+const TabBarSurface = React.memo(function TabBarSurface({
   glassColor,
   overlayColor,
   androidFallbackColor,
@@ -237,8 +280,6 @@ function TabBarSurface({
   useLiquidGlass,
   androidBlurTarget,
 }: TabBarSurfaceProps) {
-  const theme = useAppTheme();
-
   if (Platform.OS === "web") {
     return (
       <View
@@ -286,7 +327,7 @@ function TabBarSurface({
       />
     </>
   );
-}
+});
 
 function useIsNativeLiquidGlassEnabled() {
   return Platform.OS === "ios" && isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
@@ -294,7 +335,12 @@ function useIsNativeLiquidGlassEnabled() {
 
 // ─── FloatingTabBar ───────────────────────────────────────────────────────────
 
-function FloatingTabBar({ triggers, onPressAdd, androidBlurTarget }: FloatingTabBarProps) {
+function FloatingTabBar({
+  activeName,
+  onSelectTab,
+  onPressAdd,
+  androidBlurTarget,
+}: FloatingTabBarProps) {
   const insets = useSafeAreaInsets();
   const theme = useAppTheme();
   const resolvedMode = useThemeStore((s) => s.resolvedMode);
@@ -305,86 +351,63 @@ function FloatingTabBar({ triggers, onPressAdd, androidBlurTarget }: FloatingTab
   const primaryColor = theme.primary.val;
   const mutedColor = theme.colorMuted.val;
 
-  const activeRouteName = triggers.find((t) => t.isFocused)?.name ?? "index";
-  const displayIndex = ROUTE_DISPLAY_INDEX[activeRouteName] ?? 0;
+  const displayIndex = ROUTE_DISPLAY_INDEX[activeName] ?? 0;
 
   // Sliding active indicator
   const indicatorX = useSharedValue(IND_X[displayIndex] ?? IND_X[0]);
-  const pillScaleX = useSharedValue(1);
-  const pillScaleY = useSharedValue(1);
+  const capsuleScaleX = useSharedValue(1);
+  const capsuleScaleY = useSharedValue(1);
 
   useEffect(() => {
     indicatorX.value = withSpring(IND_X[displayIndex] ?? IND_X[0], ANIM.indicator);
-    // Squish on launch → stretch on arrival (liquid glass morphing)
-    pillScaleX.value = withSequence(
-      withTiming(1.28, { duration: 90 }),
-      withSpring(1, { damping: 16, stiffness: 260, overshootClamping: false }),
+    // Liquid stretch-and-settle response without changing layout.
+    capsuleScaleX.value = withSequence(
+      withTiming(1.2, { duration: 90 }),
+      withSpring(1, { damping: 18, stiffness: 250, overshootClamping: false }),
     );
-    pillScaleY.value = withSequence(
-      withTiming(0.78, { duration: 90 }),
-      withSpring(1, { damping: 16, stiffness: 260, overshootClamping: false }),
+    capsuleScaleY.value = withSequence(
+      withTiming(0.84, { duration: 90 }),
+      withSpring(1, { damping: 18, stiffness: 250, overshootClamping: false }),
     );
-    // Container micro-pulse: skip on mount, transform-only so it runs on UI thread
-    if (isMounted.current) {
-      barScale.value = withSequence(
-        withTiming(0.986, { duration: 65 }),
-        withSpring(1, {
-          damping: 14,
-          stiffness: 320,
-          overshootClamping: false,
-        }),
-      );
-    }
   }, [displayIndex]);
 
   const indicatorStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: indicatorX.value },
-      { scaleX: pillScaleX.value },
-      { scaleY: pillScaleY.value },
+      { scaleX: capsuleScaleX.value },
+      { scaleY: capsuleScaleY.value },
     ],
   }));
 
   // Entrance: slide up from below on mount
   const barY = useSharedValue(100);
   const barOpacity = useSharedValue(0);
-  // Subtle container pulse on tab change (UI-thread only — no JS bridge cost)
-  const barScale = useSharedValue(1);
-  const isMounted = useRef(false);
 
   useEffect(() => {
     barY.value = withSpring(0, ANIM.entrance);
     barOpacity.value = useLiquidGlass ? 1 : withTiming(1, { duration: 280 });
-    isMounted.current = true;
   }, [barOpacity, barY, useLiquidGlass]);
 
-  // Single animated style merges entrance + pulse transforms so they don't clobber each other
   const barEntranceStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: barY.value }, { scale: barScale.value }],
+    transform: [{ translateY: barY.value }],
     opacity: barOpacity.value,
   }));
 
   const glassColor = isDark
-    ? withAlpha(theme.backgroundStrong.val, "52")
-    : withAlpha(theme.card.val, "40");
+    ? withAlpha(theme.backgroundStrong.val, "86")
+    : withAlpha(theme.surfaceElevated.val, "EC");
   const overlayColor = isDark
-    ? withAlpha(theme.background.val, "1C")
-    : withAlpha(theme.background.val, "16");
+    ? withAlpha(theme.background.val, "18")
+    : withAlpha(theme.background.val, "08");
   const borderColor = isDark
-    ? withAlpha(theme.borderColor.val, "70")
-    : withAlpha(theme.borderColor.val, "52");
-  const indicatorBg = isDark ? withAlpha(primaryColor, "2E") : withAlpha(primaryColor, "24");
-  const blurIntensity = isDark ? 16 : 14;
+    ? withAlpha(theme.borderColor.val, "5C")
+    : withAlpha(theme.borderColor.val, "7A");
+  const indicatorBg = isDark ? withAlpha(primaryColor, "1F") : withAlpha(primaryColor, "18");
+  const indicatorBorder = isDark ? withAlpha(primaryColor, "2E") : withAlpha(primaryColor, "24");
+  const blurIntensity = isDark ? 18 : 16;
   const androidFallbackColor = isDark
-    ? withAlpha(theme.backgroundStrong.val, "47")
-    : withAlpha(theme.card.val, "3D");
-
-  const handleTabPress = (trigger: NavTrigger) => {
-    if (Platform.OS !== "web") {
-      void Haptics.selectionAsync();
-    }
-    trigger.onPress();
-  };
+    ? withAlpha(theme.backgroundStrong.val, "82")
+    : withAlpha(theme.surfaceElevated.val, "EA");
 
   // Transparent wrapper tells React Navigation how much vertical space to reserve,
   // so screen content doesn't hide behind the floating pill.
@@ -453,23 +476,27 @@ function FloatingTabBar({ triggers, onPressAdd, androidBlurTarget }: FloatingTab
             <View style={[StyleSheet.absoluteFill, styles.border, { borderColor }]} />
           ) : null}
 
-          {/* Sliding active indicator pill */}
+          {/* Sliding active capsule */}
           <Animated.View
-            style={[styles.indicator, { backgroundColor: indicatorBg, top: IND_Y }, indicatorStyle]}
+            style={[
+              styles.indicator,
+              { backgroundColor: indicatorBg, borderColor: indicatorBorder, top: IND_Y },
+              indicatorStyle,
+            ]}
           />
 
           {/* Tab items row */}
           <View style={styles.row}>
             {/* Home, Diary */}
             {NAV_ITEMS.slice(0, 2).map((item) => {
-              const trigger = triggers.find((t) => t.name === item.name)!;
               return (
                 <TabItem
                   key={item.name}
+                  name={item.name}
                   icon={item.icon}
                   title={item.title}
-                  isFocused={trigger.isFocused}
-                  onPress={() => handleTabPress(trigger)}
+                  isFocused={activeName === item.name}
+                  onSelect={onSelectTab}
                   primaryColor={primaryColor}
                   mutedColor={mutedColor}
                 />
@@ -481,14 +508,14 @@ function FloatingTabBar({ triggers, onPressAdd, androidBlurTarget }: FloatingTab
 
             {/* Review, More */}
             {NAV_ITEMS.slice(2).map((item) => {
-              const trigger = triggers.find((t) => t.name === item.name)!;
               return (
                 <TabItem
                   key={item.name}
+                  name={item.name}
                   icon={item.icon}
                   title={item.title}
-                  isFocused={trigger.isFocused}
-                  onPress={() => handleTabPress(trigger)}
+                  isFocused={activeName === item.name}
+                  onSelect={onSelectTab}
                   primaryColor={primaryColor}
                   mutedColor={mutedColor}
                 />
@@ -512,23 +539,25 @@ function isTabRootPath(pathname: string) {
 }
 
 type MobileTabBarOverlayProps = {
-  triggers: NavTrigger[];
+  activeName: NavItemName;
+  onSelectTab: (name: NavItemName) => void;
   onPressAdd: () => void;
 };
 
-function MobileTabBarOverlay({ triggers, onPressAdd }: MobileTabBarOverlayProps) {
+function MobileTabBarOverlay({ activeName, onSelectTab, onPressAdd }: MobileTabBarOverlayProps) {
   const host = useBackdropBlurHost();
   const overlayId = useId();
 
   const overlayNode = useMemo(
     () => (
       <FloatingTabBar
-        triggers={triggers}
+        activeName={activeName}
+        onSelectTab={onSelectTab}
         onPressAdd={onPressAdd}
         androidBlurTarget={host?.blurTargetRef}
       />
     ),
-    [triggers, host?.blurTargetRef, onPressAdd],
+    [activeName, host?.blurTargetRef, onPressAdd, onSelectTab],
   );
 
   useEffect(() => {
@@ -541,36 +570,79 @@ function MobileTabBarOverlay({ triggers, onPressAdd }: MobileTabBarOverlayProps)
   return overlayNode;
 }
 
-function useNavTriggers(): NavTrigger[] {
+function useNavController(): NavController {
   const index = useTabTrigger({ name: "index" });
   const diary = useTabTrigger({ name: "diary" });
   const review = useTabTrigger({ name: "review" });
   const more = useTabTrigger({ name: "more" });
+  const switchTabRef = useRef<Record<NavItemName, () => void>>({
+    index: () => undefined,
+    diary: () => undefined,
+    review: () => undefined,
+    more: () => undefined,
+  });
 
-  return useMemo(
+  switchTabRef.current = {
+    index: () => index.switchTab("index", {}),
+    diary: () => diary.switchTab("diary", {}),
+    review: () => review.switchTab("review", {}),
+    more: () => more.switchTab("more", {}),
+  };
+
+  const activeName = useMemo<NavItemName>(() => {
+    if (diary.trigger?.isFocused) return "diary";
+    if (review.trigger?.isFocused) return "review";
+    if (more.trigger?.isFocused) return "more";
+    return "index";
+  }, [diary.trigger?.isFocused, more.trigger?.isFocused, review.trigger?.isFocused]);
+
+  const selectTab = useCallback((name: NavItemName) => {
+    if (Platform.OS !== "web") {
+      void Haptics.selectionAsync();
+    }
+
+    switchTabRef.current[name]();
+  }, []);
+
+  const triggers = useMemo(
     () => [
       {
         name: "index" as const,
         isFocused: index.trigger?.isFocused ?? false,
-        onPress: () => index.switchTab("index", {}),
+        onPress: () => selectTab("index"),
       },
       {
         name: "diary" as const,
         isFocused: diary.trigger?.isFocused ?? false,
-        onPress: () => diary.switchTab("diary", {}),
+        onPress: () => selectTab("diary"),
       },
       {
         name: "review" as const,
         isFocused: review.trigger?.isFocused ?? false,
-        onPress: () => review.switchTab("review", {}),
+        onPress: () => selectTab("review"),
       },
       {
         name: "more" as const,
         isFocused: more.trigger?.isFocused ?? false,
-        onPress: () => more.switchTab("more", {}),
+        onPress: () => selectTab("more"),
       },
     ],
-    [index, diary, review, more],
+    [
+      diary.trigger?.isFocused,
+      index.trigger?.isFocused,
+      more.trigger?.isFocused,
+      review.trigger?.isFocused,
+      selectTab,
+    ],
+  );
+
+  return useMemo(
+    () => ({
+      activeName,
+      selectTab,
+      triggers,
+    }),
+    [activeName, selectTab, triggers],
   );
 }
 
@@ -581,7 +653,7 @@ function MobileTabLayout() {
   const openCommand = useUIStore((s) => s.openCommand);
   const pathname = usePathname();
   const showTabBar = isTabRootPath(pathname);
-  const triggers = useNavTriggers();
+  const { activeName, selectTab } = useNavController();
 
   const handlePressAdd = React.useCallback(() => {
     if (Platform.OS !== "web") {
@@ -593,7 +665,13 @@ function MobileTabLayout() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["top"]}>
       <TabSlot style={{ flex: 1, backgroundColor: theme.background.val }} />
-      {showTabBar ? <MobileTabBarOverlay triggers={triggers} onPressAdd={handlePressAdd} /> : null}
+      {showTabBar ? (
+        <MobileTabBarOverlay
+          activeName={activeName}
+          onSelectTab={selectTab}
+          onPressAdd={handlePressAdd}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -603,7 +681,7 @@ function MobileTabLayout() {
 function DesktopSidebarLayout() {
   const theme = useAppTheme();
   const openCommand = useUIStore((s) => s.openCommand);
-  const triggers = useNavTriggers();
+  const { triggers } = useNavController();
 
   return (
     <SafeAreaView
@@ -612,65 +690,45 @@ function DesktopSidebarLayout() {
     >
       <XStack flex={1} backgroundColor={theme.background.val}>
         <YStack
-          width={292}
+          width={276}
           borderRightWidth={1}
-          borderRightColor={theme.borderColor.val}
+          borderRightColor={theme.borderSubtle.val}
           backgroundColor={theme.background.val}
-          paddingHorizontal={20}
-          paddingTop={18}
-          paddingBottom={20}
+          paddingHorizontal={spacing.lg}
+          paddingTop={spacing.lg}
+          paddingBottom={spacing.lg}
         >
           <YStack
-            borderRadius={28}
-            padding={18}
-            marginBottom={18}
-            backgroundColor={theme.card.val}
-            borderWidth={1}
-            borderColor={theme.borderColor.val}
-            gap={16}
+            paddingHorizontal={spacing.sm}
+            paddingVertical={spacing.sm}
+            marginBottom={spacing.lg}
+            gap={spacing.sm}
           >
             <XStack alignItems="center" gap={12}>
               <YStack
-                width={40}
-                height={40}
-                borderRadius={14}
-                backgroundColor={theme.primary.val + "18"}
+                width={38}
+                height={38}
+                borderRadius={radius.sm}
+                backgroundColor={theme.surfaceAccent.val}
+                borderWidth={1}
+                borderColor={withAlpha(theme.primary.val, "20")}
                 alignItems="center"
                 justifyContent="center"
               >
-                <Feather name="layers" size={20} color={theme.primary.val} />
+                <Feather name="layers" size={18} color={theme.primary.val} />
               </YStack>
               <YStack flex={1}>
-                <Text fontSize={22} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
+                <Text fontSize={21} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                   Memora
                 </Text>
-                <Text fontSize={12} color={theme.colorMuted.val}>
-                  Memory studio
+                <Text fontSize={12} color={theme.colorMuted.val} numberOfLines={1}>
+                  Memory workspace
                 </Text>
               </YStack>
             </XStack>
-            <YStack
-              borderRadius={18}
-              padding={14}
-              backgroundColor={theme.primary.val + "10"}
-              gap={8}
-            >
-              <Text
-                fontSize={11}
-                letterSpacing={1}
-                textTransform="uppercase"
-                color={theme.primary.val}
-                fontWeight="700"
-              >
-                Quick Capture
-              </Text>
-              <Text fontSize={13} lineHeight={19} color={theme.colorMuted.val}>
-                Capture notes, voice snippets, reminders, and AI chat from one command surface.
-              </Text>
-            </YStack>
           </YStack>
 
-          <YStack gap={8}>
+          <YStack gap={spacing.xs}>
             {NAV_ITEMS.map((item) => {
               const trigger = triggers.find((t) => t.name === item.name)!;
               const active = trigger.isFocused;
@@ -678,25 +736,38 @@ function DesktopSidebarLayout() {
                 <Pressable
                   key={item.name}
                   onPress={trigger.onPress}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={item.title}
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
-                    gap: 12,
-                    paddingVertical: 14,
-                    paddingHorizontal: 14,
-                    borderRadius: 18,
+                    gap: spacing.md,
+                    minHeight: 58,
+                    paddingVertical: spacing.sm,
+                    paddingHorizontal: spacing.md,
+                    borderRadius: radius.md,
                     borderWidth: 1,
-                    borderColor: active ? theme.primary.val + "22" : "transparent",
-                    backgroundColor: active ? theme.primary.val + "12" : "transparent",
+                    borderColor: active ? withAlpha(theme.primary.val, "24") : "transparent",
+                    backgroundColor: active ? theme.surfaceAccent.val : "transparent",
                   }}
                 >
                   <YStack
-                    width={36}
-                    height={36}
-                    borderRadius={12}
+                    width={3}
+                    height={26}
+                    borderRadius={radius.pill}
+                    backgroundColor={active ? theme.primary.val : "transparent"}
+                    marginLeft={-spacing.xs}
+                  />
+                  <YStack
+                    width={34}
+                    height={34}
+                    borderRadius={radius.sm}
                     alignItems="center"
                     justifyContent="center"
-                    backgroundColor={active ? theme.primary.val + "18" : theme.secondary.val}
+                    backgroundColor={
+                      active ? withAlpha(theme.primary.val, "16") : theme.secondary.val
+                    }
                   >
                     <Feather
                       name={item.icon}
@@ -708,19 +779,14 @@ function DesktopSidebarLayout() {
                     <Text
                       fontSize={15}
                       fontFamily="$body"
-                      fontWeight={active ? "700" : "500"}
-                      color={active ? theme.primary.val : theme.color.val}
+                      fontWeight={active ? "700" : "600"}
+                      color={active ? theme.color.val : theme.color.val}
+                      numberOfLines={1}
                     >
                       {item.title}
                     </Text>
-                    <Text fontSize={12} color={theme.colorMuted.val}>
-                      {item.title === "Home"
-                        ? "Live memories and reminders"
-                        : item.title === "Diary"
-                          ? "Structured daily reflection"
-                          : item.title === "Review"
-                            ? "Spaced repetition queue"
-                            : "Secondary pages and settings"}
+                    <Text fontSize={12} color={theme.colorMuted.val} numberOfLines={1}>
+                      {item.detail}
                     </Text>
                   </YStack>
                 </Pressable>
@@ -734,7 +800,7 @@ function DesktopSidebarLayout() {
             title="New Memory"
             onPress={openCommand}
             icon="plus"
-            variant="gradient"
+            variant="primary"
             fullWidth
           />
         </YStack>
@@ -742,10 +808,10 @@ function DesktopSidebarLayout() {
         <YStack flex={1} padding={14}>
           <YStack
             flex={1}
-            borderRadius={32}
+            borderRadius={radius.lg}
             overflow="hidden"
             borderWidth={1}
-            borderColor={theme.borderColor.val}
+            borderColor={theme.borderSubtle.val}
             backgroundColor={theme.background.val}
           >
             <TabSlot style={{ flex: 1, backgroundColor: theme.background.val }} />
@@ -816,6 +882,7 @@ const styles = StyleSheet.create({
     height: IND_H,
     borderRadius: 999,
     left: 0,
+    borderWidth: 1,
   },
   tabItem: {
     width: SLOT_W,
@@ -845,5 +912,6 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     justifyContent: "center",
     alignItems: "center",
+    borderWidth: 1,
   },
 });
