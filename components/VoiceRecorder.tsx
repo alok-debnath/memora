@@ -5,6 +5,7 @@ import { Feather } from "@/lib/icons";
 import * as Haptics from "expo-haptics";
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from "expo-speech-recognition";
 import Animated, {
+  FadeIn,
   useSharedValue,
   useAnimatedStyle,
   withRepeat,
@@ -28,7 +29,7 @@ import { showToastImperative } from "@/components/ui/toast";
 export type VoiceInputMode = "standard" | "continuous" | "walkie-talkie" | "auto";
 
 interface VoiceRecorderProps {
-  onTranscription: (text: string) => void;
+  onTranscription?: (text: string) => void;
   onTranscriptionComplete?: (text: string) => void;
   /**
    * "panel" is the full standalone recorder (big button, timer, inline edit
@@ -90,6 +91,7 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
     const [permissionGranted, setPermissionGranted] = useState(false);
     const [duration, setDuration] = useState(0);
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
+    const [liveText, setLiveText] = useState("");
 
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const transcriptRef = useRef("");
@@ -217,7 +219,8 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
     const broadcastTranscript = (text: string) => {
       if (text && text !== lastBroadcastRef.current) {
         lastBroadcastRef.current = text;
-        onTranscription(text);
+        setLiveText(text);
+        onTranscription?.(text);
       }
     };
 
@@ -250,6 +253,7 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
         lastBroadcastRef.current = "";
         hasCompletedRef.current = false;
         lastResultWasFinalRef.current = false;
+        setLiveText("");
       }
       isRestartingRef.current = false;
       clearTimer();
@@ -481,7 +485,8 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
       accumulatedTranscriptRef.current = "";
       lastBroadcastRef.current = "";
       lastResultWasFinalRef.current = false;
-      onTranscription(""); // clear live transcript in parent
+      setLiveText("");
+      onTranscription?.(""); // clear live transcript in parent
       onPauseChange?.(false);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       try {
@@ -542,7 +547,8 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
       transcriptRef.current = text;
       accumulatedTranscriptRef.current = text;
       lastResultWasFinalRef.current = false;
-      onTranscription(text); // keep parent's liveTranscript in sync
+      setLiveText(text);
+      onTranscription?.(text); // keep parent's liveTranscript in sync
     };
 
     const handlePress = () => {
@@ -684,22 +690,52 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
               >
                 {formatDuration(duration)}
               </Text>
-              <XStack flex={1} alignItems="center" gap={3} height={16}>
-                {waveStyles.map((style, i) => (
-                  <Animated.View
-                    key={i}
-                    style={[
-                      {
-                        width: 3,
-                        height: 16,
-                        borderRadius: 2,
-                        backgroundColor: orbTint,
-                      },
-                      style,
-                    ]}
-                  />
-                ))}
-              </XStack>
+              {liveText.trim().length > 0 ? (
+                // Keyed so this only mounts/animates once per utterance (wave → text);
+                // subsequent transcript revisions just update this same Text node,
+                // no per-keystroke remount/flicker. Head-truncation keeps the most
+                // recently spoken words visible on the right, clipping older text
+                // off the left — a live "ticker" with no manual scroll logic needed.
+                <Animated.View key="live-text" entering={FadeIn.duration(180)} style={{ flex: 1 }}>
+                  <Text
+                    numberOfLines={1}
+                    ellipsizeMode="head"
+                    fontSize={14}
+                    fontFamily="$body"
+                    fontWeight="500"
+                    color={theme.color.val}
+                  >
+                    {liveText}
+                  </Text>
+                </Animated.View>
+              ) : (
+                <Animated.View
+                  key="wave"
+                  entering={FadeIn.duration(150)}
+                  style={{
+                    flex: 1,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 3,
+                    height: 16,
+                  }}
+                >
+                  {waveStyles.map((style, i) => (
+                    <Animated.View
+                      key={i}
+                      style={[
+                        {
+                          width: 3,
+                          height: 16,
+                          borderRadius: 2,
+                          backgroundColor: orbTint,
+                        },
+                        style,
+                      ]}
+                    />
+                  ))}
+                </Animated.View>
+              )}
             </XStack>
           ) : (
             <Text

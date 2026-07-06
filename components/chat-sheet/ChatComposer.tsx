@@ -158,7 +158,6 @@ export const ChatComposer = React.memo(function ChatComposer({
                 ref={recorderRef}
                 variant="pill"
                 autoStart
-                onTranscription={() => {}}
                 onTranscriptionComplete={handleVoiceTranscript}
                 onCancel={() => setMode("keyboard")}
                 inputMode="auto"
