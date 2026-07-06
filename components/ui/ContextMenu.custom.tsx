@@ -408,8 +408,9 @@ export const ContextMenu = React.forwardRef<ContextMenuHandle, ContextMenuProps>
     const [anchorRect, setAnchorRect] = useState<Rect | null>(null);
 
     const triggerScale = useSharedValue(1);
-    const pressBeginX = useSharedValue(0);
-    const pressBeginY = useSharedValue(0);
+    const pressBeginAbsoluteX = useSharedValue(0);
+    const pressBeginAbsoluteY = useSharedValue(0);
+    const pressMovedTooFar = useSharedValue(false);
     const { animatedRef, cardX, cardY, commitMeasurement } = useTriggerMeasurement();
     const openAnim = useMenuOpenAnimation();
 
@@ -470,9 +471,20 @@ export const ContextMenu = React.forwardRef<ContextMenuHandle, ContextMenuProps>
         .enabled(!anySheetOpen)
         .onBegin((event) => {
           if (activeMenuCount.value > 0) return;
-          pressBeginX.value = event.x;
-          pressBeginY.value = event.y;
+          pressBeginAbsoluteX.value = event.absoluteX;
+          pressBeginAbsoluteY.value = event.absoluteY;
+          pressMovedTooFar.value = false;
           triggerScale.value = withTiming(TRIGGER_PRESS_SCALE, { duration: 120 });
+        })
+        .onTouchesMove((event) => {
+          const touch = event.allTouches[0];
+          if (!touch) return;
+
+          const dx = touch.absoluteX - pressBeginAbsoluteX.value;
+          const dy = touch.absoluteY - pressBeginAbsoluteY.value;
+          if (dx * dx + dy * dy > TAP_MOVE_TOLERANCE * TAP_MOVE_TOLERANCE) {
+            pressMovedTooFar.value = true;
+          }
         })
         .onStart(() => {
           if (activeMenuCount.value > 0) return;
@@ -484,9 +496,10 @@ export const ContextMenu = React.forwardRef<ContextMenuHandle, ContextMenuProps>
           triggerScale.value = withTiming(1, { duration: 120 });
           if (success || activeMenuCount.value > 0) return;
 
-          const dx = event.x - pressBeginX.value;
-          const dy = event.y - pressBeginY.value;
-          const movedTooFar = dx * dx + dy * dy > TAP_MOVE_TOLERANCE * TAP_MOVE_TOLERANCE;
+          const dx = event.absoluteX - pressBeginAbsoluteX.value;
+          const dy = event.absoluteY - pressBeginAbsoluteY.value;
+          const movedTooFar =
+            pressMovedTooFar.value || dx * dx + dy * dy > TAP_MOVE_TOLERANCE * TAP_MOVE_TOLERANCE;
           if (movedTooFar) return;
 
           if (openOn === "press") {
@@ -502,8 +515,9 @@ export const ContextMenu = React.forwardRef<ContextMenuHandle, ContextMenuProps>
       commitMeasurement,
       onPress,
       openOn,
-      pressBeginX,
-      pressBeginY,
+      pressBeginAbsoluteX,
+      pressBeginAbsoluteY,
+      pressMovedTooFar,
       triggerScale,
     ]);
 
