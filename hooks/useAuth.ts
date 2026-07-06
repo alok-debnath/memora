@@ -5,6 +5,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
 import { getHasSeenOnboarding, setHasSeenOnboarding } from "@/lib/sessionStorage";
+import { logDevError } from "@/lib/devLog";
 
 interface AuthUser {
   _id: Id<"users">;
@@ -44,7 +45,7 @@ export function useAuthState(): AuthContextValue {
   const syncSessionUser = useMutation(api.auth.syncSessionUser);
   const [hasSeenOnboarding, setHasSeenOnboardingState] = useState(false);
   const [onboardingLoaded, setOnboardingLoaded] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [failedSyncSessionId, setFailedSyncSessionId] = useState<string | null>(null);
   const syncedSessionRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -55,30 +56,35 @@ export function useAuthState(): AuthContextValue {
 
   const sessionId = session?.session?.id ?? null;
 
+  const meResult = useQuery(
+    api.auth.me,
+    convexAuth.isAuthenticated ? { token: "authenticated" } : "skip",
+  );
+
   useEffect(() => {
     if (!convexAuth.isAuthenticated || !sessionId) {
       syncedSessionRef.current = null;
-      setIsSyncing(false);
+      setFailedSyncSessionId(null);
       return;
     }
-    if (syncedSessionRef.current === sessionId) {
+    if (
+      syncedSessionRef.current === sessionId ||
+      failedSyncSessionId === sessionId ||
+      meResult === undefined
+    ) {
       return;
     }
 
-    setIsSyncing(true);
     syncSessionUser({})
       .then(() => {
         syncedSessionRef.current = sessionId;
+        setFailedSyncSessionId(null);
       })
-      .finally(() => setIsSyncing(false));
-  }, [convexAuth.isAuthenticated, sessionId, syncSessionUser]);
-
-  const meResult = useQuery(
-    api.auth.me,
-    convexAuth.isAuthenticated && syncedSessionRef.current === sessionId
-      ? { token: "authenticated" }
-      : "skip",
-  );
+      .catch((error) => {
+        setFailedSyncSessionId(sessionId);
+        logDevError("useAuthState.syncSessionUser", error);
+      });
+  }, [convexAuth.isAuthenticated, failedSyncSessionId, meResult, sessionId, syncSessionUser]);
 
   const login = useCallback(async (email: string, password: string) => {
     const result = await authClient.signIn.email({
@@ -112,6 +118,9 @@ export function useAuthState(): AuthContextValue {
     setHasSeenOnboarding().catch(() => undefined);
   }, []);
 
+  const needsInitialProfileSync =
+    convexAuth.isAuthenticated && meResult === null && failedSyncSessionId !== sessionId;
+
   return {
     user: (meResult as AuthUser | null | undefined) ?? null,
     token: convexAuth.isAuthenticated ? "authenticated" : null,
@@ -120,7 +129,7 @@ export function useAuthState(): AuthContextValue {
       !onboardingLoaded ||
       sessionPending ||
       convexAuth.isLoading ||
-      (convexAuth.isAuthenticated && (isSyncing || meResult === undefined)),
+      (convexAuth.isAuthenticated && (meResult === undefined || needsInitialProfileSync)),
     hasSeenOnboarding,
     login,
     signup,

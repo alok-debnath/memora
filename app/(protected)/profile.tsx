@@ -422,6 +422,12 @@ export default function ProfileScreen() {
   >(null);
   const googlePlatform =
     Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : "web";
+  const googleClientIds = {
+    android: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID,
+    ios: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS,
+    web: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB,
+  };
+  const isGoogleAuthConfigured = !!googleClientIds[googlePlatform];
   const googleRedirectUri = React.useMemo(() => {
     if (Platform.OS === "android") {
       return "com.alokdebnath.memora:/profile";
@@ -434,9 +440,9 @@ export default function ProfileScreen() {
   }, [googlePlatform]);
 
   const [request, response, promptAsync] = Google.useAuthRequest({
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID,
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS,
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB,
+    androidClientId: googleClientIds.android || "google-oauth-client-id-not-configured",
+    iosClientId: googleClientIds.ios || "google-oauth-client-id-not-configured",
+    webClientId: googleClientIds.web || "google-oauth-client-id-not-configured",
     scopes: [
       "https://www.googleapis.com/auth/calendar.events",
       "https://www.googleapis.com/auth/drive.file",
@@ -499,6 +505,15 @@ export default function ProfileScreen() {
         Alert.alert("Error", "Failed to disconnect");
       }
     } else {
+      if (!isGoogleAuthConfigured) {
+        showToast({
+          title: "Google is not configured",
+          message: `Set EXPO_PUBLIC_GOOGLE_CLIENT_ID_${googlePlatform.toUpperCase()} before connecting Google.`,
+          tone: "error",
+          closeMode: "manual",
+        });
+        return;
+      }
       promptAsync();
     }
   };
@@ -1106,7 +1121,7 @@ export default function ProfileScreen() {
             <Switch
               value={googleIntegration?.connected ?? false}
               onValueChange={handleToggleGoogleSync}
-              disabled={!request || isConnectingGoogle}
+              disabled={!isGoogleAuthConfigured || !request || isConnectingGoogle}
               trackColor={{
                 true: theme.primary.val,
                 false: theme.borderColor.val,
