@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
+import { mutation, query, internalMutation, internalQuery, MutationCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { resolveUser } from "./lib/withAuth";
@@ -130,6 +130,38 @@ const driveAttachmentInput = v.object({
   driveThumbnailLink: v.optional(v.string()),
 });
 
+type DriveAttachment = {
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  type: "image" | "document";
+  driveFileId: string;
+  driveFolderId: string;
+  driveWebViewLink?: string;
+  driveThumbnailLink?: string;
+};
+
+function totalAttachmentBytes(files: DriveAttachment[]) {
+  return files.reduce((total, file) => total + file.sizeBytes, 0);
+}
+
+async function recordAttachmentUploads(
+  ctx: MutationCtx,
+  userId: Id<"users">,
+  files: DriveAttachment[],
+  occurredAt: number,
+) {
+  if (files.length === 0) return;
+
+  await ctx.runMutation(internal.analytics.recordProductEvent, {
+    userId,
+    event: "attachment_uploaded",
+    quantity: files.length,
+    bytes: totalAttachmentBytes(files),
+    occurredAt,
+  });
+}
+
 /**
  * Called by the client after successfully uploading files to Drive.
  * Creates attachment records and links them to a chat message.
@@ -150,49 +182,41 @@ export const recordAttachmentsForMessage = mutation({
       name: string;
       type: "image" | "document";
       mimeType: string;
-    }> = [];
+    }> = await Promise.all(
+      args.files.map(async (file) => {
+        const attachmentId = await ctx.db.insert("memoryAttachments", {
+          userId: user._id,
+          chatMessageId: args.chatMessageId,
+          type: file.type,
+          filename: file.filename,
+          mimeType: file.mimeType,
+          sizeBytes: file.sizeBytes,
+          driveFileId: file.driveFileId,
+          driveFolderId: file.driveFolderId,
+          driveWebViewLink: file.driveWebViewLink,
+          driveThumbnailLink: file.driveThumbnailLink,
+          processingStatus: "pending",
+          createdAt: now,
+        });
 
-    for (const file of args.files) {
-      const attachmentId = await ctx.db.insert("memoryAttachments", {
-        userId: user._id,
-        chatMessageId: args.chatMessageId,
-        type: file.type,
-        filename: file.filename,
-        mimeType: file.mimeType,
-        sizeBytes: file.sizeBytes,
-        driveFileId: file.driveFileId,
-        driveFolderId: file.driveFolderId,
-        driveWebViewLink: file.driveWebViewLink,
-        driveThumbnailLink: file.driveThumbnailLink,
-        processingStatus: "pending",
-        createdAt: now,
-      });
+        return {
+          attachmentId,
+          name: file.filename,
+          type: file.type,
+          mimeType: file.mimeType,
+        };
+      }),
+    );
 
-      attachmentIds.push({
-        attachmentId,
-        name: file.filename,
-        type: file.type,
-        mimeType: file.mimeType,
-      });
-
-      await ctx.runMutation(internal.analytics.recordProductEvent, {
-        userId: user._id,
-        event: "attachment_uploaded",
-        bytes: file.sizeBytes,
-      });
-      await ctx.runMutation(internal.analytics.recordStorageDelta, {
-        userId: user._id,
-        bytesDelta: file.sizeBytes,
-        fileCountDelta: 1,
-        imageCountDelta: file.type === "image" ? 1 : 0,
-        documentCountDelta: file.type === "document" ? 1 : 0,
-      });
-
-      await ctx.scheduler.runAfter(0, internal.actions.processAttachment.processAttachment, {
-        attachmentId,
-        userId: user._id,
-      });
-    }
+    await recordAttachmentUploads(ctx, user._id, args.files, now);
+    await Promise.all(
+      attachmentIds.map((attachment) =>
+        ctx.scheduler.runAfter(0, internal.actions.processAttachment.processAttachment, {
+          attachmentId: attachment.attachmentId,
+          userId: user._id,
+        }),
+      ),
+    );
 
     // Update the chat message with attachment stubs
     const msg = await ctx.db.get(args.chatMessageId);
@@ -230,44 +254,34 @@ export const recordAttachmentsForMemory = mutation({
     if (!memory || memory.userId !== user._id) throw new Error("Memory not found");
 
     const now = Date.now();
-    const ids: Id<"memoryAttachments">[] = [];
+    const ids: Id<"memoryAttachments">[] = await Promise.all(
+      args.files.map((file) =>
+        ctx.db.insert("memoryAttachments", {
+          userId: user._id,
+          memoryId: args.memoryId,
+          type: file.type,
+          filename: file.filename,
+          mimeType: file.mimeType,
+          sizeBytes: file.sizeBytes,
+          driveFileId: file.driveFileId,
+          driveFolderId: file.driveFolderId,
+          driveWebViewLink: file.driveWebViewLink,
+          driveThumbnailLink: file.driveThumbnailLink,
+          processingStatus: "pending",
+          createdAt: now,
+        }),
+      ),
+    );
 
-    for (const file of args.files) {
-      const attachmentId = await ctx.db.insert("memoryAttachments", {
-        userId: user._id,
-        memoryId: args.memoryId,
-        type: file.type,
-        filename: file.filename,
-        mimeType: file.mimeType,
-        sizeBytes: file.sizeBytes,
-        driveFileId: file.driveFileId,
-        driveFolderId: file.driveFolderId,
-        driveWebViewLink: file.driveWebViewLink,
-        driveThumbnailLink: file.driveThumbnailLink,
-        processingStatus: "pending",
-        createdAt: now,
-      });
-
-      ids.push(attachmentId);
-
-      await ctx.runMutation(internal.analytics.recordProductEvent, {
-        userId: user._id,
-        event: "attachment_uploaded",
-        bytes: file.sizeBytes,
-      });
-      await ctx.runMutation(internal.analytics.recordStorageDelta, {
-        userId: user._id,
-        bytesDelta: file.sizeBytes,
-        fileCountDelta: 1,
-        imageCountDelta: file.type === "image" ? 1 : 0,
-        documentCountDelta: file.type === "document" ? 1 : 0,
-      });
-
-      await ctx.scheduler.runAfter(0, internal.actions.processAttachment.processAttachment, {
-        attachmentId,
-        userId: user._id,
-      });
-    }
+    await recordAttachmentUploads(ctx, user._id, args.files, now);
+    await Promise.all(
+      ids.map((attachmentId) =>
+        ctx.scheduler.runAfter(0, internal.actions.processAttachment.processAttachment, {
+          attachmentId,
+          userId: user._id,
+        }),
+      ),
+    );
 
     return { attachmentIds: ids };
   },
@@ -364,53 +378,45 @@ export const recordAttachmentsInternal = internalMutation({
       driveFileId: string;
       driveThumbnailLink?: string;
       driveWebViewLink?: string;
-    }> = [];
-
-    for (const file of args.files) {
-      const attachmentId = await ctx.db.insert("memoryAttachments", {
-        userId: args.userId,
-        chatMessageId: args.chatMessageId,
-        type: file.type,
-        filename: file.filename,
-        mimeType: file.mimeType,
-        sizeBytes: file.sizeBytes,
-        driveFileId: file.driveFileId,
-        driveFolderId: file.driveFolderId,
-        driveWebViewLink: file.driveWebViewLink,
-        driveThumbnailLink: file.driveThumbnailLink,
-        processingStatus: "pending",
-        createdAt: now,
-      });
-
-      newStubs.push({
-        attachmentId,
-        name: file.filename,
-        type: file.type,
-        mimeType: file.mimeType,
-        driveFileId: file.driveFileId,
-        driveThumbnailLink: file.driveThumbnailLink,
-        driveWebViewLink: file.driveWebViewLink,
-      });
-
-      await ctx.runMutation(internal.analytics.recordProductEvent, {
-        userId: args.userId,
-        event: "attachment_uploaded",
-        bytes: file.sizeBytes,
-      });
-      await ctx.runMutation(internal.analytics.recordStorageDelta, {
-        userId: args.userId,
-        bytesDelta: file.sizeBytes,
-        fileCountDelta: 1,
-        imageCountDelta: file.type === "image" ? 1 : 0,
-        documentCountDelta: file.type === "document" ? 1 : 0,
-      });
-
-      if (args.scheduleProcessing ?? true) {
-        await ctx.scheduler.runAfter(0, internal.actions.processAttachment.processAttachment, {
-          attachmentId,
+    }> = await Promise.all(
+      args.files.map(async (file) => {
+        const attachmentId = await ctx.db.insert("memoryAttachments", {
           userId: args.userId,
+          chatMessageId: args.chatMessageId,
+          type: file.type,
+          filename: file.filename,
+          mimeType: file.mimeType,
+          sizeBytes: file.sizeBytes,
+          driveFileId: file.driveFileId,
+          driveFolderId: file.driveFolderId,
+          driveWebViewLink: file.driveWebViewLink,
+          driveThumbnailLink: file.driveThumbnailLink,
+          processingStatus: "pending",
+          createdAt: now,
         });
-      }
+
+        return {
+          attachmentId,
+          name: file.filename,
+          type: file.type,
+          mimeType: file.mimeType,
+          driveFileId: file.driveFileId,
+          driveThumbnailLink: file.driveThumbnailLink,
+          driveWebViewLink: file.driveWebViewLink,
+        };
+      }),
+    );
+
+    await recordAttachmentUploads(ctx, args.userId, args.files, now);
+    if (args.scheduleProcessing ?? true) {
+      await Promise.all(
+        newStubs.map((stub) =>
+          ctx.scheduler.runAfter(0, internal.actions.processAttachment.processAttachment, {
+            attachmentId: stub.attachmentId,
+            userId: args.userId,
+          }),
+        ),
+      );
     }
 
     // Patch the chat message with attachment stubs
