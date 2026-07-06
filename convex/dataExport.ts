@@ -3,7 +3,7 @@
  * Provides full data portability for users
  */
 import { v } from "convex/values";
-import { query, mutation, internalQuery } from "./_generated/server";
+import { action, query, mutation, internalQuery } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { resolveUser } from "./lib/withAuth";
 
@@ -214,6 +214,14 @@ export const exportAllData = query({
       })),
     };
 
+    return exportData;
+  },
+});
+
+export const exportAllDataOnce = action({
+  args: {},
+  handler: async (ctx): Promise<unknown> => {
+    const exportData: unknown = await ctx.runQuery(api.dataExport.exportAllData, {});
     return exportData;
   },
 });

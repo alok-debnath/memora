@@ -20,21 +20,6 @@ export const list = query({
   },
 });
 
-export const stats = query({
-  args: { token: v.string() },
-  handler: async (ctx, args) => {
-    const { userId } = await resolveUser(ctx, args.token);
-    const entries = await ctx.db
-      .query("diaryEntries")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .take(1000);
-
-    return {
-      totalEntries: entries.length,
-    };
-  },
-});
-
 export const create = mutation({
   args: {
     token: v.string(),
@@ -79,6 +64,10 @@ export const remove = mutation({
     const entry = await ctx.db.get(args.id);
     if (!entry || entry.userId !== userId) throw new Error("Not found");
     await ctx.db.delete(args.id);
+    await ctx.runMutation(internal.analytics.recordProductEvent, {
+      userId,
+      event: "diary_deleted",
+    });
   },
 });
 

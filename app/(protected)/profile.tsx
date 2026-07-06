@@ -383,8 +383,8 @@ export default function ProfileScreen() {
     setTimezoneSearchText("");
     timezoneDropdownRef.current?.close();
   }, []);
-  const [exportRequested, setExportRequested] = React.useState(false);
-  const exportData = useQuery(api.dataExport.exportAllData, exportRequested ? {} : "skip");
+  const exportDataOnce = useAction(api.dataExport.exportAllDataOnce);
+  const [isExportingData, setIsExportingData] = React.useState(false);
 
   const nowMs = React.useMemo(() => Date.now(), []);
   const memoryStats = useQuery(api.memories.stats, token ? { token, asOf: nowMs } : "skip");
@@ -598,27 +598,27 @@ export default function ProfileScreen() {
     selectedAiProvider,
   ]);
 
-  React.useEffect(() => {
-    if (!exportRequested || !exportData || Platform.OS !== "web") {
-      return;
-    }
-
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "memora-export.json";
-    a.click();
-    URL.revokeObjectURL(url);
-    setExportRequested(false);
-  }, [exportRequested, exportData]);
   const totalMemories = memoryStats?.totalMemories ?? 0;
 
   const handleExport = async () => {
     if (Platform.OS === "web") {
-      setExportRequested(true);
+      setIsExportingData(true);
+      try {
+        const exportData = await exportDataOnce({});
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+          type: "application/json",
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "memora-export.json";
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        window.alert(error instanceof Error ? error.message : "Unable to export data.");
+      } finally {
+        setIsExportingData(false);
+      }
     } else {
       Alert.alert("Export", `${totalMemories} memories ready for export`);
     }
@@ -1546,9 +1546,11 @@ export default function ProfileScreen() {
             </YStack>
           </XStack>
           <GradientButton
-            title="Export JSON"
+            title={isExportingData ? "Exporting..." : "Export JSON"}
             onPress={handleExport}
             icon="download"
+            loading={isExportingData}
+            disabled={isExportingData}
             style={{ marginTop: 16 }}
           />
         </Card>

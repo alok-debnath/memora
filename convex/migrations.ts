@@ -108,10 +108,32 @@ export const backfillUserAnalyticsModelDaily = migrations.define({
   },
 });
 
+export const backfillCurrentDiaryEntryTotals = migrations.define({
+  table: "userAnalyticsSummary",
+  batchSize: 50,
+  migrateOne: async (ctx, summary) => {
+    const diaryEntries = await ctx.db
+      .query("diaryEntries")
+      .withIndex("by_user", (q) => q.eq("userId", summary.userId))
+      .take(10_000);
+
+    if (summary.totalDiaryEntries !== diaryEntries.length) {
+      return {
+        totalDiaryEntries: diaryEntries.length,
+      };
+    }
+  },
+});
+
 export const runAnalyticsBackfill = migrations.runner([
   internal.migrations.backfillUserAnalyticsSummary,
   internal.migrations.backfillUserAnalyticsDaily,
   internal.migrations.backfillUserAnalyticsModelDaily,
+  internal.migrations.backfillCurrentDiaryEntryTotals,
+]);
+
+export const runDiaryEntryTotalBackfill = migrations.runner([
+  internal.migrations.backfillCurrentDiaryEntryTotals,
 ]);
 
 export const backfillAttachmentDeletionFlag = migrations.define({

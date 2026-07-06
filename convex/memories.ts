@@ -1079,8 +1079,9 @@ export const restore = mutation({
     // Restore soft-deleted attachments
     const deletedAttachments = await ctx.db
       .query("memoryAttachments")
-      .withIndex("by_memory", (q) => q.eq("memoryId", args.id))
-      .filter((q) => q.eq(q.field("isDeleted"), true))
+      .withIndex("by_memory_and_user_and_isDeleted", (q) =>
+        q.eq("memoryId", args.id).eq("userId", userId).eq("isDeleted", true),
+      )
       .collect();
     await Promise.all(deletedAttachments.map((a) => ctx.db.patch(a._id, { isDeleted: false })));
     if (deletedAttachments.length > 0) {
@@ -1512,13 +1513,14 @@ export const listForReembedding = internalQuery({
     const batchSize = args.limit ? Math.min(args.limit, 50) : 25;
     const result = await ctx.db
       .query("memories")
+      .withIndex("by_status_embeddingState", (q) => q.eq("status", "active"))
       .order("desc")
       .paginate({
         numItems: batchSize,
         cursor: (args.cursor ?? null) as string | null,
       });
 
-    const batch = result.page.filter(isActiveMemory).map((m) => ({
+    const batch = result.page.map((m) => ({
       _id: m._id,
       title: m.title,
       content: m.content,

@@ -15,6 +15,7 @@ const productEventValidator = v.union(
   v.literal("memory_updated"),
   v.literal("memory_deleted"),
   v.literal("diary_created"),
+  v.literal("diary_deleted"),
   v.literal("chat_message"),
   v.literal("attachment_uploaded"),
   v.literal("attachment_deleted"),
@@ -406,6 +407,8 @@ export const recordProductEvent = internalMutation({
     } else if (args.event === "diary_created") {
       summaryPatch.totalDiaryEntries = summary.totalDiaryEntries + quantity;
       dailyPatch.diaryEntries = daily.diaryEntries + quantity;
+    } else if (args.event === "diary_deleted") {
+      summaryPatch.totalDiaryEntries = Math.max(0, summary.totalDiaryEntries - quantity);
     } else if (args.event === "chat_message") {
       summaryPatch.totalChatMessages = summary.totalChatMessages + quantity;
       dailyPatch.chatMessages = daily.chatMessages + quantity;
