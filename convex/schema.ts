@@ -395,8 +395,17 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_memory", ["memoryId"])
+    .index("by_memory_and_user_and_isDeleted", ["memoryId", "userId", "isDeleted"])
     .index("by_chat_message", ["chatMessageId"])
-    .index("by_user_and_createdAt", ["userId", "createdAt"]),
+    .index("by_chat_message_and_user_and_isDeleted", ["chatMessageId", "userId", "isDeleted"])
+    .index("by_user_and_createdAt", ["userId", "createdAt"])
+    .index("by_user_and_isDeleted_and_createdAt", ["userId", "isDeleted", "createdAt"])
+    .index("by_user_and_isDeleted_and_type_and_createdAt", [
+      "userId",
+      "isDeleted",
+      "type",
+      "createdAt",
+    ]),
 
   memoryHistory: defineTable({
     memoryId: v.id("memories"),

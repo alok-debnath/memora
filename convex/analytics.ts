@@ -419,8 +419,10 @@ export const recordProductEvent = internalMutation({
       dailyPatch.attachmentDeletes = daily.attachmentDeletes + quantity;
     }
 
-    await ctx.db.patch(summary._id, summaryPatch);
-    await ctx.db.patch(daily._id, dailyPatch);
+    await Promise.all([
+      ctx.db.patch(summary._id, summaryPatch),
+      ctx.db.patch(daily._id, dailyPatch),
+    ]);
     return null;
   },
 });
@@ -469,58 +471,58 @@ export const recordSearchUsage = internalMutation({
     const latencyMs = Math.max(0, Math.floor(args.latencyMs ?? 0));
     const resultCount = Math.max(0, Math.floor(args.resultCount ?? 0));
 
-    await ctx.db.insert("userAiUsageEvents", {
-      userId: args.userId,
-      analyticsSubjectId,
-      chatTurnId: args.chatTurnId,
-      chatMessageId: args.chatMessageId,
-      conversationId: args.conversationId,
-      occurredAt: now,
-      dayKey,
-      provider: "memora",
-      model: "search_pipeline",
-      operation: "search",
-      feature: args.feature,
-      status: args.status,
-      latencyMs: latencyMs || undefined,
-      costAvailability: "unavailable",
-      metadata: {
-        ...(args.metadata ?? {}),
-        kind: "search",
-        cacheHit: args.cacheHit ? "true" : "false",
-        usedVector: args.usedVector ? "true" : "false",
-        usedFullText: args.usedFullText ? "true" : "false",
-        usedKeyword: args.usedKeyword ? "true" : "false",
-        resultCount: String(resultCount),
-      },
-    });
-
-    await ctx.db.patch(summary._id, {
-      analyticsSubjectId,
-      totalSearches: (summary.totalSearches ?? 0) + 1,
-      totalDeepSearches: (summary.totalDeepSearches ?? 0) + (args.isDeepSearch ? 1 : 0),
-      totalSearchCacheHits: (summary.totalSearchCacheHits ?? 0) + (args.cacheHit ? 1 : 0),
-      totalVectorSearches: (summary.totalVectorSearches ?? 0) + (args.usedVector ? 1 : 0),
-      totalFullTextSearches: (summary.totalFullTextSearches ?? 0) + (args.usedFullText ? 1 : 0),
-      totalKeywordSearches: (summary.totalKeywordSearches ?? 0) + (args.usedKeyword ? 1 : 0),
-      totalSearchResults: (summary.totalSearchResults ?? 0) + resultCount,
-      totalSearchLatencyMs: (summary.totalSearchLatencyMs ?? 0) + latencyMs,
-      lastActivityAt: now,
-      updatedAt: now,
-    });
-
-    await ctx.db.patch(daily._id, {
-      analyticsSubjectId,
-      searches: (daily.searches ?? 0) + 1,
-      deepSearches: (daily.deepSearches ?? 0) + (args.isDeepSearch ? 1 : 0),
-      searchCacheHits: (daily.searchCacheHits ?? 0) + (args.cacheHit ? 1 : 0),
-      vectorSearches: (daily.vectorSearches ?? 0) + (args.usedVector ? 1 : 0),
-      fullTextSearches: (daily.fullTextSearches ?? 0) + (args.usedFullText ? 1 : 0),
-      keywordSearches: (daily.keywordSearches ?? 0) + (args.usedKeyword ? 1 : 0),
-      searchResults: (daily.searchResults ?? 0) + resultCount,
-      searchLatencyMs: (daily.searchLatencyMs ?? 0) + latencyMs,
-      updatedAt: now,
-    });
+    await Promise.all([
+      ctx.db.insert("userAiUsageEvents", {
+        userId: args.userId,
+        analyticsSubjectId,
+        chatTurnId: args.chatTurnId,
+        chatMessageId: args.chatMessageId,
+        conversationId: args.conversationId,
+        occurredAt: now,
+        dayKey,
+        provider: "memora",
+        model: "search_pipeline",
+        operation: "search",
+        feature: args.feature,
+        status: args.status,
+        latencyMs: latencyMs || undefined,
+        costAvailability: "unavailable",
+        metadata: {
+          ...(args.metadata ?? {}),
+          kind: "search",
+          cacheHit: args.cacheHit ? "true" : "false",
+          usedVector: args.usedVector ? "true" : "false",
+          usedFullText: args.usedFullText ? "true" : "false",
+          usedKeyword: args.usedKeyword ? "true" : "false",
+          resultCount: String(resultCount),
+        },
+      }),
+      ctx.db.patch(summary._id, {
+        analyticsSubjectId,
+        totalSearches: (summary.totalSearches ?? 0) + 1,
+        totalDeepSearches: (summary.totalDeepSearches ?? 0) + (args.isDeepSearch ? 1 : 0),
+        totalSearchCacheHits: (summary.totalSearchCacheHits ?? 0) + (args.cacheHit ? 1 : 0),
+        totalVectorSearches: (summary.totalVectorSearches ?? 0) + (args.usedVector ? 1 : 0),
+        totalFullTextSearches: (summary.totalFullTextSearches ?? 0) + (args.usedFullText ? 1 : 0),
+        totalKeywordSearches: (summary.totalKeywordSearches ?? 0) + (args.usedKeyword ? 1 : 0),
+        totalSearchResults: (summary.totalSearchResults ?? 0) + resultCount,
+        totalSearchLatencyMs: (summary.totalSearchLatencyMs ?? 0) + latencyMs,
+        lastActivityAt: now,
+        updatedAt: now,
+      }),
+      ctx.db.patch(daily._id, {
+        analyticsSubjectId,
+        searches: (daily.searches ?? 0) + 1,
+        deepSearches: (daily.deepSearches ?? 0) + (args.isDeepSearch ? 1 : 0),
+        searchCacheHits: (daily.searchCacheHits ?? 0) + (args.cacheHit ? 1 : 0),
+        vectorSearches: (daily.vectorSearches ?? 0) + (args.usedVector ? 1 : 0),
+        fullTextSearches: (daily.fullTextSearches ?? 0) + (args.usedFullText ? 1 : 0),
+        keywordSearches: (daily.keywordSearches ?? 0) + (args.usedKeyword ? 1 : 0),
+        searchResults: (daily.searchResults ?? 0) + resultCount,
+        searchLatencyMs: (daily.searchLatencyMs ?? 0) + latencyMs,
+        updatedAt: now,
+      }),
+    ]);
     return null;
   },
 });
@@ -593,39 +595,6 @@ export const recordAiUsage = internalMutation({
     const audioSeconds = Math.max(0, Math.round(args.audioSeconds ?? 0));
     const costUsdMicros = Math.max(0, Math.floor(args.costUsdMicros ?? 0));
 
-    await ctx.db.insert("userAiUsageEvents", {
-      userId: args.userId,
-      analyticsSubjectId,
-      chatTurnId: args.chatTurnId,
-      chatMessageId: args.chatMessageId,
-      conversationId: args.conversationId,
-      occurredAt: now,
-      dayKey,
-      provider: args.provider,
-      model: args.model,
-      operation: args.operation,
-      feature: args.feature,
-      stage: args.stage,
-      visibility,
-      credentialSource: args.credentialSource,
-      billingOwner: args.billingOwner,
-      billedTo,
-      routingReason: args.routingReason,
-      status: args.status,
-      latencyMs: args.latencyMs,
-      inputTokens: inputTokens || undefined,
-      outputTokens: outputTokens || undefined,
-      totalTokens: totalTokens || undefined,
-      audioSeconds: audioSeconds || undefined,
-      costUsdMicros: costUsdMicros || undefined,
-      costAvailability: args.costAvailability,
-      priceDisplayMode: args.priceDisplayMode,
-      pricingOperation: args.pricingOperation,
-      pricingVersion: args.pricingVersion,
-      pricingReason: args.pricingReason,
-      metadata: args.metadata,
-    });
-
     const isMemora = billedTo === "memora";
     const summaryMemoraRequests = summary.totalAiMemoraRequests ?? 0;
     const summaryMemoraInputTokens = summary.totalAiMemoraInputTokens ?? 0;
@@ -638,31 +607,6 @@ export const recordAiUsage = internalMutation({
     const summaryByokAudioSeconds = summary.totalAiByokAudioSeconds ?? 0;
     const summaryByokCostUsdMicros = summary.totalAiByokCostUsdMicros ?? 0;
 
-    await ctx.db.patch(summary._id, {
-      analyticsSubjectId,
-      totalAiRequests: summary.totalAiRequests + 1,
-      totalAiErrors: summary.totalAiErrors + (args.status === "error" ? 1 : 0),
-      totalAiInputTokens: summary.totalAiInputTokens + inputTokens,
-      totalAiOutputTokens: summary.totalAiOutputTokens + outputTokens,
-      totalAiAudioSeconds: summary.totalAiAudioSeconds + audioSeconds,
-      totalAiCostUsdMicros: summary.totalAiCostUsdMicros + costUsdMicros,
-      totalAiMemoraRequests: summaryMemoraRequests + (isMemora ? 1 : 0),
-      totalAiMemoraInputTokens: summaryMemoraInputTokens + (isMemora ? inputTokens : 0),
-      totalAiMemoraOutputTokens: summaryMemoraOutputTokens + (isMemora ? outputTokens : 0),
-      totalAiMemoraAudioSeconds: summaryMemoraAudioSeconds + (isMemora ? audioSeconds : 0),
-      totalAiMemoraCostUsdMicros: summaryMemoraCostUsdMicros + (isMemora ? costUsdMicros : 0),
-      totalAiByokRequests: summaryByokRequests + (!isMemora ? 1 : 0),
-      totalAiByokInputTokens: summaryByokInputTokens + (!isMemora ? inputTokens : 0),
-      totalAiByokOutputTokens: summaryByokOutputTokens + (!isMemora ? outputTokens : 0),
-      totalAiByokAudioSeconds: summaryByokAudioSeconds + (!isMemora ? audioSeconds : 0),
-      totalAiByokCostUsdMicros: summaryByokCostUsdMicros + (!isMemora ? costUsdMicros : 0),
-      totalAiActions: (summary.totalAiActions ?? 0) + (visibility === "user_visible" ? 1 : 0),
-      totalBackgroundAiOperations:
-        (summary.totalBackgroundAiOperations ?? 0) + (visibility === "background" ? 1 : 0),
-      lastActivityAt: now,
-      updatedAt: now,
-    });
-
     const dailyMemoraRequests = daily.aiMemoraRequests ?? 0;
     const dailyMemoraInputTokens = daily.aiMemoraInputTokens ?? 0;
     const dailyMemoraOutputTokens = daily.aiMemoraOutputTokens ?? 0;
@@ -674,56 +618,113 @@ export const recordAiUsage = internalMutation({
     const dailyByokAudioSeconds = daily.aiByokAudioSeconds ?? 0;
     const dailyByokCostUsdMicros = daily.aiByokCostUsdMicros ?? 0;
 
-    await ctx.db.patch(daily._id, {
-      analyticsSubjectId,
-      aiRequests: daily.aiRequests + 1,
-      aiErrors: daily.aiErrors + (args.status === "error" ? 1 : 0),
-      aiInputTokens: daily.aiInputTokens + inputTokens,
-      aiOutputTokens: daily.aiOutputTokens + outputTokens,
-      aiAudioSeconds: daily.aiAudioSeconds + audioSeconds,
-      aiCostUsdMicros: daily.aiCostUsdMicros + costUsdMicros,
-      aiMemoraRequests: dailyMemoraRequests + (isMemora ? 1 : 0),
-      aiMemoraInputTokens: dailyMemoraInputTokens + (isMemora ? inputTokens : 0),
-      aiMemoraOutputTokens: dailyMemoraOutputTokens + (isMemora ? outputTokens : 0),
-      aiMemoraAudioSeconds: dailyMemoraAudioSeconds + (isMemora ? audioSeconds : 0),
-      aiMemoraCostUsdMicros: dailyMemoraCostUsdMicros + (isMemora ? costUsdMicros : 0),
-      aiByokRequests: dailyByokRequests + (!isMemora ? 1 : 0),
-      aiByokInputTokens: dailyByokInputTokens + (!isMemora ? inputTokens : 0),
-      aiByokOutputTokens: dailyByokOutputTokens + (!isMemora ? outputTokens : 0),
-      aiByokAudioSeconds: dailyByokAudioSeconds + (!isMemora ? audioSeconds : 0),
-      aiByokCostUsdMicros: dailyByokCostUsdMicros + (!isMemora ? costUsdMicros : 0),
-      aiActions: (daily.aiActions ?? 0) + (visibility === "user_visible" ? 1 : 0),
-      backgroundAiOperations:
-        (daily.backgroundAiOperations ?? 0) + (visibility === "background" ? 1 : 0),
-      updatedAt: now,
-    });
-
-    await ctx.db.patch(modelDaily._id, {
-      analyticsSubjectId,
-      stage: args.stage,
-      visibility,
-      credentialSource: args.credentialSource,
-      billingOwner: args.billingOwner,
-      billedTo,
-      requests: modelDaily.requests + 1,
-      errors: modelDaily.errors + (args.status === "error" ? 1 : 0),
-      inputTokens: modelDaily.inputTokens + inputTokens,
-      outputTokens: modelDaily.outputTokens + outputTokens,
-      totalTokens: modelDaily.totalTokens + totalTokens,
-      audioSeconds: modelDaily.audioSeconds + audioSeconds,
-      costUsdMicros: modelDaily.costUsdMicros + costUsdMicros,
-      memoraRequests: (modelDaily.memoraRequests ?? 0) + (isMemora ? 1 : 0),
-      memoraInputTokens: (modelDaily.memoraInputTokens ?? 0) + (isMemora ? inputTokens : 0),
-      memoraOutputTokens: (modelDaily.memoraOutputTokens ?? 0) + (isMemora ? outputTokens : 0),
-      memoraAudioSeconds: (modelDaily.memoraAudioSeconds ?? 0) + (isMemora ? audioSeconds : 0),
-      memoraCostUsdMicros: (modelDaily.memoraCostUsdMicros ?? 0) + (isMemora ? costUsdMicros : 0),
-      byokRequests: (modelDaily.byokRequests ?? 0) + (!isMemora ? 1 : 0),
-      byokInputTokens: (modelDaily.byokInputTokens ?? 0) + (!isMemora ? inputTokens : 0),
-      byokOutputTokens: (modelDaily.byokOutputTokens ?? 0) + (!isMemora ? outputTokens : 0),
-      byokAudioSeconds: (modelDaily.byokAudioSeconds ?? 0) + (!isMemora ? audioSeconds : 0),
-      byokCostUsdMicros: (modelDaily.byokCostUsdMicros ?? 0) + (!isMemora ? costUsdMicros : 0),
-      updatedAt: now,
-    });
+    await Promise.all([
+      ctx.db.insert("userAiUsageEvents", {
+        userId: args.userId,
+        analyticsSubjectId,
+        chatTurnId: args.chatTurnId,
+        chatMessageId: args.chatMessageId,
+        conversationId: args.conversationId,
+        occurredAt: now,
+        dayKey,
+        provider: args.provider,
+        model: args.model,
+        operation: args.operation,
+        feature: args.feature,
+        stage: args.stage,
+        visibility,
+        credentialSource: args.credentialSource,
+        billingOwner: args.billingOwner,
+        billedTo,
+        routingReason: args.routingReason,
+        status: args.status,
+        latencyMs: args.latencyMs,
+        inputTokens: inputTokens || undefined,
+        outputTokens: outputTokens || undefined,
+        totalTokens: totalTokens || undefined,
+        audioSeconds: audioSeconds || undefined,
+        costUsdMicros: costUsdMicros || undefined,
+        costAvailability: args.costAvailability,
+        priceDisplayMode: args.priceDisplayMode,
+        pricingOperation: args.pricingOperation,
+        pricingVersion: args.pricingVersion,
+        pricingReason: args.pricingReason,
+        metadata: args.metadata,
+      }),
+      ctx.db.patch(summary._id, {
+        analyticsSubjectId,
+        totalAiRequests: summary.totalAiRequests + 1,
+        totalAiErrors: summary.totalAiErrors + (args.status === "error" ? 1 : 0),
+        totalAiInputTokens: summary.totalAiInputTokens + inputTokens,
+        totalAiOutputTokens: summary.totalAiOutputTokens + outputTokens,
+        totalAiAudioSeconds: summary.totalAiAudioSeconds + audioSeconds,
+        totalAiCostUsdMicros: summary.totalAiCostUsdMicros + costUsdMicros,
+        totalAiMemoraRequests: summaryMemoraRequests + (isMemora ? 1 : 0),
+        totalAiMemoraInputTokens: summaryMemoraInputTokens + (isMemora ? inputTokens : 0),
+        totalAiMemoraOutputTokens: summaryMemoraOutputTokens + (isMemora ? outputTokens : 0),
+        totalAiMemoraAudioSeconds: summaryMemoraAudioSeconds + (isMemora ? audioSeconds : 0),
+        totalAiMemoraCostUsdMicros: summaryMemoraCostUsdMicros + (isMemora ? costUsdMicros : 0),
+        totalAiByokRequests: summaryByokRequests + (!isMemora ? 1 : 0),
+        totalAiByokInputTokens: summaryByokInputTokens + (!isMemora ? inputTokens : 0),
+        totalAiByokOutputTokens: summaryByokOutputTokens + (!isMemora ? outputTokens : 0),
+        totalAiByokAudioSeconds: summaryByokAudioSeconds + (!isMemora ? audioSeconds : 0),
+        totalAiByokCostUsdMicros: summaryByokCostUsdMicros + (!isMemora ? costUsdMicros : 0),
+        totalAiActions: (summary.totalAiActions ?? 0) + (visibility === "user_visible" ? 1 : 0),
+        totalBackgroundAiOperations:
+          (summary.totalBackgroundAiOperations ?? 0) + (visibility === "background" ? 1 : 0),
+        lastActivityAt: now,
+        updatedAt: now,
+      }),
+      ctx.db.patch(daily._id, {
+        analyticsSubjectId,
+        aiRequests: daily.aiRequests + 1,
+        aiErrors: daily.aiErrors + (args.status === "error" ? 1 : 0),
+        aiInputTokens: daily.aiInputTokens + inputTokens,
+        aiOutputTokens: daily.aiOutputTokens + outputTokens,
+        aiAudioSeconds: daily.aiAudioSeconds + audioSeconds,
+        aiCostUsdMicros: daily.aiCostUsdMicros + costUsdMicros,
+        aiMemoraRequests: dailyMemoraRequests + (isMemora ? 1 : 0),
+        aiMemoraInputTokens: dailyMemoraInputTokens + (isMemora ? inputTokens : 0),
+        aiMemoraOutputTokens: dailyMemoraOutputTokens + (isMemora ? outputTokens : 0),
+        aiMemoraAudioSeconds: dailyMemoraAudioSeconds + (isMemora ? audioSeconds : 0),
+        aiMemoraCostUsdMicros: dailyMemoraCostUsdMicros + (isMemora ? costUsdMicros : 0),
+        aiByokRequests: dailyByokRequests + (!isMemora ? 1 : 0),
+        aiByokInputTokens: dailyByokInputTokens + (!isMemora ? inputTokens : 0),
+        aiByokOutputTokens: dailyByokOutputTokens + (!isMemora ? outputTokens : 0),
+        aiByokAudioSeconds: dailyByokAudioSeconds + (!isMemora ? audioSeconds : 0),
+        aiByokCostUsdMicros: dailyByokCostUsdMicros + (!isMemora ? costUsdMicros : 0),
+        aiActions: (daily.aiActions ?? 0) + (visibility === "user_visible" ? 1 : 0),
+        backgroundAiOperations:
+          (daily.backgroundAiOperations ?? 0) + (visibility === "background" ? 1 : 0),
+        updatedAt: now,
+      }),
+      ctx.db.patch(modelDaily._id, {
+        analyticsSubjectId,
+        stage: args.stage,
+        visibility,
+        credentialSource: args.credentialSource,
+        billingOwner: args.billingOwner,
+        billedTo,
+        requests: modelDaily.requests + 1,
+        errors: modelDaily.errors + (args.status === "error" ? 1 : 0),
+        inputTokens: modelDaily.inputTokens + inputTokens,
+        outputTokens: modelDaily.outputTokens + outputTokens,
+        totalTokens: modelDaily.totalTokens + totalTokens,
+        audioSeconds: modelDaily.audioSeconds + audioSeconds,
+        costUsdMicros: modelDaily.costUsdMicros + costUsdMicros,
+        memoraRequests: (modelDaily.memoraRequests ?? 0) + (isMemora ? 1 : 0),
+        memoraInputTokens: (modelDaily.memoraInputTokens ?? 0) + (isMemora ? inputTokens : 0),
+        memoraOutputTokens: (modelDaily.memoraOutputTokens ?? 0) + (isMemora ? outputTokens : 0),
+        memoraAudioSeconds: (modelDaily.memoraAudioSeconds ?? 0) + (isMemora ? audioSeconds : 0),
+        memoraCostUsdMicros: (modelDaily.memoraCostUsdMicros ?? 0) + (isMemora ? costUsdMicros : 0),
+        byokRequests: (modelDaily.byokRequests ?? 0) + (!isMemora ? 1 : 0),
+        byokInputTokens: (modelDaily.byokInputTokens ?? 0) + (!isMemora ? inputTokens : 0),
+        byokOutputTokens: (modelDaily.byokOutputTokens ?? 0) + (!isMemora ? outputTokens : 0),
+        byokAudioSeconds: (modelDaily.byokAudioSeconds ?? 0) + (!isMemora ? audioSeconds : 0),
+        byokCostUsdMicros: (modelDaily.byokCostUsdMicros ?? 0) + (!isMemora ? costUsdMicros : 0),
+        updatedAt: now,
+      }),
+    ]);
     return null;
   },
 });
@@ -796,10 +797,6 @@ export const overview = query({
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .order("desc")
       .take(366);
-    const diaryEntries = await ctx.db
-      .query("diaryEntries")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .take(1000);
     const activeDaySet = new Set(
       memoryDaily.filter((row) => row.count > 0).map((row) => row.dayKey),
     );
@@ -896,7 +893,7 @@ export const overview = query({
       totals: {
         totalMemories: memoryStats?.totalMemories ?? 0,
         totalReminders: memoryStats?.totalReminders ?? 0,
-        totalDiaryEntries: diaryEntries.length,
+        totalDiaryEntries: summary?.totalDiaryEntries ?? 0,
         totalAiRequests: summary?.totalAiRequests ?? 0,
         totalAiMemoraRequests: summary?.totalAiMemoraRequests ?? 0,
         totalAiByokRequests: summary?.totalAiByokRequests ?? 0,

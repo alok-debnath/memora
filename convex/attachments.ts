@@ -16,8 +16,9 @@ export const getAttachmentsForMemory = query({
     const user = await resolveUser(ctx, args.token);
     return ctx.db
       .query("memoryAttachments")
-      .withIndex("by_memory", (q) => q.eq("memoryId", args.memoryId))
-      .filter((q) => q.eq(q.field("userId"), user._id))
+      .withIndex("by_memory_and_user_and_isDeleted", (q) =>
+        q.eq("memoryId", args.memoryId).eq("userId", user._id).eq("isDeleted", false),
+      )
       .take(50);
   },
 });
@@ -39,8 +40,9 @@ export const getAttachmentCountsForMemories = query({
       args.memoryIds.map(async (memoryId) => {
         const rows = await ctx.db
           .query("memoryAttachments")
-          .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
-          .filter((q) => q.eq(q.field("userId"), user._id))
+          .withIndex("by_memory_and_user_and_isDeleted", (q) =>
+            q.eq("memoryId", memoryId).eq("userId", user._id).eq("isDeleted", false),
+          )
           .take(1);
         if (rows.length > 0) counts[memoryId] = rows.length;
       }),
@@ -58,8 +60,9 @@ export const getAttachmentsForMessage = query({
     const user = await resolveUser(ctx, args.token);
     return ctx.db
       .query("memoryAttachments")
-      .withIndex("by_chat_message", (q) => q.eq("chatMessageId", args.chatMessageId))
-      .filter((q) => q.eq(q.field("userId"), user._id))
+      .withIndex("by_chat_message_and_user_and_isDeleted", (q) =>
+        q.eq("chatMessageId", args.chatMessageId).eq("userId", user._id).eq("isDeleted", false),
+      )
       .take(20);
   },
 });
@@ -72,16 +75,22 @@ export const listAttachmentsForUser = query({
   },
   handler: async (ctx, args) => {
     const user = await resolveUser(ctx, args.token);
-    const base = ctx.db
-      .query("memoryAttachments")
-      .withIndex("by_user_and_createdAt", (q) => q.eq("userId", user._id))
-      .order("desc");
-
-    const active = base.filter((q) => q.neq(q.field("isDeleted"), true));
     if (args.type) {
-      return active.filter((q) => q.eq(q.field("type"), args.type!)).paginate(args.paginationOpts);
+      return await ctx.db
+        .query("memoryAttachments")
+        .withIndex("by_user_and_isDeleted_and_type_and_createdAt", (q) =>
+          q.eq("userId", user._id).eq("isDeleted", false).eq("type", args.type!),
+        )
+        .order("desc")
+        .paginate(args.paginationOpts);
     }
-    return active.paginate(args.paginationOpts);
+    return await ctx.db
+      .query("memoryAttachments")
+      .withIndex("by_user_and_isDeleted_and_createdAt", (q) =>
+        q.eq("userId", user._id).eq("isDeleted", false),
+      )
+      .order("desc")
+      .paginate(args.paginationOpts);
   },
 });
 

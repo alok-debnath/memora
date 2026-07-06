@@ -1082,7 +1082,7 @@ export const restore = mutation({
       .withIndex("by_memory", (q) => q.eq("memoryId", args.id))
       .filter((q) => q.eq(q.field("isDeleted"), true))
       .collect();
-    await Promise.all(deletedAttachments.map((a) => ctx.db.patch(a._id, { isDeleted: undefined })));
+    await Promise.all(deletedAttachments.map((a) => ctx.db.patch(a._id, { isDeleted: false })));
     if (deletedAttachments.length > 0) {
       await ctx.runMutation(internal.analytics.recordStorageDelta, {
         userId,

@@ -114,6 +114,20 @@ export const runAnalyticsBackfill = migrations.runner([
   internal.migrations.backfillUserAnalyticsModelDaily,
 ]);
 
+export const backfillAttachmentDeletionFlag = migrations.define({
+  table: "memoryAttachments",
+  batchSize: 100,
+  migrateOne: async (_ctx, attachment) => {
+    if (attachment.isDeleted === undefined) {
+      return { isDeleted: false };
+    }
+  },
+});
+
+export const runAttachmentDeletionFlagBackfill = migrations.runner([
+  internal.migrations.backfillAttachmentDeletionFlag,
+]);
+
 async function repairTopicMetadataForUser(
   ctx: Pick<ActionCtx, "runQuery" | "runMutation">,
   userId: Id<"users">,
