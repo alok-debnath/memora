@@ -3,6 +3,7 @@ import { appRouter as router } from "@/lib/appRouter";
 import { YStack, XStack, Text } from "tamagui";
 
 import { AuthShell } from "@/components/auth/AuthShell";
+import { PasswordVisibilityButton } from "@/components/auth/PasswordVisibilityButton";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppTextField } from "@/components/ui/AppTextField";
 import { InlineNotice } from "@/components/ui/InlineNotice";
@@ -50,10 +51,10 @@ export default function SignupScreen() {
   return (
     <AuthShell
       title="Create your account"
-      subtitle="Build your private memory studio and keep every capture in one place."
+      subtitle="Start with a private workspace for memories, notes, and links."
       accentIcon="user-plus"
     >
-      <YStack gap={18}>
+      <YStack gap={16}>
         {error ? <InlineNotice tone="error" icon="alert-triangle" description={error} /> : null}
 
         <AppTextField
@@ -89,14 +90,10 @@ export default function SignupScreen() {
           textContentType="newPassword"
           returnKeyType="next"
           accessory={
-            <PressableScale
+            <PasswordVisibilityButton
+              visible={showPassword}
               onPress={() => setShowPassword((value) => !value)}
-              style={{ paddingHorizontal: 10, paddingVertical: 8 }}
-            >
-              <Text fontSize={13} fontFamily={FontFamily.semiBold} color={theme.colorMuted.val}>
-                {showPassword ? "Hide" : "Show"}
-              </Text>
-            </PressableScale>
+            />
           }
         />
 
@@ -110,34 +107,30 @@ export default function SignupScreen() {
           textContentType="newPassword"
           returnKeyType="done"
           accessory={
-            <PressableScale
+            <PasswordVisibilityButton
+              visible={showConfirmPassword}
               onPress={() => setShowConfirmPassword((value) => !value)}
-              style={{ paddingHorizontal: 10, paddingVertical: 8 }}
-            >
-              <Text fontSize={13} fontFamily={FontFamily.semiBold} color={theme.colorMuted.val}>
-                {showConfirmPassword ? "Hide" : "Show"}
-              </Text>
-            </PressableScale>
+            />
           }
         />
 
         <AppButton
-          title="Create Account"
+          title="Create account"
           onPress={handleSignup}
           loading={isLoading}
           icon="user-plus"
-          variant="gradient"
+          variant="primary"
           fullWidth
           style={{ marginTop: 2 }}
         />
 
-        <XStack justifyContent="center" alignItems="center" gap={6} marginTop={4}>
+        <XStack justifyContent="center" alignItems="center" gap={6} marginTop={4} flexWrap="wrap">
           <Text fontSize={14} fontFamily={FontFamily.regular} color={theme.colorMuted.val}>
             Already have an account?
           </Text>
           <PressableScale onPress={() => router.back()}>
             <Text fontSize={14} fontFamily={FontFamily.semiBold} color={theme.primary.val}>
-              Sign In
+              Sign in
             </Text>
           </PressableScale>
         </XStack>

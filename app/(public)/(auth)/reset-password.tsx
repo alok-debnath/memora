@@ -6,12 +6,12 @@ import { View } from "react-native";
 import { YStack, Text } from "tamagui";
 
 import { AuthShell } from "@/components/auth/AuthShell";
+import { PasswordVisibilityButton } from "@/components/auth/PasswordVisibilityButton";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppTextField } from "@/components/ui/AppTextField";
 import { InlineNotice } from "@/components/ui/InlineNotice";
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { FontFamily } from "@/constants/fonts";
-import { PressableScale } from "@/components/ui/PressableScale";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { authClient } from "@/lib/auth-client";
 
@@ -61,15 +61,15 @@ export default function ResetPasswordScreen() {
   return (
     <AuthShell
       title="Choose a new password"
-      subtitle="Finish recovering your account with a fresh password."
+      subtitle="Set a fresh password for your account."
       accentIcon="shield"
     >
-      <YStack gap={18}>
+      <YStack gap={16}>
         <AppButton
           title="Back"
           onPress={() => router.back()}
           icon="arrow-left"
-          variant="secondary"
+          variant="ghost"
           size="sm"
           tone="neutral"
         />
@@ -93,10 +93,10 @@ export default function ResetPasswordScreen() {
               You can now sign in with your new password.
             </Text>
             <AppButton
-              title="Sign In"
+              title="Sign in"
               onPress={() => router.replace("/(public)/(auth)/login")}
               icon="log-in"
-              variant="gradient"
+              variant="primary"
               fullWidth
             />
           </YStack>
@@ -112,14 +112,10 @@ export default function ResetPasswordScreen() {
               textContentType="newPassword"
               returnKeyType="next"
               accessory={
-                <PressableScale
+                <PasswordVisibilityButton
+                  visible={showNewPassword}
                   onPress={() => setShowNewPassword((value) => !value)}
-                  style={{ paddingHorizontal: 10, paddingVertical: 8 }}
-                >
-                  <Text fontSize={13} fontFamily={FontFamily.semiBold} color={theme.colorMuted.val}>
-                    {showNewPassword ? "Hide" : "Show"}
-                  </Text>
-                </PressableScale>
+                />
               }
             />
 
@@ -133,29 +129,25 @@ export default function ResetPasswordScreen() {
               textContentType="newPassword"
               returnKeyType="done"
               accessory={
-                <PressableScale
+                <PasswordVisibilityButton
+                  visible={showConfirmPassword}
                   onPress={() => setShowConfirmPassword((value) => !value)}
-                  style={{ paddingHorizontal: 10, paddingVertical: 8 }}
-                >
-                  <Text fontSize={13} fontFamily={FontFamily.semiBold} color={theme.colorMuted.val}>
-                    {showConfirmPassword ? "Hide" : "Show"}
-                  </Text>
-                </PressableScale>
+                />
               }
             />
 
             <AppButton
-              title={loading ? "Resetting..." : "Reset Password"}
+              title={loading ? "Resetting..." : "Reset password"}
               onPress={handleReset}
               icon="check"
               loading={loading}
               disabled={!newPassword.trim()}
-              variant="gradient"
+              variant="primary"
               fullWidth
             />
 
             <AppButton
-              title="Back to Login"
+              title="Back to login"
               onPress={() => router.replace("/(public)/(auth)/login")}
               variant="ghost"
               size="sm"

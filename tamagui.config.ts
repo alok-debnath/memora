@@ -33,7 +33,7 @@ const animations = createAnimations({
   },
 });
 
-const interFont = createFont({
+const appFont = createFont({
   family: FontFamily.regular,
   size: {
     1: 11,
@@ -74,18 +74,19 @@ const interFont = createFont({
     3: 0,
     4: 0,
     true: 0,
-    5: -0.2,
-    6: -0.3,
-    7: -0.5,
-    8: -0.5,
-    9: -1,
-    10: -1,
+    5: 0,
+    6: 0,
+    7: 0,
+    8: 0,
+    9: 0,
+    10: 0,
   },
   face: {
     400: { normal: FontFamily.regular },
     500: { normal: FontFamily.medium },
     600: { normal: FontFamily.semiBold },
     700: { normal: FontFamily.bold },
+    800: { normal: FontFamily.bold },
   },
 });
 
@@ -104,8 +105,8 @@ export function createAppTamaguiConfig(themes?: {
     themeClassNameOnRoot: true,
     fonts: {
       ...defaultConfig.fonts,
-      heading: interFont,
-      body: interFont,
+      heading: appFont,
+      body: appFont,
     },
     themes: themes ?? {
       light: lightTheme,

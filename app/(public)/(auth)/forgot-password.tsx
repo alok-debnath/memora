@@ -49,15 +49,15 @@ export default function ForgotPasswordScreen() {
   return (
     <AuthShell
       title="Reset your password"
-      subtitle="We’ll send a secure link so you can get back into Memora."
+      subtitle="Enter your email and we’ll send a reset link."
       accentIcon="key"
     >
-      <YStack gap={18}>
+      <YStack gap={16}>
         <AppButton
           title="Back"
           onPress={() => router.back()}
           icon="arrow-left"
-          variant="secondary"
+          variant="ghost"
           size="sm"
           tone="neutral"
         />
@@ -81,10 +81,10 @@ export default function ForgotPasswordScreen() {
               If an account exists with {email}, you’ll receive instructions to reset your password.
             </Text>
             <AppButton
-              title="Back to Login"
+              title="Back to login"
               onPress={() => router.replace("/(public)/(auth)/login")}
               icon="arrow-left"
-              variant="gradient"
+              variant="primary"
               fullWidth
             />
           </YStack>
@@ -103,17 +103,17 @@ export default function ForgotPasswordScreen() {
             />
 
             <AppButton
-              title={loading ? "Sending..." : "Send Reset Link"}
+              title={loading ? "Sending..." : "Send reset link"}
               onPress={handleSubmit}
               icon="send"
               loading={loading}
               disabled={!email.trim()}
-              variant="gradient"
+              variant="primary"
               fullWidth
             />
 
             <AppButton
-              title="Back to Login"
+              title="Back to login"
               onPress={() => router.replace("/(public)/(auth)/login")}
               variant="ghost"
               size="sm"

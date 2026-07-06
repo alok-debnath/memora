@@ -3,6 +3,7 @@ import { appRouter as router } from "@/lib/appRouter";
 import { YStack, XStack, Text } from "tamagui";
 
 import { AuthShell } from "@/components/auth/AuthShell";
+import { PasswordVisibilityButton } from "@/components/auth/PasswordVisibilityButton";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppTextField } from "@/components/ui/AppTextField";
 import { InlineNotice } from "@/components/ui/InlineNotice";
@@ -37,8 +38,12 @@ export default function LoginScreen() {
   };
 
   return (
-    <AuthShell title="Welcome back" subtitle="Sign in to continue." accentIcon="zap">
-      <YStack gap={18}>
+    <AuthShell
+      title="Welcome back"
+      subtitle="Sign in and continue where you left off."
+      accentIcon="log-in"
+    >
+      <YStack gap={16}>
         {error ? <InlineNotice tone="error" icon="alert-triangle" description={error} /> : null}
 
         <AppTextField
@@ -64,23 +69,19 @@ export default function LoginScreen() {
           textContentType="password"
           returnKeyType="go"
           accessory={
-            <PressableScale
+            <PasswordVisibilityButton
+              visible={showPassword}
               onPress={() => setShowPassword((value) => !value)}
-              style={{ paddingHorizontal: 10, paddingVertical: 8 }}
-            >
-              <Text fontSize={13} fontFamily={FontFamily.semiBold} color={theme.colorMuted.val}>
-                {showPassword ? "Hide" : "Show"}
-              </Text>
-            </PressableScale>
+            />
           }
         />
 
         <AppButton
-          title="Sign In"
+          title="Sign in"
           onPress={handleLogin}
           loading={isLoading}
           icon="log-in"
-          variant="gradient"
+          variant="primary"
           fullWidth
           style={{ marginTop: 2 }}
         />
@@ -91,13 +92,13 @@ export default function LoginScreen() {
               Forgot password?
             </Text>
           </PressableScale>
-          <XStack alignItems="center" gap={6}>
+          <XStack alignItems="center" gap={6} flexShrink={1}>
             <Text fontSize={14} fontFamily={FontFamily.regular} color={theme.colorMuted.val}>
               New here?
             </Text>
             <PressableScale onPress={() => router.push("/(public)/(auth)/signup")}>
               <Text fontSize={14} fontFamily={FontFamily.semiBold} color={theme.primary.val}>
-                Sign Up
+                Sign up
               </Text>
             </PressableScale>
           </XStack>
