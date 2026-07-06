@@ -47,6 +47,7 @@ export function useAuthState(): AuthContextValue {
   const [onboardingLoaded, setOnboardingLoaded] = useState(false);
   const [failedSyncSessionId, setFailedSyncSessionId] = useState<string | null>(null);
   const syncedSessionRef = useRef<string | null>(null);
+  const lastUserRef = useRef<{ sessionId: string; user: AuthUser } | null>(null);
 
   useEffect(() => {
     getHasSeenOnboarding()
@@ -60,6 +61,16 @@ export function useAuthState(): AuthContextValue {
     api.auth.me,
     convexAuth.isAuthenticated ? { token: "authenticated" } : "skip",
   );
+
+  useEffect(() => {
+    if (!convexAuth.isAuthenticated || !sessionId || meResult === null) {
+      lastUserRef.current = null;
+      return;
+    }
+    if (meResult !== undefined) {
+      lastUserRef.current = { sessionId, user: meResult as AuthUser };
+    }
+  }, [convexAuth.isAuthenticated, meResult, sessionId]);
 
   useEffect(() => {
     if (!convexAuth.isAuthenticated || !sessionId) {
@@ -120,16 +131,22 @@ export function useAuthState(): AuthContextValue {
 
   const needsInitialProfileSync =
     convexAuth.isAuthenticated && meResult === null && failedSyncSessionId !== sessionId;
+  const lastUser =
+    sessionId && lastUserRef.current?.sessionId === sessionId ? lastUserRef.current.user : null;
+  const user = convexAuth.isAuthenticated
+    ? ((meResult as AuthUser | null | undefined) ?? lastUser)
+    : null;
 
   return {
-    user: (meResult as AuthUser | null | undefined) ?? null,
+    user,
     token: convexAuth.isAuthenticated ? "authenticated" : null,
     isOnboardingLoading: !onboardingLoaded,
     isLoading:
       !onboardingLoaded ||
       sessionPending ||
       convexAuth.isLoading ||
-      (convexAuth.isAuthenticated && (meResult === undefined || needsInitialProfileSync)),
+      (convexAuth.isAuthenticated && !lastUser && meResult === undefined) ||
+      needsInitialProfileSync,
     hasSeenOnboarding,
     login,
     signup,

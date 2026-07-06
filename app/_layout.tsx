@@ -9,7 +9,7 @@ import {
   DMSans_700Bold,
   useFonts,
 } from "@expo-google-fonts/dm-sans";
-import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { ConvexReactClient } from "convex/react";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
@@ -35,6 +35,7 @@ import { AppThemeProvider } from "@/hooks/useAppTheme";
 import { AppToastProvider, AppToastRenderer } from "@/components/ui/toast";
 import { AppConfirmProvider } from "@/components/ui/confirm/AppConfirmProvider";
 import { BackdropBlurProvider, TopOverlayProvider } from "@/components/ui/BackdropBlurProvider";
+import type { AuthContextValue } from "@/hooks/useAuth";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -42,6 +43,34 @@ const CONVEX_URL = process.env.EXPO_PUBLIC_CONVEX_URL || "https://placeholder.co
 const convex = new ConvexReactClient(CONVEX_URL, {
   unsavedChangesWarning: false,
 });
+
+type RootAppProvidersProps = {
+  auth: AuthContextValue;
+  children: React.ReactNode;
+  defaultTheme: "light" | "dark";
+  tamaguiConfig: ReturnType<typeof createAppTamaguiConfig>;
+};
+
+function RootAppProviders({ auth, children, defaultTheme, tamaguiConfig }: RootAppProvidersProps) {
+  return (
+    <TamaguiProvider config={tamaguiConfig} defaultTheme={defaultTheme}>
+      <AppThemeProvider>
+        <AppConfirmProvider>
+          <TopOverlayProvider>
+            <BottomSheetModalProvider>
+              <BackdropBlurProvider>
+                <AuthContext.Provider value={auth}>
+                  {children}
+                  <AppToastRenderer />
+                </AuthContext.Provider>
+              </BackdropBlurProvider>
+            </BottomSheetModalProvider>
+          </TopOverlayProvider>
+        </AppConfirmProvider>
+      </AppThemeProvider>
+    </TamaguiProvider>
+  );
+}
 
 function RootLayoutNav() {
   const systemMode = useColorScheme() === "dark" ? "dark" : "light";
@@ -75,7 +104,7 @@ function RootLayoutNav() {
 
   useEffect(() => {
     loadTheme();
-  }, []);
+  }, [loadTheme]);
 
   useEffect(() => {
     setSystemMode(systemMode);
@@ -91,54 +120,28 @@ function RootLayoutNav() {
 
   if (!auth.hasSeenOnboarding) {
     return (
-      <TamaguiProvider config={tamaguiConfig} defaultTheme={resolvedMode}>
-        <AppThemeProvider>
-          <AppConfirmProvider>
-            <TopOverlayProvider>
-              <BottomSheetModalProvider>
-                <BackdropBlurProvider>
-                  <AuthContext.Provider value={auth}>
-                    <OnboardingScreen />
-                    <AppToastRenderer />
-                  </AuthContext.Provider>
-                </BackdropBlurProvider>
-              </BottomSheetModalProvider>
-            </TopOverlayProvider>
-          </AppConfirmProvider>
-        </AppThemeProvider>
-      </TamaguiProvider>
+      <RootAppProviders auth={auth} defaultTheme={resolvedMode} tamaguiConfig={tamaguiConfig}>
+        <OnboardingScreen />
+      </RootAppProviders>
     );
   }
 
   return (
-    <TamaguiProvider config={tamaguiConfig} defaultTheme={resolvedMode}>
-      <AppThemeProvider>
-        <AppConfirmProvider>
-          <TopOverlayProvider>
-            <BottomSheetModalProvider>
-              <BackdropBlurProvider>
-                <AuthContext.Provider value={auth}>
-                  <StatusBar style={resolvedMode === "dark" ? "light" : "dark"} />
-                  <Stack
-                    screenOptions={{
-                      headerShown: false,
-                      freezeOnBlur: true,
-                      contentStyle: {
-                        backgroundColor: rootTheme.background,
-                      },
-                    }}
-                  >
-                    <Stack.Screen name="(public)" options={{ headerShown: false }} />
-                    <Stack.Screen name="(protected)" options={{ headerShown: false }} />
-                  </Stack>
-                  <AppToastRenderer />
-                </AuthContext.Provider>
-              </BackdropBlurProvider>
-            </BottomSheetModalProvider>
-          </TopOverlayProvider>
-        </AppConfirmProvider>
-      </AppThemeProvider>
-    </TamaguiProvider>
+    <RootAppProviders auth={auth} defaultTheme={resolvedMode} tamaguiConfig={tamaguiConfig}>
+      <StatusBar style={resolvedMode === "dark" ? "light" : "dark"} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          freezeOnBlur: true,
+          contentStyle: {
+            backgroundColor: rootTheme.background,
+          },
+        }}
+      >
+        <Stack.Screen name="(public)" options={{ headerShown: false }} />
+        <Stack.Screen name="(protected)" options={{ headerShown: false }} />
+      </Stack>
+    </RootAppProviders>
   );
 }
 
@@ -159,19 +162,17 @@ export default function RootLayout() {
           logDevError("ErrorBoundary", error, { stackTrace });
         }}
       >
-        <ConvexProvider client={convex}>
-          <ConvexBetterAuthProvider client={convex} authClient={authClient}>
-            <GestureHandlerRootView style={{ flex: 1 }}>
-              <PortalProvider>
-                <KeyboardProvider>
-                  <AppToastProvider>
-                    <RootLayoutNav />
-                  </AppToastProvider>
-                </KeyboardProvider>
-              </PortalProvider>
-            </GestureHandlerRootView>
-          </ConvexBetterAuthProvider>
-        </ConvexProvider>
+        <ConvexBetterAuthProvider client={convex} authClient={authClient}>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <PortalProvider>
+              <KeyboardProvider>
+                <AppToastProvider>
+                  <RootLayoutNav />
+                </AppToastProvider>
+              </KeyboardProvider>
+            </PortalProvider>
+          </GestureHandlerRootView>
+        </ConvexBetterAuthProvider>
       </ErrorBoundary>
     </SafeAreaProvider>
   );
