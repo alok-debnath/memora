@@ -3,12 +3,11 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { ChatBubble } from "./ChatBubble";
 import { ThinkingIndicator, ToolProgressBubble } from "./ToolProgressBubble";
-import type { AIChatDisplayItem, CardFlow, ChatMsg, DeletionItem } from "./types";
+import type { AIChatDisplayItem, CardFlow, CardRef, ChatMsg, DeletionItem } from "./types";
 import {
   createMarkdownStyles,
+  extractAssistantPresentation,
   extractSpeakableText,
-  parseCardIds,
-  parseDeletionProposal,
 } from "./rendererUtils";
 
 type RenderMessageOptions = {
@@ -47,35 +46,22 @@ export function useAIChatMessageRenderer({
       if (!isChatMessage(item)) return null;
 
       let deletionItems: DeletionItem[] | undefined;
-      let cardIds: Id<"memories">[] | undefined;
+      let cards: CardRef[] | undefined;
       let displayMsg = item;
       let cardIsCached: boolean | undefined;
       let cardTurns: number | undefined;
       let cardFlow: CardFlow | undefined;
 
       if (item.role !== "user") {
-        let content = item.content ?? "";
-        const deletionProposal = parseDeletionProposal(content);
-        if (deletionProposal) {
-          deletionItems = deletionProposal.items;
-          content = deletionProposal.cleanText;
-        }
-
-        const parsedCards = parseCardIds(content);
-        if (parsedCards) {
-          cardIds = parsedCards.ids;
-          cardIsCached = parsedCards.isCached;
-          cardTurns = parsedCards.turns;
-          cardFlow = parsedCards.flow;
-          content = parsedCards.cleanText;
-        }
-
+        const presentation = extractAssistantPresentation(item);
+        deletionItems = presentation.deletionItems;
+        cards = presentation.cards.length > 0 ? presentation.cards : undefined;
+        cardIsCached = presentation.isCached;
+        cardTurns = presentation.turns;
+        cardFlow = presentation.flow;
         displayMsg = {
           ...displayMsg,
-          content: content
-            .replace(/<!--MEMORA_SEARCH_RESULTS:[\s\S]*?-->/g, "")
-            .replace(/<!--[\s\S]*?-->/g, "")
-            .trim(),
+          content: presentation.cleanText,
         };
       }
 
@@ -89,7 +75,7 @@ export function useAIChatMessageRenderer({
           onCopy={copyMessage}
           token={token}
           deletionItems={deletionItems}
-          cardIds={cardIds}
+          cards={cards}
           cardIsCached={cardIsCached}
           cardTurns={cardTurns}
           cardFlow={cardFlow}

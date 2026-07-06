@@ -14,22 +14,49 @@ export const list = query({
     const { userId } = await resolveUser(ctx, args.token);
     const limit = args.limit ? Math.min(args.limit, 100) : 100;
 
-    if (args.conversationId) {
-      return await ctx.db
-        .query("chatMessages")
-        .withIndex("by_user_conversation", (q) =>
-          q.eq("userId", userId).eq("conversationId", args.conversationId),
-        )
-        .order("asc")
-        .take(limit);
-    }
-
-    return await ctx.db
-      .query("chatMessages")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .order("asc")
-      .take(limit);
+    // Take the NEWEST `limit` messages (desc), then reverse to ascending for
+    // display. An asc take would return the oldest N and silently drop new
+    // messages once history exceeds the limit.
+    const rows = args.conversationId
+      ? await ctx.db
+          .query("chatMessages")
+          .withIndex("by_user_conversation", (q) =>
+            q.eq("userId", userId).eq("conversationId", args.conversationId),
+          )
+          .order("desc")
+          .take(limit)
+      : await ctx.db
+          .query("chatMessages")
+          .withIndex("by_user", (q) => q.eq("userId", userId))
+          .order("desc")
+          .take(limit);
+    return rows.reverse();
   },
+});
+
+/** Mirrors the chatMessages.meta validator in schema.ts. */
+export const chatMessageMetaValidator = v.object({
+  cards: v.optional(
+    v.array(
+      v.object({
+        table: v.union(v.literal("memories"), v.literal("diaryEntries")),
+        id: v.string(),
+      }),
+    ),
+  ),
+  deletionProposal: v.optional(
+    v.array(
+      v.object({
+        id: v.string(),
+        title: v.string(),
+        content: v.string(),
+        entry_kind: v.string(),
+      }),
+    ),
+  ),
+  isCached: v.optional(v.boolean()),
+  turns: v.optional(v.number()),
+  flow: v.optional(v.any()),
 });
 
 export const send = internalMutation({
@@ -38,6 +65,8 @@ export const send = internalMutation({
     role: v.union(v.literal("user"), v.literal("assistant")),
     conversationId: v.optional(v.string()),
     content: v.optional(v.string()),
+    meta: v.optional(chatMessageMetaValidator),
+    streaming: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const messageId = await ctx.db.insert("chatMessages", {
@@ -45,6 +74,8 @@ export const send = internalMutation({
       role: args.role,
       content: args.content,
       conversationId: args.conversationId,
+      ...(args.meta !== undefined ? { meta: args.meta } : {}),
+      ...(args.streaming !== undefined ? { streaming: args.streaming } : {}),
     });
     await ctx.runMutation(internal.analytics.recordProductEvent, {
       userId: args.userId,
@@ -215,15 +246,8 @@ export const deepSearch = action({
       });
       if (!original?.content) return { count: fresh.results.length };
 
-      // Replace or append the hidden MEMORA_CARD_IDS block with fresh data
-      const marker = "<!--MEMORA_CARD_IDS:";
-      const endMarker = "-->";
-      const startIdx = original.content.indexOf(marker);
-      const endIdx =
-        startIdx !== -1 ? original.content.indexOf(endMarker, startIdx + marker.length) : -1;
-
       const cardMetadata = {
-        ids: fresh.results.map((r) => r._id),
+        cards: fresh.results.map((r) => ({ table: "memories" as const, id: String(r._id) })),
         isCached: false,
         turns: 1, // Deep scan is an explicit single-purpose turn
         flow: {
@@ -272,20 +296,15 @@ export const deepSearch = action({
         },
       };
 
-      let newContent: string;
-      if (startIdx !== -1 && endIdx !== -1) {
-        const before = original.content.slice(0, startIdx);
-        const after = original.content.slice(endIdx + endMarker.length);
-        newContent = before + marker + JSON.stringify(cardMetadata) + endMarker + after;
-      } else {
-        // No existing block — append one
-        newContent =
-          original.content.trimEnd() + `\n${marker}${JSON.stringify(cardMetadata)}${endMarker}`;
-      }
-
+      // Write structured meta, preserving any deletion proposal on the message.
       await ctx.runMutation(internal.chat.patchMessageContent, {
         id: args.messageId,
-        content: newContent,
+        meta: {
+          ...(original.meta?.deletionProposal
+            ? { deletionProposal: original.meta.deletionProposal }
+            : {}),
+          ...cardMetadata,
+        },
       });
 
       return { count: fresh.results.length };
@@ -303,9 +322,18 @@ export const getMessage = internalQuery({
 });
 
 export const patchMessageContent = internalMutation({
-  args: { id: v.id("chatMessages"), content: v.string() },
+  args: {
+    id: v.id("chatMessages"),
+    content: v.optional(v.string()),
+    meta: v.optional(chatMessageMetaValidator),
+    streaming: v.optional(v.boolean()),
+  },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.id, { content: args.content });
+    await ctx.db.patch(args.id, {
+      ...(args.content !== undefined ? { content: args.content } : {}),
+      ...(args.meta !== undefined ? { meta: args.meta } : {}),
+      ...(args.streaming !== undefined ? { streaming: args.streaming } : {}),
+    });
   },
 });
 

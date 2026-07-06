@@ -1,10 +1,32 @@
 import type { Id } from "@/convex/_generated/dataModel";
 
+/** Reference to a document surfaced as a chat card. Extend the union to add card types. */
+export type CardRef = {
+  table: "memories" | "diaryEntries";
+  id: string;
+};
+
+/** Structured assistant-turn metadata persisted on chatMessages.meta. */
+export type ChatMessageMeta = {
+  cards?: CardRef[];
+  deletionProposal?: Array<{
+    id: string;
+    title: string;
+    content: string;
+    entry_kind: string;
+  }>;
+  isCached?: boolean;
+  turns?: number;
+  flow?: unknown;
+};
+
 export type ChatMsg = {
   _id: string;
   role: "user" | "assistant";
   content?: string;
   _creationTime: number;
+  meta?: ChatMessageMeta | null;
+  streaming?: boolean;
   attachments?: Array<{
     attachmentId: Id<"memoryAttachments">;
     name: string;

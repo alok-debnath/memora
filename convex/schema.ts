@@ -468,8 +468,37 @@ export default defineSchema({
     likes: v.optional(v.array(v.string())),
     dislikes: v.optional(v.array(v.string())),
     actionItems: v.optional(v.array(v.string())),
+    /** Denormalized text (correctedText/rawText + summary + topics) powering the search index */
+    searchText: v.optional(v.string()),
+    embedding: v.optional(v.array(v.float64())),
+    embeddingFingerprint: v.optional(v.string()),
+    embeddingState: v.optional(v.union(v.literal("missing"), v.literal("ready"))),
     /** Encryption version used */
     encryptionVersion: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .searchIndex("search_text", {
+      searchField: "searchText",
+      filterFields: ["userId"],
+    })
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1536,
+      filterFields: ["userId"],
+    }),
+
+  userProfiles: defineTable({
+    userId: v.id("users"),
+    likes: v.array(v.string()),
+    dislikes: v.array(v.string()),
+    traits: v.array(v.string()),
+    habits: v.array(
+      v.object({
+        habit: v.string(),
+        sentiment: v.union(v.literal("positive"), v.literal("negative"), v.literal("neutral")),
+      }),
+    ),
+    updatedAt: v.number(),
   }).index("by_user", ["userId"]),
 
   reviewCards: defineTable({
@@ -514,6 +543,38 @@ export default defineSchema({
         }),
       ),
     ),
+    /**
+     * Structured assistant-turn metadata (cards, deletion proposals, flow).
+     * Replaces the legacy hidden HTML-comment markers embedded in content;
+     * old messages without meta still carry markers and are parsed client-side.
+     */
+    meta: v.optional(
+      v.object({
+        cards: v.optional(
+          v.array(
+            v.object({
+              table: v.union(v.literal("memories"), v.literal("diaryEntries")),
+              id: v.string(),
+            }),
+          ),
+        ),
+        deletionProposal: v.optional(
+          v.array(
+            v.object({
+              id: v.string(),
+              title: v.string(),
+              content: v.string(),
+              entry_kind: v.string(),
+            }),
+          ),
+        ),
+        isCached: v.optional(v.boolean()),
+        turns: v.optional(v.number()),
+        flow: v.optional(v.any()),
+      }),
+    ),
+    /** True while the assistant reply is still being streamed into content. */
+    streaming: v.optional(v.boolean()),
     /** Encryption version used */
     encryptionVersion: v.optional(v.number()),
   })

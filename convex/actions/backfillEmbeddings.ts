@@ -5,6 +5,7 @@ import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { getEmbeddingFingerprintForUser, trackedEmbedTexts } from "../lib/aiDispatch";
+import { buildDiarySearchText } from "../lib/diaryText";
 
 function buildEmbeddingText(m: {
   title?: string;
@@ -102,6 +103,97 @@ export const backfill = internalAction({
   },
 });
 
+export const backfillDiary = internalAction({
+  args: {
+    cursor: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<{ processed: number; hasMore: boolean }> => {
+    const page: {
+      batch: Array<{
+        _id: Id<"diaryEntries">;
+        userId: Id<"users">;
+        rawText?: string;
+        correctedText?: string;
+        summary?: string;
+        topics?: string[];
+        searchText?: string;
+        embeddingState?: "missing" | "ready";
+      }>;
+      hasMore: boolean;
+      nextCursor?: string;
+    } = await ctx.runQuery(internal.diary.listForEmbeddingBackfill, {
+      cursor: args.cursor,
+      limit: BACKFILL_BATCH_SIZE,
+    });
+
+    let processed = 0;
+    const byUser = new Map<Id<"users">, typeof page.batch>();
+    for (const entry of page.batch) {
+      const group = byUser.get(entry.userId) ?? [];
+      group.push(entry);
+      byUser.set(entry.userId, group);
+    }
+
+    for (const [userId, batch] of byUser.entries()) {
+      try {
+        const texts = batch.map((entry) =>
+          buildDiarySearchText({
+            rawText: entry.rawText,
+            correctedText: entry.correctedText,
+            summary: entry.summary,
+            topics: entry.topics,
+          }),
+        );
+        for (let i = 0; i < batch.length; i += 1) {
+          if (!batch[i].searchText && texts[i]) {
+            await ctx.runMutation(internal.diary.patchSearchTextInternal, {
+              entryId: batch[i]._id,
+              searchText: texts[i],
+            });
+          }
+        }
+
+        const embedTargets = batch
+          .map((entry, index) => ({ entry, text: texts[index] }))
+          .filter(({ entry, text }) => entry.embeddingState !== "ready" && text.length > 0);
+        if (embedTargets.length === 0) {
+          continue;
+        }
+
+        const fingerprint = await getEmbeddingFingerprintForUser(ctx, userId);
+        const embeddings = await trackedEmbedTexts(ctx, {
+          userId,
+          feature: "memory_search",
+          stage: "backfill_diary_embeddings",
+          visibility: "background",
+          input: embedTargets.map(({ text }) => text),
+          metadata: { stage: "backfill_diary_embeddings" },
+        });
+        for (let i = 0; i < embedTargets.length; i += 1) {
+          const embedding = embeddings[i];
+          if (!embedding) continue;
+          processed += 1;
+          await ctx.runMutation(internal.processDiaryMutations.updateDiaryEmbedding, {
+            entryId: embedTargets[i].entry._id,
+            embedding,
+            embeddingFingerprint: fingerprint,
+          });
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    if (page.hasMore && page.nextCursor) {
+      await ctx.scheduler.runAfter(500, internal.actions.backfillEmbeddings.backfillDiary, {
+        cursor: page.nextCursor,
+      });
+      return { processed, hasMore: true };
+    }
+    return { processed, hasMore: false };
+  },
+});
+
 export const rebuildUserEmbeddings = internalAction({
   args: {
     userId: v.id("users"),
@@ -110,11 +202,7 @@ export const rebuildUserEmbeddings = internalAction({
   handler: async (ctx, args): Promise<{ processed: number; hasMore: boolean }> => {
     const state: {
       embeddingRebuildStatus:
-        | "idle"
-        | "queued"
-        | "reembedding_memories"
-        | "rebuilding_topics"
-        | "failed";
+        "idle" | "queued" | "reembedding_memories" | "rebuilding_topics" | "failed";
       targetEmbeddingFingerprint?: string;
       embeddingRebuildProcessed?: number;
       embeddingRebuildTotal?: number;

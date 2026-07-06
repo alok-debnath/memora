@@ -14,6 +14,11 @@ Convex agent skills for common tasks can be installed by running
 
 # Memora Agent Guide
 
+## Agent Context Docs
+
+- `agent-context/ai-architecture.md`: **read before touching the AI pipeline** (chat, tools, cards, search, streaming, providers) — extension recipes, cost/architecture invariants, and hard-won gotchas from the 2026-07 revamp.
+- Add future deep-dive docs to `agent-context/` and list them here; keep this file itself to durable rules only.
+
 ## Maintaining This File
 
 - Keep this file focused on durable rules and conventions, not facts that can be discovered from the codebase.

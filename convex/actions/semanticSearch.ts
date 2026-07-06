@@ -18,7 +18,7 @@ export const search = action({
       token: args.token,
     });
     if (!session) {
-      return { results: [], isCached: false };
+      return { results: [], diaryResults: [], isCached: false };
     }
 
     return await runSemanticSearch(ctx, {

@@ -1,0 +1,97 @@
+import type { Doc, Id } from "../../_generated/dataModel";
+import type { AttachmentExtractionResult } from "../attachmentExtraction";
+import type { DiarySearchHit } from "../semanticSearch";
+import type { MemoryCompact, MemorySummary } from "./projections";
+
+export type MemoryDoc = Doc<"memories">;
+
+export type ParsedAttachment = {
+  name: string;
+  fileType: string;
+  url: string;
+};
+
+export type ChatAttachmentRecord = {
+  attachmentId: Id<"memoryAttachments">;
+  name: string;
+  type: "image" | "document";
+  mimeType: string;
+  driveFileId: string;
+  driveThumbnailLink?: string;
+  driveWebViewLink?: string;
+};
+
+export type ChatAttachmentExtraction = ChatAttachmentRecord & AttachmentExtractionResult;
+
+export type StreamingEvent = {
+  label: string;
+  value?: string;
+};
+
+export type StreamingStatus = {
+  query?: string;
+  phase?: string;
+  toolName?: string;
+  detail?: string;
+  source?: string;
+  cacheState?: string;
+  resultCount?: number;
+  previewItems?: string[];
+  events?: StreamingEvent[];
+  step?: number;
+  totalSteps?: number;
+};
+
+export type MemorySearchResult = {
+  results: MemorySummary[];
+  diaryResults: DiarySearchHit[];
+  count: number;
+  isCached?: boolean;
+  searchMode: "recent_only" | "semantic_fresh" | "semantic_cached";
+};
+
+export type GroundingContext = {
+  shouldGround: boolean;
+  shouldPreferUpdate: boolean;
+  isGenericOnly: boolean;
+  searchCount: number;
+  searchResults: MemorySummary[];
+  diaryResults: DiarySearchHit[];
+  recentMemories: MemoryCompact[];
+  isCached: boolean;
+};
+
+export type DeletionItem = {
+  id: string;
+  title: string;
+  content: string;
+  entry_kind: string;
+};
+
+/** Mirrors chatMessages.meta in schema.ts / chatMessageMetaValidator in chat.ts. */
+export type ChatMessageMeta = {
+  cards?: Array<{ table: "memories" | "diaryEntries"; id: string }>;
+  deletionProposal?: DeletionItem[];
+  isCached?: boolean;
+  turns?: number;
+  flow?: unknown;
+};
+
+export type KnowledgeDigest = {
+  totalMemories: number;
+  totalReminders: number;
+  totalDiaryEntries: number;
+  diaryCountIsExact: boolean;
+  profile: {
+    likes: string[];
+    dislikes: string[];
+    traits: string[];
+    habits: Array<{ habit: string; sentiment: "positive" | "negative" | "neutral" }>;
+  } | null;
+  recentDiary: Array<{
+    id?: string;
+    date: string;
+    mood: string | null;
+    summary: string;
+  }>;
+};

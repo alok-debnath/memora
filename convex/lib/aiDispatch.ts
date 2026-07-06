@@ -389,6 +389,92 @@ export async function trackedChatCompletion(
 }
 
 /**
+ * Streaming variant of `trackedChatCompletion`. Text deltas are emitted via
+ * `onDelta` while the model generates; the returned value is the fully
+ * assembled completion with exact usage (stream_options.include_usage).
+ * Providers without a streaming adapter fall back to the non-streaming call
+ * transparently (no deltas fire, the full completion just resolves).
+ */
+export async function trackedChatCompletionStream(
+  ctx: UsageRecorderCtx,
+  args: {
+    userId: Id<"users">;
+    feature: AiFeature;
+    stage?: string;
+    visibility?: AiVisibility;
+    metadata?: Record<string, string>;
+    link?: AnalyticsLink;
+    onDelta: (textDelta: string) => void;
+    request: Omit<OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming, "model">;
+  },
+): Promise<OpenAI.Chat.Completions.ChatCompletion> {
+  const route = await resolveAiRoute(ctx, { userId: args.userId, feature: args.feature });
+  const adapter = getAdapter(route.provider);
+  const startedAt = Date.now();
+  try {
+    const response = adapter.chatCompletionStream
+      ? await adapter.chatCompletionStream({
+          route,
+          request: args.request,
+          onDelta: args.onDelta,
+        })
+      : await adapter.chatCompletion({ route, request: args.request });
+    const usage = response.usage as ChatUsage | undefined;
+    const pricing = await resolvePricing(ctx, {
+      provider: route.provider,
+      model: route.model,
+      operation: "chat_completion",
+    });
+    const priced = estimatePricingMicros({
+      pricing,
+      inputTokens: usage?.prompt_tokens,
+      outputTokens: usage?.completion_tokens,
+    });
+    await recordAiUsage(ctx, route, {
+      userId: args.userId,
+      feature: args.feature,
+      operation: "chat_completion",
+      model: route.model,
+      status: "success",
+      latencyMs: Date.now() - startedAt,
+      usage,
+      billedTo: resolveBilledTo(route),
+      costUsdMicros: priced.costUsdMicros,
+      costAvailability: priced.priceDisplayMode,
+      priceDisplayMode: priced.priceDisplayMode,
+      pricingOperation: "chat_completion",
+      pricingVersion: pricing.pricingVersion,
+      pricingReason: priced.pricingReason,
+      stage: args.stage ?? "chat_completion",
+      visibility: args.visibility ?? "background",
+      metadata: args.metadata,
+      link: args.link,
+    });
+    return response;
+  } catch (error) {
+    await recordAiUsage(ctx, route, {
+      userId: args.userId,
+      feature: args.feature,
+      operation: "chat_completion",
+      model: route.model,
+      status: "error",
+      latencyMs: Date.now() - startedAt,
+      billedTo: resolveBilledTo(route),
+      costAvailability: "unavailable",
+      priceDisplayMode: "unavailable",
+      pricingOperation: "chat_completion",
+      pricingVersion: DEFAULT_AI_PRICING_VERSION,
+      pricingReason: "request_failed",
+      stage: args.stage ?? "chat_completion",
+      visibility: args.visibility ?? "background",
+      metadata: args.metadata,
+      link: args.link,
+    });
+    throw error;
+  }
+}
+
+/**
  * Like `trackedChatCompletion` but with a pre-resolved route — skips route resolution.
  * Use when you've already called `resolveAiRoute` or `resolveAiFallbackRoute` and want
  * to avoid a second DB round-trip.

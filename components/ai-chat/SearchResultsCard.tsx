@@ -1,22 +1,23 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { Platform, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
 import { useMutation, useQuery } from "convex/react";
 import { Text, XStack, YStack } from "tamagui";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { FontFamily } from "@/constants/fonts";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
-import { ContextMenu, type ContextMenuItemDef } from "@/components/ui/ContextMenu";
 import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import { useAppToast } from "@/components/ui/toast";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useSemanticColors } from "@/hooks/useSemanticColors";
-import { Feather, FontAwesome5 } from "@/lib/icons";
+import { Feather } from "@/lib/icons";
 import { useUIStore } from "@/store/ui";
-import type { CardFlow, SearchResultItem } from "./types";
-import { formatReminderDueAt } from "./rendererUtils";
+import type { CardFlow, CardRef, SearchResultItem } from "./types";
+import { MemoryResultRow } from "./cards/MemoryResultRow";
+import { DiaryResultRow, type DiaryCardDoc } from "./cards/DiaryResultRow";
 
 const getBubbleShadow = (shadowColor: string) => appShadow(shadowColor, "xs");
 
@@ -86,357 +87,13 @@ function PerformancePill({
   return <Pressable onPress={onOpenTelemetry}>{pill}</Pressable>;
 }
 
-const SearchResultRow = React.memo(function SearchResultRow({
-  item,
-  index,
-  isCompleted,
-  calendarSyncEnabled,
-  onComplete,
-  onDelete,
-  onEdit,
-  onTriggerSync,
-  onRemoveSync,
-  hasFiles = false,
-}: {
-  item: SearchResultItem;
-  index: number;
-  isCompleted: boolean;
-  calendarSyncEnabled: boolean;
-  onComplete: (item: SearchResultItem) => void;
-  onDelete: (id: Id<"memories">) => void;
-  onEdit: (id: Id<"memories">) => void;
-  onTriggerSync: (item: SearchResultItem) => void;
-  onRemoveSync: (item: SearchResultItem) => void;
-  hasFiles?: boolean;
-}) {
-  const theme = useAppTheme();
-  const semantic = useSemanticColors();
-  const isReminder = item.entry_kind === "reminder" || !!item.schedule_due_at;
-  const hasGoogleSyncInfo = !!(
-    item.google_event_id ||
-    item.google_sync_status ||
-    item.google_sync_message
-  );
-  const dueAtLabel = formatReminderDueAt(item.schedule_due_at);
-  const success = theme.success.val;
-  const syncTone =
-    item.google_sync_status === "synced"
-      ? {
-          border: withAlpha(theme.success.val, "47"),
-          bg: theme.surfaceSuccessSoft.val,
-          label: "synced",
-          labelColor: theme.textSuccess.val,
-        }
-      : item.google_sync_status === "failed"
-        ? {
-            border: withAlpha(theme.destructive.val, "3D"),
-            bg: theme.surfaceDangerSoft.val,
-            label: "sync failed",
-            labelColor: theme.textError.val,
-          }
-        : {
-            border: withAlpha(theme.warning.val, "3D"),
-            bg: withAlpha(theme.warning.val, "14"),
-            label: "syncing…",
-            labelColor: theme.textWarning.val,
-          };
-  const showTriggerSyncAction =
-    calendarSyncEnabled &&
-    isReminder &&
-    (!hasGoogleSyncInfo || item.google_sync_status === "failed");
-  const showRemoveSyncAction = calendarSyncEnabled && isReminder && hasGoogleSyncInfo;
-
-  const menuItems: ContextMenuItemDef[] = [
-    ...(isReminder && !isCompleted
-      ? [
-          {
-            label: "Mark as Completed",
-            icon: "check-circle",
-            iconColor: success,
-            onPress: () => onComplete(item),
-          } satisfies ContextMenuItemDef,
-        ]
-      : []),
-    ...(showTriggerSyncAction
-      ? [
-          {
-            label:
-              item.google_sync_status === "failed" ? "Retry Calendar Sync" : "Sync to Calendar",
-            icon: "refresh-cw",
-            iconColor: theme.primary.val,
-            onPress: () => onTriggerSync(item),
-          } satisfies ContextMenuItemDef,
-        ]
-      : []),
-    ...(showRemoveSyncAction
-      ? [
-          {
-            label: "Remove Calendar Sync",
-            icon: "link-2",
-            destructive: true,
-            onPress: () => onRemoveSync(item),
-          } satisfies ContextMenuItemDef,
-        ]
-      : []),
-    {
-      label: "Edit Memory",
-      icon: "edit-2",
-      onPress: () => onEdit(item.id),
-    } satisfies ContextMenuItemDef,
-    {
-      label: "Delete",
-      icon: "trash-2",
-      destructive: true,
-      onPress: () => onDelete(item.id),
-    } satisfies ContextMenuItemDef,
-  ];
-
-  const previewCard = (
-    <YStack padding={14} gap={8}>
-      <XStack gap={10} alignItems="center">
-        <View
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 18,
-            backgroundColor: isReminder ? `${theme.warning.val}18` : `${theme.primary.val}15`,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Feather
-            name={isReminder ? "bell" : "file-text"}
-            size={16}
-            color={isReminder ? theme.warning.val : theme.primary.val}
-          />
-        </View>
-        <YStack flex={1} gap={2}>
-          <Text
-            fontSize={14}
-            fontFamily={FontFamily.semiBold}
-            color={theme.color.val}
-            numberOfLines={2}
-          >
-            {item.title || "Untitled memory"}
-          </Text>
-          {item.entry_kind ? (
-            <Text fontSize={11} color={theme.colorMuted.val}>
-              {isReminder ? "Reminder" : "Memory"}
-            </Text>
-          ) : null}
-        </YStack>
-      </XStack>
-      {item.content ? (
-        <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val} numberOfLines={3}>
-          {item.content}
-        </Text>
-      ) : null}
-      {isReminder && dueAtLabel ? (
-        <XStack alignItems="center" gap={5}>
-          <Feather name="bell" size={11} color={theme.primary.val} />
-          <Text fontSize={11} fontFamily={FontFamily.semiBold} color={theme.primary.val}>
-            {dueAtLabel}
-          </Text>
-        </XStack>
-      ) : null}
-      {isReminder && (hasGoogleSyncInfo || hasFiles) ? (
-        <XStack marginTop={6} gap={6} alignItems="center" flexWrap="wrap">
-          {isReminder && hasGoogleSyncInfo ? (
-            <XStack
-              alignItems="center"
-              gap={4}
-              paddingHorizontal={8}
-              paddingVertical={5}
-              borderRadius={20}
-              borderWidth={1}
-              borderColor={syncTone.border}
-              backgroundColor={syncTone.bg}
-            >
-              <FontAwesome5 name="calendar-alt" size={12} color={syncTone.labelColor} />
-              <Text fontSize={11} fontFamily={FontFamily.semiBold} color={syncTone.labelColor}>
-                {syncTone.label}
-              </Text>
-            </XStack>
-          ) : null}
-          {hasFiles ? (
-            <XStack
-              alignItems="center"
-              gap={4}
-              paddingHorizontal={8}
-              paddingVertical={5}
-              borderRadius={20}
-              borderWidth={1}
-              borderColor={withAlpha(semantic.integration.googleDrive, "40")}
-              backgroundColor={withAlpha(semantic.integration.googleDrive, "12")}
-            >
-              <FontAwesome5
-                name="google-drive"
-                iconStyle="brand"
-                size={12}
-                color={semantic.integration.googleDrive}
-              />
-              <Text
-                fontSize={11}
-                fontFamily={FontFamily.semiBold}
-                color={semantic.integration.googleDrive}
-              >
-                in Drive
-              </Text>
-            </XStack>
-          ) : null}
-        </XStack>
-      ) : null}
-    </YStack>
-  );
-
-  const row = (
-    <XStack
-      paddingHorizontal={14}
-      paddingVertical={11}
-      gap={12}
-      alignItems="center"
-      borderTopWidth={index > 0 ? 1 : 0}
-      borderTopColor={theme.borderColor.val}
-      opacity={isCompleted ? 0.45 : 1}
-    >
-      <View
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: 16,
-          backgroundColor: isCompleted
-            ? withAlpha(success, "20")
-            : isReminder
-              ? withAlpha(theme.warning.val, "18")
-              : withAlpha(theme.primary.val, "15"),
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-        }}
-      >
-        <Feather
-          name={isCompleted ? "check" : isReminder ? "bell" : "file-text"}
-          size={14}
-          color={isCompleted ? success : isReminder ? theme.warning.val : theme.primary.val}
-        />
-      </View>
-
-      <YStack flex={1} gap={6}>
-        <Text
-          fontSize={13}
-          fontFamily={FontFamily.semiBold}
-          color={theme.color.val}
-          numberOfLines={1}
-          textDecorationLine={isCompleted ? "line-through" : "none"}
-        >
-          {item.title || "Untitled memory"}
-        </Text>
-        {item.content ? (
-          <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val} numberOfLines={1}>
-            {item.content}
-          </Text>
-        ) : null}
-        {isReminder && dueAtLabel ? (
-          <XStack alignItems="center" gap={5}>
-            <Feather name="bell" size={10} color={theme.primary.val} />
-            <Text fontSize={10} fontFamily={FontFamily.semiBold} color={theme.primary.val}>
-              {dueAtLabel}
-            </Text>
-          </XStack>
-        ) : null}
-        {(isReminder && hasGoogleSyncInfo) || hasFiles ? (
-          <XStack marginTop={2} gap={5} alignItems="center" flexWrap="wrap">
-            {isReminder && hasGoogleSyncInfo ? (
-              <XStack
-                alignItems="center"
-                gap={4}
-                paddingHorizontal={7}
-                paddingVertical={4}
-                borderRadius={20}
-                borderWidth={1}
-                borderColor={syncTone.border}
-                backgroundColor={syncTone.bg}
-              >
-                <FontAwesome5 name="calendar-alt" size={10} color={syncTone.labelColor} />
-                <Text fontSize={10} fontFamily={FontFamily.semiBold} color={syncTone.labelColor}>
-                  {syncTone.label}
-                </Text>
-              </XStack>
-            ) : null}
-            {hasFiles ? (
-              <XStack
-                alignItems="center"
-                gap={4}
-                paddingHorizontal={7}
-                paddingVertical={4}
-                borderRadius={20}
-                borderWidth={1}
-                borderColor={withAlpha(semantic.integration.googleDrive, "40")}
-                backgroundColor={withAlpha(semantic.integration.googleDrive, "12")}
-              >
-                <FontAwesome5
-                  name="google-drive"
-                  iconStyle="brand"
-                  size={10}
-                  color={semantic.integration.googleDrive}
-                />
-                <Text
-                  fontSize={10}
-                  fontFamily={FontFamily.semiBold}
-                  color={semantic.integration.googleDrive}
-                >
-                  in Drive
-                </Text>
-              </XStack>
-            ) : null}
-          </XStack>
-        ) : null}
-      </YStack>
-
-      <XStack gap={4} alignItems="center">
-        {item._score !== undefined ? (
-          <Text fontSize={10} color={theme.colorMuted.val} opacity={0.5}>
-            {Math.round(item._score * 100)}%
-          </Text>
-        ) : null}
-        <ContextMenu
-          items={menuItems}
-          openOn="press"
-          preview={
-            Platform.OS === "ios" ? (
-              <YStack backgroundColor={theme.card.val} borderRadius={18}>
-                {previewCard}
-              </YStack>
-            ) : undefined
-          }
-        >
-          <View
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Feather name="more-horizontal" size={16} color={theme.colorMuted.val} />
-          </View>
-        </ContextMenu>
-      </XStack>
-    </XStack>
-  );
-
-  return (
-    <Animated.View entering={FadeInDown.duration(260).delay(index * 55)}>
-      <ContextMenu items={menuItems} preview={previewCard} previewFrame>
-        {row}
-      </ContextMenu>
-    </Animated.View>
-  );
-});
-
+/**
+ * Card shell for AI-surfaced document references. Refs are grouped by table
+ * and rendered by the per-table row components in ./cards. Adding a new card
+ * type = new row component + a listByIds-style query + a section below.
+ */
 export function SearchResultsCard({
-  ids,
+  cards,
   isCached,
   turns = 1,
   flow,
@@ -444,7 +101,7 @@ export function SearchResultsCard({
   calendarSyncEnabled,
   onEdit,
 }: {
-  ids: Id<"memories">[];
+  cards: CardRef[];
   isCached: boolean;
   turns?: number;
   flow?: CardFlow;
@@ -455,17 +112,37 @@ export function SearchResultsCard({
   const theme = useAppTheme();
   const [expanded, setExpanded] = useState(false);
   const [completedIds, setCompletedIds] = useState<Set<Id<"memories">>>(new Set());
+  const router = useRouter();
+  const closeAllSheets = useUIStore((state) => state.closeAllSheets);
   const completeMemory = useMutation(api.memories.complete);
   const deleteMemory = useMutation(api.memories.remove);
+  const deleteDiaryEntry = useMutation(api.diary.remove);
   const triggerReminderSync = useMutation(api.integrations.triggerReminderSync);
   const removeReminderSync = useMutation(api.integrations.removeReminderSync);
   const { showToast } = useAppToast();
   const { confirm } = useAppConfirm();
   const openTurnBreakdown = useUIStore((state) => state.openTurnBreakdown);
 
+  const ids = useMemo(
+    () =>
+      cards.filter((card) => card.table === "memories").map((card) => card.id as Id<"memories">),
+    [cards],
+  );
+  const diaryIds = useMemo(
+    () =>
+      cards
+        .filter((card) => card.table === "diaryEntries")
+        .map((card) => card.id as Id<"diaryEntries">),
+    [cards],
+  );
+
   const fetchedDocs = useQuery(
     api.memories.listByIds,
     token && ids.length > 0 ? { token, ids } : "skip",
+  );
+  const fetchedDiaryDocs = useQuery(
+    api.diary.listByIds,
+    token && diaryIds.length > 0 ? { token, ids: diaryIds } : "skip",
   );
   const memoryIds = useMemo(() => (fetchedDocs ?? []).map((doc) => doc._id), [fetchedDocs]);
   const attachmentCounts =
@@ -490,8 +167,17 @@ export function SearchResultsCard({
     [fetchedDocs],
   );
 
+  const diaryItems = useMemo<DiaryCardDoc[]>(() => fetchedDiaryDocs ?? [], [fetchedDiaryDocs]);
   const displayItems = expanded ? items : items.slice(0, 3);
   const hasMore = items.length > 3;
+  const headerLabel = [
+    items.length > 0 ? `${items.length} ${items.length === 1 ? "memory" : "memories"}` : null,
+    diaryItems.length > 0
+      ? `${diaryItems.length} diary ${diaryItems.length === 1 ? "entry" : "entries"}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const handleComplete = useCallback(
     async (item: SearchResultItem) => {
@@ -528,6 +214,33 @@ export function SearchResultsCard({
       }
     },
     [confirm, deleteMemory, showToast, token],
+  );
+
+  const handleOpenDiary = useCallback(() => {
+    closeAllSheets();
+    router.push("/(protected)/(tabs)/diary");
+  }, [closeAllSheets, router]);
+
+  const handleDeleteDiary = useCallback(
+    async (id: Id<"diaryEntries">) => {
+      if (!token) return;
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      const confirmed = await confirm({
+        title: "Delete Diary Entry",
+        message: "This permanently deletes the diary entry.",
+        confirmLabel: "Delete",
+        tone: "destructive",
+        icon: "trash-2",
+      });
+      if (!confirmed) return;
+      try {
+        await deleteDiaryEntry({ token, id });
+        showToast({ title: "Diary entry deleted", tone: "success" });
+      } catch {
+        showToast({ title: "Couldn't delete — try again", tone: "error" });
+      }
+    },
+    [confirm, deleteDiaryEntry, showToast, token],
   );
 
   const handleTriggerSync = useCallback(
@@ -587,7 +300,7 @@ export function SearchResultsCard({
           <XStack gap={6} alignItems="center" flex={1}>
             <Feather name="search" size={13} color={theme.colorMuted.val} />
             <Text fontSize={13} fontFamily={FontFamily.semiBold} color={theme.color.val}>
-              {items.length} {items.length === 1 ? "memory" : "memories"}
+              {headerLabel || "Results"}
             </Text>
           </XStack>
           <PerformancePill
@@ -602,7 +315,7 @@ export function SearchResultsCard({
 
         <YStack>
           {displayItems.map((item, index) => (
-            <SearchResultRow
+            <MemoryResultRow
               key={item.id}
               item={item}
               index={index}
@@ -614,6 +327,15 @@ export function SearchResultsCard({
               onEdit={(id) => onEdit?.(id)}
               onTriggerSync={handleTriggerSync}
               onRemoveSync={handleRemoveSync}
+            />
+          ))}
+          {diaryItems.map((entry, index) => (
+            <DiaryResultRow
+              key={entry._id}
+              entry={entry}
+              index={displayItems.length + index}
+              onOpenDiary={handleOpenDiary}
+              onDelete={handleDeleteDiary}
             />
           ))}
         </YStack>

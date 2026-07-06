@@ -55,6 +55,19 @@ export interface AiProviderAdapter {
     request: Omit<OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming, "model">;
   }): Promise<OpenAI.Chat.Completions.ChatCompletion>;
 
+  /**
+   * Streaming chat completion — optional. Emits text deltas via `onDelta`
+   * while the response generates, then resolves with the fully assembled
+   * completion (including usage when the provider reports it). Providers
+   * without streaming support simply omit this; the dispatch layer falls
+   * back to `chatCompletion` transparently.
+   */
+  chatCompletionStream?(args: {
+    route: ResolvedRoute;
+    request: Omit<OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming, "model">;
+    onDelta: (textDelta: string) => void;
+  }): Promise<OpenAI.Chat.Completions.ChatCompletion>;
+
   /** Text embeddings. */
   embedTexts(args: { route: ResolvedRoute; input: string | string[] }): Promise<EmbeddingsResult>;
 

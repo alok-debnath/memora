@@ -5,7 +5,7 @@ import type { FeatherIconName } from "@/lib/icons";
 import { withAlpha } from "@/components/ui/themeHelpers";
 import type { useAppTheme } from "@/hooks/useAppTheme";
 import type { Id } from "@/convex/_generated/dataModel";
-import type { CardFlow, DeletionItem, ProgressStatus } from "./types";
+import type { CardFlow, CardRef, ChatMsg, DeletionItem, ProgressStatus } from "./types";
 
 export type MarkdownStyle = MarkdownProps["style"];
 
@@ -42,78 +42,46 @@ export function formatReminderDueAt(dueAt?: string | null) {
   }
 }
 
-export function parseDeletionProposal(
-  content: string,
-): { items: DeletionItem[]; cleanText: string } | null {
-  const marker = "<!--MEMORA_DELETION_PROPOSAL:";
-  const startIdx = content.indexOf(marker);
-  if (startIdx === -1) return null;
-  const endIdx = content.indexOf("-->", startIdx + marker.length);
-  if (endIdx === -1) return null;
-
-  try {
-    const items = JSON.parse(content.slice(startIdx + marker.length, endIdx)) as DeletionItem[];
-    return {
-      items,
-      cleanText: content.slice(0, startIdx).trim(),
-    };
-  } catch {
-    return null;
-  }
+function coerceFlow(candidate: unknown): CardFlow | undefined {
+  return candidate &&
+    typeof candidate === "object" &&
+    (candidate as CardFlow).summary &&
+    (candidate as CardFlow).steps
+    ? (candidate as CardFlow)
+    : undefined;
 }
 
-export function parseCardIds(content: string): {
-  ids: Id<"memories">[];
+export type AssistantPresentation = {
+  cleanText: string;
+  cards: CardRef[];
+  deletionItems?: DeletionItem[];
   isCached: boolean;
   turns?: number;
   flow?: CardFlow;
-  chatTurnId?: string;
-  cleanText: string;
-} | null {
-  const marker = "<!--MEMORA_CARD_IDS:";
-  const startIdx = content.indexOf(marker);
-  if (startIdx === -1) return null;
-  const endIdx = content.indexOf("-->", startIdx + marker.length);
-  if (endIdx === -1) return null;
+};
 
-  try {
-    const parsed = JSON.parse(content.slice(startIdx + marker.length, endIdx));
-    const ids = (Array.isArray(parsed.ids) ? parsed.ids : []) as Id<"memories">[];
-    const isCached = parsed.isCached ?? false;
-    const turns = typeof parsed.turns === "number" ? parsed.turns : undefined;
-    const chatTurnId =
-      typeof parsed.flow?.chatTurnId === "string" ? parsed.flow.chatTurnId : undefined;
-    const flow =
-      parsed.flow && typeof parsed.flow === "object" && parsed.flow.summary && parsed.flow.steps
-        ? (parsed.flow as CardFlow)
-        : undefined;
-    const markerFull = content.slice(startIdx, endIdx + 3);
-
-    return ids.length > 0
-      ? {
-          ids,
-          isCached,
-          turns,
-          flow,
-          chatTurnId,
-          cleanText: content.replace(markerFull, "").trim(),
-        }
-      : null;
-  } catch {
-    return null;
-  }
+/**
+ * Resolve what an assistant message should display from its structured
+ * `meta`. Message content is persisted as clean text server-side, so no
+ * marker parsing is needed here.
+ */
+export function extractAssistantPresentation(msg: ChatMsg): AssistantPresentation {
+  const meta = msg.meta;
+  return {
+    cleanText: (msg.content ?? "").trim(),
+    cards: meta?.cards ?? [],
+    deletionItems:
+      meta?.deletionProposal && meta.deletionProposal.length > 0
+        ? (meta.deletionProposal as DeletionItem[])
+        : undefined,
+    isCached: meta?.isCached ?? false,
+    turns: typeof meta?.turns === "number" ? meta.turns : undefined,
+    flow: coerceFlow(meta?.flow),
+  };
 }
 
 export function extractSpeakableText(content: string): string {
-  let text = content;
-  const deletionProposal = parseDeletionProposal(text);
-  if (deletionProposal) text = deletionProposal.cleanText;
-  const cardIds = parseCardIds(text);
-  if (cardIds) text = cardIds.cleanText;
-  return text
-    .replace(/<!--MEMORA_SEARCH_RESULTS:[\s\S]*?-->/g, "")
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .trim();
+  return content.trim();
 }
 
 export function createMarkdownStyles(

@@ -21,7 +21,7 @@ import { Feather } from "@/lib/icons";
 import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import { DeletionProposalCard } from "./DeletionProposalCard";
 import { SearchResultsCard } from "./SearchResultsCard";
-import type { CardFlow, ChatMsg, DeletionItem } from "./types";
+import type { CardFlow, CardRef, ChatMsg, DeletionItem } from "./types";
 import type { MarkdownStyle } from "./rendererUtils";
 import { extractSpeakableText, formatMessageTime } from "./rendererUtils";
 
@@ -94,7 +94,7 @@ export const ChatBubble = React.memo(function ChatBubble({
   onCopy,
   token,
   deletionItems,
-  cardIds,
+  cards,
   cardIsCached,
   cardTurns,
   cardFlow,
@@ -109,7 +109,7 @@ export const ChatBubble = React.memo(function ChatBubble({
   onCopy: (text: string) => void;
   token?: string | null;
   deletionItems?: DeletionItem[];
-  cardIds?: Id<"memories">[];
+  cards?: CardRef[];
   cardIsCached?: boolean;
   cardTurns?: number;
   cardFlow?: CardFlow;
@@ -275,9 +275,9 @@ export const ChatBubble = React.memo(function ChatBubble({
       {!isUser && deletionItems?.length ? (
         <DeletionProposalCard items={deletionItems} token={token} />
       ) : null}
-      {!isUser && cardIds?.length ? (
+      {!isUser && cards?.length ? (
         <SearchResultsCard
-          ids={cardIds}
+          cards={cards}
           isCached={cardIsCached ?? false}
           turns={cardTurns}
           flow={cardFlow}

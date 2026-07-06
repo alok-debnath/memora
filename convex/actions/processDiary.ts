@@ -3,8 +3,15 @@
 import { v } from "convex/values";
 import { action } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { extractTextContent, safeJsonParse, trackedChatCompletion } from "../lib/aiDispatch";
+import {
+  extractTextContent,
+  getEmbeddingFingerprintForUser,
+  safeJsonParse,
+  trackedChatCompletion,
+  trackedEmbedText,
+} from "../lib/aiDispatch";
 import { normalizeDiaryFields } from "../lib/aiNormalization";
+import { buildDiarySearchText } from "../lib/diaryText";
 
 export const processDiary = action({
   args: {
@@ -182,6 +189,34 @@ export const processDiary = action({
         dislikes: normalized.dislikes,
         actionItems: normalized.actionItems,
       });
+
+      // One write-time embedding per entry makes the diary semantically searchable
+      // from chat with zero extra AI calls at query time.
+      try {
+        // feature must map to the embeddings capability so the route resolves
+        // an embedding model (diary_processing would route a chat model)
+        const embedding = await trackedEmbedText(ctx, {
+          userId: entry.userId,
+          feature: "memory_search",
+          stage: "diary_embedding",
+          visibility: "background",
+          metadata: { stage: "diary_embedding" },
+          input: buildDiarySearchText({
+            rawText: args.rawText,
+            correctedText: normalized.correctedText || args.rawText,
+            summary: normalized.summary,
+            topics: normalized.topics,
+          }),
+        });
+        const embeddingFingerprint = await getEmbeddingFingerprintForUser(ctx, entry.userId);
+        await ctx.runMutation(internal.processDiaryMutations.updateDiaryEmbedding, {
+          entryId: args.entryId,
+          embedding,
+          embeddingFingerprint,
+        });
+      } catch {
+        // Embedding failure is non-critical — fulltext search still works
+      }
 
       const recentEntries = await ctx.runQuery(internal.diary.listRecentForNudges, {
         entryId: args.entryId,

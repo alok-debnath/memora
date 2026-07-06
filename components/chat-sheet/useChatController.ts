@@ -231,6 +231,18 @@ export function useChatController(): ChatSheetController {
       base.push(optimisticMessage);
     }
 
+    // Once the assistant reply starts streaming into a message doc, the text
+    // itself is the live feedback — drop the tool-progress/thinking rows.
+    const lastMessage = base[base.length - 1];
+    const isStreamingReply =
+      !!lastMessage &&
+      isChatMessage(lastMessage) &&
+      lastMessage.role === "assistant" &&
+      lastMessage.streaming === true;
+    if (isStreamingReply) {
+      return base;
+    }
+
     if (searchStatus) {
       const progressRow: ToolProgressDisplayItem = {
         _id: "__tool_progress__",

@@ -68,6 +68,23 @@ export const openAiAdapter: AiProviderAdapter = {
     return response as OpenAI.Chat.Completions.ChatCompletion;
   },
 
+  async chatCompletionStream({ route, request, onDelta }) {
+    const client = getClientForCredentials({ apiKey: route.apiKey, baseURL: route.baseUrl });
+    if (!client) throw new Error("OpenAI client is not available for this route.");
+    // The non-streaming param type carries stream?: false — drop it so the
+    // stream helper's stream: true discriminant applies.
+    const { stream: _stream, ...params } = request;
+    const stream = client.chat.completions.stream({
+      ...params,
+      model: route.model,
+      stream_options: { include_usage: true },
+    });
+    stream.on("content", (delta) => {
+      onDelta(delta);
+    });
+    return await stream.finalChatCompletion();
+  },
+
   async embedTexts({ route, input }): Promise<EmbeddingsResult> {
     const client = getClientForCredentials({ apiKey: route.apiKey, baseURL: route.baseUrl });
     if (!client) throw new Error("OpenAI client is not available for this route.");

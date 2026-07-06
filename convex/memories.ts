@@ -28,245 +28,16 @@ import {
   toStoredMemoryFields,
 } from "./lib/memoryKind";
 import { cleanSearchQuery, extractSearchTerms } from "./lib/search";
-
-/**
- * True when a memory should appear in active/live views.
- */
-function isActiveMemory(m: { status: string }): boolean {
-  return m.status === "active";
-}
-
-async function getGoogleIntegrationForUser(ctx: MutationCtx | QueryCtx, userId: Id<"users">) {
-  return await ctx.db
-    .query("userIntegrations")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .unique();
-}
-
-function isCalendarSyncEnabled(
-  integration?: {
-    grantedScopes?: string[];
-    calendarEnabled?: boolean;
-  } | null,
-) {
-  if (!integration) return false;
-  const grantedScopes = integration.grantedScopes ?? [];
-  const hasCalendarScope =
-    grantedScopes.includes("https://www.googleapis.com/auth/calendar") ||
-    grantedScopes.includes("https://www.googleapis.com/auth/calendar.events");
-  return hasCalendarScope && integration.calendarEnabled !== false;
-}
-
-async function replaceTopicLinksForMemory(ctx: MutationCtx, memory: Doc<"memories">) {
-  const existingLinks = await ctx.db
-    .query("memoryTopicLinks")
-    .withIndex("by_memory", (q) => q.eq("memoryId", memory._id))
-    .take(10);
-  await Promise.all(existingLinks.map((link) => ctx.db.delete(link._id)));
-
-  const uniqueTopicIds = Array.from(
-    new Set(
-      [memory.primaryTopicId, ...(memory.topicIds ?? [])].filter(
-        (topicId): topicId is Id<"userTopics"> => topicId !== undefined,
-      ),
-    ),
-  );
-
-  await Promise.all(
-    uniqueTopicIds.map((topicId) =>
-      ctx.db.insert("memoryTopicLinks", {
-        userId: memory.userId,
-        memoryId: memory._id,
-        topicId,
-        isPrimary: memory.primaryTopicId === topicId,
-        assignedAt: memory._creationTime,
-      }),
-    ),
-  );
-}
-
-async function deleteTopicLinksForMemory(ctx: MutationCtx, memoryId: Id<"memories">) {
-  const batchSize = 50;
-  while (true) {
-    const existingLinks = await ctx.db
-      .query("memoryTopicLinks")
-      .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
-      .take(batchSize);
-    await Promise.all(existingLinks.map((link) => ctx.db.delete(link._id)));
-    if (existingLinks.length < batchSize) break;
-  }
-}
-
-const RELATED_DELETE_BATCH = 200;
-
-async function deleteMemoryRelatedData(ctx: MutationCtx, memoryId: Id<"memories">) {
-  while (true) {
-    const attachments = await ctx.db
-      .query("memoryAttachments")
-      .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
-      .take(RELATED_DELETE_BATCH);
-    await Promise.all(
-      attachments.map(async (doc) => {
-        await ctx.scheduler.runAfter(0, internal.integrations.deleteDriveFile, {
-          userId: doc.userId,
-          driveFileId: doc.driveFileId,
-        });
-        await ctx.db.delete(doc._id);
-      }),
-    );
-    if (attachments.length < RELATED_DELETE_BATCH) break;
-  }
-
-  while (true) {
-    const historyItems = await ctx.db
-      .query("memoryHistory")
-      .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
-      .take(RELATED_DELETE_BATCH);
-    await Promise.all(historyItems.map((doc) => ctx.db.delete(doc._id)));
-    if (historyItems.length < RELATED_DELETE_BATCH) break;
-  }
-
-  while (true) {
-    const reviewCards = await ctx.db
-      .query("reviewCards")
-      .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
-      .take(RELATED_DELETE_BATCH);
-    await Promise.all(reviewCards.map((doc) => ctx.db.delete(doc._id)));
-    if (reviewCards.length < RELATED_DELETE_BATCH) break;
-  }
-
-  while (true) {
-    const sharedMemories = await ctx.db
-      .query("sharedMemories")
-      .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
-      .take(RELATED_DELETE_BATCH);
-    await Promise.all(sharedMemories.map((doc) => ctx.db.delete(doc._id)));
-    if (sharedMemories.length < RELATED_DELETE_BATCH) break;
-  }
-
-  await deleteTopicLinksForMemory(ctx, memoryId);
-}
-
-async function permanentlyDeleteMemory(ctx: MutationCtx, memory: Doc<"memories">) {
-  if (memory.googleEventId) {
-    await ctx.scheduler.runAfter(0, internal.integrations.deleteGoogleEvent, {
-      userId: memory.userId,
-      googleEventId: memory.googleEventId,
-    });
-  }
-
-  await ctx.scheduler.runAfter(0, internal.integrations.deleteGoogleEventsForMemory, {
-    userId: memory.userId,
-    memoryId: memory._id,
-  });
-
-  await deleteMemoryRelatedData(ctx, memory._id);
-  await ctx.db.delete(memory._id);
-}
-
-async function softDeleteMemory(
-  ctx: MutationCtx,
-  args: {
-    memoryId: Id<"memories">;
-    memory: Doc<"memories">;
-    userId: Id<"users">;
-  },
-) {
-  const { memoryId, memory, userId } = args;
-  await ctx.db.insert("memoryHistory", {
-    memoryId,
-    userId,
-    previousTitle: memory.title,
-    previousContent: memory.content,
-    editedAt: Date.now(),
-    changeReason: "deleted",
-    snapshotJson: serializeMemorySnapshot(memory),
-  });
-
-  const reviewCards = await ctx.db
-    .query("reviewCards")
-    .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
-    .take(10);
-  await Promise.all(reviewCards.map((card) => ctx.db.delete(card._id)));
-
-  const topicIds = Array.from(
-    new Set(
-      [memory.primaryTopicId, ...(memory.topicIds ?? [])].filter(
-        (topicId): topicId is Id<"userTopics"> => topicId !== undefined,
-      ),
-    ),
-  );
-  if (topicIds.length > 0) {
-    await ctx.runMutation(internal.userTopics.decrementOrArchiveTopics, {
-      topicIds,
-    });
-  }
-
-  const googleEventIdToDelete = memory.googleEventId;
-  const nextMemory = {
-    ...memory,
-    status: "deleted" as const,
-    deletedAt: Date.now(),
-  };
-  await ctx.db.patch(memoryId, {
-    status: nextMemory.status,
-    deletedAt: nextMemory.deletedAt,
-    googleEventId: undefined,
-    googleSyncStatus: undefined,
-    googleSyncMessage: undefined,
-    googleSyncUpdatedAt: Date.now(),
-    googleSyncLockToken: undefined,
-    googleSyncLockAt: undefined,
-    googleSyncFingerprint: undefined,
-    googleSyncDesiredFingerprint: undefined,
-  });
-  await applyUserMemoryStatsTransition(ctx, memory, nextMemory);
-
-  if (googleEventIdToDelete) {
-    await ctx.scheduler.runAfter(0, internal.integrations.deleteGoogleEvent, {
-      userId,
-      googleEventId: googleEventIdToDelete,
-    });
-  }
-
-  // Soft-delete all Drive attachments so they're hidden from the files section
-  const attachmentsToHide = await ctx.db
-    .query("memoryAttachments")
-    .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
-    .collect();
-  await Promise.all(attachmentsToHide.map((a) => ctx.db.patch(a._id, { isDeleted: true })));
-  const visibleAttachments = attachmentsToHide.filter(
-    (attachment) => attachment.isDeleted !== true,
-  );
-  if (visibleAttachments.length > 0) {
-    await ctx.runMutation(internal.analytics.recordStorageDelta, {
-      userId,
-      bytesDelta: -visibleAttachments.reduce((sum, attachment) => sum + attachment.sizeBytes, 0),
-      fileCountDelta: -visibleAttachments.length,
-      imageCountDelta: -visibleAttachments.filter((attachment) => attachment.type === "image")
-        .length,
-      documentCountDelta: -visibleAttachments.filter((attachment) => attachment.type === "document")
-        .length,
-    });
-  }
-}
-
-function hasSchedulingInput(value: {
-  entryKind?: "memory" | "reminder" | null;
-  schedule?: unknown;
-}) {
-  return value.entryKind !== undefined || value.schedule !== undefined;
-}
-
-function isSameValue(left: unknown, right: unknown) {
-  if (left === right) {
-    return true;
-  }
-  if (left === undefined || right === undefined) {
-    return left === right;
-  }
-  return JSON.stringify(left) === JSON.stringify(right);
-}
+import {
+  getGoogleIntegrationForUser,
+  hasSchedulingInput,
+  isActiveMemory,
+  isCalendarSyncEnabled,
+  isSameValue,
+} from "./model/memories/helpers";
+import { deleteTopicLinksForMemory, replaceTopicLinksForMemory } from "./model/memories/topicLinks";
+import { permanentlyDeleteMemory, softDeleteMemory } from "./model/memories/deletion";
+import { executeKeywordSearch } from "./model/memories/keywordSearch";
 
 export const list = query({
   args: {
@@ -451,14 +222,43 @@ export const listByTopic = query({
 export const listByIds = query({
   args: {
     token: v.string(),
-    ids: v.array(v.id("memories")),
+    // Plain strings on purpose: the AI can emit IDs from other tables (e.g.
+    // diary entries) — normalizeId silently drops anything that isn't a memory
+    // instead of failing the whole query with an ArgumentValidationError.
+    ids: v.array(v.string()),
   },
   handler: async (ctx, args): Promise<Doc<"memories">[]> => {
     const { userId } = await resolveUser(ctx, args.token);
-    const results = await Promise.all(args.ids.map((id) => ctx.db.get(id)));
+    const memoryIds = args.ids
+      .map((id) => ctx.db.normalizeId("memories", id))
+      .filter((id): id is Id<"memories"> => id !== null);
+    const results = await Promise.all(memoryIds.map((id) => ctx.db.get(id)));
     return results.filter(
       (m): m is Doc<"memories"> => m !== null && m.userId === userId && isActiveMemory(m),
     );
+  },
+});
+
+/**
+ * Validates arbitrary ID strings (typically AI-emitted) down to the user's
+ * active memory IDs. Single source of truth for what may surface as a card:
+ * drops diary IDs, hallucinated IDs, other users' memories, and deleted items.
+ */
+export const filterValidCardIds = internalQuery({
+  args: {
+    userId: v.id("users"),
+    ids: v.array(v.string()),
+  },
+  handler: async (ctx, args): Promise<string[]> => {
+    const memoryIds = args.ids
+      .map((id) => ctx.db.normalizeId("memories", id))
+      .filter((id): id is Id<"memories"> => id !== null);
+    const docs = await Promise.all(memoryIds.map((id) => ctx.db.get(id)));
+    return docs
+      .filter(
+        (m): m is Doc<"memories"> => m !== null && m.userId === args.userId && isActiveMemory(m),
+      )
+      .map((m) => String(m._id));
   },
 });
 
@@ -500,69 +300,6 @@ export const searchByContent = internalQuery({
     return merged.slice(0, maxResults);
   },
 });
-
-async function executeKeywordSearch(
-  ctx: QueryCtx,
-  userId: Id<"users">,
-  queryTerms: string[],
-): Promise<{ memory: Doc<"memories">; proportion: number; matched: number }[]> {
-  const memories = await ctx.db
-    .query("memories")
-    .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", "active"))
-    .order("desc")
-    .take(200);
-
-  const userTopics = await ctx.db
-    .query("userTopics")
-    .withIndex("by_user_and_isArchived", (q) => q.eq("userId", userId).eq("isArchived", false))
-    .take(100);
-  const topicMap = new Map<Id<"userTopics">, string>();
-  for (const t of userTopics) {
-    if (!t.isArchived) topicMap.set(t._id, t.name.toLowerCase());
-  }
-
-  return memories
-    .filter(isActiveMemory)
-    .map((m) => {
-      const topicNames = (m.topicIds ?? []).map((id) => topicMap.get(id)).filter(Boolean);
-      const primaryTopic = m.primaryTopicId ? topicMap.get(m.primaryTopicId) : "";
-      if (primaryTopic) topicNames.push(primaryTopic);
-
-      const haystack = [
-        m.title ?? "",
-        m.content ?? "",
-        ...(m.people ?? []),
-        ...(m.locations ?? []),
-        m.lifeArea,
-        m.entryKind,
-        ...topicNames,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      let matched = 0;
-      for (const term of queryTerms) {
-        let singular = term;
-        if (term.endsWith("ies") && term.length > 4) {
-          singular = term.substring(0, term.length - 3) + "y";
-        } else if (term.endsWith("s") && term.length > 3) {
-          singular = term.substring(0, term.length - 1);
-        }
-
-        if (haystack.includes(term) || (singular !== term && haystack.includes(singular))) {
-          matched++;
-        }
-      }
-      const proportion = matched / queryTerms.length;
-      return { memory: m, proportion, matched };
-    })
-    .filter(({ matched, proportion }) => {
-      if (queryTerms.length === 1) return matched >= 1;
-      return proportion >= 0.4;
-    })
-    .sort((a, b) => b.proportion - a.proportion || b.matched - a.matched);
-}
 
 export const searchByKeyword = internalQuery({
   args: {
