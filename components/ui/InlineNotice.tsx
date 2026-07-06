@@ -19,7 +19,7 @@ export function InlineNotice({ tone = "neutral", icon, title, description }: Inl
   return (
     <XStack
       gap={12}
-      alignItems="flex-start"
+      alignItems={title ? "flex-start" : "center"}
       padding={14}
       borderRadius={18}
       backgroundColor={colors.background}

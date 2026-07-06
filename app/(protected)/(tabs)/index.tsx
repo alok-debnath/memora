@@ -571,7 +571,12 @@ export default function HomeScreen() {
               ) : null}
             </XStack>
           ) : (
-            <Badge label={`${totalMemories} memories`} color={theme.primary.val} small />
+            <XStack gap={8}>
+              <Badge label={`${totalMemories} memories`} color={theme.primary.val} small />
+              {totalReminders > 0 ? (
+                <Badge label={`${totalReminders} reminders`} color={theme.warning.val} small />
+              ) : null}
+            </XStack>
           )
         }
       >

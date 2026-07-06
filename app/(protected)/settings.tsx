@@ -43,12 +43,14 @@ export default function AppSettingsScreen() {
     resolvedMode,
     accentSource,
     accentColor,
-    customColor,
     resolvedAccentColor,
     setMode,
     setAccentSource,
   } = useThemeStore();
-  const [pickerColor, setPickerColor] = React.useState(customColor);
+  const [pickerColor, setPickerColor] = React.useState(resolvedAccentColor);
+  React.useEffect(() => {
+    setPickerColor(resolvedAccentColor);
+  }, [resolvedAccentColor]);
   const androidSystemColor = getAndroidSystemAccentColor();
 
   const accentOptions: AccentOption[] = [
@@ -78,7 +80,6 @@ export default function AppSettingsScreen() {
       const normalized = hex.toUpperCase();
       if (source === "custom" && normalized === resolvedAccentColor.toUpperCase()) return;
       setAccentSource(source, normalized);
-      setPickerColor(normalized);
     },
     [resolvedAccentColor, setAccentSource],
   );
