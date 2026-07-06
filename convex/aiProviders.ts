@@ -686,26 +686,28 @@ export const seedRoutingConfig = mutation({
   handler: async (ctx) => {
     await requireAdmin(ctx);
     const now = Date.now();
-    let seeded = 0;
-    for (const capability of AI_CAPABILITIES) {
-      const existing = await ctx.db
-        .query("aiRoutingConfig")
-        .withIndex("by_capability", (q) => q.eq("capability", capability))
-        .unique();
-      if (existing) continue;
-      const entry = DEFAULT_ROUTING[capability];
-      await ctx.db.insert("aiRoutingConfig", {
-        capability,
-        provider: entry.provider,
-        model: entry.model,
-        enabled: entry.enabled,
-        fallbackProvider: entry.fallbackProvider,
-        fallbackModel: entry.fallbackModel,
-        fallbackEnabled: entry.fallbackEnabled,
-        updatedAt: now,
-      });
-      seeded++;
-    }
+    const results = await Promise.all(
+      AI_CAPABILITIES.map(async (capability) => {
+        const existing = await ctx.db
+          .query("aiRoutingConfig")
+          .withIndex("by_capability", (q) => q.eq("capability", capability))
+          .unique();
+        if (existing) return false;
+        const entry = DEFAULT_ROUTING[capability];
+        await ctx.db.insert("aiRoutingConfig", {
+          capability,
+          provider: entry.provider,
+          model: entry.model,
+          enabled: entry.enabled,
+          fallbackProvider: entry.fallbackProvider,
+          fallbackModel: entry.fallbackModel,
+          fallbackEnabled: entry.fallbackEnabled,
+          updatedAt: now,
+        });
+        return true;
+      }),
+    );
+    const seeded = results.filter(Boolean).length;
     return { seeded };
   },
 });

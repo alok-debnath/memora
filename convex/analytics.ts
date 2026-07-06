@@ -1,7 +1,7 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
-import type { MutationCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { requireAdmin, resolveUser } from "./lib/withAuth";
@@ -739,6 +739,23 @@ function filterDailyByRange<T extends { dayKey: string }>(
   return rows.filter((row) => row.dayKey >= cutoff);
 }
 
+async function queryDailyRowsForRange(
+  ctx: QueryCtx,
+  range: "7d" | "30d" | "90d" | "365d" | "all",
+  limit: number,
+): Promise<Doc<"userAnalyticsDaily">[]> {
+  if (range === "all") {
+    return await ctx.db.query("userAnalyticsDaily").order("desc").take(limit);
+  }
+
+  const cutoff = getDayKey(Date.now() - (getRangeDays(range) - 1) * DAY_MS);
+  return await ctx.db
+    .query("userAnalyticsDaily")
+    .withIndex("by_day", (q) => q.gte("dayKey", cutoff))
+    .order("desc")
+    .take(limit);
+}
+
 export const overview = query({
   args: {
     token: v.string(),
@@ -1374,10 +1391,7 @@ export const adminOverview = query({
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
     const range = args.range ?? "30d";
-    const rows = filterDailyByRange(
-      await ctx.db.query("userAnalyticsDaily").order("desc").take(5000),
-      range,
-    );
+    const rows = await queryDailyRowsForRange(ctx, range, 5000);
     const subjects = new Set(rows.map((row) => row.analyticsSubjectId).filter(Boolean));
     return rows.reduce(
       (acc, row) => {
@@ -1490,10 +1504,7 @@ export const adminSystemOverview = query({
     }
 
     // ── Range sums from daily table ──────────────────────────────────────────
-    const dailyRows = filterDailyByRange(
-      await ctx.db.query("userAnalyticsDaily").order("desc").take(5000),
-      range,
-    );
+    const dailyRows = await queryDailyRowsForRange(ctx, range, 5000);
 
     let rangeAiRequests = 0;
     let rangeAiCostUsdMicros = 0;
@@ -1577,80 +1588,80 @@ export const resetAiAnalyticsBatch = internalMutation({
     let processed = 0;
 
     const usageEvents = await ctx.db.query("userAiUsageEvents").take(200);
-    for (const row of usageEvents) {
-      await ctx.db.delete(row._id);
-      processed += 1;
-    }
+    await Promise.all(usageEvents.map((row) => ctx.db.delete(row._id)));
+    processed += usageEvents.length;
     if (usageEvents.length > 0) {
       await ctx.scheduler.runAfter(0, internal.analytics.resetAiAnalyticsBatch, {});
       return { processed, stage: "usage_events" };
     }
 
     const modelDailyRows = await ctx.db.query("userAnalyticsModelDaily").take(200);
-    for (const row of modelDailyRows) {
-      await ctx.db.delete(row._id);
-      processed += 1;
-    }
+    await Promise.all(modelDailyRows.map((row) => ctx.db.delete(row._id)));
+    processed += modelDailyRows.length;
     if (modelDailyRows.length > 0) {
       await ctx.scheduler.runAfter(0, internal.analytics.resetAiAnalyticsBatch, {});
       return { processed, stage: "model_daily" };
     }
 
     const dailyRows = await ctx.db.query("userAnalyticsDaily").take(200);
-    for (const row of dailyRows) {
-      await ctx.db.patch(row._id, {
-        aiRequests: 0,
-        aiErrors: 0,
-        aiInputTokens: 0,
-        aiOutputTokens: 0,
-        aiAudioSeconds: 0,
-        aiCostUsdMicros: 0,
-        aiMemoraRequests: 0,
-        aiMemoraInputTokens: 0,
-        aiMemoraOutputTokens: 0,
-        aiMemoraAudioSeconds: 0,
-        aiMemoraCostUsdMicros: 0,
-        aiByokRequests: 0,
-        aiByokInputTokens: 0,
-        aiByokOutputTokens: 0,
-        aiByokAudioSeconds: 0,
-        aiByokCostUsdMicros: 0,
-        aiActions: 0,
-        backgroundAiOperations: 0,
-        updatedAt: Date.now(),
-      });
-      processed += 1;
-    }
+    await Promise.all(
+      dailyRows.map((row) =>
+        ctx.db.patch(row._id, {
+          aiRequests: 0,
+          aiErrors: 0,
+          aiInputTokens: 0,
+          aiOutputTokens: 0,
+          aiAudioSeconds: 0,
+          aiCostUsdMicros: 0,
+          aiMemoraRequests: 0,
+          aiMemoraInputTokens: 0,
+          aiMemoraOutputTokens: 0,
+          aiMemoraAudioSeconds: 0,
+          aiMemoraCostUsdMicros: 0,
+          aiByokRequests: 0,
+          aiByokInputTokens: 0,
+          aiByokOutputTokens: 0,
+          aiByokAudioSeconds: 0,
+          aiByokCostUsdMicros: 0,
+          aiActions: 0,
+          backgroundAiOperations: 0,
+          updatedAt: Date.now(),
+        }),
+      ),
+    );
+    processed += dailyRows.length;
     if (dailyRows.length > 0) {
       await ctx.scheduler.runAfter(0, internal.analytics.resetAiAnalyticsBatch, {});
       return { processed, stage: "daily" };
     }
 
     const summaryRows = await ctx.db.query("userAnalyticsSummary").take(200);
-    for (const row of summaryRows) {
-      await ctx.db.patch(row._id, {
-        totalAiRequests: 0,
-        totalAiErrors: 0,
-        totalAiInputTokens: 0,
-        totalAiOutputTokens: 0,
-        totalAiAudioSeconds: 0,
-        totalAiCostUsdMicros: 0,
-        totalAiMemoraRequests: 0,
-        totalAiMemoraInputTokens: 0,
-        totalAiMemoraOutputTokens: 0,
-        totalAiMemoraAudioSeconds: 0,
-        totalAiMemoraCostUsdMicros: 0,
-        totalAiByokRequests: 0,
-        totalAiByokInputTokens: 0,
-        totalAiByokOutputTokens: 0,
-        totalAiByokAudioSeconds: 0,
-        totalAiByokCostUsdMicros: 0,
-        totalAiActions: 0,
-        totalBackgroundAiOperations: 0,
-        updatedAt: Date.now(),
-      });
-      processed += 1;
-    }
+    await Promise.all(
+      summaryRows.map((row) =>
+        ctx.db.patch(row._id, {
+          totalAiRequests: 0,
+          totalAiErrors: 0,
+          totalAiInputTokens: 0,
+          totalAiOutputTokens: 0,
+          totalAiAudioSeconds: 0,
+          totalAiCostUsdMicros: 0,
+          totalAiMemoraRequests: 0,
+          totalAiMemoraInputTokens: 0,
+          totalAiMemoraOutputTokens: 0,
+          totalAiMemoraAudioSeconds: 0,
+          totalAiMemoraCostUsdMicros: 0,
+          totalAiByokRequests: 0,
+          totalAiByokInputTokens: 0,
+          totalAiByokOutputTokens: 0,
+          totalAiByokAudioSeconds: 0,
+          totalAiByokCostUsdMicros: 0,
+          totalAiActions: 0,
+          totalBackgroundAiOperations: 0,
+          updatedAt: Date.now(),
+        }),
+      ),
+    );
+    processed += summaryRows.length;
     if (summaryRows.length > 0) {
       await ctx.scheduler.runAfter(0, internal.analytics.resetAiAnalyticsBatch, {});
       return { processed, stage: "summary" };
@@ -1668,9 +1679,7 @@ export const cleanupOldAiUsageEvents = internalMutation({
       .query("userAiUsageEvents")
       .withIndex("by_occurred_at", (q) => q.lt("occurredAt", cutoff))
       .take(200);
-    for (const row of stale) {
-      await ctx.db.delete(row._id);
-    }
+    await Promise.all(stale.map((row) => ctx.db.delete(row._id)));
     return stale.length;
   },
 });

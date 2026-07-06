@@ -269,13 +269,9 @@ export const cleanupOld = internalMutation({
     const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
     const batch = await ctx.db.query("memoryHistory").take(200);
 
-    let deleted = 0;
-    for (const row of batch) {
-      if (row.editedAt < cutoff) {
-        await ctx.db.delete(row._id);
-        deleted++;
-      }
-    }
+    const expired = batch.filter((row) => row.editedAt < cutoff);
+    await Promise.all(expired.map((row) => ctx.db.delete(row._id)));
+    const deleted = expired.length;
 
     // If we deleted items, schedule another run to continue cleanup
     if (deleted > 0) {

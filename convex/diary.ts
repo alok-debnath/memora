@@ -133,23 +133,22 @@ export const replaceNudgesFromDiary = internalMutation({
       .withIndex("by_user", (q) => q.eq("userId", entry.userId))
       .take(100);
 
-    for (const nudge of existing) {
-      if (!nudge.isDismissed) {
-        await ctx.db.patch(nudge._id, { isDismissed: true });
-      }
-    }
+    const activeNudges = existing.filter((nudge) => !nudge.isDismissed);
+    await Promise.all(activeNudges.map((nudge) => ctx.db.patch(nudge._id, { isDismissed: true })));
 
-    for (const nudge of args.nudges.slice(0, 2)) {
-      await ctx.db.insert("nudges", {
-        userId: entry.userId,
-        title: nudge.title,
-        message: nudge.message,
-        nudgeType: nudge.nudgeType,
-        priority: nudge.priority,
-        isDismissed: false,
-        isActedOn: false,
-        basedOnDiaryEntryIds: [args.entryId],
-      });
-    }
+    await Promise.all(
+      args.nudges.slice(0, 2).map((nudge) =>
+        ctx.db.insert("nudges", {
+          userId: entry.userId,
+          title: nudge.title,
+          message: nudge.message,
+          nudgeType: nudge.nudgeType,
+          priority: nudge.priority,
+          isDismissed: false,
+          isActedOn: false,
+          basedOnDiaryEntryIds: [args.entryId],
+        }),
+      ),
+    );
   },
 });

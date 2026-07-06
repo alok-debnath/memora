@@ -62,9 +62,7 @@ async function replaceTopicLinksForMemory(ctx: MutationCtx, memory: Doc<"memorie
     .query("memoryTopicLinks")
     .withIndex("by_memory", (q) => q.eq("memoryId", memory._id))
     .take(10);
-  for (const link of existingLinks) {
-    await ctx.db.delete(link._id);
-  }
+  await Promise.all(existingLinks.map((link) => ctx.db.delete(link._id)));
 
   const uniqueTopicIds = Array.from(
     new Set(
@@ -74,15 +72,17 @@ async function replaceTopicLinksForMemory(ctx: MutationCtx, memory: Doc<"memorie
     ),
   );
 
-  for (const topicId of uniqueTopicIds) {
-    await ctx.db.insert("memoryTopicLinks", {
-      userId: memory.userId,
-      memoryId: memory._id,
-      topicId,
-      isPrimary: memory.primaryTopicId === topicId,
-      assignedAt: memory._creationTime,
-    });
-  }
+  await Promise.all(
+    uniqueTopicIds.map((topicId) =>
+      ctx.db.insert("memoryTopicLinks", {
+        userId: memory.userId,
+        memoryId: memory._id,
+        topicId,
+        isPrimary: memory.primaryTopicId === topicId,
+        assignedAt: memory._creationTime,
+      }),
+    ),
+  );
 }
 
 async function deleteTopicLinksForMemory(ctx: MutationCtx, memoryId: Id<"memories">) {
@@ -92,9 +92,7 @@ async function deleteTopicLinksForMemory(ctx: MutationCtx, memoryId: Id<"memorie
       .query("memoryTopicLinks")
       .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
       .take(batchSize);
-    for (const link of existingLinks) {
-      await ctx.db.delete(link._id);
-    }
+    await Promise.all(existingLinks.map((link) => ctx.db.delete(link._id)));
     if (existingLinks.length < batchSize) break;
   }
 }
@@ -107,13 +105,15 @@ async function deleteMemoryRelatedData(ctx: MutationCtx, memoryId: Id<"memories"
       .query("memoryAttachments")
       .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
       .take(RELATED_DELETE_BATCH);
-    for (const doc of attachments) {
-      await ctx.scheduler.runAfter(0, internal.integrations.deleteDriveFile, {
-        userId: doc.userId,
-        driveFileId: doc.driveFileId,
-      });
-      await ctx.db.delete(doc._id);
-    }
+    await Promise.all(
+      attachments.map(async (doc) => {
+        await ctx.scheduler.runAfter(0, internal.integrations.deleteDriveFile, {
+          userId: doc.userId,
+          driveFileId: doc.driveFileId,
+        });
+        await ctx.db.delete(doc._id);
+      }),
+    );
     if (attachments.length < RELATED_DELETE_BATCH) break;
   }
 
@@ -122,9 +122,7 @@ async function deleteMemoryRelatedData(ctx: MutationCtx, memoryId: Id<"memories"
       .query("memoryHistory")
       .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
       .take(RELATED_DELETE_BATCH);
-    for (const doc of historyItems) {
-      await ctx.db.delete(doc._id);
-    }
+    await Promise.all(historyItems.map((doc) => ctx.db.delete(doc._id)));
     if (historyItems.length < RELATED_DELETE_BATCH) break;
   }
 
@@ -133,9 +131,7 @@ async function deleteMemoryRelatedData(ctx: MutationCtx, memoryId: Id<"memories"
       .query("reviewCards")
       .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
       .take(RELATED_DELETE_BATCH);
-    for (const doc of reviewCards) {
-      await ctx.db.delete(doc._id);
-    }
+    await Promise.all(reviewCards.map((doc) => ctx.db.delete(doc._id)));
     if (reviewCards.length < RELATED_DELETE_BATCH) break;
   }
 
@@ -144,9 +140,7 @@ async function deleteMemoryRelatedData(ctx: MutationCtx, memoryId: Id<"memories"
       .query("sharedMemories")
       .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
       .take(RELATED_DELETE_BATCH);
-    for (const doc of sharedMemories) {
-      await ctx.db.delete(doc._id);
-    }
+    await Promise.all(sharedMemories.map((doc) => ctx.db.delete(doc._id)));
     if (sharedMemories.length < RELATED_DELETE_BATCH) break;
   }
 
@@ -193,9 +187,7 @@ async function softDeleteMemory(
     .query("reviewCards")
     .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
     .take(10);
-  for (const card of reviewCards) {
-    await ctx.db.delete(card._id);
-  }
+  await Promise.all(reviewCards.map((card) => ctx.db.delete(card._id)));
 
   const topicIds = Array.from(
     new Set(
@@ -437,17 +429,22 @@ export const listByTopic = query({
       .order("desc")
       .take(Math.max(take * 3, 30));
 
+    const memoryIds: Id<"memories">[] = [];
     const seen = new Set<Id<"memories">>();
-    const memories: Doc<"memories">[] = [];
     for (const link of links) {
       if (seen.has(link.memoryId)) continue;
-      const memory = await ctx.db.get(link.memoryId);
-      if (!memory || memory.userId !== userId || !isActiveMemory(memory)) continue;
-      seen.add(memory._id);
-      memories.push(memory);
+      seen.add(link.memoryId);
+      memoryIds.push(link.memoryId);
     }
 
-    return memories.sort((a, b) => b._creationTime - a._creationTime).slice(0, take);
+    const memories = await Promise.all(memoryIds.map((memoryId) => ctx.db.get(memoryId)));
+    return memories
+      .filter(
+        (memory): memory is Doc<"memories"> =>
+          memory !== null && memory.userId === userId && isActiveMemory(memory),
+      )
+      .sort((a, b) => b._creationTime - a._creationTime)
+      .slice(0, take);
   },
 });
 
@@ -1179,28 +1176,22 @@ export const clearAllUserMemoryData = mutation({
       .query("userTopics")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .take(BATCH);
-    for (const doc of topicBatch) {
-      await ctx.db.delete(doc._id);
-      deleted += 1;
-    }
+    await Promise.all(topicBatch.map((doc) => ctx.db.delete(doc._id)));
+    deleted += topicBatch.length;
 
     const statsBatch = await ctx.db
       .query("userMemoryStats")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .take(BATCH);
-    for (const doc of statsBatch) {
-      await ctx.db.delete(doc._id);
-      deleted += 1;
-    }
+    await Promise.all(statsBatch.map((doc) => ctx.db.delete(doc._id)));
+    deleted += statsBatch.length;
 
     const dailyCountsBatch = await ctx.db
       .query("userMemoryDailyCounts")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .take(BATCH);
-    for (const doc of dailyCountsBatch) {
-      await ctx.db.delete(doc._id);
-      deleted += 1;
-    }
+    await Promise.all(dailyCountsBatch.map((doc) => ctx.db.delete(doc._id)));
+    deleted += dailyCountsBatch.length;
 
     const hasMore =
       memoryBatch.length === BATCH ||
@@ -1290,6 +1281,7 @@ export const stats = query({
       .withIndex("by_user_and_day", (q) => q.eq("userId", userId))
       .order("desc")
       .take(366);
+    const dailyCountByDay = new Map(dailyCounts.map((row) => [row.dayKey, row.count] as const));
 
     const today = new Date(nowMs);
     today.setUTCHours(0, 0, 0, 0);
@@ -1300,11 +1292,11 @@ export const stats = query({
       const day = new Date(today);
       day.setUTCDate(today.getUTCDate() - offset);
       const dayKey = day.toISOString().slice(0, 10);
-      const row = dailyCounts.find((item) => item.dayKey === dayKey);
+      const count = dailyCountByDay.get(dayKey) ?? 0;
       if (offset < 7) {
-        recentCount += row?.count ?? 0;
+        recentCount += count;
       }
-      if ((row?.count ?? 0) > 0) {
+      if (count > 0) {
         streakDays += 1;
       } else if (offset > 0) {
         break;
@@ -1334,11 +1326,10 @@ export const advanceRecurringReminders = internalMutation({
       .withIndex("by_status_nextDueAt", (q) => q.eq("status", "active").lte("nextDueAt", nowIso))
       .take(500);
 
-    let advanced = 0;
-    for (const memory of batch) {
-      if (!isActiveMemory(memory)) continue;
+    const patches = batch.flatMap((memory) => {
+      if (!isActiveMemory(memory)) return [];
       if (inferEntryKind(memory) !== "reminder") {
-        continue;
+        return [];
       }
 
       const schedule = getMemorySchedule(memory);
@@ -1348,7 +1339,7 @@ export const advanceRecurringReminders = internalMutation({
         !schedule.dueAt ||
         schedule.dueAt > nowIso
       ) {
-        continue;
+        return [];
       }
 
       let date = advanceDate(new Date(schedule.dueAt), schedule.recurrenceType);
@@ -1356,21 +1347,23 @@ export const advanceRecurringReminders = internalMutation({
         date = advanceDate(date, schedule.recurrenceType);
       }
 
-      await ctx.db.patch(
-        memory._id,
-        toStoredMemoryFields({
-          entryKind: "reminder",
-          schedule: {
-            dueAt: date.toISOString(),
-            isRecurring: true,
-            recurrenceType: schedule.recurrenceType,
-          },
-        }),
-      );
-      advanced++;
-    }
+      return [
+        ctx.db.patch(
+          memory._id,
+          toStoredMemoryFields({
+            entryKind: "reminder",
+            schedule: {
+              dueAt: date.toISOString(),
+              isRecurring: true,
+              recurrenceType: schedule.recurrenceType,
+            },
+          }),
+        ),
+      ];
+    });
+    await Promise.all(patches);
 
-    return { advanced };
+    return { advanced: patches.length };
   },
 });
 
@@ -1623,9 +1616,7 @@ export const complete = mutation({
       .query("reviewCards")
       .withIndex("by_memory", (q) => q.eq("memoryId", args.id))
       .take(10);
-    for (const card of reviewCards) {
-      await ctx.db.delete(card._id);
-    }
+    await Promise.all(reviewCards.map((card) => ctx.db.delete(card._id)));
 
     // Decrement topic counts so the filter bar hides topics with no active memories
     const topicIds = Array.from(
@@ -1793,9 +1784,7 @@ export const purgeStaleQueryCache = internalMutation({
       .withIndex("by_last_used_at", (q) => q.lt("lastUsedAt", cutoff))
       .take(QUERY_CACHE_PURGE_BATCH);
 
-    for (const entry of stale) {
-      await ctx.db.delete(entry._id);
-    }
+    await Promise.all(stale.map((entry) => ctx.db.delete(entry._id)));
 
     // If a full batch was deleted, schedule another pass immediately
     if (stale.length === QUERY_CACHE_PURGE_BATCH) {
@@ -1857,9 +1846,7 @@ export const clearQueryCacheForUser = internalMutation({
       .query("searchQueryCache")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .take(100);
-    for (const entry of batch) {
-      await ctx.db.delete(entry._id);
-    }
+    await Promise.all(batch.map((entry) => ctx.db.delete(entry._id)));
     if (batch.length === 100) {
       await ctx.scheduler.runAfter(0, internal.memories.clearQueryCacheForUser, {
         userId: args.userId,

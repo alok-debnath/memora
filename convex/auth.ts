@@ -20,7 +20,6 @@ async function sendResetPasswordEmail(email: string, url: string) {
   const fromEmail = process.env.BETTER_AUTH_FROM_EMAIL;
 
   if (!resendApiKey || !fromEmail) {
-    console.log(`Password reset for ${email}: ${url}`);
     return;
   }
 
@@ -214,9 +213,7 @@ export const deleteAccount = mutation({
         .query(table)
         .withIndex("by_user", (q) => q.eq("userId", user._id))
         .take(BATCH);
-      for (const doc of docs) {
-        await ctx.db.delete(doc._id);
-      }
+      await Promise.all(docs.map((doc) => ctx.db.delete(doc._id)));
       if (docs.length >= BATCH) hasMore = true;
     }
 
@@ -224,18 +221,14 @@ export const deleteAccount = mutation({
       .query("sharedMemories")
       .withIndex("by_user", (q) => q.eq("sharedByUserId", user._id))
       .take(BATCH);
-    for (const share of shares) {
-      await ctx.db.delete(share._id);
-    }
+    await Promise.all(shares.map((share) => ctx.db.delete(share._id)));
     if (shares.length >= BATCH) hasMore = true;
 
     const memories = await ctx.db
       .query("memories")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .take(BATCH);
-    for (const memory of memories) {
-      await ctx.db.delete(memory._id);
-    }
+    await Promise.all(memories.map((memory) => ctx.db.delete(memory._id)));
     if (memories.length >= BATCH) hasMore = true;
 
     const appUserId = String(user._id);
@@ -244,9 +237,7 @@ export const deleteAccount = mutation({
       .query("authUsers")
       .withIndex("userId", (q) => q.eq("userId", appUserId))
       .take(BATCH);
-    for (const authUser of authUsers) {
-      await ctx.db.delete(authUser._id);
-    }
+    await Promise.all(authUsers.map((authUser) => ctx.db.delete(authUser._id)));
     if (authUsers.length >= BATCH) hasMore = true;
 
     if (authUserId) {
@@ -262,9 +253,7 @@ export const deleteAccount = mutation({
           .query(table)
           .withIndex("userId", (q) => q.eq("userId", authUserId))
           .take(BATCH);
-        for (const doc of docs) {
-          await ctx.db.delete(doc._id);
-        }
+        await Promise.all(docs.map((doc) => ctx.db.delete(doc._id)));
         if (docs.length >= BATCH) hasMore = true;
       }
     }

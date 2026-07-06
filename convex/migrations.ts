@@ -281,10 +281,8 @@ export const wipeAllUserData = mutation({
         .withIndex("by_user", (q) => q.eq("userId", user._id))
         .take(BATCH);
 
-      for (const doc of docs) {
-        await ctx.db.delete(doc._id);
-        totalDeleted++;
-      }
+      await Promise.all(docs.map((doc) => ctx.db.delete(doc._id)));
+      totalDeleted += docs.length;
 
       if (docs.length >= BATCH) hasMore = true;
     }
@@ -295,10 +293,8 @@ export const wipeAllUserData = mutation({
       .withIndex("by_user", (q) => q.eq("sharedByUserId", user._id))
       .take(BATCH);
 
-    for (const share of shares) {
-      await ctx.db.delete(share._id);
-      totalDeleted++;
-    }
+    await Promise.all(shares.map((share) => ctx.db.delete(share._id)));
+    totalDeleted += shares.length;
     if (shares.length >= BATCH) hasMore = true;
 
     // Delete memories
@@ -307,10 +303,8 @@ export const wipeAllUserData = mutation({
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .take(BATCH);
 
-    for (const memory of memories) {
-      await ctx.db.delete(memory._id);
-      totalDeleted++;
-    }
+    await Promise.all(memories.map((memory) => ctx.db.delete(memory._id)));
+    totalDeleted += memories.length;
     if (memories.length >= BATCH) hasMore = true;
 
     // Log the deletion

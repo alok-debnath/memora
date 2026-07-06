@@ -197,6 +197,7 @@ export const recordAttachmentsForMessage = mutation({
           driveThumbnailLink: file.driveThumbnailLink,
           processingStatus: "pending",
           createdAt: now,
+          isDeleted: false,
         });
 
         return {
@@ -269,6 +270,7 @@ export const recordAttachmentsForMemory = mutation({
           driveThumbnailLink: file.driveThumbnailLink,
           processingStatus: "pending",
           createdAt: now,
+          isDeleted: false,
         }),
       ),
     );
@@ -393,6 +395,7 @@ export const recordAttachmentsInternal = internalMutation({
           driveThumbnailLink: file.driveThumbnailLink,
           processingStatus: "pending",
           createdAt: now,
+          isDeleted: false,
         });
 
         return {

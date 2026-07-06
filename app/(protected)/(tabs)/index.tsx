@@ -229,18 +229,6 @@ export default function HomeScreen() {
   const triggerReminderSync = useMutation(api.integrations.triggerReminderSync);
   const removeReminderSync = useMutation(api.integrations.removeReminderSync);
 
-  // Batch-fetch attachment counts for the visible feed IDs
-  const visibleMemoryIds = useMemo(
-    () => (allMemoryResult ?? []).map((m) => m._id as Id<"memories">),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [allMemoryResult?.length],
-  ) as Id<"memories">[];
-  const attachmentCounts =
-    useQuery(
-      api.attachments.getAttachmentCountsForMemories,
-      token && visibleMemoryIds.length > 0 ? { token, memoryIds: visibleMemoryIds } : "skip",
-    ) ?? {};
-
   const openEditMemory = useUIStore((state) => state.openEditMemory);
   const openHomeOverview = useUIStore((state) => state.openHomeOverview);
 
@@ -453,6 +441,15 @@ export default function HomeScreen() {
         : transformedMemories.slice(0, INITIAL_FEED_SIZE),
     [searchMode, showFullFeed, transformedMemories],
   );
+  const visibleMemoryIds = useMemo(
+    () => visibleFeed.map((item) => item.raw._id as Id<"memories">),
+    [visibleFeed],
+  );
+  const attachmentCounts =
+    useQuery(
+      api.attachments.getAttachmentCountsForMemories,
+      token && visibleMemoryIds.length > 0 ? { token, memoryIds: visibleMemoryIds } : "skip",
+    ) ?? {};
 
   const firstName = user?.name?.split(" ")[0] || "there";
   const isLoading =

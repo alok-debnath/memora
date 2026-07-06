@@ -156,9 +156,7 @@ export async function rebuildUserMemoryStats(ctx: StatsDbCtx, userId: Id<"users"
       .query("userMemoryDailyCounts")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .take(200);
-    for (const row of batch) {
-      await ctx.db.delete(row._id);
-    }
+    await Promise.all(batch.map((row) => ctx.db.delete(row._id)));
     if (batch.length < 200) {
       break;
     }
@@ -192,11 +190,13 @@ export async function rebuildUserMemoryStats(ctx: StatsDbCtx, userId: Id<"users"
     updatedAt: Date.now(),
   });
 
-  for (const [dayKey, count] of dailyCounts.entries()) {
-    await ctx.db.insert("userMemoryDailyCounts", {
-      userId,
-      dayKey,
-      count,
-    });
-  }
+  await Promise.all(
+    Array.from(dailyCounts.entries()).map(([dayKey, count]) =>
+      ctx.db.insert("userMemoryDailyCounts", {
+        userId,
+        dayKey,
+        count,
+      }),
+    ),
+  );
 }

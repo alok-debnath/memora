@@ -233,17 +233,21 @@ export const replaceUserTopicCentroids = internalMutation({
       .query("userTopics")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .take(200);
-    for (const topic of topics) {
-      const next = centroidMap.get(topic._id);
-      if (next) {
-        await ctx.db.patch(topic._id, {
-          centroid: next.centroid,
-          memoryCount: next.memoryCount,
-          embeddingFingerprint: args.embeddingFingerprint,
-          updatedAt: Date.now(),
-        });
-      }
-    }
+    await Promise.all(
+      topics.flatMap((topic) => {
+        const next = centroidMap.get(topic._id);
+        return next
+          ? [
+              ctx.db.patch(topic._id, {
+                centroid: next.centroid,
+                memoryCount: next.memoryCount,
+                embeddingFingerprint: args.embeddingFingerprint,
+                updatedAt: Date.now(),
+              }),
+            ]
+          : [];
+      }),
+    );
   },
 });
 
@@ -373,8 +377,7 @@ export const reconcileTopicUsage = internalMutation({
       .take(100);
 
     const archivedTopicIds = new Set<Id<"userTopics">>();
-
-    for (const topic of topics) {
+    const usagePatches = topics.flatMap((topic) => {
       const nextCount = usageByTopic.get(topic._id) ?? 0;
       const nextArchived = nextCount === 0;
       if (
@@ -382,40 +385,48 @@ export const reconcileTopicUsage = internalMutation({
         topic.isArchived === nextArchived &&
         !(nextArchived && topic.relatedTopics.length > 0)
       ) {
-        continue;
+        return [];
       }
-
-      await ctx.db.patch(topic._id, {
-        memoryCount: nextCount,
-        isArchived: nextArchived,
-        relatedTopics: nextArchived ? [] : topic.relatedTopics,
-        ...(nextArchived ? { parentTopicId: undefined } : {}),
-        updatedAt: Date.now(),
-      });
 
       if (nextArchived) {
         archivedTopicIds.add(topic._id);
       }
-    }
+
+      return [
+        ctx.db.patch(topic._id, {
+          memoryCount: nextCount,
+          isArchived: nextArchived,
+          relatedTopics: nextArchived ? [] : topic.relatedTopics,
+          ...(nextArchived ? { parentTopicId: undefined } : {}),
+          updatedAt: Date.now(),
+        }),
+      ];
+    });
+    await Promise.all(usagePatches);
 
     if (archivedTopicIds.size === 0) {
       return;
     }
 
-    for (const topic of topics) {
-      if (archivedTopicIds.has(topic._id)) continue;
-      const filteredRelations = topic.relatedTopics.filter(
-        (relation) => !archivedTopicIds.has(relation.topicId),
-      );
-      const shouldClearParent = !!topic.parentTopicId && archivedTopicIds.has(topic.parentTopicId);
-      if (filteredRelations.length !== topic.relatedTopics.length || shouldClearParent) {
-        await ctx.db.patch(topic._id, {
-          relatedTopics: filteredRelations,
-          ...(shouldClearParent ? { parentTopicId: undefined } : {}),
-          updatedAt: Date.now(),
-        });
-      }
-    }
+    await Promise.all(
+      topics.flatMap((topic) => {
+        if (archivedTopicIds.has(topic._id)) return [];
+        const filteredRelations = topic.relatedTopics.filter(
+          (relation) => !archivedTopicIds.has(relation.topicId),
+        );
+        const shouldClearParent =
+          !!topic.parentTopicId && archivedTopicIds.has(topic.parentTopicId);
+        return filteredRelations.length !== topic.relatedTopics.length || shouldClearParent
+          ? [
+              ctx.db.patch(topic._id, {
+                relatedTopics: filteredRelations,
+                ...(shouldClearParent ? { parentTopicId: undefined } : {}),
+                updatedAt: Date.now(),
+              }),
+            ]
+          : [];
+      }),
+    );
   },
 });
 

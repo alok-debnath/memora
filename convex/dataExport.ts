@@ -228,15 +228,14 @@ export const exportMemoriesOnly = query({
 
     const memories = await ctx.db
       .query("memories")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .withIndex("by_user_status", (q) => q.eq("userId", user._id).eq("status", "active"))
       .take(10000);
 
-    const active = memories.filter((m) => m.status === "active");
     return {
       exportedAt: new Date().toISOString(),
       format: "memories_v1",
-      count: active.length,
-      memories: active.map((m) => ({
+      count: memories.length,
+      memories: memories.map((m) => ({
         title: m.title,
         content: m.content,
         primaryTopicId: m.primaryTopicId,

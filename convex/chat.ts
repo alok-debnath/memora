@@ -329,9 +329,7 @@ export const clear = mutation({
           .withIndex("by_user", (q) => q.eq("userId", userId))
           .take(500);
 
-    for (const msg of messages) {
-      await ctx.db.delete(msg._id);
-    }
+    await Promise.all(messages.map((msg) => ctx.db.delete(msg._id)));
 
     // If there are more, schedule continuation
     if (messages.length >= 500) {

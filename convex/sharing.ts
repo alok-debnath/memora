@@ -49,11 +49,11 @@ export const revokeShareLink = mutation({
       .withIndex("by_memory", (q) => q.eq("memoryId", args.memoryId))
       .take(50);
 
-    for (const share of shares) {
-      if (share.sharedByUserId === userId) {
-        await ctx.db.patch(share._id, { isActive: false });
-      }
-    }
+    await Promise.all(
+      shares
+        .filter((share) => share.sharedByUserId === userId)
+        .map((share) => ctx.db.patch(share._id, { isActive: false })),
+    );
 
     await ctx.db.patch(args.memoryId, {
       isPublic: false,

@@ -69,9 +69,7 @@ export const resetPricingCatalog = internalMutation({
   args: {},
   handler: async (ctx) => {
     const rows = await ctx.db.query("aiModelPricing").take(200);
-    for (const row of rows) {
-      await ctx.db.delete(row._id);
-    }
+    await Promise.all(rows.map((row) => ctx.db.delete(row._id)));
     return rows.length;
   },
 });

@@ -225,6 +225,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_user", ["userId"])
+    .index("by_day", ["dayKey"])
     .index("by_user_and_day", ["userId", "dayKey"])
     .index("by_analytics_subject_id_and_day", ["analyticsSubjectId", "dayKey"]),
 
@@ -261,6 +262,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_user", ["userId"])
+    .index("by_day", ["dayKey"])
     .index("by_user_day", ["userId", "dayKey"])
     .index("by_user_day_model", ["userId", "dayKey", "provider", "model"])
     .index("by_analytics_subject_id_and_day", ["analyticsSubjectId", "dayKey"]),

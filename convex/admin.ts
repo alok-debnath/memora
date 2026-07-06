@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
-import type { MutationCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAdmin } from "./lib/withAuth";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -65,15 +65,14 @@ async function logAdminAction(args: {
   });
 }
 
-async function getSystemHealthSnapshot(ctx: any, range: "7d" | "30d" | "90d" | "365d") {
+async function getSystemHealthSnapshot(ctx: QueryCtx, range: "7d" | "30d" | "90d" | "365d") {
   const windowDays = getRangeDays(range);
   const cutoff = getCutoffKey(windowDays);
-  const dailyRows = (
-    await ctx.db
-      .query("userAnalyticsDaily")
-      .order("desc")
-      .take(Math.min(windowDays * 400, 12000))
-  ).filter((row: Doc<"userAnalyticsDaily">) => row.dayKey >= cutoff);
+  const dailyRows = await ctx.db
+    .query("userAnalyticsDaily")
+    .withIndex("by_day", (q) => q.gte("dayKey", cutoff))
+    .order("desc")
+    .take(Math.min(windowDays * 400, 12000));
 
   let aiRequests = 0;
   let aiErrors = 0;
@@ -132,6 +131,7 @@ export const dashboardOverview = query({
 
     const rows = await ctx.db
       .query("userAnalyticsDaily")
+      .withIndex("by_day", (q) => q.gte("dayKey", previousStart))
       .order("desc")
       .take(Math.min(prevWindow * 800, 20000));
 
@@ -176,12 +176,11 @@ export const dashboardOverview = query({
         return acc;
       }, new Map<string, { dayKey: string; aiRequests: number; searches: number }>());
 
-    const modelRows = (
-      await ctx.db
-        .query("userAnalyticsModelDaily")
-        .order("desc")
-        .take(Math.min(getRangeDays(range) * 1200, 20000))
-    ).filter((row: Doc<"userAnalyticsModelDaily">) => row.dayKey >= currentStart);
+    const modelRows = (await ctx.db
+      .query("userAnalyticsModelDaily")
+      .withIndex("by_day", (q) => q.gte("dayKey", currentStart))
+      .order("desc")
+      .take(Math.min(getRangeDays(range) * 1200, 20000))) as Doc<"userAnalyticsModelDaily">[];
 
     const byProvider = new Map<
       string,
@@ -332,6 +331,7 @@ export const analyticsLab = query({
 
     const allDailyRows = await ctx.db
       .query("userAnalyticsDaily")
+      .withIndex("by_day", (q) => q.gte("dayKey", previousStart))
       .order("desc")
       .take(Math.min(days * 800, 20000));
     const dailyRows = (allDailyRows as Doc<"userAnalyticsDaily">[])
@@ -413,12 +413,11 @@ export const analyticsLab = query({
         { key: "casual", users: casual, label: "Casual users" },
       );
     } else if (segmentFamily === "provider") {
-      const modelRows = (
-        await ctx.db
-          .query("userAnalyticsModelDaily")
-          .order("desc")
-          .take(Math.min(days * 1200, 20000))
-      ).filter((row: Doc<"userAnalyticsModelDaily">) => row.dayKey >= currentStart);
+      const modelRows = (await ctx.db
+        .query("userAnalyticsModelDaily")
+        .withIndex("by_day", (q) => q.gte("dayKey", currentStart))
+        .order("desc")
+        .take(Math.min(days * 1200, 20000))) as Doc<"userAnalyticsModelDaily">[];
       const byProvider = new Map<string, number>();
       for (const row of modelRows) {
         byProvider.set(row.provider, (byProvider.get(row.provider) ?? 0) + row.requests);
@@ -427,12 +426,11 @@ export const analyticsLab = query({
         segmentRows.push({ key, users: value, label: `${key} requests` });
       }
     } else {
-      const modelRows = (
-        await ctx.db
-          .query("userAnalyticsModelDaily")
-          .order("desc")
-          .take(Math.min(days * 1200, 20000))
-      ).filter((row: Doc<"userAnalyticsModelDaily">) => row.dayKey >= currentStart);
+      const modelRows = (await ctx.db
+        .query("userAnalyticsModelDaily")
+        .withIndex("by_day", (q) => q.gte("dayKey", currentStart))
+        .order("desc")
+        .take(Math.min(days * 1200, 20000))) as Doc<"userAnalyticsModelDaily">[];
       const byCapability = new Map<string, number>();
       for (const row of modelRows) {
         const capability =
@@ -685,9 +683,7 @@ export const revokeUserSessions = mutation({
       .query("authSessions")
       .withIndex("userId", (q) => q.eq("userId", String(args.userId)))
       .take(200);
-    for (const row of rows) {
-      await ctx.db.delete(row._id);
-    }
+    await Promise.all(rows.map((row) => ctx.db.delete(row._id)));
 
     await logAdminAction({
       ctx,
@@ -745,9 +741,12 @@ export const aiOpsOverview = query({
     const range = args.range ?? "30d";
     const cutoff = getCutoffKey(getRangeDays(range));
 
-    const rows = (
-      await ctx.db.query("userAiUsageEvents").withIndex("by_occurred_at").order("desc").take(1200)
-    ).filter((row: Doc<"userAiUsageEvents">) => row.dayKey >= cutoff);
+    const cutoffMs = Date.now() - (getRangeDays(range) - 1) * DAY_MS;
+    const rows = await ctx.db
+      .query("userAiUsageEvents")
+      .withIndex("by_occurred_at", (q) => q.gte("occurredAt", cutoffMs))
+      .order("desc")
+      .take(1200);
 
     const providerMap = new Map<
       string,
@@ -915,59 +914,61 @@ export const evaluateAlertRules = mutation({
     };
 
     const rules = await ctx.db.query("adminAlertRules").take(200);
-    let triggered = 0;
     const now = Date.now();
 
-    for (const rule of rules as Doc<"adminAlertRules">[]) {
-      if (!rule.enabled) continue;
-      const value = metricMap[rule.metricKey];
-      if (value === undefined) continue;
-      const hit = rule.comparison === "gt" ? value > rule.threshold : value < rule.threshold;
+    const hits = await Promise.all(
+      (rules as Doc<"adminAlertRules">[]).map(async (rule) => {
+        if (!rule.enabled) return false;
+        const value = metricMap[rule.metricKey];
+        if (value === undefined) return false;
+        const hit = rule.comparison === "gt" ? value > rule.threshold : value < rule.threshold;
 
-      const openIncident = await ctx.db
-        .query("adminAlertIncidents")
-        .withIndex("by_rule_and_triggered_at", (q) => q.eq("ruleKey", rule.key))
-        .order("desc")
-        .take(10)
-        .then((rows) => rows.find((r) => r.status !== "resolved") ?? null);
+        const openIncident = await ctx.db
+          .query("adminAlertIncidents")
+          .withIndex("by_rule_and_triggered_at", (q) => q.eq("ruleKey", rule.key))
+          .order("desc")
+          .take(10)
+          .then((rows) => rows.find((r) => r.status !== "resolved") ?? null);
 
-      if (hit) {
-        triggered += 1;
-        if (openIncident) {
+        if (hit) {
+          if (openIncident) {
+            await ctx.db.patch(openIncident._id, {
+              value,
+              threshold: rule.threshold,
+              lastEvaluatedAt: now,
+              metadata: {
+                range,
+                metricKey: rule.metricKey,
+              },
+            });
+          } else {
+            await ctx.db.insert("adminAlertIncidents", {
+              ruleKey: rule.key,
+              metricKey: rule.metricKey,
+              severity: rule.severity,
+              status: "open",
+              value,
+              threshold: rule.threshold,
+              triggeredAt: now,
+              lastEvaluatedAt: now,
+              metadata: {
+                range,
+                metricKey: rule.metricKey,
+              },
+            });
+          }
+        } else if (openIncident) {
           await ctx.db.patch(openIncident._id, {
-            value,
-            threshold: rule.threshold,
+            status: "resolved",
+            resolvedAt: now,
             lastEvaluatedAt: now,
-            metadata: {
-              range,
-              metricKey: rule.metricKey,
-            },
-          });
-        } else {
-          await ctx.db.insert("adminAlertIncidents", {
-            ruleKey: rule.key,
-            metricKey: rule.metricKey,
-            severity: rule.severity,
-            status: "open",
             value,
-            threshold: rule.threshold,
-            triggeredAt: now,
-            lastEvaluatedAt: now,
-            metadata: {
-              range,
-              metricKey: rule.metricKey,
-            },
           });
         }
-      } else if (openIncident) {
-        await ctx.db.patch(openIncident._id, {
-          status: "resolved",
-          resolvedAt: now,
-          lastEvaluatedAt: now,
-          value,
-        });
-      }
-    }
+        return hit;
+      }),
+    );
+    const triggered = hits.filter(Boolean).length;
 
     await logAdminAction({
       ctx,
