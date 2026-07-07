@@ -4,6 +4,7 @@
 
 import OpenAI from "openai";
 import { toFile } from "openai/uploads";
+import { createJsonStringFieldExtractor } from "../streamJsonField";
 import type { AiProviderAdapter, EmbeddingsResult, ResolvedRoute } from "./types";
 
 // ─── Platform client (cached) ─────────────────────────────────────────────────
@@ -68,7 +69,7 @@ export const openAiAdapter: AiProviderAdapter = {
     return response as OpenAI.Chat.Completions.ChatCompletion;
   },
 
-  async chatCompletionStream({ route, request, onDelta }) {
+  async chatCompletionStream({ route, request, onDelta, streamToolTextField }) {
     const client = getClientForCredentials({ apiKey: route.apiKey, baseURL: route.baseUrl });
     if (!client) throw new Error("OpenAI client is not available for this route.");
     // The non-streaming param type carries stream?: false — drop it so the
@@ -82,6 +83,14 @@ export const openAiAdapter: AiProviderAdapter = {
     stream.on("content", (delta) => {
       onDelta(delta);
     });
+    if (streamToolTextField) {
+      const extractor = createJsonStringFieldExtractor(streamToolTextField.argName);
+      stream.on("tool_calls.function.arguments.delta", (event) => {
+        if (event.name !== streamToolTextField.toolName) return;
+        const visible = extractor.push(event.arguments_delta);
+        if (visible) onDelta(visible);
+      });
+    }
     return await stream.finalChatCompletion();
   },
 

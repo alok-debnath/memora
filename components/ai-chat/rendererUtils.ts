@@ -171,7 +171,7 @@ export function getProgressTitle(status: ProgressStatus) {
   if (toolName === "create_memory") return "Saving memory";
   if (toolName === "update_memory") return "Updating memory";
   if (toolName === "manage_topics") return "Updating topics";
-  if (toolName === "surface_cards") return "Preparing cards";
+  if (toolName === "respond") return "Composing answer";
   if (phase === "searching") return "Searching";
   if (phase === "analyzing") return "Analyzing";
   if (phase === "writing") return "Saving changes";

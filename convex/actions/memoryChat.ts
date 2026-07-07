@@ -16,7 +16,6 @@ import {
 } from "../lib/chat/budgets";
 import { buildCardFlowPayload, type CardFlowAttachment } from "../lib/chat/flow";
 import { CREATE_ONLY_INTENT_PATTERNS, shouldPreferUpdatingExisting } from "../lib/chat/heuristics";
-import { extractUsedIds, hasUsedIdsMarker, stripMarkersFromContent } from "../lib/chat/markers";
 import { toPreviewItems } from "../lib/chat/projections";
 import {
   buildAttachmentContextMessage,
@@ -24,7 +23,6 @@ import {
   buildKnowledgeDigestMessage,
   buildMemoryReferenceHint,
   buildSystemPrompt,
-  FORCED_USED_IDS_NAG,
 } from "../lib/chat/prompts";
 import { buildGroundingContext, listMemoriesForAI } from "../lib/chat/search";
 import { CHAT_TOOL_DEFINITIONS, CHAT_TOOLS_BY_NAME, type ToolContext } from "../lib/chat/tools";
@@ -288,8 +286,8 @@ export const chat = action({
 
       let finalText = "";
 
-      // Keep grounding hits as fallback candidates only. Final surfaced cards
-      // should come from explicit surface_cards tool calls whenever possible.
+      // Candidate pool kept for flow/context bookkeeping only — the final
+      // card set always comes from the model's own respond(used_ids) call.
       if (initialGrounding.shouldGround) {
         state.pendingSearchIsCached = initialGrounding.isCached;
         if (initialGrounding.searchResults.length > 0) {
@@ -340,46 +338,36 @@ export const chat = action({
           visibility: "user_visible",
           link: analyticsLink,
           onDelta: replyStreamer.onDelta,
+          // The final answer always arrives as the `respond` tool's
+          // `message` argument (see tools/respond.ts) — extract it live
+          // from the streaming tool-call arguments so it still reads as
+          // plain streamed text to the user.
+          streamToolTextField: { toolName: "respond", argName: "message" },
           request: {
             messages: conversation,
             tools: CHAT_TOOL_DEFINITIONS,
-            tool_choice: "auto",
+            // Forced, single tool call per turn: the model can no longer
+            // silently skip reporting which memories it used the way a
+            // freeform-text exit allowed. respond() is always one of the
+            // available choices, so this never blocks a normal reply.
+            tool_choice: "required",
+            parallel_tool_calls: false,
             temperature: PLANNER_TEMPERATURE,
             max_completion_tokens: MAX_COMPLETION_TOKENS,
           },
         });
 
         const choice = response.choices[0]?.message;
-        if (!choice) {
-          break;
-        }
-
-        const content = extractTextContent(choice.content);
-        if (!choice.tool_calls?.length) {
-          // Conditional Forced Turn Fallback:
-          // If grounding/search was active but the AI forgot the mandatory <!--MEMORA_USED_IDS--> comment,
-          // we force one final turn to collect them. This handles broad lists and edge cases.
-          if (
-            content &&
-            (initialGrounding.shouldGround || state.surfaceCandidates.length > 0) &&
-            !state.surfaceCardsCalled &&
-            !hasUsedIdsMarker(content) &&
-            iteration < MAX_ITERATIONS - 1
-          ) {
-            conversation.push({ role: "assistant", content });
-            conversation.push({
-              role: "user",
-              content: FORCED_USED_IDS_NAG,
-            });
-            continue;
-          }
-          finalText = content || finalText;
+        if (!choice?.tool_calls?.length) {
+          // Only reachable if a provider without forced tool-choice support
+          // is ever routed here (see chatCompletion fallback in aiDispatch).
+          finalText = extractTextContent(choice?.content) || finalText;
           break;
         }
 
         conversation.push({
           role: "assistant",
-          content,
+          content: extractTextContent(choice.content),
           tool_calls: choice.tool_calls,
         });
 
@@ -424,9 +412,10 @@ export const chat = action({
           });
         }
 
-        // If AI called surface_cards, we're done. Preserve the original answer if already set.
-        if (state.surfaceCardsCalled) {
-          if (!finalText) finalText = content;
+        // respond() ends the turn — its message + used_ids are already in
+        // state, no further iteration needed.
+        if (state.respondCalled) {
+          finalText = state.finalMessage;
           break;
         }
       }
@@ -443,23 +432,6 @@ export const chat = action({
           resolvedText = "I processed that, but I couldn't generate a clear reply.";
         }
       }
-
-      // Precision-Grounded Auto-Surfacing (Final ID Extraction)
-      if (
-        !state.surfaceCardsCalled &&
-        (initialGrounding.shouldGround || state.surfaceCandidates.length > 0)
-      ) {
-        const usedIds = extractUsedIds(resolvedText);
-        if (usedIds.ids.length > 0) {
-          for (const id of usedIds.ids) {
-            state.pendingCardIds.add(id);
-          }
-          resolvedText = usedIds.cleanText;
-        }
-      }
-      // Persisted content is always clean text — drop any marker-shaped
-      // comment the model emitted regardless of which path ran above.
-      resolvedText = stripMarkersFromContent(resolvedText);
 
       const { diaryIds: diaryCardIds } = await validateCardIds(ctx, session._id, state);
 

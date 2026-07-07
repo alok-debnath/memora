@@ -6,11 +6,12 @@ How to extend the system without regressions, redundancy, or cost creep. Written
 
 1. **Zero added AI calls per chat turn.** New context features must come from DB queries (like the knowledge digest), not extra completions. Embeddings are write-time only — one per entity, reused forever. Query embeddings are cache-first (`searchQueryCache`).
 2. **Convex file path = public API namespace.** Never move an exported `query`/`mutation`/`action` to another file — it renames `api.<file>.<fn>` and breaks clients. Move handler _logic_ to `convex/model/*` or `convex/lib/*` and keep a thin registration in place.
-3. **Message content is clean text; structure lives in `chatMessages.meta`.** Never embed data in message content. The only marker still alive is `<!--MEMORA_USED_IDS:[...]-->` — an AI-facing fallback protocol, extracted and stripped server-side before persist (`lib/chat/markers.ts`). The client does zero marker parsing.
+3. **Message content is clean text; structure lives in `chatMessages.meta`.** Never embed data in message content. There is no marker protocol — the model reports which memories it used as a mandatory tool argument (see invariant 8), not as optional inline markup.
 4. **All AI-emitted IDs pass one validation gate** before persisting: `validateCardIds` in `lib/chat/turnState.ts` (normalizeId + ownership + active check, split by table). Never trust model-emitted IDs anywhere else.
 5. **Prompt ordering is a caching contract**: static system prompt first, knowledge digest second, chat history third, per-turn context after. Keep the system prompt byte-stable across turns (only the timestamp block varies) so provider prompt caching keeps hitting.
 6. **Every cost knob lives in `convex/lib/chat/budgets.ts`.** New caps/limits/excerpt lengths go there, not inline.
 7. **`"use node"` propagates.** Any `convex/lib` module that (transitively) imports a node-tainted module (`aiDispatch`, `semanticSearch`, `attachmentExtraction`, `aiSecrets`) needs `"use node"` at the top, or deploy fails with an unhelpful "Node APIs" error.
+8. **The final answer is always a forced tool call, never freeform text.** Every planner iteration runs with `tool_choice: "required"` + `parallel_tool_calls: false`; the model ends a turn by calling `respond({message, used_ids})` (`lib/chat/tools/respond.ts`) — never by returning plain content. `used_ids` is a mandatory argument, not a voluntary follow-up, which is what makes card selection reliable without a second completion call. `message` streams to the user via a live JSON-argument extractor (`lib/streamJsonField.ts`, wired in `providers/openai.ts`'s `streamToolTextField`), so it still reads as ordinary streamed text. Don't reintroduce a freeform "just answer in text" exit path or a nag/retry completion to recover missing IDs — that was the previous design and it doubled AI cost on most grounded turns.
 
 ## Extension recipes
 
@@ -40,9 +41,9 @@ Put it in `convex/model/<domain>/` as plain functions taking `(ctx, args)`. Exis
 
 ## Chat turn lifecycle (memoryChat.ts, ~550 lines)
 
-auth → send user msg → **grounding search fired concurrently** with history+digest fetch and attachment extraction → conversation assembly (prompt-order invariant) → agent loop (≤`MAX_ITERATIONS`, streaming planner via `trackedChatCompletionStream`, registry dispatch) → finalize: extract USED_IDS, strip markers, `validateCardIds`, build meta, `replyStreamer.finalize({content, meta})`.
+auth → send user msg → **grounding search fired concurrently** with history+digest fetch and attachment extraction → conversation assembly (prompt-order invariant) → agent loop (≤`MAX_ITERATIONS`, forced tool call per iteration via `trackedChatCompletionStream`, registry dispatch, ends when `respond` runs) → finalize: `validateCardIds`, build meta, `replyStreamer.finalize({content, meta})`.
 
-Streaming: `lib/chat/replyStreamer.ts` — assistant doc created lazily on first visible text (`streaming: true`), patched ≥400ms apart in order, partial `<!--` tails withheld so markers never flash. Client (`useChatController`) drops the progress bubble once a streaming assistant message exists.
+Streaming: `lib/chat/replyStreamer.ts` — assistant doc created lazily on first visible text (`streaming: true`), patched ≥400ms apart in order. The visible text is the `respond` tool call's `message` argument, extracted live from streaming JSON (never raw markup, so nothing needs stripping). Client (`useChatController`) drops the progress bubble once a streaming assistant message exists.
 
 ## Gotchas learned the hard way
 

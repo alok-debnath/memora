@@ -405,6 +405,7 @@ export async function trackedChatCompletionStream(
     metadata?: Record<string, string>;
     link?: AnalyticsLink;
     onDelta: (textDelta: string) => void;
+    streamToolTextField?: { toolName: string; argName: string };
     request: Omit<OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming, "model">;
   },
 ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
@@ -417,6 +418,7 @@ export async function trackedChatCompletionStream(
           route,
           request: args.request,
           onDelta: args.onDelta,
+          streamToolTextField: args.streamToolTextField,
         })
       : await adapter.chatCompletion({ route, request: args.request });
     const usage = response.usage as ChatUsage | undefined;

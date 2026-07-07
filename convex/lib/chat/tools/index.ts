@@ -15,8 +15,8 @@ import {
 } from "./deletionAndTrash";
 import { historyTool, manageTopicsTool } from "./historyAndTopics";
 import { removeReminderSyncTool, syncReminderTool } from "./reminderSync";
+import { respondTool } from "./respond";
 import { searchMemoriesTool } from "./searchMemories";
-import { surfaceCardsTool } from "./surfaceCards";
 import type { ChatTool } from "./toolTypes";
 import { updateMemoryTool } from "./updateMemory";
 
@@ -39,7 +39,7 @@ const REGISTERED_TOOLS: ChatTool[] = [
   analyzeMemoriesTool,
   historyTool,
   manageTopicsTool,
-  surfaceCardsTool,
+  respondTool,
 ];
 
 export const CHAT_TOOL_DEFINITIONS: OpenAI.Chat.Completions.ChatCompletionTool[] =

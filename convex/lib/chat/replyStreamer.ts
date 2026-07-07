@@ -8,13 +8,13 @@ import { STREAM_PATCH_INTERVAL_MS } from "./budgets";
  * Streams the assistant reply into a chatMessages doc while it generates.
  * The doc is created lazily on the first visible text (tool-only iterations
  * never create one), patched at most every STREAM_PATCH_INTERVAL_MS, and
- * finalized once with the clean text + structured meta. Patches are chained
+ * finalized once with the final text + structured meta. Patches are chained
  * so they always apply in order.
  *
- * Hidden HTML-comment markers the model may emit (MEMORA_USED_IDS fallback)
- * are held back: complete markers are stripped and a trailing partial
- * marker ("<!--MEMORA_US…") is withheld until it either completes or the
- * stream ends, so marker text never flashes in the UI.
+ * The visible text is the `message` argument of the model's terminal
+ * `respond` tool call, extracted live from streaming JSON tool-call
+ * arguments (see providers/openai.ts) — never raw markup, so no stripping
+ * is needed here.
  */
 export function createReplyStreamer(ctx: ActionCtx, userId: Id<"users">) {
   let messageId: Id<"chatMessages"> | null = null;
@@ -22,11 +22,7 @@ export function createReplyStreamer(ctx: ActionCtx, userId: Id<"users">) {
   let lastPatchAt = 0;
   let chain: Promise<void> = Promise.resolve();
 
-  const visibleText = () =>
-    buffer
-      .replace(/<!--[\s\S]*?-->/g, "")
-      .replace(/<!--[\s\S]*$/, "")
-      .trimStart();
+  const visibleText = () => buffer.trimStart();
 
   const enqueue = (fn: () => Promise<void>) => {
     chain = chain.then(fn).catch(() => {

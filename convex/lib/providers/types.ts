@@ -66,6 +66,13 @@ export interface AiProviderAdapter {
     route: ResolvedRoute;
     request: Omit<OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming, "model">;
     onDelta: (textDelta: string) => void;
+    /**
+     * When the visible reply text is a field inside a forced tool call's
+     * streaming arguments (structured-answer pattern) rather than plain
+     * message content, name the tool + argument here so the adapter can
+     * extract and forward it through `onDelta` as it streams in.
+     */
+    streamToolTextField?: { toolName: string; argName: string };
   }): Promise<OpenAI.Chat.Completions.ChatCompletion>;
 
   /** Text embeddings. */
