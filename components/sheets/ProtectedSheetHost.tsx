@@ -1,4 +1,5 @@
-import React, { Suspense, lazy, useCallback } from "react";
+import React, { Suspense, lazy, useCallback, useEffect } from "react";
+import { BackHandler } from "react-native";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -57,6 +58,18 @@ export function ProtectedSheetHost() {
   const editMemoryPayload = useUIStore(selectSheetPayload("editMemory"));
   const closeCommand = useUIStore((state) => state.closeCommand);
   const closeEditMemory = useUIStore((state) => state.closeEditMemory);
+  const closeSheet = useUIStore((state) => state.closeSheet);
+
+  useEffect(() => {
+    const backSub = BackHandler.addEventListener("hardwareBackPress", () => {
+      const stack = useUIStore.getState().sheetStack;
+      const top = stack[stack.length - 1];
+      if (!top) return false;
+      closeSheet(top);
+      return true;
+    });
+    return () => backSub.remove();
+  }, [closeSheet]);
 
   const handleSaveEdit = useCallback(
     async (data: Record<string, unknown>) => {
