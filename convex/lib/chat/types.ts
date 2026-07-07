@@ -68,9 +68,36 @@ export type DeletionItem = {
   entry_kind: string;
 };
 
+export type MemoryCardSnapshot = {
+  table: "memories";
+  id: string;
+  title?: string;
+  content?: string;
+  entry_kind: string;
+  schedule_due_at?: string | null;
+  google_event_id?: string;
+  google_sync_status?: "pending" | "synced" | "failed";
+  google_sync_message?: string;
+  google_sync_updated_at?: number;
+};
+
+export type DiaryCardSnapshot = {
+  table: "diaryEntries";
+  id: string;
+  creation_time: number;
+  mood: string | null;
+  energy_level: string | null;
+  topics: string[];
+  summary: string | null;
+  excerpt: string;
+};
+
+export type CardSnapshot = MemoryCardSnapshot | DiaryCardSnapshot;
+
 /** Mirrors chatMessages.meta in schema.ts / chatMessageMetaValidator in chat.ts. */
 export type ChatMessageMeta = {
   cards?: Array<{ table: "memories" | "diaryEntries"; id: string }>;
+  cardSnapshots?: CardSnapshot[];
   deletionProposal?: DeletionItem[];
   isCached?: boolean;
   turns?: number;

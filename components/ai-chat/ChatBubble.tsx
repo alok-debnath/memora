@@ -11,9 +11,7 @@ import Animated, {
   ZoomIn,
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
-import { useQuery } from "convex/react";
 import { Text, XStack, YStack } from "tamagui";
-import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { FontFamily } from "@/constants/fonts";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -21,7 +19,8 @@ import { Feather } from "@/lib/icons";
 import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import { DeletionProposalCard } from "./DeletionProposalCard";
 import { SearchResultsCard } from "./SearchResultsCard";
-import type { CardFlow, CardRef, ChatMsg, DeletionItem } from "./types";
+import { STREAM_CURSOR, useStreamReveal, useStreamRevealMotion } from "./streamReveal";
+import type { CardFlow, CardSnapshot, ChatMsg, DeletionItem } from "./types";
 import type { MarkdownStyle } from "./rendererUtils";
 import { extractSpeakableText, formatMessageTime } from "./rendererUtils";
 
@@ -29,31 +28,19 @@ const CHAT = {
   bubbleRadius: 18,
   bubblePadding: 12,
   bubbleMinWidth: 72,
-  messageGap: 10,
+  messageGap: 9,
 } as const;
 
 const getBubbleShadow = (shadowColor: string) => appShadow(shadowColor, "sm");
 
-function AttachmentChip({
-  name,
-  attachmentId,
-  token,
-}: {
-  name: string;
-  attachmentId: Id<"memoryAttachments">;
-  token?: string | null;
-}) {
+function AttachmentChip({ name, driveWebViewLink }: { name: string; driveWebViewLink?: string }) {
   const theme = useAppTheme();
-  const attachment = useQuery(
-    api.attachments.getAttachment,
-    token ? { token, attachmentId } : "skip",
-  );
 
   const handlePress = useCallback(() => {
-    if (attachment?.driveWebViewLink) {
-      void Linking.openURL(attachment.driveWebViewLink);
+    if (driveWebViewLink) {
+      void Linking.openURL(driveWebViewLink);
     }
-  }, [attachment?.driveWebViewLink]);
+  }, [driveWebViewLink]);
 
   return (
     <Pressable
@@ -94,7 +81,7 @@ export const ChatBubble = React.memo(function ChatBubble({
   onCopy,
   token,
   deletionItems,
-  cards,
+  cardSnapshots,
   cardIsCached,
   cardTurns,
   cardFlow,
@@ -109,7 +96,7 @@ export const ChatBubble = React.memo(function ChatBubble({
   onCopy: (text: string) => void;
   token?: string | null;
   deletionItems?: DeletionItem[];
-  cards?: CardRef[];
+  cardSnapshots?: CardSnapshot[];
   cardIsCached?: boolean;
   cardTurns?: number;
   cardFlow?: CardFlow;
@@ -118,6 +105,20 @@ export const ChatBubble = React.memo(function ChatBubble({
 }) {
   const theme = useAppTheme();
   const isSpeaking = speakingId === msg._id;
+  const rawContent = msg.content ?? "";
+  const isStreamingAssistant = !isUser && msg.streaming === true;
+  const { visibleText: displayContent, isRevealing } = useStreamReveal(
+    rawContent,
+    isStreamingAssistant,
+  );
+  const presentationReady = !isRevealing;
+  const markdownContent =
+    isRevealing && displayContent ? `${displayContent}${STREAM_CURSOR}` : displayContent;
+  const streamMotionStyle = useStreamRevealMotion(displayContent.length, !isUser && isRevealing);
+  const renderedMarkdown = useMemo(
+    () => (markdownContent ? <Markdown style={mdStyles}>{markdownContent}</Markdown> : null),
+    [markdownContent, mdStyles],
+  );
   const [showActions, setShowActions] = useState(false);
   const scaleAnim = useSharedValue(1);
   const messageTime = useMemo(() => formatMessageTime(msg._creationTime), [msg._creationTime]);
@@ -138,7 +139,11 @@ export const ChatBubble = React.memo(function ChatBubble({
 
   return (
     <Animated.View entering={undefined} style={{ marginBottom: CHAT.messageGap }}>
-      <XStack maxWidth="82%" gap={8} alignSelf={isUser ? "flex-end" : "flex-start"}>
+      <XStack
+        maxWidth={isUser ? "82%" : "90%"}
+        gap={7}
+        alignSelf={isUser ? "flex-end" : "flex-start"}
+      >
         <YStack flex={1} gap={4}>
           <XStack
             alignItems="flex-end"
@@ -163,15 +168,16 @@ export const ChatBubble = React.memo(function ChatBubble({
                     gap={msg.attachments && msg.attachments.length > 0 ? 8 : 0}
                     style={getBubbleShadow(theme.shadowColor.val)}
                   >
-                    {msg.content ? <Markdown style={mdStyles}>{msg.content}</Markdown> : null}
+                    {renderedMarkdown ? (
+                      <Animated.View style={streamMotionStyle}>{renderedMarkdown}</Animated.View>
+                    ) : null}
                     {msg.attachments?.length ? (
                       <YStack gap={4}>
                         {msg.attachments.map((attachment) => (
                           <AttachmentChip
                             key={attachment.attachmentId}
                             name={attachment.name}
-                            attachmentId={attachment.attachmentId}
-                            token={token}
+                            driveWebViewLink={attachment.driveWebViewLink}
                           />
                         ))}
                       </YStack>
@@ -180,16 +186,19 @@ export const ChatBubble = React.memo(function ChatBubble({
                 ) : (
                   <YStack
                     paddingHorizontal={CHAT.bubblePadding}
-                    paddingVertical={4}
+                    paddingVertical={6}
                     minWidth={CHAT.bubbleMinWidth}
                     borderRadius={CHAT.bubbleRadius}
-                    backgroundColor={theme.surfaceElevated.val}
+                    backgroundColor={theme.surface.val}
                     borderWidth={1}
                     borderColor={theme.borderSubtle.val}
                     style={[{ borderBottomLeftRadius: 6 }, getBubbleShadow(theme.shadowColor.val)]}
                     gap={msg.attachments && msg.attachments.length > 0 ? 8 : 0}
+                    position="relative"
                   >
-                    {msg.content ? <Markdown style={mdStyles}>{msg.content}</Markdown> : null}
+                    {renderedMarkdown ? (
+                      <Animated.View style={streamMotionStyle}>{renderedMarkdown}</Animated.View>
+                    ) : null}
                   </YStack>
                 )}
               </Animated.View>
@@ -198,18 +207,18 @@ export const ChatBubble = React.memo(function ChatBubble({
             {!isUser && onSpeak ? (
               <Animated.View entering={isSpeaking ? ZoomIn.duration(200) : FadeIn.duration(200)}>
                 <Pressable
-                  onPress={() => onSpeak(msg._id, extractSpeakableText(msg.content ?? ""))}
+                  onPress={() => onSpeak(msg._id, extractSpeakableText(rawContent))}
                   hitSlop={8}
                   style={({ pressed }) => ({
                     opacity: pressed ? 0.6 : 1,
-                    width: 32,
-                    height: 32,
+                    width: 28,
+                    height: 28,
                     alignItems: "center",
                     justifyContent: "center",
                     backgroundColor: isSpeaking
                       ? withAlpha(theme.primary.val, "10")
                       : theme.surface.val,
-                    borderRadius: 16,
+                    borderRadius: 14,
                     borderWidth: 1,
                     borderColor: isSpeaking
                       ? withAlpha(theme.primary.val, "24")
@@ -218,7 +227,7 @@ export const ChatBubble = React.memo(function ChatBubble({
                 >
                   <Feather
                     name={isSpeaking ? "volume-x" : "volume-2"}
-                    size={18}
+                    size={15}
                     color={isSpeaking ? theme.primary.val : theme.colorMuted.val}
                   />
                 </Pressable>
@@ -226,7 +235,7 @@ export const ChatBubble = React.memo(function ChatBubble({
             ) : null}
           </XStack>
 
-          {messageTime ? (
+          {showActions && messageTime ? (
             <Text
               fontSize={10}
               fontFamily="$body"
@@ -243,7 +252,7 @@ export const ChatBubble = React.memo(function ChatBubble({
               <XStack gap={6} alignSelf={isUser ? "flex-end" : "flex-start"} paddingHorizontal={4}>
                 <Pressable
                   onPress={() => {
-                    onCopy(msg.content ?? "");
+                    onCopy(rawContent);
                     setShowActions(false);
                   }}
                   style={({ pressed }) => ({
@@ -272,12 +281,12 @@ export const ChatBubble = React.memo(function ChatBubble({
         </YStack>
       </XStack>
 
-      {!isUser && deletionItems?.length ? (
+      {!isUser && presentationReady && deletionItems?.length ? (
         <DeletionProposalCard items={deletionItems} token={token} />
       ) : null}
-      {!isUser && cards?.length ? (
+      {!isUser && presentationReady && cardSnapshots?.length ? (
         <SearchResultsCard
-          cards={cards}
+          cardSnapshots={cardSnapshots}
           isCached={cardIsCached ?? false}
           turns={cardTurns}
           flow={cardFlow}

@@ -18,28 +18,27 @@ function EmptyState() {
       alignItems="center"
       justifyContent="center"
       paddingHorizontal={32}
-      gap={14}
+      gap={12}
       style={{ transform: [{ rotate: "180deg" }] }}
     >
       <XStack
-        width={56}
-        height={56}
-        borderRadius={28}
+        width={52}
+        height={52}
+        borderRadius={26}
         alignItems="center"
         justifyContent="center"
         backgroundColor={withAlpha(theme.primary.val, "12")}
         borderWidth={1}
         borderColor={withAlpha(theme.primary.val, "1E")}
       >
-        <Feather name="message-square" size={24} color={theme.primary.val} />
+        <Feather name="message-square" size={22} color={theme.primary.val} />
       </XStack>
       <YStack alignItems="center" gap={4}>
         <Text fontSize={17} fontFamily="$body" fontWeight="700" color={theme.color.val}>
           Ask Memora anything
         </Text>
         <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val} textAlign="center">
-          Search memories, set reminders, attach files, or speak naturally to capture something
-          fast.
+          Search, remember, attach, or speak.
         </Text>
       </YStack>
     </YStack>

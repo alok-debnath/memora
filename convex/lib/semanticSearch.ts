@@ -17,6 +17,7 @@ const MIN_RRF_SCORE = 0.006;
 const RELATIVE_SCORE_FLOOR = 0.6;
 const KEYWORD_MIN_SCORE = 0.4;
 const DIARY_TAKE = 5;
+const QUERY_CACHE_TOUCH_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 function rrfScore(rank: number) {
   return 1 / (RRF_K + rank);
@@ -202,11 +203,12 @@ export async function runSemanticSearch(
 
       if (cached?.embedding && !args.forceDeepSearch) {
         isCached = true;
-        // Refresh TTL background
-        await ctx.runMutation(internal.memories.setQueryCache, {
-          userId: args.userId,
-          queryHash,
-        });
+        if (Date.now() - (cached.lastUsedAt ?? 0) > QUERY_CACHE_TOUCH_INTERVAL_MS) {
+          await ctx.runMutation(internal.memories.setQueryCache, {
+            userId: args.userId,
+            queryHash,
+          });
+        }
         return cached.embedding;
       }
 

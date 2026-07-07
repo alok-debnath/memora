@@ -6,9 +6,36 @@ export type CardRef = {
   id: string;
 };
 
+export type MemoryCardSnapshot = {
+  table: "memories";
+  id: string;
+  title?: string;
+  content?: string;
+  entry_kind: string;
+  schedule_due_at?: string | null;
+  google_event_id?: string;
+  google_sync_status?: "pending" | "synced" | "failed";
+  google_sync_message?: string;
+  google_sync_updated_at?: number;
+};
+
+export type DiaryCardSnapshot = {
+  table: "diaryEntries";
+  id: string;
+  creation_time: number;
+  mood: string | null;
+  energy_level: string | null;
+  topics: string[];
+  summary: string | null;
+  excerpt: string;
+};
+
+export type CardSnapshot = MemoryCardSnapshot | DiaryCardSnapshot;
+
 /** Structured assistant-turn metadata persisted on chatMessages.meta. */
 export type ChatMessageMeta = {
   cards?: CardRef[];
+  cardSnapshots?: CardSnapshot[];
   deletionProposal?: Array<{
     id: string;
     title: string;
@@ -32,6 +59,8 @@ export type ChatMsg = {
     name: string;
     type: string;
     mimeType: string;
+    driveWebViewLink?: string;
+    driveThumbnailLink?: string;
   }>;
 };
 

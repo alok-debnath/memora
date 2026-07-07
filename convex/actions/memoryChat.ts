@@ -3,6 +3,7 @@
 import { v } from "convex/values";
 import type OpenAI from "openai";
 import { api, internal } from "../_generated/api";
+import type { Doc, Id } from "../_generated/dataModel";
 import { action } from "../_generated/server";
 import { extractTextContent, resolveAiRoute, trackedChatCompletionStream } from "../lib/aiDispatch";
 import { createReplyStreamer } from "../lib/chat/replyStreamer";
@@ -16,7 +17,7 @@ import {
 } from "../lib/chat/budgets";
 import { buildCardFlowPayload, type CardFlowAttachment } from "../lib/chat/flow";
 import { CREATE_ONLY_INTENT_PATTERNS, shouldPreferUpdatingExisting } from "../lib/chat/heuristics";
-import { toPreviewItems } from "../lib/chat/projections";
+import { toDiaryCardSnapshot, toMemoryCardSnapshot, toPreviewItems } from "../lib/chat/projections";
 import {
   buildAttachmentContextMessage,
   buildGroundingSystemMessage,
@@ -31,6 +32,7 @@ import type {
   ChatAttachmentExtraction,
   ChatAttachmentRecord,
   ChatMessageMeta,
+  CardSnapshot,
   KnowledgeDigest,
   MemoryDoc,
   StreamingStatus,
@@ -46,6 +48,17 @@ const driveAttachmentArg = v.object({
   driveWebViewLink: v.optional(v.string()),
   driveThumbnailLink: v.optional(v.string()),
 });
+
+const READ_ONLY_INFO_TOOLS = new Set([
+  "search_memories",
+  "list_memories",
+  "get_diary_entries",
+  "get_stats",
+  "analyze_memories",
+]);
+
+const ACTION_INTENT_PATTERN =
+  /\b(delete|remove|restore|undo|sync|resync|retry|unsync|disconnect|edit|update|change|modify|fix|rename|move|convert|turn|make|remember|save|note|add|capture|store|remind me)\b/i;
 
 export const chat = action({
   args: {
@@ -242,6 +255,8 @@ export const chat = action({
       const initialGrounding = await groundingPromise;
 
       const state = createTurnState();
+      const shouldForceRespondAfterInfoTool =
+        !ACTION_INTENT_PATTERN.test(args.message) && !shouldPreferUpdatingExisting(args.message);
 
       if (initialGrounding.shouldGround) {
         state.flowSearches.push({
@@ -317,6 +332,7 @@ export const chat = action({
       };
 
       let finalIteration = 0;
+      let forceRespondNextIteration = false;
       for (let iteration = 0; iteration < MAX_ITERATIONS; iteration += 1) {
         finalIteration = iteration;
         await setStreamingStatus({
@@ -356,7 +372,7 @@ export const chat = action({
             // without ever answering (observed: analyze_memories →
             // get_diary_entries → get_stats → get_diary_entries, no reply).
             tool_choice:
-              iteration === MAX_ITERATIONS - 1
+              forceRespondNextIteration || iteration === MAX_ITERATIONS - 1
                 ? { type: "function", function: { name: "respond" } }
                 : "required",
             parallel_tool_calls: false,
@@ -426,6 +442,13 @@ export const chat = action({
               ? await tool.handler(toolContext, fnArgs)
               : JSON.stringify({ error: "Unknown tool" });
             if (tool) state.calledToolSignatures.add(signature);
+            if (
+              shouldForceRespondAfterInfoTool &&
+              READ_ONLY_INFO_TOOLS.has(fnName) &&
+              !state.respondCalled
+            ) {
+              forceRespondNextIteration = true;
+            }
           }
 
           conversation.push({
@@ -456,49 +479,114 @@ export const chat = action({
         }
       }
 
-      const { diaryIds: diaryCardIds } = await validateCardIds(ctx, session._id, state);
+      const hasDeletionProposal = state.pendingDeletionItems.length > 0;
+      const deletionProposalIds = new Set(state.pendingDeletionItems.map((item) => item.id));
+
+      const { memoryIds: memoryCardIds, diaryIds: diaryCardIds } = await validateCardIds(
+        ctx,
+        session._id,
+        state,
+      );
+
+      const validDeletionMemoryIds =
+        hasDeletionProposal && deletionProposalIds.size > 0
+          ? ((await ctx.runQuery(internal.memories.filterValidCardIds, {
+              userId: session._id,
+              ids: Array.from(deletionProposalIds),
+            })) as string[])
+          : [];
+
+      const visualMemoryCardIds = memoryCardIds.filter((id) => !deletionProposalIds.has(id));
+      const visualDiaryCardIds = diaryCardIds;
+      const visualCardRefs = [
+        ...visualMemoryCardIds.map((id) => ({
+          table: "memories" as const,
+          id,
+        })),
+        ...visualDiaryCardIds.map((id) => ({ table: "diaryEntries" as const, id })),
+      ];
+      const cardRefMap = new Map<string, { table: "memories" | "diaryEntries"; id: string }>();
+      for (const ref of visualCardRefs) {
+        cardRefMap.set(`${ref.table}:${ref.id}`, ref);
+      }
+      for (const id of validDeletionMemoryIds) {
+        cardRefMap.set(`memories:${id}`, { table: "memories", id });
+      }
+      const cardRefs = Array.from(cardRefMap.values());
 
       await setStreamingStatus({
         phase: "finalizing",
         toolName: "reply",
         detail: "Preparing final answer",
         source: "assistant",
-        resultCount: state.pendingCardIds.size + diaryCardIds.length,
-        events: [{ label: "Cards", value: `${state.pendingCardIds.size + diaryCardIds.length}` }],
+        resultCount: visualCardRefs.length + validDeletionMemoryIds.length,
+        events: [
+          {
+            label: "Items",
+            value: `${visualCardRefs.length + validDeletionMemoryIds.length}`,
+          },
+        ],
         step: 4,
         totalSteps: 4,
       });
 
-      const cardRefs = [
-        ...Array.from(state.pendingCardIds).map((id) => ({
-          table: "memories" as const,
-          id,
-        })),
-        ...diaryCardIds.map((id) => ({ table: "diaryEntries" as const, id })),
-      ];
+      let cardSnapshots: CardSnapshot[] = [];
+      if (visualCardRefs.length > 0) {
+        const [memoryDocs, diaryDocs] = await Promise.all([
+          visualMemoryCardIds.length > 0
+            ? (ctx.runQuery(internal.memories.listByIdsInternal, {
+                userId: session._id,
+                ids: visualMemoryCardIds as Id<"memories">[],
+              }) as Promise<MemoryDoc[]>)
+            : Promise.resolve([]),
+          visualDiaryCardIds.length > 0
+            ? (ctx.runQuery(internal.diary.listByIdsInternal, {
+                userId: session._id,
+                ids: visualDiaryCardIds as Id<"diaryEntries">[],
+              }) as Promise<Doc<"diaryEntries">[]>)
+            : Promise.resolve([]),
+        ]);
+        const memoryById = new Map(
+          memoryDocs.map((memory) => [String(memory._id), memory] as const),
+        );
+        const diaryById = new Map(diaryDocs.map((entry) => [String(entry._id), entry] as const));
+        cardSnapshots = visualCardRefs
+          .map((ref) => {
+            if (ref.table === "memories") {
+              const memory = memoryById.get(ref.id);
+              return memory ? toMemoryCardSnapshot(memory) : null;
+            }
+            const entry = diaryById.get(ref.id);
+            return entry ? toDiaryCardSnapshot(entry) : null;
+          })
+          .filter((snapshot): snapshot is CardSnapshot => snapshot !== null);
+      }
       responseMeta =
         cardRefs.length > 0 || state.pendingDeletionItems.length > 0
           ? {
               ...(cardRefs.length > 0
                 ? {
                     cards: cardRefs,
-                    isCached: state.pendingSearchIsCached,
-                    turns: finalIteration + 1,
-                    flow: buildCardFlowPayload({
-                      chatTurnId: String(chatMessageId),
-                      assistantProvider: chatRoute.provider,
-                      turns: finalIteration + 1,
-                      cardCount: cardRefs.length,
-                      pathMode: state.pendingSearchIsCached ? "cached" : "fresh",
-                      searches: state.flowSearches,
-                      toolSequence: state.flowToolSequence,
-                      attachments: flowAttachments,
-                    }),
+                    ...(cardSnapshots.length > 0 ? { cardSnapshots } : {}),
+                    ...(visualCardRefs.length > 0
+                      ? {
+                          isCached: state.pendingSearchIsCached,
+                          turns: finalIteration + 1,
+                          flow: buildCardFlowPayload({
+                            chatTurnId: String(chatMessageId),
+                            assistantProvider: chatRoute.provider,
+                            turns: finalIteration + 1,
+                            cardCount: visualCardRefs.length,
+                            pathMode: state.pendingSearchIsCached ? "cached" : "fresh",
+                            searches: state.flowSearches,
+                            toolSequence: state.flowToolSequence,
+                            attachments: flowAttachments,
+                          }),
+                        }
+                      : {}),
                   }
                 : {}),
-              ...(state.pendingDeletionItems.length > 0
-                ? { deletionProposal: state.pendingDeletionItems }
-                : {}),
+              ...(hasDeletionProposal ? { deletionProposal: state.pendingDeletionItems } : {}),
             }
           : undefined;
 

@@ -99,34 +99,40 @@ export const DiaryResultRow = React.memo(function DiaryResultRow({
 
   const row = (
     <XStack
-      paddingHorizontal={14}
-      paddingVertical={11}
-      gap={12}
-      alignItems="center"
+      paddingHorizontal={12}
+      paddingVertical={10}
+      gap={10}
+      alignItems="flex-start"
       borderTopWidth={index > 0 ? 1 : 0}
-      borderTopColor={theme.borderColor.val}
+      borderTopColor={theme.borderSubtle.val}
     >
       <View
         style={{
-          width: 32,
-          height: 32,
-          borderRadius: 16,
+          width: 30,
+          height: 30,
+          borderRadius: 15,
           backgroundColor: withAlpha(theme.success.val, "18"),
           alignItems: "center",
           justifyContent: "center",
           flexShrink: 0,
+          marginTop: 1,
         }}
       >
         <Feather name="book-open" size={14} color={theme.success.val} />
       </View>
 
-      <YStack flex={1} gap={6}>
+      <YStack flex={1} gap={5} minWidth={0}>
         <XStack alignItems="center" gap={6}>
-          <Text fontSize={13} fontFamily={FontFamily.semiBold} color={theme.color.val}>
+          <Text
+            fontSize={13}
+            fontFamily={FontFamily.semiBold}
+            color={theme.color.val}
+            numberOfLines={1}
+          >
             {dateLabel}
           </Text>
           {entry.mood ? (
-            <Text fontSize={11} color={theme.colorMuted.val}>
+            <Text fontSize={11} color={theme.colorMuted.val} numberOfLines={1}>
               • {entry.mood}
             </Text>
           ) : null}
@@ -138,10 +144,7 @@ export const DiaryResultRow = React.memo(function DiaryResultRow({
         ) : null}
       </YStack>
 
-      <XStack gap={4} alignItems="center">
-        <Text fontSize={10} fontFamily={FontFamily.semiBold} color={theme.success.val}>
-          Diary
-        </Text>
+      <XStack gap={4} alignItems="center" paddingTop={1}>
         <ContextMenu
           items={menuItems}
           openOn="press"
@@ -155,9 +158,9 @@ export const DiaryResultRow = React.memo(function DiaryResultRow({
         >
           <View
             style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
+              width: 30,
+              height: 30,
+              borderRadius: 15,
               alignItems: "center",
               justifyContent: "center",
             }}

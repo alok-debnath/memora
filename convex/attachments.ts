@@ -191,6 +191,8 @@ export const recordAttachmentsForMessage = mutation({
       name: string;
       type: "image" | "document";
       mimeType: string;
+      driveThumbnailLink?: string;
+      driveWebViewLink?: string;
     }> = await Promise.all(
       args.files.map(async (file) => {
         const attachmentId = await ctx.db.insert("memoryAttachments", {
@@ -202,8 +204,8 @@ export const recordAttachmentsForMessage = mutation({
           sizeBytes: file.sizeBytes,
           driveFileId: file.driveFileId,
           driveFolderId: file.driveFolderId,
-          driveWebViewLink: file.driveWebViewLink,
-          driveThumbnailLink: file.driveThumbnailLink,
+          ...(file.driveWebViewLink ? { driveWebViewLink: file.driveWebViewLink } : {}),
+          ...(file.driveThumbnailLink ? { driveThumbnailLink: file.driveThumbnailLink } : {}),
           processingStatus: "pending",
           createdAt: now,
           isDeleted: false,
@@ -214,6 +216,8 @@ export const recordAttachmentsForMessage = mutation({
           name: file.filename,
           type: file.type,
           mimeType: file.mimeType,
+          ...(file.driveThumbnailLink ? { driveThumbnailLink: file.driveThumbnailLink } : {}),
+          ...(file.driveWebViewLink ? { driveWebViewLink: file.driveWebViewLink } : {}),
         };
       }),
     );
@@ -240,6 +244,8 @@ export const recordAttachmentsForMessage = mutation({
             name: a.name,
             type: a.type,
             mimeType: a.mimeType,
+            ...(a.driveThumbnailLink ? { driveThumbnailLink: a.driveThumbnailLink } : {}),
+            ...(a.driveWebViewLink ? { driveWebViewLink: a.driveWebViewLink } : {}),
           })),
         ],
       });
@@ -275,8 +281,8 @@ export const recordAttachmentsForMemory = mutation({
           sizeBytes: file.sizeBytes,
           driveFileId: file.driveFileId,
           driveFolderId: file.driveFolderId,
-          driveWebViewLink: file.driveWebViewLink,
-          driveThumbnailLink: file.driveThumbnailLink,
+          ...(file.driveWebViewLink ? { driveWebViewLink: file.driveWebViewLink } : {}),
+          ...(file.driveThumbnailLink ? { driveThumbnailLink: file.driveThumbnailLink } : {}),
           processingStatus: "pending",
           createdAt: now,
           isDeleted: false,
@@ -400,8 +406,8 @@ export const recordAttachmentsInternal = internalMutation({
           sizeBytes: file.sizeBytes,
           driveFileId: file.driveFileId,
           driveFolderId: file.driveFolderId,
-          driveWebViewLink: file.driveWebViewLink,
-          driveThumbnailLink: file.driveThumbnailLink,
+          ...(file.driveWebViewLink ? { driveWebViewLink: file.driveWebViewLink } : {}),
+          ...(file.driveThumbnailLink ? { driveThumbnailLink: file.driveThumbnailLink } : {}),
           processingStatus: "pending",
           createdAt: now,
           isDeleted: false,
@@ -413,8 +419,8 @@ export const recordAttachmentsInternal = internalMutation({
           type: file.type,
           mimeType: file.mimeType,
           driveFileId: file.driveFileId,
-          driveThumbnailLink: file.driveThumbnailLink,
-          driveWebViewLink: file.driveWebViewLink,
+          ...(file.driveThumbnailLink ? { driveThumbnailLink: file.driveThumbnailLink } : {}),
+          ...(file.driveWebViewLink ? { driveWebViewLink: file.driveWebViewLink } : {}),
         };
       }),
     );
@@ -443,6 +449,8 @@ export const recordAttachmentsInternal = internalMutation({
             name: s.name,
             type: s.type,
             mimeType: s.mimeType,
+            ...(s.driveThumbnailLink ? { driveThumbnailLink: s.driveThumbnailLink } : {}),
+            ...(s.driveWebViewLink ? { driveWebViewLink: s.driveWebViewLink } : {}),
           })),
         ],
       });

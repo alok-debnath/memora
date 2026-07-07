@@ -15,6 +15,13 @@ import type {
   StreamingStatus,
 } from "./types";
 
+function driveLinkFields(attachment: { driveThumbnailLink?: string; driveWebViewLink?: string }) {
+  return {
+    ...(attachment.driveThumbnailLink ? { driveThumbnailLink: attachment.driveThumbnailLink } : {}),
+    ...(attachment.driveWebViewLink ? { driveWebViewLink: attachment.driveWebViewLink } : {}),
+  };
+}
+
 export function parseAttachments(message: string): ParsedAttachment[] {
   const matches = message.matchAll(/\[Attached file:\s*(.+?)\s*\((.+?)\)\s*-\s*URL:\s*(.+?)\]/g);
 
@@ -65,8 +72,7 @@ export async function extractChatAttachmentsForConversation(
           attachmentId: attachment.attachmentId,
           processingStatus: "failed",
           processingError: errorMessage,
-          driveThumbnailLink: attachment.driveThumbnailLink,
-          driveWebViewLink: attachment.driveWebViewLink,
+          ...driveLinkFields(attachment),
         }),
       ),
     );
@@ -74,8 +80,7 @@ export async function extractChatAttachmentsForConversation(
       ...attachment,
       processingStatus: "failed" as const,
       processingError: errorMessage,
-      driveThumbnailLink: attachment.driveThumbnailLink,
-      driveWebViewLink: attachment.driveWebViewLink,
+      ...driveLinkFields(attachment),
     }));
   }
 
@@ -94,8 +99,7 @@ export async function extractChatAttachmentsForConversation(
           attachmentId: attachment.attachmentId,
           processingStatus: "failed",
           processingError: errorMessage,
-          driveThumbnailLink: attachment.driveThumbnailLink,
-          driveWebViewLink: attachment.driveWebViewLink,
+          ...driveLinkFields(attachment),
         }),
       ),
     );
@@ -103,8 +107,7 @@ export async function extractChatAttachmentsForConversation(
       ...attachment,
       processingStatus: "failed" as const,
       processingError: errorMessage,
-      driveThumbnailLink: attachment.driveThumbnailLink,
-      driveWebViewLink: attachment.driveWebViewLink,
+      ...driveLinkFields(attachment),
     }));
   }
 
@@ -113,8 +116,7 @@ export async function extractChatAttachmentsForConversation(
     await ctx.runMutation(internal.attachments.updateAttachmentStatus, {
       attachmentId: attachment.attachmentId,
       processingStatus: "processing",
-      driveThumbnailLink: attachment.driveThumbnailLink,
-      driveWebViewLink: attachment.driveWebViewLink,
+      ...driveLinkFields(attachment),
     });
 
     const result = await extractAttachmentFromDrive({
@@ -138,16 +140,27 @@ export async function extractChatAttachmentsForConversation(
     await ctx.runMutation(internal.attachments.updateAttachmentStatus, {
       attachmentId: attachment.attachmentId,
       processingStatus: result.processingStatus,
-      extractedContent: result.extractedContent,
-      processingError: result.processingError,
-      extractionMethod: result.extractionMethod,
-      driveThumbnailLink: result.driveThumbnailLink,
-      driveWebViewLink: result.driveWebViewLink,
+      ...(result.extractedContent !== undefined
+        ? { extractedContent: result.extractedContent }
+        : {}),
+      ...(result.processingError !== undefined ? { processingError: result.processingError } : {}),
+      ...(result.extractionMethod !== undefined
+        ? { extractionMethod: result.extractionMethod }
+        : {}),
+      ...driveLinkFields(result),
     });
 
     results.push({
       ...attachment,
-      ...result,
+      processingStatus: result.processingStatus,
+      ...(result.extractedContent !== undefined
+        ? { extractedContent: result.extractedContent }
+        : {}),
+      ...(result.processingError !== undefined ? { processingError: result.processingError } : {}),
+      ...(result.extractionMethod !== undefined
+        ? { extractionMethod: result.extractionMethod }
+        : {}),
+      ...driveLinkFields(result),
     });
   }
 

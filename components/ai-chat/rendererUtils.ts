@@ -5,7 +5,7 @@ import type { FeatherIconName } from "@/lib/icons";
 import { withAlpha } from "@/components/ui/themeHelpers";
 import type { useAppTheme } from "@/hooks/useAppTheme";
 import type { Id } from "@/convex/_generated/dataModel";
-import type { CardFlow, CardRef, ChatMsg, DeletionItem, ProgressStatus } from "./types";
+import type { CardFlow, CardSnapshot, ChatMsg, DeletionItem, ProgressStatus } from "./types";
 
 export type MarkdownStyle = MarkdownProps["style"];
 
@@ -53,7 +53,7 @@ function coerceFlow(candidate: unknown): CardFlow | undefined {
 
 export type AssistantPresentation = {
   cleanText: string;
-  cards: CardRef[];
+  cardSnapshots: CardSnapshot[];
   deletionItems?: DeletionItem[];
   isCached: boolean;
   turns?: number;
@@ -69,7 +69,7 @@ export function extractAssistantPresentation(msg: ChatMsg): AssistantPresentatio
   const meta = msg.meta;
   return {
     cleanText: (msg.content ?? "").trim(),
-    cards: meta?.cards ?? [],
+    cardSnapshots: meta?.cardSnapshots ?? [],
     deletionItems:
       meta?.deletionProposal && meta.deletionProposal.length > 0
         ? (meta.deletionProposal as DeletionItem[])

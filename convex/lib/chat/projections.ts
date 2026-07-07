@@ -1,6 +1,13 @@
 import type { Doc } from "../../_generated/dataModel";
+import { toDiaryCompact } from "../diaryText";
 import { toMemorySummaryFields } from "../memoryKind";
-import { MEMORY_COMPACT_CONTENT_CHARS, STATUS_TEXT_MAX } from "./budgets";
+import {
+  CARD_SNAPSHOT_CONTENT_CHARS,
+  CARD_SNAPSHOT_TITLE_CHARS,
+  MEMORY_COMPACT_CONTENT_CHARS,
+  STATUS_TEXT_MAX,
+} from "./budgets";
+import type { CardSnapshot } from "./types";
 
 type MemoryDoc = Doc<"memories">;
 
@@ -30,6 +37,38 @@ export function toMemoryCompact(memory: MemoryDoc) {
 }
 
 export type MemoryCompact = ReturnType<typeof toMemoryCompact>;
+
+export function toMemoryCardSnapshot(memory: MemoryDoc): CardSnapshot {
+  const summaryFields = toMemorySummaryFields(memory);
+  return {
+    table: "memories",
+    id: String(memory._id),
+    ...(memory.title ? { title: memory.title.slice(0, CARD_SNAPSHOT_TITLE_CHARS) } : {}),
+    ...(memory.content ? { content: memory.content.slice(0, CARD_SNAPSHOT_CONTENT_CHARS) } : {}),
+    entry_kind: summaryFields.entry_kind,
+    schedule_due_at: summaryFields.schedule?.due_at ?? null,
+    ...(memory.googleEventId ? { google_event_id: memory.googleEventId } : {}),
+    ...(memory.googleSyncStatus ? { google_sync_status: memory.googleSyncStatus } : {}),
+    ...(memory.googleSyncMessage ? { google_sync_message: memory.googleSyncMessage } : {}),
+    ...(memory.googleSyncUpdatedAt !== undefined
+      ? { google_sync_updated_at: memory.googleSyncUpdatedAt }
+      : {}),
+  };
+}
+
+export function toDiaryCardSnapshot(entry: Doc<"diaryEntries">): CardSnapshot {
+  const compact = toDiaryCompact(entry, 280);
+  return {
+    table: "diaryEntries",
+    id: String(entry._id),
+    creation_time: entry._creationTime,
+    mood: entry.mood ?? null,
+    energy_level: entry.energyLevel ?? null,
+    topics: entry.topics ?? [],
+    summary: entry.summary ?? null,
+    excerpt: compact.excerpt,
+  };
+}
 
 export function truncateStatusText(value: string | undefined, maxLength = STATUS_TEXT_MAX) {
   const normalized = (value ?? "").trim().replace(/\s+/g, " ");

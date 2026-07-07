@@ -540,6 +540,8 @@ export default defineSchema({
           name: v.string(),
           type: v.union(v.literal("image"), v.literal("document")),
           mimeType: v.string(),
+          driveWebViewLink: v.optional(v.string()),
+          driveThumbnailLink: v.optional(v.string()),
         }),
       ),
     ),
@@ -556,6 +558,36 @@ export default defineSchema({
               table: v.union(v.literal("memories"), v.literal("diaryEntries")),
               id: v.string(),
             }),
+          ),
+        ),
+        cardSnapshots: v.optional(
+          v.array(
+            v.union(
+              v.object({
+                table: v.literal("memories"),
+                id: v.string(),
+                title: v.optional(v.string()),
+                content: v.optional(v.string()),
+                entry_kind: v.string(),
+                schedule_due_at: v.optional(v.union(v.string(), v.null())),
+                google_event_id: v.optional(v.string()),
+                google_sync_status: v.optional(
+                  v.union(v.literal("pending"), v.literal("synced"), v.literal("failed")),
+                ),
+                google_sync_message: v.optional(v.string()),
+                google_sync_updated_at: v.optional(v.number()),
+              }),
+              v.object({
+                table: v.literal("diaryEntries"),
+                id: v.string(),
+                creation_time: v.number(),
+                mood: v.union(v.string(), v.null()),
+                energy_level: v.union(v.string(), v.null()),
+                topics: v.array(v.string()),
+                summary: v.union(v.string(), v.null()),
+                excerpt: v.string(),
+              }),
+            ),
           ),
         ),
         deletionProposal: v.optional(

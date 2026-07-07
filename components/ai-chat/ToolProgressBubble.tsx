@@ -1,15 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Text as RNText, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { View } from "react-native";
 import {
   FadeIn,
   FadeInDown,
-  FadeOut,
-  LinearTransition,
-  type SharedValue,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
-  withSequence,
   withTiming,
 } from "react-native-reanimated";
 import Animated from "react-native-reanimated";
@@ -18,7 +14,7 @@ import { FontFamily } from "@/constants/fonts";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useSemanticColors } from "@/hooks/useSemanticColors";
 import { Feather } from "@/lib/icons";
-import { appShadow } from "@/components/ui/themeHelpers";
+import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import type { ProgressStatus } from "./types";
 import {
   formatElapsedTime,
@@ -28,17 +24,15 @@ import {
   getUsefulEvents,
 } from "./rendererUtils";
 
-const PROGRESS_LAYOUT = LinearTransition.springify().damping(18).stiffness(180);
-const AnimatedRNText = Animated.createAnimatedComponent(RNText);
 const THINKING_MESSAGES = [
   "Reading your message",
   "Checking relevant context",
-  "Planning the next backend step",
+  "Choosing the next step",
 ] as const;
 
 const CHAT = {
   bubbleRadius: 18,
-  messageGap: 14,
+  messageGap: 10,
 } as const;
 
 const getBubbleShadow = (shadowColor: string) => appShadow(shadowColor, "xs");
@@ -55,7 +49,7 @@ function getAccentColor(
   return fallback;
 }
 
-function AnimatedSwapText({
+function StableSwapText({
   text,
   fontSize,
   color,
@@ -73,108 +67,22 @@ function AnimatedSwapText({
   numberOfLines?: number;
 }) {
   return (
-    <Animated.View
-      layout={PROGRESS_LAYOUT}
-      style={{ minHeight: fontSize * 1.45, justifyContent: "center" }}
+    <View
+      style={{
+        width: maxWidth,
+        minHeight: fontSize * 1.45,
+        justifyContent: "center",
+      }}
     >
-      <Animated.View
-        key={text}
-        layout={PROGRESS_LAYOUT}
-        entering={FadeIn.duration(160)}
-        exiting={FadeOut.duration(120)}
+      <Text
+        fontSize={fontSize}
+        color={color}
+        numberOfLines={numberOfLines}
+        fontFamily={fontFamily}
+        opacity={opacity}
       >
-        <Text
-          fontSize={fontSize}
-          color={color}
-          maxWidth={maxWidth}
-          numberOfLines={numberOfLines}
-          fontFamily={fontFamily}
-          opacity={opacity}
-        >
-          {text}
-        </Text>
-      </Animated.View>
-    </Animated.View>
-  );
-}
-
-function LoadingSweepChar({
-  char,
-  index,
-  sweep,
-  color,
-  fontSize,
-  fontFamily,
-  numberOfLines,
-}: {
-  char: string;
-  index: number;
-  sweep: SharedValue<number>;
-  color: string;
-  fontSize: number;
-  fontFamily?: string;
-  numberOfLines?: number;
-}) {
-  const animatedStyle = useAnimatedStyle(() => {
-    const distance = Math.abs(sweep.value - index);
-    let opacity = 1;
-    if (distance < 0.6) opacity = 0.38;
-    else if (distance < 1.2) opacity = 0.56;
-    else if (distance < 2) opacity = 0.78;
-    return { opacity };
-  }, [index, sweep]);
-
-  return (
-    <AnimatedRNText
-      numberOfLines={numberOfLines}
-      style={[{ color, fontSize, fontFamily }, animatedStyle]}
-    >
-      {char}
-    </AnimatedRNText>
-  );
-}
-
-function LoadingSweepText({
-  text,
-  color,
-  fontSize,
-  fontFamily,
-  numberOfLines,
-}: {
-  text: string;
-  color: string;
-  fontSize: number;
-  fontFamily?: string;
-  numberOfLines?: number;
-}) {
-  const sweep = useSharedValue(-3);
-  const characters = useMemo(() => text.split(""), [text]);
-
-  useEffect(() => {
-    sweep.value = -3;
-    sweep.value = withRepeat(
-      withTiming(characters.length + 2, {
-        duration: Math.max(1200, characters.length * 85),
-      }),
-      -1,
-      false,
-    );
-  }, [characters.length, sweep, text]);
-
-  return (
-    <View style={{ flexDirection: "row", flexWrap: "nowrap", flexShrink: 1 }}>
-      {characters.map((char, index) => (
-        <LoadingSweepChar
-          key={`${char}-${index}`}
-          char={char}
-          index={index}
-          sweep={sweep}
-          color={color}
-          fontSize={fontSize}
-          fontFamily={fontFamily}
-          numberOfLines={numberOfLines}
-        />
-      ))}
+        {text}
+      </Text>
     </View>
   );
 }
@@ -191,9 +99,9 @@ export function ThinkingIndicator() {
   }, []);
 
   return (
-    <Animated.View entering={FadeInDown.duration(220)} layout={PROGRESS_LAYOUT}>
+    <Animated.View entering={FadeInDown.duration(220)}>
       <XStack gap={8} alignSelf="flex-start" marginBottom={CHAT.messageGap} alignItems="flex-end">
-        <Animated.View layout={PROGRESS_LAYOUT}>
+        <Animated.View>
           <YStack
             paddingHorizontal={14}
             paddingVertical={12}
@@ -201,8 +109,7 @@ export function ThinkingIndicator() {
             borderBottomLeftRadius={6}
             backgroundColor={theme.backgroundStrong.val}
             borderWidth={1}
-            borderColor={theme.borderColor.val}
-            gap={8}
+            borderColor={theme.borderSubtle.val}
             style={getBubbleShadow(theme.shadowColor.val)}
           >
             <XStack gap={8} alignItems="center">
@@ -211,7 +118,7 @@ export function ThinkingIndicator() {
                   width: 28,
                   height: 28,
                   borderRadius: 14,
-                  backgroundColor: `${theme.primary.val}18`,
+                  backgroundColor: withAlpha(theme.primary.val, "18"),
                   alignItems: "center",
                   justifyContent: "center",
                 }}
@@ -222,7 +129,7 @@ export function ThinkingIndicator() {
                 <Text fontSize={13} fontFamily={FontFamily.semiBold} color={theme.color.val}>
                   Thinking
                 </Text>
-                <AnimatedSwapText
+                <StableSwapText
                   text={THINKING_MESSAGES[phraseIndex]}
                   fontSize={11}
                   color={theme.colorMuted.val}
@@ -245,11 +152,7 @@ export function ToolProgressBubble({ status }: { status: ProgressStatus }) {
   const [elapsedLabel, setElapsedLabel] = useState(() => formatElapsedTime(status.startedAt));
 
   useEffect(() => {
-    shimmer.value = withRepeat(
-      withSequence(withTiming(1, { duration: 900 }), withTiming(0, { duration: 900 })),
-      -1,
-      false,
-    );
+    shimmer.value = withRepeat(withTiming(1, { duration: 900 }), -1, true);
   }, [shimmer]);
 
   useEffect(() => {
@@ -259,8 +162,9 @@ export function ToolProgressBubble({ status }: { status: ProgressStatus }) {
     return () => clearInterval(timer);
   }, [status.startedAt]);
 
-  const dotStyle = useAnimatedStyle(() => ({
-    opacity: 0.35 + shimmer.value * 0.65,
+  const pulseStyle = useAnimatedStyle(() => ({
+    opacity: 0.45 + shimmer.value * 0.45,
+    transform: [{ scale: 0.92 + shimmer.value * 0.12 }],
   }));
   const title = getProgressTitle(status);
   const iconName = getProgressIcon(status);
@@ -270,110 +174,117 @@ export function ToolProgressBubble({ status }: { status: ProgressStatus }) {
   const metaLabel = formatMetaLabel(status);
 
   return (
-    <Animated.View
-      entering={FadeInDown.duration(200)}
-      layout={PROGRESS_LAYOUT}
-      style={{ marginBottom: CHAT.messageGap }}
-    >
-      <XStack gap={8} alignSelf="flex-start" alignItems="center">
-        <Animated.View layout={PROGRESS_LAYOUT}>
+    <Animated.View entering={FadeInDown.duration(200)} style={{ marginBottom: CHAT.messageGap }}>
+      <XStack gap={8} alignSelf="flex-start" alignItems="center" width="94%">
+        <Animated.View style={{ flex: 1 }}>
           <YStack
-            paddingHorizontal={12}
-            paddingVertical={10}
-            borderRadius={22}
+            paddingHorizontal={9}
+            paddingVertical={7}
+            borderRadius={16}
+            borderBottomLeftRadius={6}
             backgroundColor={theme.backgroundStrong.val}
             borderWidth={1}
-            borderColor={theme.borderColor.val}
+            borderColor={theme.borderSubtle.val}
             style={[
               getBubbleShadow(theme.shadowColor.val),
-              { minWidth: 200, maxWidth: 320, position: "relative" },
+              { minWidth: 240, maxWidth: "100%", position: "relative", overflow: "hidden" },
             ]}
           >
-            <XStack gap={10} alignItems="center">
-              <Animated.View style={dotStyle}>
+            <XStack gap={8} alignItems="flex-start" paddingLeft={1}>
+              <Animated.View style={pulseStyle}>
                 <View
                   style={{
-                    width: 26,
-                    height: 26,
-                    borderRadius: 13,
-                    backgroundColor: `${accentColor}18`,
+                    width: 23,
+                    height: 23,
+                    borderRadius: 12,
+                    backgroundColor: withAlpha(accentColor, "18"),
                     alignItems: "center",
                     justifyContent: "center",
                   }}
                 >
-                  <Feather name={iconName} size={12} color={accentColor} />
+                  <Feather name={iconName} size={11} color={accentColor} />
                 </View>
               </Animated.View>
 
-              <YStack gap={1} flex={1}>
+              <YStack gap={3} flex={1} minWidth={0}>
                 <XStack justifyContent="space-between" alignItems="center" gap={8}>
-                  <LoadingSweepText
-                    text={title}
+                  <Text
                     fontSize={13}
                     color={theme.color.val}
                     fontFamily={FontFamily.semiBold}
                     numberOfLines={1}
-                  />
+                    flexShrink={1}
+                  >
+                    {title}
+                  </Text>
                   {elapsedLabel ? (
-                    <Text fontSize={9} color={theme.colorMuted.val} opacity={0.6}>
+                    <Text
+                      fontSize={10}
+                      color={theme.colorMuted.val}
+                      opacity={0.72}
+                      paddingHorizontal={6}
+                      paddingVertical={2}
+                      borderRadius={999}
+                      backgroundColor={withAlpha(theme.colorMuted.val, "0F")}
+                      minWidth={32}
+                      textAlign="center"
+                    >
                       {elapsedLabel}
                     </Text>
                   ) : null}
                 </XStack>
 
-                <XStack gap={5} alignItems="center" paddingRight={4}>
+                <XStack gap={5} alignItems="center" paddingRight={2}>
                   <Text
                     fontSize={11}
                     color={theme.colorMuted.val}
                     numberOfLines={1}
-                    opacity={0.84}
+                    opacity={0.9}
                     flexShrink={1}
+                    lineHeight={15}
                   >
                     {status.detail?.trim() || "Working..."}
                   </Text>
                   {metaLabel ? (
-                    <>
-                      <View
-                        style={{
-                          width: 3,
-                          height: 3,
-                          borderRadius: 1.5,
-                          backgroundColor: theme.colorMuted.val,
-                          opacity: 0.2,
-                        }}
-                      />
-                      <Text
-                        fontSize={10}
-                        color={theme.colorMuted.val}
-                        opacity={0.6}
-                        numberOfLines={1}
-                      >
-                        {metaLabel}
-                      </Text>
-                    </>
+                    <Text
+                      fontSize={10}
+                      color={accentColor}
+                      opacity={0.9}
+                      numberOfLines={1}
+                      paddingHorizontal={6}
+                      paddingVertical={2}
+                      borderRadius={999}
+                      backgroundColor={withAlpha(accentColor, "12")}
+                      overflow="hidden"
+                      maxWidth={96}
+                    >
+                      {metaLabel}
+                    </Text>
                   ) : null}
                 </XStack>
               </YStack>
             </XStack>
 
             {latestEvent ? (
-              <Animated.View layout={PROGRESS_LAYOUT} entering={FadeIn.duration(200)}>
-                <XStack gap={6} alignItems="center" marginTop={6} paddingLeft={36}>
+              <Animated.View entering={FadeIn.duration(160)}>
+                <XStack gap={6} alignItems="flex-start" marginTop={5} paddingLeft={32}>
                   <View
                     style={{
-                      width: 4,
-                      height: 4,
-                      borderRadius: 2,
+                      width: 3,
+                      height: 3,
+                      borderRadius: 1.5,
                       backgroundColor: accentColor,
                       opacity: 0.6,
+                      marginTop: 6,
                     }}
                   />
                   <Text
                     fontSize={10}
                     color={theme.colorMuted.val}
-                    opacity={0.7}
+                    opacity={0.72}
                     numberOfLines={1}
-                    paddingRight={10}
+                    flex={1}
+                    lineHeight={14}
                   >
                     <Text fontFamily={FontFamily.medium}>{latestEvent.label}:</Text>{" "}
                     {latestEvent.value}

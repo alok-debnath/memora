@@ -3,7 +3,7 @@ import { Pressable, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { Text, XStack, YStack } from "tamagui";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -15,7 +15,7 @@ import { useAppTheme } from "@/hooks/useAppTheme";
 import { useSemanticColors } from "@/hooks/useSemanticColors";
 import { Feather } from "@/lib/icons";
 import { useUIStore } from "@/store/ui";
-import type { CardFlow, CardRef, SearchResultItem } from "./types";
+import type { CardFlow, CardSnapshot, SearchResultItem } from "./types";
 import { MemoryResultRow } from "./cards/MemoryResultRow";
 import { DiaryResultRow, type DiaryCardDoc } from "./cards/DiaryResultRow";
 
@@ -45,13 +45,13 @@ function PerformancePill({
       style={{
         flexDirection: "row",
         alignItems: "center",
-        gap: 6,
-        paddingHorizontal: 10,
+        gap: 5,
+        paddingHorizontal: 8,
         paddingVertical: 4,
-        borderRadius: 20,
-        backgroundColor: `${baseColor}15`,
+        borderRadius: 999,
+        backgroundColor: withAlpha(baseColor, "15"),
         borderWidth: 1,
-        borderColor: `${baseColor}40`,
+        borderColor: withAlpha(baseColor, "32"),
       }}
     >
       <Feather name={isCached ? "zap" : "search"} size={11} color={baseColor} />
@@ -88,12 +88,11 @@ function PerformancePill({
 }
 
 /**
- * Card shell for AI-surfaced document references. Refs are grouped by table
- * and rendered by the per-table row components in ./cards. Adding a new card
- * type = new row component + a listByIds-style query + a section below.
+ * Card shell for AI-surfaced document snapshots. The backend validates IDs and
+ * stores compact display data in chatMessages.meta.cardSnapshots.
  */
 export function SearchResultsCard({
-  cards,
+  cardSnapshots = [],
   isCached,
   turns = 1,
   flow,
@@ -101,7 +100,7 @@ export function SearchResultsCard({
   calendarSyncEnabled,
   onEdit,
 }: {
-  cards: CardRef[];
+  cardSnapshots?: CardSnapshot[];
   isCached: boolean;
   turns?: number;
   flow?: CardFlow;
@@ -112,6 +111,9 @@ export function SearchResultsCard({
   const theme = useAppTheme();
   const [expanded, setExpanded] = useState(false);
   const [completedIds, setCompletedIds] = useState<Set<Id<"memories">>>(new Set());
+  const [deletedMemoryIds, setDeletedMemoryIds] = useState<Set<Id<"memories">>>(new Set());
+  const [deletedDiaryIds, setDeletedDiaryIds] = useState<Set<Id<"diaryEntries">>>(new Set());
+  const [syncOverrides, setSyncOverrides] = useState<Record<string, Partial<SearchResultItem>>>({});
   const router = useRouter();
   const closeAllSheets = useUIStore((state) => state.closeAllSheets);
   const completeMemory = useMutation(api.memories.complete);
@@ -123,51 +125,45 @@ export function SearchResultsCard({
   const { confirm } = useAppConfirm();
   const openTurnBreakdown = useUIStore((state) => state.openTurnBreakdown);
 
-  const ids = useMemo(
-    () =>
-      cards.filter((card) => card.table === "memories").map((card) => card.id as Id<"memories">),
-    [cards],
-  );
-  const diaryIds = useMemo(
-    () =>
-      cards
-        .filter((card) => card.table === "diaryEntries")
-        .map((card) => card.id as Id<"diaryEntries">),
-    [cards],
-  );
-
-  const fetchedDocs = useQuery(
-    api.memories.listByIds,
-    token && ids.length > 0 ? { token, ids } : "skip",
-  );
-  const fetchedDiaryDocs = useQuery(
-    api.diary.listByIds,
-    token && diaryIds.length > 0 ? { token, ids: diaryIds } : "skip",
-  );
-  const memoryIds = useMemo(() => (fetchedDocs ?? []).map((doc) => doc._id), [fetchedDocs]);
-  const attachmentCounts =
-    useQuery(
-      api.attachments.getAttachmentCountsForMemories,
-      token && memoryIds.length > 0 ? { token, memoryIds } : "skip",
-    ) ?? {};
-
   const items = useMemo<SearchResultItem[]>(
     () =>
-      (fetchedDocs ?? []).map((doc) => ({
-        id: doc._id,
-        title: doc.title,
-        content: doc.content,
-        entry_kind: doc.entryKind ?? (doc.schedule?.dueAt ? "reminder" : "memory"),
-        schedule_due_at: doc.schedule?.dueAt ?? null,
-        google_event_id: doc.googleEventId,
-        google_sync_status: doc.googleSyncStatus,
-        google_sync_message: doc.googleSyncMessage,
-        google_sync_updated_at: doc.googleSyncUpdatedAt,
-      })),
-    [fetchedDocs],
+      cardSnapshots
+        .filter((snapshot) => snapshot.table === "memories")
+        .map((snapshot) => {
+          const id = snapshot.id as Id<"memories">;
+          return {
+            id,
+            title: snapshot.title,
+            content: snapshot.content,
+            entry_kind: snapshot.entry_kind,
+            schedule_due_at: snapshot.schedule_due_at ?? null,
+            google_event_id: snapshot.google_event_id,
+            google_sync_status: snapshot.google_sync_status,
+            google_sync_message: snapshot.google_sync_message,
+            google_sync_updated_at: snapshot.google_sync_updated_at,
+            ...syncOverrides[id],
+          };
+        })
+        .filter((item) => !deletedMemoryIds.has(item.id)),
+    [cardSnapshots, deletedMemoryIds, syncOverrides],
   );
 
-  const diaryItems = useMemo<DiaryCardDoc[]>(() => fetchedDiaryDocs ?? [], [fetchedDiaryDocs]);
+  const diaryItems = useMemo<DiaryCardDoc[]>(
+    () =>
+      cardSnapshots
+        .filter((snapshot) => snapshot.table === "diaryEntries")
+        .map((snapshot) => ({
+          _id: snapshot.id as Id<"diaryEntries">,
+          _creationTime: snapshot.creation_time,
+          mood: snapshot.mood,
+          energyLevel: snapshot.energy_level,
+          topics: snapshot.topics,
+          summary: snapshot.summary,
+          excerpt: snapshot.excerpt,
+        }))
+        .filter((entry) => !deletedDiaryIds.has(entry._id)),
+    [cardSnapshots, deletedDiaryIds],
+  );
   const displayItems = expanded ? items : items.slice(0, 3);
   const hasMore = items.length > 3;
   const headerLabel = [
@@ -208,6 +204,7 @@ export function SearchResultsCard({
       if (!confirmed) return;
       try {
         await deleteMemory({ token, id });
+        setDeletedMemoryIds((prev) => new Set([...prev, id]));
         showToast({ title: "Memory deleted", tone: "success" });
       } catch {
         showToast({ title: "Couldn't delete — try again", tone: "error" });
@@ -235,6 +232,7 @@ export function SearchResultsCard({
       if (!confirmed) return;
       try {
         await deleteDiaryEntry({ token, id });
+        setDeletedDiaryIds((prev) => new Set([...prev, id]));
         showToast({ title: "Diary entry deleted", tone: "success" });
       } catch {
         showToast({ title: "Couldn't delete — try again", tone: "error" });
@@ -248,6 +246,16 @@ export function SearchResultsCard({
       if (!token) return;
       try {
         const result = await triggerReminderSync({ token, memoryId: item.id });
+        if (result.queued) {
+          setSyncOverrides((prev) => ({
+            ...prev,
+            [item.id]: {
+              google_sync_status: "pending",
+              google_sync_message: result.message,
+              google_sync_updated_at: Date.now(),
+            },
+          }));
+        }
         showToast({ title: result.message, tone: result.queued ? "success" : "info" });
       } catch {
         showToast({ title: "Couldn't trigger Google sync", tone: "error" });
@@ -270,6 +278,17 @@ export function SearchResultsCard({
       if (!confirmed) return;
       try {
         const result = await removeReminderSync({ token, memoryId: item.id });
+        if (result.removed) {
+          setSyncOverrides((prev) => ({
+            ...prev,
+            [item.id]: {
+              google_event_id: undefined,
+              google_sync_status: undefined,
+              google_sync_message: undefined,
+              google_sync_updated_at: Date.now(),
+            },
+          }));
+        }
         showToast({ title: result.message, tone: result.removed ? "success" : "info" });
       } catch {
         showToast({ title: "Couldn't remove Google sync", tone: "error" });
@@ -279,26 +298,26 @@ export function SearchResultsCard({
   );
 
   return (
-    <Animated.View entering={FadeInDown.duration(320)} style={{ marginTop: 8 }}>
+    <Animated.View entering={FadeInDown.duration(260)} style={{ marginTop: 6, maxWidth: "92%" }}>
       <YStack
-        backgroundColor={theme.surfaceElevated.val}
+        backgroundColor={theme.surface.val}
         borderWidth={1}
         borderColor={theme.borderSubtle.val}
-        borderRadius={20}
+        borderRadius={18}
         overflow="hidden"
         style={getBubbleShadow(theme.shadowColor.val)}
       >
         <XStack
           alignItems="center"
           justifyContent="space-between"
-          gap={10}
-          paddingHorizontal={14}
-          paddingVertical={10}
+          gap={8}
+          paddingHorizontal={12}
+          paddingVertical={9}
           borderBottomWidth={1}
           borderBottomColor={theme.borderSubtle.val}
         >
           <XStack gap={6} alignItems="center" flex={1}>
-            <Feather name="search" size={13} color={theme.colorMuted.val} />
+            <Feather name="layers" size={13} color={theme.primary.val} />
             <Text fontSize={13} fontFamily={FontFamily.semiBold} color={theme.color.val}>
               {headerLabel || "Results"}
             </Text>
@@ -320,7 +339,6 @@ export function SearchResultsCard({
               item={item}
               index={index}
               isCompleted={completedIds.has(item.id)}
-              hasFiles={!!(attachmentCounts as Record<string, number>)[item.id]}
               calendarSyncEnabled={calendarSyncEnabled ?? true}
               onComplete={handleComplete}
               onDelete={handleDelete}

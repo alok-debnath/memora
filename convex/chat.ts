@@ -3,6 +3,7 @@ import { action, mutation, query, internalMutation, internalQuery } from "./_gen
 import { api, internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { resolveUser } from "./lib/withAuth";
+import { toMemoryCardSnapshot } from "./lib/chat/projections";
 
 export const list = query({
   args: {
@@ -35,6 +36,33 @@ export const list = query({
 });
 
 /** Mirrors the chatMessages.meta validator in schema.ts. */
+const cardSnapshotValidator = v.union(
+  v.object({
+    table: v.literal("memories"),
+    id: v.string(),
+    title: v.optional(v.string()),
+    content: v.optional(v.string()),
+    entry_kind: v.string(),
+    schedule_due_at: v.optional(v.union(v.string(), v.null())),
+    google_event_id: v.optional(v.string()),
+    google_sync_status: v.optional(
+      v.union(v.literal("pending"), v.literal("synced"), v.literal("failed")),
+    ),
+    google_sync_message: v.optional(v.string()),
+    google_sync_updated_at: v.optional(v.number()),
+  }),
+  v.object({
+    table: v.literal("diaryEntries"),
+    id: v.string(),
+    creation_time: v.number(),
+    mood: v.union(v.string(), v.null()),
+    energy_level: v.union(v.string(), v.null()),
+    topics: v.array(v.string()),
+    summary: v.union(v.string(), v.null()),
+    excerpt: v.string(),
+  }),
+);
+
 export const chatMessageMetaValidator = v.object({
   cards: v.optional(
     v.array(
@@ -44,6 +72,7 @@ export const chatMessageMetaValidator = v.object({
       }),
     ),
   ),
+  cardSnapshots: v.optional(v.array(cardSnapshotValidator)),
   deletionProposal: v.optional(
     v.array(
       v.object({
@@ -248,11 +277,12 @@ export const deepSearch = action({
 
       const cardMetadata = {
         cards: fresh.results.map((r) => ({ table: "memories" as const, id: String(r._id) })),
+        cardSnapshots: fresh.results.map((memory) => toMemoryCardSnapshot(memory)),
         isCached: false,
         turns: 1, // Deep scan is an explicit single-purpose turn
         flow: {
           assistantProvider: "openai",
-          toolSequence: ["deep_search", "surface_cards"],
+          toolSequence: ["deep_search", "structured_cards"],
           searches: [
             {
               source: "tool",

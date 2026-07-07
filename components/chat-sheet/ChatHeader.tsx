@@ -22,25 +22,25 @@ export const ChatHeader = React.memo(function ChatHeader({
       justifyContent="space-between"
       gap={12}
       paddingHorizontal={16}
-      paddingTop={8}
-      paddingBottom={12}
+      paddingTop={6}
+      paddingBottom={10}
       borderBottomWidth={1}
       borderBottomColor={theme.borderSubtle.val}
     >
-      <XStack flex={1} alignItems="center" gap={12}>
+      <XStack flex={1} alignItems="center" gap={10}>
         <XStack
-          width={38}
-          height={38}
-          borderRadius={19}
+          width={34}
+          height={34}
+          borderRadius={17}
           alignItems="center"
           justifyContent="center"
           backgroundColor={withAlpha(theme.primary.val, "14")}
         >
-          <Feather name="cpu" size={17} color={theme.primary.val} />
+          <Feather name="message-circle" size={16} color={theme.primary.val} />
         </XStack>
         <YStack flex={1} minWidth={0}>
           <Text
-            fontSize={17}
+            fontSize={16}
             fontFamily="$body"
             fontWeight="700"
             color={theme.color.val}
@@ -49,9 +49,7 @@ export const ChatHeader = React.memo(function ChatHeader({
             Memora
           </Text>
           <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val} numberOfLines={1}>
-            {messageCount === 0
-              ? "Ask anything about your memories"
-              : `${messageCount} ${messageCount === 1 ? "message" : "messages"}`}
+            {messageCount === 0 ? "Memory chat" : `${messageCount} messages`}
           </Text>
         </YStack>
       </XStack>
@@ -59,11 +57,8 @@ export const ChatHeader = React.memo(function ChatHeader({
       <XStack alignItems="center" gap={2}>
         {messageCount > 0 ? (
           <PressableScale onPress={onClear}>
-            <XStack alignItems="center" gap={6} paddingHorizontal={10} height={36}>
-              <Feather name="trash-2" size={13} color={theme.colorMuted.val} />
-              <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val}>
-                Clear
-              </Text>
+            <XStack alignItems="center" justifyContent="center" width={36} height={36}>
+              <Feather name="trash-2" size={15} color={theme.colorMuted.val} />
             </XStack>
           </PressableScale>
         ) : null}

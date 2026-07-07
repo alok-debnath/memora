@@ -28,6 +28,9 @@ export const GROUNDING_RECENT_FETCH = 40;
 
 /** Compact memory projection content cap (bulk tool results). */
 export const MEMORY_COMPACT_CONTENT_CHARS = 300;
+/** Persisted card snapshots: display-only text caps to keep chat rows small. */
+export const CARD_SNAPSHOT_TITLE_CHARS = 160;
+export const CARD_SNAPSHOT_CONTENT_CHARS = 420;
 
 /** Diary excerpt budgets per consumer. */
 export const DIARY_TOOL_EXCERPT_CHARS = 1500;

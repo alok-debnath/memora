@@ -3,7 +3,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { ChatBubble } from "./ChatBubble";
 import { ThinkingIndicator, ToolProgressBubble } from "./ToolProgressBubble";
-import type { AIChatDisplayItem, CardFlow, CardRef, ChatMsg, DeletionItem } from "./types";
+import type { AIChatDisplayItem, CardFlow, CardSnapshot, ChatMsg, DeletionItem } from "./types";
 import {
   createMarkdownStyles,
   extractAssistantPresentation,
@@ -46,7 +46,7 @@ export function useAIChatMessageRenderer({
       if (!isChatMessage(item)) return null;
 
       let deletionItems: DeletionItem[] | undefined;
-      let cards: CardRef[] | undefined;
+      let cardSnapshots: CardSnapshot[] | undefined;
       let displayMsg = item;
       let cardIsCached: boolean | undefined;
       let cardTurns: number | undefined;
@@ -55,7 +55,8 @@ export function useAIChatMessageRenderer({
       if (item.role !== "user") {
         const presentation = extractAssistantPresentation(item);
         deletionItems = presentation.deletionItems;
-        cards = presentation.cards.length > 0 ? presentation.cards : undefined;
+        cardSnapshots =
+          presentation.cardSnapshots.length > 0 ? presentation.cardSnapshots : undefined;
         cardIsCached = presentation.isCached;
         cardTurns = presentation.turns;
         cardFlow = presentation.flow;
@@ -75,7 +76,7 @@ export function useAIChatMessageRenderer({
           onCopy={copyMessage}
           token={token}
           deletionItems={deletionItems}
-          cards={cards}
+          cardSnapshots={cardSnapshots}
           cardIsCached={cardIsCached}
           cardTurns={cardTurns}
           cardFlow={cardFlow}
