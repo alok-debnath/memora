@@ -350,7 +350,15 @@ export const chat = action({
             // silently skip reporting which memories it used the way a
             // freeform-text exit allowed. respond() is always one of the
             // available choices, so this never blocks a normal reply.
-            tool_choice: "required",
+            // On the last allowed iteration, force respond specifically —
+            // otherwise an open-ended question can make the model chain
+            // info-gathering tools indefinitely and exhaust the loop
+            // without ever answering (observed: analyze_memories →
+            // get_diary_entries → get_stats → get_diary_entries, no reply).
+            tool_choice:
+              iteration === MAX_ITERATIONS - 1
+                ? { type: "function", function: { name: "respond" } }
+                : "required",
             parallel_tool_calls: false,
             temperature: PLANNER_TEMPERATURE,
             max_completion_tokens: MAX_COMPLETION_TOKENS,
@@ -401,9 +409,24 @@ export const chat = action({
             totalSteps: 4,
           });
 
-          const result = tool
-            ? await tool.handler(toolContext, fnArgs)
-            : JSON.stringify({ error: "Unknown tool" });
+          // Structural backstop for the "never repeat an identical call"
+          // prompt rule: skip re-running the handler (and re-hitting the
+          // DB) if the model dispatches the exact same tool+args again
+          // this turn, and nudge it toward respond instead of looping.
+          const signature = `${fnName}:${toolCall.function.arguments ?? ""}`;
+          const isRepeatCall = fnName !== "respond" && state.calledToolSignatures.has(signature);
+
+          let result: string;
+          if (isRepeatCall) {
+            result = JSON.stringify({
+              note: "Skipped — you already called this exact tool with these exact arguments earlier in this turn. Reuse that result, or call respond now if you have enough information.",
+            });
+          } else {
+            result = tool
+              ? await tool.handler(toolContext, fnArgs)
+              : JSON.stringify({ error: "Unknown tool" });
+            if (tool) state.calledToolSignatures.add(signature);
+          }
 
           conversation.push({
             role: "tool",

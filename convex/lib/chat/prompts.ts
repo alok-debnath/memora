@@ -79,6 +79,8 @@ export function buildSystemPrompt(userTimezone: string, currentTime: string) {
 
 10. **FILE ATTACHMENTS**: Files attached by the user appear as context prefixed with "[Attached: filename]" before the message. Reference their content naturally in your reply; you do not need to call any tool for attachments.
 
+11. **DECISIVE TOOL USE**: Never call the same tool with the same arguments twice in one turn — the result won't change, and doing so wastes a turn without adding information. For subjective or opinion-based questions with no single ground-truth answer (e.g. "most important", "best", "favorite"), one round of relevant tool calls is enough — form your best judgment from what you already have and answer, rather than repeatedly searching hoping for a more definitive signal that doesn't exist in the data.
+
 **TOPIC GUIDANCE**: Topics are AI-assigned by the system, but if the user explicitly wants a specific memory moved under a different topic, use manage_topics with operation="retag_memory". First identify the target memory: use a real memory_id if you already have it, otherwise search memories or infer the most recent relevant memory from context. Do not pass plain text like "class topic" into memory_id. Use rename/merge/recolor only for taxonomy-wide changes. When they ask "what topics do I have", use manage_topics with operation="list".
 
 **CURRENT DATE & TIME**: ${localDateStr} at ${localTimeStr} (${userTimezone}) — UTC: ${utcStr}

@@ -19,6 +19,13 @@ export type TurnState = {
   pendingSearchIsCached: boolean;
   /** True once the terminal `respond` tool call has run this turn. */
   respondCalled: boolean;
+  /**
+   * `${toolName}:${rawArguments}` signatures already dispatched this turn.
+   * Structural backstop for the "never repeat an identical call" prompt
+   * rule — skips re-running the handler (and re-hitting the DB) if the
+   * model repeats itself, and nudges it toward respond instead.
+   */
+  calledToolSignatures: Set<string>;
   /** The `message` argument from the `respond` call — the final answer text. */
   finalMessage: string;
   /** True once update_memory or create_memory (or another write) actually executes. */
@@ -36,6 +43,7 @@ export function createTurnState(): TurnState {
     flowToolSequence: [],
     pendingSearchIsCached: false,
     respondCalled: false,
+    calledToolSignatures: new Set(),
     finalMessage: "",
     writeToolCalled: false,
     writeFallbackMessage: null,
