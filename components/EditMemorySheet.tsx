@@ -356,7 +356,6 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
       enableBlurKeyboardOnGesture
-      enableContentPanningGesture={false}
       // AndroidManifest sets adjustResize, but Android edge-to-edge (mandatory
       // on targetSdk 35+) stops the OS from actually resizing the window.
       // "adjustResize" here would make gorhom assume the OS handled it and

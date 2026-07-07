@@ -199,7 +199,6 @@ export function HomeOverviewSheet() {
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
       enableBlurKeyboardOnGesture
-      enableContentPanningGesture={false}
       android_keyboardInputMode="adjustResize"
       stackBehavior="push"
       backdropComponent={renderBackdrop}
