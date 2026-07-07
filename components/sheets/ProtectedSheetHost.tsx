@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useCallback, useEffect } from "react";
-import { BackHandler } from "react-native";
+import { BackHandler, InteractionManager } from "react-native";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -32,10 +32,17 @@ export function DeferredProtectedSheetHost() {
   const hasOpenSheet = useUIStore((state) => selectSheetStack(state).length > 0);
   const [shouldMountHost, setShouldMountHost] = React.useState(false);
 
+  // Mount once the app is idle (post-nav-transition) so the lazy sheet chunks
+  // and their Convex queries are already warm by the time the user taps a
+  // sheet trigger. hasOpenSheet stays as a fallback in case a sheet opens
+  // before the interaction queue drains.
   React.useEffect(() => {
     if (hasOpenSheet) {
       setShouldMountHost(true);
+      return;
     }
+    const task = InteractionManager.runAfterInteractions(() => setShouldMountHost(true));
+    return () => task.cancel();
   }, [hasOpenSheet]);
 
   if (!shouldMountHost) return null;
