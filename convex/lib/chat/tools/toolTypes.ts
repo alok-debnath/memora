@@ -50,4 +50,13 @@ export type ChatTool = {
   buildStatus: (fnArgs: Record<string, unknown>) => StreamingStatus;
   /** Returns the JSON string pushed back to the model as the tool result. */
   handler: (tc: ToolContext, fnArgs: Record<string, unknown>) => Promise<string>;
+  /**
+   * "read" marks a pure info-gathering tool (no writes, no card-selection
+   * side effects beyond surfacing candidates). The agent loop
+   * (memoryChat.ts) uses this to force `respond` after a single read tool
+   * on non-action turns, so open-ended questions can't chain info tools
+   * indefinitely without ever answering. Omit for tools with write/side
+   * effects (create/update/delete/sync, manage_topics, respond itself).
+   */
+  kind?: "read";
 };

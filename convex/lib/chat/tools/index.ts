@@ -49,6 +49,15 @@ export const CHAT_TOOLS_BY_NAME: ReadonlyMap<string, ChatTool> = new Map(
   REGISTERED_TOOLS.map((tool) => [tool.name, tool]),
 );
 
+/**
+ * Names of tools marked `kind: "read"` — derived from the registry so a new
+ * read-only tool is automatically included without editing memoryChat.ts's
+ * force-respond heuristic.
+ */
+export const READ_ONLY_INFO_TOOL_NAMES: ReadonlySet<string> = new Set(
+  REGISTERED_TOOLS.filter((tool) => tool.kind === "read").map((tool) => tool.name),
+);
+
 /** Labels for tool names that appear in flow steps but are not registry tools. */
 const EXTRA_TOOL_LABELS: Record<string, string> = {
   search_documents: "Search documents",

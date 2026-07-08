@@ -11,6 +11,7 @@
 import type * as actions_aiProviderKeys from "../actions/aiProviderKeys.js";
 import type * as actions_backfillEmbeddings from "../actions/backfillEmbeddings.js";
 import type * as actions_detectConflicts from "../actions/detectConflicts.js";
+import type * as actions_foldAttachmentIntoMemory from "../actions/foldAttachmentIntoMemory.js";
 import type * as actions_manageTopics from "../actions/manageTopics.js";
 import type * as actions_memoryChat from "../actions/memoryChat.js";
 import type * as actions_processAttachment from "../actions/processAttachment.js";
@@ -98,6 +99,7 @@ declare const fullApi: ApiFromModules<{
   "actions/aiProviderKeys": typeof actions_aiProviderKeys;
   "actions/backfillEmbeddings": typeof actions_backfillEmbeddings;
   "actions/detectConflicts": typeof actions_detectConflicts;
+  "actions/foldAttachmentIntoMemory": typeof actions_foldAttachmentIntoMemory;
   "actions/manageTopics": typeof actions_manageTopics;
   "actions/memoryChat": typeof actions_memoryChat;
   "actions/processAttachment": typeof actions_processAttachment;

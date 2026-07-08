@@ -28,8 +28,18 @@ import {
   buildSystemPrompt,
 } from "../lib/chat/prompts";
 import { buildGroundingContext, listMemoriesForAI } from "../lib/chat/search";
-import { CHAT_TOOL_DEFINITIONS, CHAT_TOOLS_BY_NAME, type ToolContext } from "../lib/chat/tools";
-import { appendFlowTool, createTurnState, validateCardIds } from "../lib/chat/turnState";
+import {
+  CHAT_TOOL_DEFINITIONS,
+  CHAT_TOOLS_BY_NAME,
+  READ_ONLY_INFO_TOOL_NAMES,
+  type ToolContext,
+} from "../lib/chat/tools";
+import {
+  appendFlowTool,
+  createTurnState,
+  validateCardIds,
+  type TurnState,
+} from "../lib/chat/turnState";
 import type {
   ChatAttachmentExtraction,
   ChatAttachmentRecord,
@@ -50,14 +60,6 @@ const driveAttachmentArg = v.object({
   driveWebViewLink: v.optional(v.string()),
   driveThumbnailLink: v.optional(v.string()),
 });
-
-const READ_ONLY_INFO_TOOLS = new Set([
-  "search_memories",
-  "list_memories",
-  "get_diary_entries",
-  "get_stats",
-  "analyze_memories",
-]);
 
 const ACTION_INTENT_PATTERN =
   /\b(delete|remove|restore|undo|sync|resync|retry|unsync|disconnect|edit|update|change|modify|fix|rename|move|convert|turn|make|remember|save|note|add|capture|store|remind me)\b/i;
@@ -208,308 +210,28 @@ export const chat = action({
     let responseMeta: ChatMessageMeta | undefined;
     const replyStreamer = createReplyStreamer(ctx, session._id);
 
-    try {
-      await setStreamingStatus({
-        phase: "analyzing",
-        toolName: "planner",
-        detail: "Understanding request and loading relevant context",
-        source: "chat",
-        events: [{ label: "Context", value: "recent chat + memories" }],
-        step: 1,
-        totalSteps: 4,
-      });
+    // Hoisted so the catch block below can recover a partially completed
+    // turn: writes (create/update memory, reminder sync) commit to the DB
+    // mid-loop, before a later completion-round network/parse error can
+    // throw — the catch must not report a false "trouble connecting" when
+    // a write already succeeded (see finalizeFromState below).
+    let state: TurnState | undefined;
+    let finalIteration = 0;
 
-      const conversation: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-        {
-          role: "system",
-          content: buildSystemPrompt(
-            effectiveTimezone,
-            args.currentTime ?? new Date().toISOString(),
-          ),
-        },
-        ...(knowledgeDigest
-          ? [
-              {
-                role: "system" as const,
-                content: buildKnowledgeDigestMessage(knowledgeDigest),
-              },
-            ]
-          : []),
-        ...recentChat,
-        ...(legacyAttachments.length > 0
-          ? [
-              {
-                role: "system" as const,
-                content: `Attachment metadata for the latest user message: ${JSON.stringify(
-                  legacyAttachments,
-                )}`,
-              },
-            ]
-          : []),
-        ...(extractedChatAttachments.length > 0
-          ? [
-              {
-                role: "system" as const,
-                content: buildAttachmentContextMessage(extractedChatAttachments),
-              },
-            ]
-          : []),
-        {
-          role: "user" as const,
-          content: args.message,
-        },
-      ];
-
-      const initialGrounding = await groundingPromise;
-
-      const state = createTurnState();
-      const shouldForceRespondAfterInfoTool =
-        !ACTION_INTENT_PATTERN.test(args.message) && !shouldPreferUpdatingExisting(args.message);
-
-      if (initialGrounding.shouldGround) {
-        state.flowSearches.push({
-          source: "grounding",
-          query: args.message,
-          resultCount: initialGrounding.searchCount,
-          cacheState: initialGrounding.isCached ? "cached" : "fresh",
-          searchMode: initialGrounding.isCached ? "semantic_cached" : "semantic_fresh",
-        });
-        conversation.splice(conversation.length - 1, 0, {
-          role: "system",
-          content: buildGroundingSystemMessage(initialGrounding),
-        });
+    // Resolves the visible reply text + response meta (cards, deletion
+    // proposal, flow payload) from whatever turn state exists so far. Used
+    // on the normal completion path below, and reused from the catch block
+    // when a write already committed before a later mid-turn failure —
+    // see the write-recovery comment in the catch block.
+    const finalizeFromState = async (
+      finalText: string,
+    ): Promise<{ resolvedText: string; meta: ChatMessageMeta | undefined }> => {
+      if (!state) {
+        return {
+          resolvedText: "I'm having trouble connecting right now. Please try again in a moment.",
+          meta: undefined,
+        };
       }
-
-      await setStreamingStatus({
-        query: initialGrounding.shouldGround ? args.message : undefined,
-        phase: initialGrounding.shouldGround ? "grounding" : "thinking",
-        toolName: initialGrounding.shouldGround ? "memory_grounding" : "planner",
-        detail: initialGrounding.shouldGround
-          ? `Checked stored context${initialGrounding.searchCount ? ` (${initialGrounding.searchCount} match${initialGrounding.searchCount === 1 ? "" : "es"})` : ""}`
-          : "Preparing assistant response",
-        source: initialGrounding.shouldGround ? "memories" : "chat",
-        cacheState: initialGrounding.shouldGround
-          ? initialGrounding.isCached
-            ? "cached"
-            : "fresh"
-          : undefined,
-        resultCount: initialGrounding.shouldGround ? initialGrounding.searchCount : undefined,
-        previewItems: initialGrounding.shouldGround
-          ? toPreviewItems(initialGrounding.searchResults, "Stored memory")
-          : undefined,
-        events: initialGrounding.shouldGround
-          ? [
-              { label: "Scope", value: "personal facts and reminders" },
-              { label: "Policy", value: "DB grounded" },
-            ]
-          : undefined,
-        step: 2,
-        totalSteps: 4,
-      });
-
-      let finalText = "";
-
-      // Candidate pool kept for flow/context bookkeeping only — the final
-      // card set always comes from the model's own respond(used_ids) call.
-      if (initialGrounding.shouldGround) {
-        state.pendingSearchIsCached = initialGrounding.isCached;
-        if (initialGrounding.searchResults.length > 0) {
-          state.surfaceCandidates = initialGrounding.searchResults.map((mem) => ({
-            id: String(mem.id),
-            title: mem.title ?? "",
-          }));
-        }
-      }
-
-      // Set by the dispatch loop right before each tool handler runs, so
-      // `reportProgress` can fill in the currently-executing tool's name.
-      let currentToolName = "";
-      const toolContext: ToolContext = {
-        ctx,
-        token: args.token,
-        userId: session._id,
-        userMessage: args.message,
-        currentTime: args.currentTime,
-        effectiveTimezone,
-        chatMessageId,
-        hasDirectAttachments,
-        setStreamingStatus,
-        reportProgress: (status) =>
-          setStreamingStatus({
-            ...status,
-            toolName: currentToolName,
-            step: 3,
-            totalSteps: 4,
-          }),
-        getRecentMemories,
-        invalidateRecentMemories,
-        grounding: initialGrounding,
-        knowledgeDigest,
-        latestReferencedMemoryIds,
-        state,
-      };
-
-      let finalIteration = 0;
-      let forceRespondNextIteration = false;
-      for (let iteration = 0; iteration < MAX_ITERATIONS; iteration += 1) {
-        finalIteration = iteration;
-        await setStreamingStatus({
-          phase: "thinking",
-          toolName: "planner",
-          detail:
-            iteration === 0
-              ? "Choosing the next backend operation"
-              : "Continuing multi-step reasoning",
-          source: "chat",
-          step: 2,
-          totalSteps: 4,
-        });
-        replyStreamer.reset();
-        const response = await trackedChatCompletionStream(ctx, {
-          userId: session._id,
-          feature: "memory_chat",
-          stage: "planner",
-          visibility: "user_visible",
-          link: analyticsLink,
-          onDelta: replyStreamer.onDelta,
-          onRetry: replyStreamer.reset,
-          // The final answer always arrives as the `respond` tool's
-          // `message` argument (see tools/respond.ts) — extract it live
-          // from the streaming tool-call arguments so it still reads as
-          // plain streamed text to the user.
-          streamToolTextField: { toolName: "respond", argName: "message" },
-          request: {
-            messages: conversation,
-            tools: CHAT_TOOL_DEFINITIONS,
-            // Forced tool call per turn: the model can no longer silently
-            // skip reporting which memories it used the way a freeform-text
-            // exit allowed. respond() is always one of the available
-            // choices, so this never blocks a normal reply.
-            // On the last allowed iteration, force respond specifically —
-            // otherwise an open-ended question can make the model chain
-            // info-gathering tools indefinitely and exhaust the loop
-            // without ever answering (observed: analyze_memories →
-            // get_diary_entries → get_stats → get_diary_entries, no reply).
-            // Forced-respond iterations stay a solo call (tool_choice pins
-            // the single function); other iterations allow the model to
-            // batch independent info-gathering tools (e.g. search_memories
-            // + get_diary_entries) into one round trip instead of one tool
-            // per iteration — fewer resends of the growing conversation.
-            tool_choice:
-              forceRespondNextIteration || iteration === MAX_ITERATIONS - 1
-                ? { type: "function", function: { name: "respond" } }
-                : "required",
-            parallel_tool_calls: !(forceRespondNextIteration || iteration === MAX_ITERATIONS - 1),
-            temperature: PLANNER_TEMPERATURE,
-            max_completion_tokens: MAX_COMPLETION_TOKENS,
-          },
-        });
-
-        const choice = response.choices[0]?.message;
-        if (!choice?.tool_calls?.length) {
-          // Only reachable if a provider without forced tool-choice support
-          // is ever routed here (see chatCompletion fallback in aiDispatch).
-          finalText = extractTextContent(choice?.content) || finalText;
-          break;
-        }
-
-        conversation.push({
-          role: "assistant",
-          content: extractTextContent(choice.content),
-          tool_calls: choice.tool_calls,
-        });
-
-        for (const toolCall of choice.tool_calls) {
-          if (toolCall.type !== "function") {
-            continue;
-          }
-
-          const fnName = toolCall.function.name;
-          currentToolName = fnName;
-          appendFlowTool(state, fnName);
-          let fnArgs: Record<string, unknown>;
-          try {
-            fnArgs = JSON.parse(toolCall.function.arguments || "{}") as Record<string, unknown>;
-          } catch {
-            // Truncated/malformed arguments (e.g. completion cut off at
-            // max_completion_tokens mid-JSON) — feed the error back as the
-            // tool result instead of throwing, so the loop can recover
-            // (retry or answer some other way) rather than failing the
-            // whole turn after text may already have streamed. The
-            // assistant message carrying this tool_call was already pushed
-            // above (before this loop) — only the tool result is needed.
-            conversation.push({
-              role: "tool",
-              tool_call_id: toolCall.id,
-              content: JSON.stringify({
-                error: "Malformed or truncated tool call arguments — retry with valid JSON.",
-              }),
-            });
-            continue;
-          }
-          const tool = CHAT_TOOLS_BY_NAME.get(fnName);
-          const streamingDetail: StreamingStatus = tool
-            ? tool.buildStatus(fnArgs)
-            : {
-                phase: "working",
-                detail: `Running ${fnName}`,
-                source: "backend",
-              };
-          await setStreamingStatus({
-            query: streamingDetail.query,
-            phase: streamingDetail.phase,
-            toolName: fnName,
-            detail: streamingDetail.detail,
-            source: streamingDetail.source,
-            cacheState: undefined,
-            resultCount: undefined,
-            previewItems: undefined,
-            events: streamingDetail.events,
-            step: 3,
-            totalSteps: 4,
-          });
-
-          // Structural backstop for the "never repeat an identical call"
-          // prompt rule: skip re-running the handler (and re-hitting the
-          // DB) if the model dispatches the exact same tool+args again
-          // this turn, and nudge it toward respond instead of looping.
-          const signature = `${fnName}:${toolCall.function.arguments ?? ""}`;
-          const isRepeatCall = fnName !== "respond" && state.calledToolSignatures.has(signature);
-
-          let result: string;
-          if (isRepeatCall) {
-            result = JSON.stringify({
-              note: "Skipped — you already called this exact tool with these exact arguments earlier in this turn. Reuse that result, or call respond now if you have enough information.",
-            });
-          } else {
-            result = tool
-              ? await tool.handler(toolContext, fnArgs)
-              : JSON.stringify({ error: "Unknown tool" });
-            if (tool) state.calledToolSignatures.add(signature);
-          }
-          if (
-            shouldForceRespondAfterInfoTool &&
-            READ_ONLY_INFO_TOOLS.has(fnName) &&
-            !state.respondCalled
-          ) {
-            forceRespondNextIteration = true;
-          }
-
-          conversation.push({
-            role: "tool",
-            tool_call_id: toolCall.id,
-            content: result,
-          });
-        }
-
-        // respond() ends the turn — its message + used_ids are already in
-        // state, no further iteration needed.
-        if (state.respondCalled) {
-          finalText = state.finalMessage;
-          break;
-        }
-      }
-
       let resolvedText = finalText?.trim();
       if (!resolvedText) {
         if (state.writeToolCalled) {
@@ -605,7 +327,7 @@ export const chat = action({
           })
           .filter((snapshot): snapshot is CardSnapshot => snapshot !== null);
       }
-      responseMeta =
+      const meta: ChatMessageMeta | undefined =
         cardRefs.length > 0 || state.pendingDeletionItems.length > 0
           ? {
               ...(cardRefs.length > 0
@@ -634,7 +356,338 @@ export const chat = action({
             }
           : undefined;
 
-      aiResponse = resolvedText;
+      return { resolvedText, meta };
+    };
+
+    try {
+      await setStreamingStatus({
+        phase: "analyzing",
+        toolName: "planner",
+        detail: "Understanding request and loading relevant context",
+        source: "chat",
+        events: [{ label: "Context", value: "recent chat + memories" }],
+        step: 1,
+        totalSteps: 4,
+      });
+
+      const conversation: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+        {
+          role: "system",
+          content: buildSystemPrompt(
+            effectiveTimezone,
+            args.currentTime ?? new Date().toISOString(),
+          ),
+        },
+        ...(knowledgeDigest
+          ? [
+              {
+                role: "system" as const,
+                content: buildKnowledgeDigestMessage(knowledgeDigest),
+              },
+            ]
+          : []),
+        ...recentChat,
+        ...(legacyAttachments.length > 0
+          ? [
+              {
+                role: "system" as const,
+                content: `Attachment metadata for the latest user message: ${JSON.stringify(
+                  legacyAttachments,
+                )}`,
+              },
+            ]
+          : []),
+        ...(extractedChatAttachments.length > 0
+          ? [
+              {
+                role: "system" as const,
+                content: buildAttachmentContextMessage(extractedChatAttachments),
+              },
+            ]
+          : []),
+        {
+          role: "user" as const,
+          content: args.message,
+        },
+      ];
+
+      const initialGrounding = await groundingPromise;
+
+      state = createTurnState();
+      const shouldForceRespondAfterInfoTool =
+        !ACTION_INTENT_PATTERN.test(args.message) && !shouldPreferUpdatingExisting(args.message);
+
+      if (initialGrounding.shouldGround) {
+        state.flowSearches.push({
+          source: "grounding",
+          query: args.message,
+          resultCount: initialGrounding.searchCount,
+          cacheState: initialGrounding.isCached ? "cached" : "fresh",
+          searchMode: initialGrounding.isCached ? "semantic_cached" : "semantic_fresh",
+        });
+        conversation.splice(conversation.length - 1, 0, {
+          role: "system",
+          content: buildGroundingSystemMessage(initialGrounding),
+        });
+      }
+
+      await setStreamingStatus({
+        query: initialGrounding.shouldGround ? args.message : undefined,
+        phase: initialGrounding.shouldGround ? "grounding" : "thinking",
+        toolName: initialGrounding.shouldGround ? "memory_grounding" : "planner",
+        detail: initialGrounding.shouldGround
+          ? `Checked stored context${initialGrounding.searchCount ? ` (${initialGrounding.searchCount} match${initialGrounding.searchCount === 1 ? "" : "es"})` : ""}`
+          : "Preparing assistant response",
+        source: initialGrounding.shouldGround ? "memories" : "chat",
+        cacheState: initialGrounding.shouldGround
+          ? initialGrounding.isCached
+            ? "cached"
+            : "fresh"
+          : undefined,
+        resultCount: initialGrounding.shouldGround ? initialGrounding.searchCount : undefined,
+        previewItems: initialGrounding.shouldGround
+          ? toPreviewItems(initialGrounding.searchResults, "Stored memory")
+          : undefined,
+        events: initialGrounding.shouldGround
+          ? [
+              { label: "Scope", value: "personal facts and reminders" },
+              { label: "Policy", value: "DB grounded" },
+            ]
+          : undefined,
+        step: 2,
+        totalSteps: 4,
+      });
+
+      let finalText = "";
+
+      // Candidate pool kept for flow/context bookkeeping only — the final
+      // card set always comes from the model's own respond(used_ids) call.
+      if (initialGrounding.shouldGround) {
+        state.pendingSearchIsCached = initialGrounding.isCached;
+        if (initialGrounding.searchResults.length > 0) {
+          state.surfaceCandidates = initialGrounding.searchResults.map((mem) => ({
+            id: String(mem.id),
+            title: mem.title ?? "",
+          }));
+        }
+      }
+
+      // Set by the dispatch loop right before each tool handler runs, so
+      // `reportProgress` can fill in the currently-executing tool's name.
+      let currentToolName = "";
+      const toolContext: ToolContext = {
+        ctx,
+        token: args.token,
+        userId: session._id,
+        userMessage: args.message,
+        currentTime: args.currentTime,
+        effectiveTimezone,
+        chatMessageId,
+        hasDirectAttachments,
+        setStreamingStatus,
+        reportProgress: (status) =>
+          setStreamingStatus({
+            ...status,
+            toolName: currentToolName,
+            step: 3,
+            totalSteps: 4,
+          }),
+        getRecentMemories,
+        invalidateRecentMemories,
+        grounding: initialGrounding,
+        knowledgeDigest,
+        latestReferencedMemoryIds,
+        state,
+      };
+
+      let forceRespondNextIteration = false;
+      for (let iteration = 0; iteration < MAX_ITERATIONS; iteration += 1) {
+        finalIteration = iteration;
+        await setStreamingStatus({
+          phase: "thinking",
+          toolName: "planner",
+          detail:
+            iteration === 0
+              ? "Choosing the next backend operation"
+              : "Continuing multi-step reasoning",
+          source: "chat",
+          step: 2,
+          totalSteps: 4,
+        });
+        replyStreamer.reset();
+        const response = await trackedChatCompletionStream(ctx, {
+          userId: session._id,
+          feature: "memory_chat",
+          stage: "planner",
+          visibility: "user_visible",
+          link: analyticsLink,
+          onDelta: replyStreamer.onDelta,
+          onRetry: replyStreamer.reset,
+          // The final answer always arrives as the `respond` tool's
+          // `message` argument (see tools/respond.ts) — extract it live
+          // from the streaming tool-call arguments so it still reads as
+          // plain streamed text to the user.
+          streamToolTextField: { toolName: "respond", argName: "message" },
+          request: {
+            messages: conversation,
+            tools: CHAT_TOOL_DEFINITIONS,
+            // Forced tool call per turn: the model can no longer silently
+            // skip reporting which memories it used the way a freeform-text
+            // exit allowed. respond() is always one of the available
+            // choices, so this never blocks a normal reply.
+            // On the last allowed iteration, force respond specifically —
+            // otherwise an open-ended question can make the model chain
+            // info-gathering tools indefinitely and exhaust the loop
+            // without ever answering (observed: analyze_memories →
+            // get_diary_entries → get_stats → get_diary_entries, no reply).
+            // Forced-respond iterations stay a solo call (tool_choice pins
+            // the single function); other iterations allow the model to
+            // batch independent info-gathering tools (e.g. search_memories
+            // + get_diary_entries) into one round trip instead of one tool
+            // per iteration — fewer resends of the growing conversation.
+            tool_choice:
+              forceRespondNextIteration || iteration === MAX_ITERATIONS - 1
+                ? { type: "function", function: { name: "respond" } }
+                : "required",
+            parallel_tool_calls: !(forceRespondNextIteration || iteration === MAX_ITERATIONS - 1),
+            temperature: PLANNER_TEMPERATURE,
+            max_completion_tokens: MAX_COMPLETION_TOKENS,
+          },
+        });
+
+        const choice = response.choices[0]?.message;
+        if (!choice?.tool_calls?.length) {
+          // Only reachable if a provider without forced tool-choice support
+          // is ever routed here (see chatCompletion fallback in aiDispatch).
+          finalText = extractTextContent(choice?.content) || finalText;
+          break;
+        }
+
+        conversation.push({
+          role: "assistant",
+          content: extractTextContent(choice.content),
+          tool_calls: choice.tool_calls,
+        });
+
+        // On non-forced iterations the model can batch respond() alongside
+        // info-gathering tools in one round trip (see parallel_tool_calls
+        // above). If it does, respond's message was necessarily written
+        // without seeing the other calls' results — answering from stale
+        // context. Defer respond in that batch: run the other tools, feed
+        // respond back an error telling it to answer next turn once it has
+        // the fresh results in context.
+        const respondBatchedWithOtherTools =
+          choice.tool_calls.some(
+            (tc) => tc.type === "function" && tc.function.name === "respond",
+          ) &&
+          choice.tool_calls.some((tc) => tc.type === "function" && tc.function.name !== "respond");
+
+        for (const toolCall of choice.tool_calls) {
+          if (toolCall.type !== "function") {
+            continue;
+          }
+
+          const fnName = toolCall.function.name;
+          currentToolName = fnName;
+
+          if (fnName === "respond" && respondBatchedWithOtherTools) {
+            conversation.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: JSON.stringify({
+                error:
+                  "Deferred — you called respond in the same batch as other tools. Review their results below, then call respond again with an answer that reflects them.",
+              }),
+            });
+            continue;
+          }
+          appendFlowTool(state, fnName);
+          let fnArgs: Record<string, unknown>;
+          try {
+            fnArgs = JSON.parse(toolCall.function.arguments || "{}") as Record<string, unknown>;
+          } catch {
+            // Truncated/malformed arguments (e.g. completion cut off at
+            // max_completion_tokens mid-JSON) — feed the error back as the
+            // tool result instead of throwing, so the loop can recover
+            // (retry or answer some other way) rather than failing the
+            // whole turn after text may already have streamed. The
+            // assistant message carrying this tool_call was already pushed
+            // above (before this loop) — only the tool result is needed.
+            conversation.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: JSON.stringify({
+                error: "Malformed or truncated tool call arguments — retry with valid JSON.",
+              }),
+            });
+            continue;
+          }
+          const tool = CHAT_TOOLS_BY_NAME.get(fnName);
+          const streamingDetail: StreamingStatus = tool
+            ? tool.buildStatus(fnArgs)
+            : {
+                phase: "working",
+                detail: `Running ${fnName}`,
+                source: "backend",
+              };
+          await setStreamingStatus({
+            query: streamingDetail.query,
+            phase: streamingDetail.phase,
+            toolName: fnName,
+            detail: streamingDetail.detail,
+            source: streamingDetail.source,
+            cacheState: undefined,
+            resultCount: undefined,
+            previewItems: undefined,
+            events: streamingDetail.events,
+            step: 3,
+            totalSteps: 4,
+          });
+
+          // Structural backstop for the "never repeat an identical call"
+          // prompt rule: skip re-running the handler (and re-hitting the
+          // DB) if the model dispatches the exact same tool+args again
+          // this turn, and nudge it toward respond instead of looping.
+          const signature = `${fnName}:${toolCall.function.arguments ?? ""}`;
+          const isRepeatCall = fnName !== "respond" && state.calledToolSignatures.has(signature);
+
+          let result: string;
+          if (isRepeatCall) {
+            result = JSON.stringify({
+              note: "Skipped — you already called this exact tool with these exact arguments earlier in this turn. Reuse that result, or call respond now if you have enough information.",
+            });
+          } else {
+            result = tool
+              ? await tool.handler(toolContext, fnArgs)
+              : JSON.stringify({ error: "Unknown tool" });
+            if (tool) state.calledToolSignatures.add(signature);
+          }
+          if (
+            shouldForceRespondAfterInfoTool &&
+            READ_ONLY_INFO_TOOL_NAMES.has(fnName) &&
+            !state.respondCalled
+          ) {
+            forceRespondNextIteration = true;
+          }
+
+          conversation.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: result,
+          });
+        }
+
+        // respond() ends the turn — its message + used_ids are already in
+        // state, no further iteration needed.
+        if (state.respondCalled) {
+          finalText = state.finalMessage;
+          break;
+        }
+      }
+
+      const outcome = await finalizeFromState(finalText);
+      aiResponse = outcome.resolvedText;
+      responseMeta = outcome.meta;
       await ctx.runMutation(internal.chat.clearSearchStatus, {
         userId: session._id,
       });
@@ -647,8 +700,30 @@ export const chat = action({
       await ctx.runMutation(internal.chat.clearSearchStatus, {
         userId: session._id,
       });
-      aiResponse = "I'm having trouble connecting right now. Please try again in a moment.";
-      responseMeta = undefined;
+      // A write tool (create/update memory, reminder sync) may have already
+      // committed to the DB before this failure — e.g. a network error on a
+      // later planner iteration, or an unhandled edge case after the write.
+      // Reporting "trouble connecting" in that case is actively wrong: the
+      // change happened, and a user retry would create a duplicate. Recover
+      // the write confirmation + any surfaced cards from turn state instead.
+      if (state && (state.writeToolCalled || state.pendingCardIds.size > 0)) {
+        try {
+          const outcome = await finalizeFromState(state.finalMessage);
+          aiResponse = outcome.resolvedText;
+          responseMeta = outcome.meta;
+        } catch (finalizeError) {
+          console.error("chat turn write-recovery finalize failed", {
+            userId: session._id,
+            chatMessageId,
+            error: finalizeError,
+          });
+          aiResponse = "I'm having trouble connecting right now. Please try again in a moment.";
+          responseMeta = undefined;
+        }
+      } else {
+        aiResponse = "I'm having trouble connecting right now. Please try again in a moment.";
+        responseMeta = undefined;
+      }
     }
 
     await replyStreamer.finalize({

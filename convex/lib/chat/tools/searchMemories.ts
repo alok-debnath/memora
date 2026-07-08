@@ -8,6 +8,7 @@ import type { ChatTool } from "./toolTypes";
 export const searchMemoriesTool: ChatTool = {
   name: "search_memories",
   label: "Search memories",
+  kind: "read",
   definition: {
     type: "function",
     function: {

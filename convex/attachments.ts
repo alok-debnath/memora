@@ -477,11 +477,40 @@ export const linkChatAttachmentsToMemory = internalMutation({
       .query("memoryAttachments")
       .withIndex("by_chat_message", (q) => q.eq("chatMessageId", args.chatMessageId))
       .collect();
-    await Promise.all(
-      attachments
-        .filter((a) => !a.memoryId)
-        .map((a) => ctx.db.patch(a._id, { memoryId: args.memoryId })),
-    );
+    const newlyLinked = attachments.filter((a) => !a.memoryId);
+    await Promise.all(newlyLinked.map((a) => ctx.db.patch(a._id, { memoryId: args.memoryId })));
+    // Chat-flow attachments are already extracted by this point (extraction
+    // runs before the agent loop, this link happens from create_memory /
+    // update_memory) — fold their text into the memory's embedding now so
+    // it's searchable in later turns, not just this one.
+    if (newlyLinked.some((a) => a.processingStatus === "completed" && a.extractedContent)) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.actions.foldAttachmentIntoMemory.foldAttachmentIntoMemory,
+        {
+          memoryId: args.memoryId,
+        },
+      );
+    }
+  },
+});
+
+/** Extracted text of every completed, non-deleted attachment linked to a memory — used to fold attachment content into the memory's embedding text (foldAttachmentIntoMemory.ts). */
+export const listExtractedContentForMemoryInternal = internalQuery({
+  args: {
+    memoryId: v.id("memories"),
+  },
+  handler: async (ctx, args) => {
+    const attachments = await ctx.db
+      .query("memoryAttachments")
+      .withIndex("by_memory", (q) => q.eq("memoryId", args.memoryId))
+      .collect();
+    return attachments
+      .filter(
+        (a): a is typeof a & { extractedContent: string } =>
+          !a.isDeleted && a.processingStatus === "completed" && Boolean(a.extractedContent),
+      )
+      .map((a) => ({ filename: a.filename, extractedContent: a.extractedContent }));
   },
 });
 

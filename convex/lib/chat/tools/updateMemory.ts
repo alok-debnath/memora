@@ -89,11 +89,15 @@ export const updateMemoryTool: ChatTool = {
         targetMemoryId = tc.latestReferencedMemoryIds[0];
       }
       if (!targetMemoryId) {
+        // requireMatchForWrite: an unmatched reference must not silently
+        // fall back to the most recently created memory — that risks
+        // overwriting an unrelated entry with no user-visible error.
         const resolvedFallback = await resolveMemoryReference(tc.ctx, {
           token: tc.token,
           userId: tc.userId,
           reference: tc.userMessage,
           recentMemories: await tc.getRecentMemories(),
+          requireMatchForWrite: true,
         });
         if (resolvedFallback) {
           targetMemoryId = String(resolvedFallback);
@@ -101,7 +105,7 @@ export const updateMemoryTool: ChatTool = {
       }
       if (!targetMemoryId) {
         throw new Error(
-          "Couldn't determine which memory to update. Please specify the memory or reminder.",
+          "Couldn't confidently determine which memory to update — no reference matched an existing memory. Ask the user to clarify which one they mean, or search first.",
         );
       }
       await tc.ctx.runMutation(api.memories.update, {

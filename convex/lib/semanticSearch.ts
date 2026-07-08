@@ -3,7 +3,7 @@
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import { trackedEmbedText } from "./aiDispatch";
+import { getEmbeddingFingerprintForUser, trackedEmbedText } from "./aiDispatch";
 import { toDiaryCompact } from "./diaryText";
 import { cleanSearchQuery, extractSearchTerms, normalizeSearchQueryHash } from "./search";
 
@@ -211,12 +211,25 @@ export async function runSemanticSearch(
       return null;
     }
     try {
+      const currentFingerprint = await getEmbeddingFingerprintForUser(ctx, args.userId);
       const cached = await ctx.runQuery(internal.memories.getQueryCache, {
         userId: args.userId,
         queryHash,
       });
 
-      if (cached?.embedding && !args.forceDeepSearch) {
+      // A cached vector from a different embedding model/provider lives in
+      // a different vector space than the current corpus — matching it
+      // against today's memory/diary embeddings silently degrades
+      // relevance (or breaks outright on a dimension mismatch). This is
+      // the only thing that makes staleness detection intrinsic rather
+      // than depending on every embedding-route-change path remembering
+      // to call clearQueryCacheForUser (only the per-user BYOK path does).
+      const cacheIsFresh =
+        cached?.embedding &&
+        (cached.embeddingFingerprint === undefined ||
+          cached.embeddingFingerprint === currentFingerprint);
+
+      if (cacheIsFresh && !args.forceDeepSearch) {
         isCached = true;
         if (Date.now() - (cached.lastUsedAt ?? 0) > QUERY_CACHE_TOUCH_INTERVAL_MS) {
           await ctx.runMutation(internal.memories.setQueryCache, {
@@ -224,7 +237,7 @@ export async function runSemanticSearch(
             queryHash,
           });
         }
-        return cached.embedding;
+        return cached.embedding ?? null;
       }
 
       const queryEmbedding = await trackedEmbedText(ctx, {
@@ -245,6 +258,7 @@ export async function runSemanticSearch(
         queryHash,
         expandedQuery: cleanQuery,
         embedding: queryEmbedding,
+        embeddingFingerprint: currentFingerprint,
       });
       return queryEmbedding;
     } catch {

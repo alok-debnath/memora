@@ -14,6 +14,7 @@ function buildEmbeddingText(m: {
   locations?: string[];
   lifeArea?: string;
   entryKind?: string;
+  attachmentExcerpt?: string;
 }): string {
   const parts: string[] = [];
   if (m.title) parts.push(`Title: ${m.title}`);
@@ -26,6 +27,10 @@ function buildEmbeddingText(m: {
   }
   if (m.lifeArea) parts.push(`Category: ${m.lifeArea}`);
   if (m.entryKind === "reminder") parts.push("Type: reminder");
+  // Re-embedding (e.g. this backfill cron) must keep including the folded-in
+  // attachment excerpt (see foldAttachmentIntoMemory.ts), or a later re-embed
+  // silently drops attachment text from the vector.
+  if (m.attachmentExcerpt) parts.push(`Attachment content: ${m.attachmentExcerpt}`);
   return parts.length > 0 ? parts.join("\n") : `${m.title ?? ""}\n${m.content ?? ""}`;
 }
 
@@ -57,6 +62,7 @@ export const backfill = internalAction({
       locations?: string[];
       lifeArea?: string;
       entryKind?: string;
+      attachmentExcerpt?: string;
     }> = await ctx.runQuery(internal.memories.listWithoutEmbeddings, {
       limit: BACKFILL_BATCH_SIZE,
     });

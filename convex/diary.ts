@@ -181,6 +181,26 @@ export const listRecentInternal = internalQuery({
   },
 });
 
+export const listByDateRangeInternal = internalQuery({
+  args: {
+    userId: v.id("users"),
+    startMs: v.number(),
+    endMs: v.number(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("diaryEntries")
+      .withIndex("by_user", (q) =>
+        q
+          .eq("userId", args.userId)
+          .gte("_creationTime", args.startMs)
+          .lt("_creationTime", args.endMs),
+      )
+      .order("desc")
+      .take(200);
+  },
+});
+
 export const listByIdsInternal = internalQuery({
   args: {
     userId: v.id("users"),
@@ -244,9 +264,13 @@ export const getKnowledgeDigestInternal = internalQuery({
     userId: v.id("users"),
   },
   handler: async (ctx, args) => {
-    const [stats, profile, recentDiary] = await Promise.all([
+    const [stats, analyticsSummary, profile, recentDiary] = await Promise.all([
       ctx.db
         .query("userMemoryStats")
+        .withIndex("by_user", (q) => q.eq("userId", args.userId))
+        .unique(),
+      ctx.db
+        .query("userAnalyticsSummary")
         .withIndex("by_user", (q) => q.eq("userId", args.userId))
         .unique(),
       ctx.db
@@ -263,8 +287,11 @@ export const getKnowledgeDigestInternal = internalQuery({
     return {
       totalMemories: stats?.totalMemories ?? 0,
       totalReminders: stats?.totalReminders ?? 0,
-      totalDiaryEntries: recentDiary.length,
-      diaryCountIsExact: recentDiary.length < 30,
+      // The already-tracked analytics counter gives the exact total; the
+      // capped 30-entry page below would silently report 30 for any user
+      // with more diary entries than that.
+      totalDiaryEntries: analyticsSummary?.totalDiaryEntries ?? recentDiary.length,
+      diaryCountIsExact: analyticsSummary !== null,
       profile: profile
         ? {
             likes: profile.likes.slice(-10),

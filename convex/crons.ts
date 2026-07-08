@@ -22,6 +22,17 @@ crons.interval(
   {},
 );
 
+// Same for diary entries — backfillDiary previously had no trigger besides
+// its own self-scheduled continuation, so a diary entry whose write-time
+// embed failed (transient outage, rate limit) stayed vector-unsearchable
+// forever. Mirrors the memory backfill cadence.
+crons.interval(
+  "backfill diary embeddings",
+  { hours: 6 },
+  internal.actions.backfillEmbeddings.backfillDiary,
+  {},
+);
+
 // Evict search query cache entries older than 30 days
 crons.interval(
   "purge stale query cache",

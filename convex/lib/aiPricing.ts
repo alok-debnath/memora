@@ -1,8 +1,5 @@
 export type AiPricingOperation =
-  | "chat_completion"
-  | "embedding"
-  | "transcription"
-  | "image_generation";
+  "chat_completion" | "embedding" | "transcription" | "image_generation";
 export type AiBilledTo = "memora" | "user_byok";
 export type AiPriceDisplayMode = "estimated" | "exact" | "unavailable";
 
@@ -59,9 +56,47 @@ export function buildDefaultPricingCatalog(now = Date.now()): AiModelPricingRow[
     },
     {
       provider: "openai",
+      model: "gpt-4.1-mini",
+      operation: "chat_completion",
+      inputUsdPer1M: 0.4,
+      outputUsdPer1M: 1.6,
+      priceDisplayMode: "estimated",
+      pricingSource: "openai_api_pricing",
+      updatedAt: now,
+    },
+    {
+      provider: "openai",
+      model: "gpt-4.1",
+      operation: "chat_completion",
+      inputUsdPer1M: 2,
+      outputUsdPer1M: 8,
+      priceDisplayMode: "estimated",
+      pricingSource: "openai_api_pricing",
+      updatedAt: now,
+    },
+    {
+      provider: "openai",
       model: OPENAI_EMBEDDING_MODEL,
       operation: "embedding",
       inputUsdPer1M: 0.02,
+      priceDisplayMode: "estimated",
+      pricingSource: "openai_api_pricing",
+      updatedAt: now,
+    },
+    {
+      provider: "openai",
+      model: "text-embedding-3-large",
+      operation: "embedding",
+      inputUsdPer1M: 0.13,
+      priceDisplayMode: "estimated",
+      pricingSource: "openai_api_pricing",
+      updatedAt: now,
+    },
+    {
+      provider: "openai",
+      model: "gpt-4o-transcribe",
+      operation: "transcription",
+      audioUsdPerMinute: 0.006,
       priceDisplayMode: "estimated",
       pricingSource: "openai_api_pricing",
       updatedAt: now,
@@ -89,6 +124,26 @@ export function buildDefaultPricingCatalog(now = Date.now()): AiModelPricingRow[
       operation: "chat_completion",
       inputUsdPer1M: 0.1,
       outputUsdPer1M: 0.4,
+      priceDisplayMode: "estimated",
+      pricingSource: "gemini_api_pricing",
+      updatedAt: now,
+    },
+    {
+      provider: "google",
+      model: "gemini-2.5-flash-preview-04-17",
+      operation: "chat_completion",
+      inputUsdPer1M: 0.15,
+      outputUsdPer1M: 0.6,
+      priceDisplayMode: "estimated",
+      pricingSource: "gemini_api_pricing",
+      updatedAt: now,
+    },
+    {
+      provider: "google",
+      model: "gemini-2.5-pro-preview-05-06",
+      operation: "chat_completion",
+      inputUsdPer1M: 1.25,
+      outputUsdPer1M: 10,
       priceDisplayMode: "estimated",
       pricingSource: "gemini_api_pricing",
       updatedAt: now,

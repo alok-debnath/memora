@@ -38,11 +38,7 @@ export type AiProviderModelSelections = Partial<
   Record<AiProvider, Partial<Record<AiCapability, string>>>
 >;
 export type EmbeddingRebuildStatus =
-  | "idle"
-  | "queued"
-  | "reembedding_memories"
-  | "rebuilding_topics"
-  | "failed";
+  "idle" | "queued" | "reembedding_memories" | "rebuilding_topics" | "failed";
 
 export const EMBEDDING_VECTOR_DIMENSION = 1536;
 export const ACTIVE_EMBEDDING_REBUILD_STATUSES: EmbeddingRebuildStatus[] = [
@@ -138,11 +134,11 @@ export const PROVIDER_MODELS: Record<AiProvider, AiProviderModel[]> = {
       label: "Gemini Embedding 001",
       capabilities: ["embeddings"],
     },
-    {
-      id: "gemini-text-embedding-004",
-      label: "Gemini Text Embedding 004",
-      capabilities: ["embeddings"],
-    },
+    // "gemini-text-embedding-004" removed: wrong API id (the real Google
+    // model is "text-embedding-004", not "gemini-text-embedding-004"), and
+    // it natively emits 768-dim vectors that don't support the
+    // outputDimensionality:1536 reduction the vector index requires —
+    // selecting it broke embed/search outright.
   ],
 };
 

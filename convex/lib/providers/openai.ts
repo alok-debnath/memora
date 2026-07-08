@@ -80,9 +80,18 @@ export const openAiAdapter: AiProviderAdapter = {
       model: route.model,
       stream_options: { include_usage: true },
     });
-    stream.on("content", (delta) => {
-      onDelta(delta);
-    });
+    // When the caller wants the visible reply extracted from a specific
+    // tool call's streaming JSON args (the forced-respond pattern — see
+    // memoryChat.ts), don't also wire raw content deltas: on non-final
+    // planner iterations the model can emit a free-text preamble alongside
+    // its forced tool call ("Let me check your memories..."), and that
+    // content would otherwise flush to the visible reply stream before
+    // being silently overwritten by the real answer.
+    if (!streamToolTextField) {
+      stream.on("content", (delta) => {
+        onDelta(delta);
+      });
+    }
     if (streamToolTextField) {
       const extractor = createJsonStringFieldExtractor(streamToolTextField.argName);
       stream.on("tool_calls.function.arguments.delta", (event) => {

@@ -47,7 +47,7 @@ export function buildSystemPrompt(userTimezone: string, currentTime: string) {
    - Search and read the user's diary entries (search_memories covers diary too; get_diary_entries reads recent full entries)
    - Analyze patterns and trends across their data
    - Provide statistics and insights
-   - Search uploaded documents (warranties, receipts, etc.)
+   - Search uploaded documents (warranties, receipts, etc.) via search_memories — extracted attachment text is folded into the memory it was uploaded with, so search the memory, not a separate document store
    - Set reminders and recurring tasks
    - Trigger or retry Google Calendar sync for an existing reminder via sync_reminder
    - Remove Google Calendar sync for a reminder via remove_reminder_sync

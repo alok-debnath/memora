@@ -17,9 +17,10 @@ How to extend the system without regressions, redundancy, or cost creep. Written
 
 ### Add a chat tool
 
-1. Create `convex/lib/chat/tools/<name>.ts` exporting a `ChatTool`: `{ name, label, definition, buildStatus, handler }`. `handler(tc, fnArgs)` returns the JSON string given back to the model. `tc: ToolContext` provides ctx, token, userId, userMessage, grounding, knowledgeDigest, `getRecentMemories()` (shared per-turn cache — call `invalidateRecentMemories()` after writes), and `tc.state` (TurnState: `pendingCardIds`, `pendingDeletionItems`, `flowSearches`, `writeToolCalled`, …).
-2. Register it in `REGISTERED_TOOLS` in `tools/index.ts`. Done — dispatch, labels, status UI all derive from the registry.
-3. Compact tool results: reuse `projections.ts` (`toMemoryCompact`, `toDiaryCompact`) and cap sizes via `budgets.ts`. Never return full docs to the model.
+1. Create `convex/lib/chat/tools/<name>.ts` exporting a `ChatTool`: `{ name, label, definition, buildStatus, handler, kind? }`. `handler(tc, fnArgs)` returns the JSON string given back to the model. `tc: ToolContext` provides ctx, token, userId, userMessage, grounding, knowledgeDigest, `getRecentMemories()` (shared per-turn cache — call `invalidateRecentMemories()` after writes), and `tc.state` (TurnState: `pendingCardIds`, `pendingDeletionItems`, `flowSearches`, `writeToolCalled`, …). Set `kind: "read"` for pure info-gathering tools (no writes) — the agent loop derives its force-respond-after-one-read-tool heuristic from this instead of a hardcoded name list, so a new read tool is picked up automatically.
+2. Register it in `REGISTERED_TOOLS` in `tools/index.ts`. Done — dispatch, labels, status UI, and the read-only-tool set all derive from the registry.
+3. Compact tool results: reuse `projections.ts` (`toMemoryCompact`, `toDiaryCompact`) and cap sizes via `budgets.ts`. Never return full docs to the model. For any tool result quoting a count derived from a capped list (`getRecentMemories()`, `listForAI`), include the digest's exact total and a `truncated` flag rather than the list length — see `list_memories`/`analyze_memories` in `browseAndStats.ts`.
+4. A write tool that resolves its target from free text (no explicit ID) should pass `requireMatchForWrite: true` to `resolveMemoryReference` (`lib/chat/search.ts`) and surface a clear "couldn't confidently match" error on `null` — the zero-score "default to most recent memory" fallback is fine for read-only resolution but a silent wrong-target hazard for writes.
 
 ### Add a card type (e.g. reminder or document cards)
 
@@ -33,7 +34,7 @@ One source descriptor in `convex/lib/semanticSearch.ts` via `fuseSource()` — d
 
 ### Add an AI provider
 
-One adapter file in `convex/lib/providers/` implementing `AiProviderAdapter` + entry in `ADAPTERS` (`aiDispatch.ts`). `chatCompletionStream` is optional — dispatch falls back to non-streaming automatically. Update `PROVIDER_MODELS` / routing in `lib/ai.ts`.
+One adapter file in `convex/lib/providers/` implementing `AiProviderAdapter` + entry in `ADAPTERS` (`aiDispatch.ts`). `chatCompletionStream` is optional — dispatch falls back to non-streaming automatically. Update `PROVIDER_MODELS` / routing in `lib/ai.ts`, and add a row in `lib/aiPricing.ts`'s default catalog for every `(provider, model, operation)` triple you route to — a missing row silently records cost as `unavailable`/$0, not an error. Errors thrown by the adapter's raw HTTP call must carry a `.status` (see `googleFetchJson` in `providers/google.ts`) so `isRetryableAiError`/`withRetry` in `aiDispatch.ts` can actually retry them — a plain `Error` with the code only in the message string never matches and skips both retry and the admin-configured fallback route (`resolveAiFallbackRoute`, wired into `trackedChatCompletion`/`trackedChatCompletionStream`).
 
 ### Add backend domain logic
 
@@ -61,10 +62,13 @@ Streaming: `lib/chat/replyStreamer.ts` — assistant doc created lazily on first
 3. Smoke internal functions directly: `bun x convex run <file>:<fn> '<json>'`, inspect data via `bun x convex data <table>`
 4. In-app regression set: chat streams reply; search/diary questions surface cards; create memory/reminder; deletion proposal flow; deep scan; reminder calendar sync.
 
-## Known open items (as of 2026-07-06)
+## Known open items (as of 2026-07-08)
 
 - No automated tests — highest-value next investment (`convex-test` over validation gate, fuseSource ranking, tool registry).
 - No per-user AI spend caps — analytics records exact cost per request; enforce in `resolveAiRoute` when needed.
-- Google provider has no streaming adapter (falls back to non-streaming).
+- Google provider has no streaming adapter (falls back to non-streaming — chat reply appears all at once for Google-routed turns instead of token-by-token).
 - Diary card "View in Diary" opens the tab, not the specific entry (no deep link).
 - `conversationId` exists on chatMessages but UI is single-conversation.
+- A global/admin embedding-route change doesn't rebuild existing users' stored vectors (only the per-user BYOK change path does, via `rebuildUserEmbeddings`) — the query-cache fingerprint check (`searchQueryCache.embeddingFingerprint`, see `semanticSearch.ts`) stops a _stale query vector_ from being served, but a corpus left half-migrated between two embedding spaces is still a relevance/dimension problem an admin-side route change can create.
+- Diary embeddings and memory embeddings are both retried by 6h crons now (`backfill` / `backfillDiary` in `backfillEmbeddings.ts`, wired in `crons.ts`) — a transient embed failure at write time is recoverable, but a hard dimension mismatch (wrong model selected) will just fail every retry silently forever; there's no alerting on a memory stuck in `embeddingState: "missing"` past N retries.
+- Attachment text search (`memories.attachmentExcerpt`, folded in by `foldAttachmentIntoMemory.ts`) covers the vector channel only, not the `search_content` fulltext index (which still reads `content` only) — a receipt photo's extracted text is semantically searchable but won't match an exact-keyword fulltext hit unless it also happens to score well on vectors.

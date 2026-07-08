@@ -67,6 +67,13 @@ export default defineSchema({
     schedule: v.optional(memoryScheduleValidator),
     nextDueAt: v.optional(v.string()),
     capsuleUnlockDate: v.optional(v.string()),
+    /**
+     * Capped excerpt of linked attachments' extracted text (OCR/PDF), folded
+     * in at write time so semantic search can surface it later — previously
+     * attachment text was only visible to the model on the upload turn.
+     * Not shown in the UI; feeds the embedding text only.
+     */
+    attachmentExcerpt: v.optional(v.string()),
     embedding: v.optional(v.array(v.float64())),
     embeddingFingerprint: v.optional(v.string()),
     embeddingState: v.union(v.literal("missing"), v.literal("ready")),
@@ -693,6 +700,17 @@ export default defineSchema({
     queryHash: v.string(), // lowercase trimmed query (first 100 chars)
     expandedQuery: v.optional(v.string()), // GPT-expanded query string
     embedding: v.optional(v.array(v.float64())), // text-embedding vector
+    /**
+     * Fingerprint (provider+model) the cached embedding was produced with.
+     * A mismatch against the user's current embedding fingerprint means the
+     * cached vector lives in a different embedding space than the corpus —
+     * treated as a cache miss in getQueryEmbedding (semanticSearch.ts).
+     * Only per-user BYOK embedding-model changes clear this cache
+     * explicitly today; a global/admin routing change doesn't, so this
+     * field makes correctness intrinsic instead of depending on every
+     * future model-change path remembering to clear the cache.
+     */
+    embeddingFingerprint: v.optional(v.string()),
     lastUsedAt: v.number(), // ms timestamp — used for TTL eviction
   })
     .index("by_user", ["userId"])

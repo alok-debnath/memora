@@ -163,6 +163,7 @@ function buildEmbeddingText(args: {
   locations?: string[];
   lifeArea?: string;
   entryKind?: string;
+  attachmentExcerpt?: string;
 }): string {
   const parts: string[] = [];
   if (args.title) parts.push(`Title: ${args.title}`);
@@ -175,6 +176,10 @@ function buildEmbeddingText(args: {
   }
   if (args.lifeArea) parts.push(`Category: ${args.lifeArea}`);
   if (args.entryKind === "reminder") parts.push(`Type: reminder`);
+  // Keep including the folded-in attachment excerpt (see
+  // foldAttachmentIntoMemory.ts) on every re-embed of this memory, or a
+  // later edit/re-process silently drops attachment text from the vector.
+  if (args.attachmentExcerpt) parts.push(`Attachment content: ${args.attachmentExcerpt}`);
   // Fall back to simple concatenation if no structured parts
   return parts.length > 0 ? parts.join("\n") : `${args.title ?? ""}\n${args.content ?? ""}`;
 }
@@ -342,6 +347,7 @@ async function buildMemoryEmbedding(args: {
   locations?: string[];
   lifeArea?: string;
   entryKind?: string;
+  attachmentExcerpt?: string;
   chatTurnId?: Id<"chatMessages">;
 }) {
   const embedding = await trackedEmbedText(args.ctx, {
@@ -356,6 +362,7 @@ async function buildMemoryEmbedding(args: {
       locations: args.locations,
       lifeArea: args.lifeArea,
       entryKind: args.entryKind,
+      attachmentExcerpt: args.attachmentExcerpt,
     }),
     link: args.chatTurnId
       ? { chatTurnId: args.chatTurnId, chatMessageId: args.chatTurnId }
@@ -463,6 +470,15 @@ export const processMemory = action({
       extracted = null;
     }
 
+    // Structured-field write and embedding are two independent best-effort
+    // steps. Previously they shared one try/catch with the embedding call
+    // awaited first — a transient embed failure discarded the already-computed
+    // title/people/locations/importance/etc, and the backfill cron only
+    // retries the vector, never the structured extraction. Persisting fields
+    // first means an embed failure only costs the vector (which the backfill
+    // cron already recovers), not the enrichment too.
+    let normalizedForWrite: (ReturnType<typeof normalizeMemoryFields> & { title?: string }) | null =
+      null;
     try {
       const normalized: ReturnType<typeof normalizeMemoryFields> = extracted
         ? normalizeMemoryFields(extracted)
@@ -471,22 +487,10 @@ export const processMemory = action({
         normalized.entryKind === "reminder" && normalized.schedule?.dueAt
           ? getReminderTitleWithoutSchedule(normalized.title ?? args.title, args.content)
           : normalized.title;
-      const normalizedForWrite = {
+      normalizedForWrite = {
         ...normalized,
         title: normalizedTitle,
       };
-      const { embedding, embeddingFingerprint } = await buildMemoryEmbedding({
-        ctx,
-        userId: memory.userId,
-        feature: "memory_processing",
-        title: normalizedForWrite.title ?? args.title,
-        content: args.content,
-        people: normalizedForWrite.people,
-        locations: normalizedForWrite.locations,
-        lifeArea: normalizedForWrite.lifeArea,
-        entryKind: normalizedForWrite.entryKind,
-        chatTurnId: args.sourceChatTurnId,
-      });
 
       await ctx.runMutation(internal.processMemoryMutations.updateAIFields, {
         memoryId: args.memoryId,
@@ -499,8 +503,6 @@ export const processMemory = action({
         linkedUrls: normalizedForWrite.linkedUrls,
         sentimentScore: normalizedForWrite.sentimentScore,
         extractedActions: normalizedForWrite.extractedActions,
-        embedding,
-        embeddingFingerprint,
       });
 
       const finalImportance = normalizedForWrite.importance ?? memory.importance;
@@ -515,6 +517,34 @@ export const processMemory = action({
           userId: memory.userId,
         });
       }
+    } catch {
+      // Best effort only. Background enrichment should never break user writes.
+    }
+
+    if (!normalizedForWrite) {
+      return;
+    }
+
+    try {
+      const { embedding, embeddingFingerprint } = await buildMemoryEmbedding({
+        ctx,
+        userId: memory.userId,
+        feature: "memory_processing",
+        title: normalizedForWrite.title ?? args.title,
+        content: args.content,
+        people: normalizedForWrite.people,
+        locations: normalizedForWrite.locations,
+        lifeArea: normalizedForWrite.lifeArea,
+        entryKind: normalizedForWrite.entryKind,
+        attachmentExcerpt: memory.attachmentExcerpt,
+        chatTurnId: args.sourceChatTurnId,
+      });
+
+      await ctx.runMutation(internal.processMemoryMutations.updateAIFields, {
+        memoryId: args.memoryId,
+        embedding,
+        embeddingFingerprint,
+      });
 
       const shouldReassignTopics =
         !isSameValue(memory.embedding, embedding) ||
@@ -535,7 +565,7 @@ export const processMemory = action({
         });
       }
     } catch {
-      // Best effort only. Background enrichment should never break user writes.
+      // Best effort only — the embedding backfill cron retries this memory.
     }
   },
 });

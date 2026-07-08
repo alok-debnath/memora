@@ -56,5 +56,12 @@ export const HISTORY_TOOL_LIMIT_MAX = 20;
 /** Streaming status preview text cap. */
 export const STATUS_TEXT_MAX = 42;
 
+/**
+ * Excerpt of a linked attachment's extracted text folded into the parent
+ * memory's embedding text (memories.attachmentExcerpt) so search_memories
+ * can retrieve it after the upload turn — see foldAttachmentIntoMemory.ts.
+ */
+export const ATTACHMENT_EXCERPT_CHARS = 1200;
+
 /** Minimum interval between streamed reply content patches (mutation cost cap). */
 export const STREAM_PATCH_INTERVAL_MS = 400;

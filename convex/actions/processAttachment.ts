@@ -75,6 +75,21 @@ export const processAttachment = internalAction({
         driveThumbnailLink: result.driveThumbnailLink,
         driveWebViewLink: result.driveWebViewLink,
       });
+
+      // This flow attaches directly to a known memory (unlike the chat flow,
+      // which links after this extraction already ran) — fold the extracted
+      // text into the memory's embedding as soon as it's available.
+      if (
+        result.processingStatus === "completed" &&
+        result.extractedContent &&
+        attachment.memoryId
+      ) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.actions.foldAttachmentIntoMemory.foldAttachmentIntoMemory,
+          { memoryId: attachment.memoryId },
+        );
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error during extraction";
       console.error("processAttachment error:", err);

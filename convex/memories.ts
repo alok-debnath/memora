@@ -392,9 +392,18 @@ export const listForAI = internalQuery({
     primaryTopicId: v.optional(v.id("userTopics")),
     limit: v.optional(v.float64()),
     includeDeleted: v.optional(v.boolean()),
+    /** "asc" for a true oldest-first page (list_memories sort:"oldest"). Ignored when includeDeleted/primaryTopicId is set — those callers don't need it today. */
+    order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
   },
   handler: async (ctx, args) => {
     const take = args.limit ? Math.min(args.limit, 100) : 20;
+    if (args.order === "asc" && !args.includeDeleted && !args.primaryTopicId) {
+      return await ctx.db
+        .query("memories")
+        .withIndex("by_user_status", (q) => q.eq("userId", args.userId).eq("status", "active"))
+        .order("asc")
+        .take(take);
+    }
     if (args.includeDeleted) {
       let rows: Doc<"memories">[];
       if (args.primaryTopicId) {
@@ -1135,6 +1144,19 @@ export const getInternal = internalQuery({
   },
 });
 
+/** Patches the denormalized attachment-text excerpt used for search (see foldAttachmentIntoMemory.ts). */
+export const patchAttachmentExcerptInternal = internalMutation({
+  args: {
+    memoryId: v.id("memories"),
+    attachmentExcerpt: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const memory = await ctx.db.get(args.memoryId);
+    if (!memory || memory.status !== "active") return;
+    await ctx.db.patch(args.memoryId, { attachmentExcerpt: args.attachmentExcerpt });
+  },
+});
+
 export const listTopicRefsForUser = internalQuery({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
@@ -1233,6 +1255,7 @@ export const listWithoutEmbeddings = internalQuery({
       locations: m.locations,
       lifeArea: m.lifeArea,
       entryKind: m.entryKind,
+      attachmentExcerpt: m.attachmentExcerpt,
     }));
   },
 });
@@ -1551,6 +1574,7 @@ export const setQueryCache = internalMutation({
     queryHash: v.string(),
     expandedQuery: v.optional(v.string()),
     embedding: v.optional(v.array(v.float64())),
+    embeddingFingerprint: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -1562,6 +1586,12 @@ export const setQueryCache = internalMutation({
       await ctx.db.patch(existing._id, {
         expandedQuery: args.expandedQuery,
         embedding: args.embedding,
+        // Only overwrite the stored fingerprint when this write actually
+        // carries a fresh embedding — a touch-only write (below) must not
+        // blank it out.
+        ...(args.embedding !== undefined
+          ? { embeddingFingerprint: args.embeddingFingerprint }
+          : {}),
         lastUsedAt: Date.now(),
       });
     } else {
@@ -1570,6 +1600,7 @@ export const setQueryCache = internalMutation({
         queryHash: args.queryHash,
         expandedQuery: args.expandedQuery,
         embedding: args.embedding,
+        embeddingFingerprint: args.embeddingFingerprint,
         lastUsedAt: Date.now(),
       });
     }

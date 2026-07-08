@@ -450,13 +450,20 @@ export async function trackedChatCompletion(
   },
 ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
   const route = await resolveAiRoute(ctx, { userId: args.userId, feature: args.feature });
-  const adapter = getAdapter(route.provider);
-  return withUsageTracking(
-    ctx,
-    route,
-    { ...args, operation: "chat_completion", pricingOperation: "chat_completion" },
-    () => withRetry(() => adapter.chatCompletion({ route, request: args.request })),
-  );
+  try {
+    return await trackedChatCompletionOnRoute(ctx, route, args);
+  } catch (error) {
+    // The admin-configured fallback (DEFAULT_ROUTING[capability].fallback*)
+    // previously only ran for attachment extraction — a primary-provider
+    // outage silently took down chat/structured_text even when an admin
+    // had a fallback configured for exactly this. One failover attempt,
+    // only for transient errors, only when a different provider is
+    // actually configured as the fallback.
+    if (!isRetryableAiError(error)) throw error;
+    const fallbackRoute = await resolveAiFallbackRoute(ctx, args.feature);
+    if (!fallbackRoute || fallbackRoute.provider === route.provider) throw error;
+    return trackedChatCompletionOnRoute(ctx, fallbackRoute, args);
+  }
 }
 
 /**
@@ -466,23 +473,30 @@ export async function trackedChatCompletion(
  * Providers without a streaming adapter fall back to the non-streaming call
  * transparently (no deltas fire, the full completion just resolves).
  */
-export async function trackedChatCompletionStream(
+type ChatCompletionStreamArgs = {
+  userId: Id<"users">;
+  feature: AiFeature;
+  stage?: string;
+  visibility?: AiVisibility;
+  metadata?: Record<string, string>;
+  link?: AnalyticsLink;
+  onDelta: (textDelta: string) => void;
+  /** Called before a retry attempt so the caller can discard partial streamed state. */
+  onRetry?: () => void;
+  streamToolTextField?: { toolName: string; argName: string };
+  request: Omit<OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming, "model">;
+};
+
+/**
+ * Like `trackedChatCompletionStream` but with a pre-resolved route — used by
+ * the fallback path below so the failover attempt doesn't re-resolve the
+ * (already-known-bad) primary route.
+ */
+async function trackedChatCompletionStreamOnRoute(
   ctx: UsageRecorderCtx,
-  args: {
-    userId: Id<"users">;
-    feature: AiFeature;
-    stage?: string;
-    visibility?: AiVisibility;
-    metadata?: Record<string, string>;
-    link?: AnalyticsLink;
-    onDelta: (textDelta: string) => void;
-    /** Called before a retry attempt so the caller can discard partial streamed state. */
-    onRetry?: () => void;
-    streamToolTextField?: { toolName: string; argName: string };
-    request: Omit<OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming, "model">;
-  },
+  route: ResolvedRoute,
+  args: ChatCompletionStreamArgs,
 ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
-  const route = await resolveAiRoute(ctx, { userId: args.userId, feature: args.feature });
   const adapter = getAdapter(route.provider);
   return withUsageTracking(
     ctx,
@@ -502,6 +516,24 @@ export async function trackedChatCompletionStream(
         args.onRetry,
       ),
   );
+}
+
+export async function trackedChatCompletionStream(
+  ctx: UsageRecorderCtx,
+  args: ChatCompletionStreamArgs,
+): Promise<OpenAI.Chat.Completions.ChatCompletion> {
+  const route = await resolveAiRoute(ctx, { userId: args.userId, feature: args.feature });
+  try {
+    return await trackedChatCompletionStreamOnRoute(ctx, route, args);
+  } catch (error) {
+    // See trackedChatCompletion's fallback comment — same failover, wired
+    // through for the streaming chat path (memory_chat) too.
+    if (!isRetryableAiError(error)) throw error;
+    const fallbackRoute = await resolveAiFallbackRoute(ctx, args.feature);
+    if (!fallbackRoute || fallbackRoute.provider === route.provider) throw error;
+    args.onRetry?.();
+    return trackedChatCompletionStreamOnRoute(ctx, fallbackRoute, args);
+  }
 }
 
 /**

@@ -27,8 +27,15 @@ async function googleFetchJson<T>(url: string, apiKey: string, body: object): Pr
   });
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(
-      `Google API request failed with status ${response.status}${errorBody ? `: ${errorBody.slice(0, 200)}` : ""}`,
+    // isRetryableAiError (aiDispatch.ts) checks error.status — a plain
+    // Error with the code baked into the message string doesn't match, so
+    // Google 429/5xx never hit the shared retry-with-backoff path that
+    // OpenAI errors already benefit from. Attach status explicitly.
+    throw Object.assign(
+      new Error(
+        `Google API request failed with status ${response.status}${errorBody ? `: ${errorBody.slice(0, 200)}` : ""}`,
+      ),
+      { status: response.status },
     );
   }
   return response.json() as Promise<T>;
@@ -190,6 +197,26 @@ function toGeminiContents(messages: OpenAIMessage[]): {
   };
 }
 
+/** Maps Gemini's finishReason/blockReason to the OpenAI-shaped finish_reason union. */
+function toGoogleFinishReason(
+  reason: string | undefined,
+  hasToolCalls: boolean,
+): "stop" | "length" | "tool_calls" | "content_filter" {
+  if (hasToolCalls) return "tool_calls";
+  switch (reason) {
+    case "MAX_TOKENS":
+      return "length";
+    case "SAFETY":
+    case "RECITATION":
+    case "BLOCKLIST":
+    case "PROHIBITED_CONTENT":
+    case "SPII":
+      return "content_filter";
+    default:
+      return "stop";
+  }
+}
+
 // ─── Raw API calls ────────────────────────────────────────────────────────────
 
 async function generateContent(args: {
@@ -200,11 +227,18 @@ async function generateContent(args: {
   text: string;
   toolCalls: Array<{ name: string; argumentsJson: string }>;
   usage: ChatUsage;
+  finishReason?: string;
 }> {
   const messages = args.request.messages as OpenAIMessage[];
   const { systemInstruction, contents } = toGeminiContents(messages);
   const tools = toGeminiTools(args.request.tools as OpenAI.Chat.Completions.ChatCompletionTool[]);
   const toolConfig = tools ? toGeminiToolConfig(args.request.tool_choice) : undefined;
+  // Some callers (manageTopics.ts, attachmentExtraction.ts) still pass the
+  // legacy max_tokens field rather than max_completion_tokens — read either
+  // so the cap isn't silently dropped only on the Google adapter.
+  const maxOutputTokens =
+    args.request.max_completion_tokens ?? (args.request as { max_tokens?: number }).max_tokens;
+  const responseFormat = (args.request as { response_format?: { type?: string } }).response_format;
 
   const data = await googleFetchJson<{
     usageMetadata?: {
@@ -216,7 +250,9 @@ async function generateContent(args: {
       content?: {
         parts?: Array<{ text?: string; functionCall?: { name: string; args?: unknown } }>;
       };
+      finishReason?: string;
     }>;
+    promptFeedback?: { blockReason?: string };
   }>(`${apiBase(args.model)}:generateContent`, args.apiKey, {
     ...(systemInstruction ? { systemInstruction } : {}),
     contents,
@@ -224,13 +260,16 @@ async function generateContent(args: {
     ...(toolConfig ? { toolConfig } : {}),
     generationConfig: {
       temperature: (args.request as { temperature?: number }).temperature ?? 0.3,
-      ...(typeof args.request.max_completion_tokens === "number"
-        ? { maxOutputTokens: args.request.max_completion_tokens }
-        : {}),
+      ...(typeof maxOutputTokens === "number" ? { maxOutputTokens } : {}),
+      // Without this, structured_text callers expecting JSON (detectConflicts,
+      // manageTopics) get prose back from Gemini and safeJsonParse silently
+      // returns null — the feature no-ops with no visible error.
+      ...(responseFormat?.type === "json_object" ? { responseMimeType: "application/json" } : {}),
     },
   });
 
-  const parts = data.candidates?.[0]?.content?.parts ?? [];
+  const candidate = data.candidates?.[0];
+  const parts = candidate?.content?.parts ?? [];
   const text = parts.map((p) => p.text ?? "").join("");
   const toolCalls = parts
     .filter((p): p is { functionCall: { name: string; args?: unknown } } => Boolean(p.functionCall))
@@ -247,6 +286,7 @@ async function generateContent(args: {
       completion_tokens: data.usageMetadata?.candidatesTokenCount,
       total_tokens: data.usageMetadata?.totalTokenCount,
     },
+    finishReason: candidate?.finishReason ?? data.promptFeedback?.blockReason,
   };
 }
 
@@ -270,10 +310,22 @@ async function generateEmbeddings(args: {
   });
 
   const embeddings = (data.embeddings ?? []).map((e) => e.values ?? []);
+  // A count mismatch or an empty vector means an entry silently maps to
+  // the wrong index (or a zero-vector) when the caller (backfillEmbeddings)
+  // writes results back by position — fail loudly instead of corrupting
+  // the vector index.
+  if (embeddings.length !== values.length || embeddings.some((vector) => vector.length === 0)) {
+    throw new Error(
+      `Google batchEmbedContents returned ${embeddings.length} embeddings for ${values.length} inputs, or an empty vector.`,
+    );
+  }
+  // batchEmbedContents does not return usageMetadata — estimate input
+  // tokens (roughly 4 chars/token) so Google embedding cost isn't silently
+  // recorded as $0/unavailable in analytics.
+  const estimatedInputTokens = Math.ceil(values.reduce((sum, value) => sum + value.length, 0) / 4);
   return {
     embeddings,
-    // batchEmbedContents does not return usageMetadata.
-    usage: {},
+    usage: { prompt_tokens: estimatedInputTokens, total_tokens: estimatedInputTokens },
   };
 }
 
@@ -315,7 +367,7 @@ export const googleAdapter: AiProviderAdapter = {
     const apiKey = route.apiKey ?? getPlatformApiKey();
     if (!apiKey) throw new Error("Google API key is not available for this route.");
 
-    const { text, toolCalls, usage } = await generateContent({
+    const { text, toolCalls, usage, finishReason } = await generateContent({
       apiKey,
       model: route.model,
       request,
@@ -343,7 +395,11 @@ export const googleAdapter: AiProviderAdapter = {
                 : undefined,
             refusal: null,
           },
-          finish_reason: "stop" as const,
+          // Hardcoding "stop" hid MAX_TOKENS truncation and safety-blocked
+          // empty candidates as ordinary success — the caller (memoryChat.ts)
+          // then ends the turn silently with an empty reply. Map the real
+          // reason through so a future caller can branch on it.
+          finish_reason: toGoogleFinishReason(finishReason, toolCalls.length > 0),
           logprobs: null,
         },
       ],

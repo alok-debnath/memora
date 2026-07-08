@@ -85,12 +85,20 @@ export async function resolveMemoryReference(
     userId: Id<"users">;
     reference?: string;
     recentMemories?: MemoryDoc[];
+    /**
+     * When true, a reference with no keyword match (score 0) returns null
+     * instead of silently falling back to the most recent memory. Callers
+     * doing a write (update/delete/sync target) should set this — writing
+     * to "whatever is newest" on an unmatched reference is a silent
+     * wrong-target hazard. Read-only callers can leave it unset.
+     */
+    requireMatchForWrite?: boolean;
   },
 ): Promise<Id<"memories"> | null> {
   const recentMemories = args.recentMemories ?? (await listMemoriesForAI(ctx, args.userId, 20));
 
   if (!args.reference?.trim()) {
-    return recentMemories[0]?._id ?? null;
+    return args.requireMatchForWrite ? null : (recentMemories[0]?._id ?? null);
   }
 
   const reference = args.reference.trim().toLowerCase();
@@ -127,7 +135,7 @@ export async function resolveMemoryReference(
     return scored[0].memory._id;
   }
 
-  return recentMemories[0]?._id ?? null;
+  return args.requireMatchForWrite ? null : (recentMemories[0]?._id ?? null);
 }
 
 export async function buildGroundingContext(

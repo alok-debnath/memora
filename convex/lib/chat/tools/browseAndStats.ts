@@ -17,9 +17,48 @@ import { toMemoryCompact, toPreviewItems } from "../projections";
 import type { MemoryDoc } from "../types";
 import type { ChatTool } from "./toolTypes";
 
+/**
+ * Offset (in minutes, local = UTC + offset) of `timeZone` at the instant
+ * `ms`. Single-pass approximation — can be off by an hour during the DST
+ * transition itself, which is an acceptable tradeoff for a chat-tool date
+ * filter (not a billing/scheduling computation).
+ */
+function timezoneOffsetMinutesAt(ms: number, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(new Date(ms));
+  const map: Record<string, string> = {};
+  for (const part of parts) map[part.type] = part.value;
+  const asUtc = Date.UTC(
+    Number(map.year),
+    Number(map.month) - 1,
+    Number(map.day),
+    Number(map.hour) % 24,
+    Number(map.minute),
+    Number(map.second),
+  );
+  return (asUtc - ms) / 60000;
+}
+
+/** [startMs, endMs) for the local calendar day `dateStr` (YYYY-MM-DD) in `timeZone`. */
+function localDayRangeMs(dateStr: string, timeZone: string): { startMs: number; endMs: number } {
+  const naiveUtcMs = Date.parse(`${dateStr}T00:00:00Z`);
+  const offsetMinutes = timezoneOffsetMinutesAt(naiveUtcMs, timeZone);
+  const startMs = naiveUtcMs - offsetMinutes * 60000;
+  return { startMs, endMs: startMs + 24 * 60 * 60 * 1000 };
+}
+
 export const listMemoriesTool: ChatTool = {
   name: "list_memories",
   label: "List memories",
+  kind: "read",
   definition: {
     type: "function",
     function: {
@@ -43,34 +82,50 @@ export const listMemoriesTool: ChatTool = {
     events: [{ label: "Status", value: "active" }],
   }),
   handler: async (tc, fnArgs) => {
-    const memories = await tc.getRecentMemories();
     const limit =
       typeof fnArgs.limit === "number"
         ? Math.min(fnArgs.limit, LIST_LIMIT_MAX)
         : LIST_LIMIT_DEFAULT;
-    const ordered = fnArgs.sort === "oldest" ? [...memories].reverse() : memories;
-    const listed = ordered.slice(0, limit);
+    const wantsOldest = fnArgs.sort === "oldest";
+    // "oldest" needs a real ascending query — reversing the cached
+    // newest-RECENT_MEMORIES_LIMIT window would return the oldest of that
+    // window, not the user's actual oldest memories.
+    const memories = wantsOldest
+      ? ((await tc.ctx.runQuery(internal.memories.listForAI, {
+          userId: tc.userId,
+          limit,
+          order: "asc",
+        })) as MemoryDoc[])
+      : await tc.getRecentMemories();
+    const listed = memories.slice(0, limit);
     tc.state.surfaceCandidates = listed.map((m: MemoryDoc) => ({
       id: String(m._id),
       title: m.title ?? "",
     }));
+    // The digest's exact total (not the capped list length) is what the
+    // model should quote for "how many" questions — the list itself is a
+    // window and can silently undercount past its cap.
+    const exactTotal = tc.knowledgeDigest?.totalMemories ?? memories.length;
+    const truncated = memories.length < exactTotal;
     await tc.reportProgress({
       phase: "loading",
-      detail: `Loaded ${listed.length} of ${memories.length} stored memories`,
+      detail: `Loaded ${listed.length} of ${exactTotal} stored memories`,
       source: "memories",
-      resultCount: memories.length,
+      resultCount: exactTotal,
       previewItems: toPreviewItems(listed, "Stored memory"),
       events: [
         {
           label: "Sort",
-          value: fnArgs.sort === "oldest" ? "oldest first" : "newest first",
+          value: wantsOldest ? "oldest first" : "newest first",
         },
         { label: "Limit", value: `${limit}` },
       ],
     });
     return JSON.stringify({
       memories: listed.map((memory: MemoryDoc) => toMemoryCompact(memory)),
-      count: memories.length,
+      returned: listed.length,
+      total: exactTotal,
+      truncated,
     });
   },
 };
@@ -78,6 +133,7 @@ export const listMemoriesTool: ChatTool = {
 export const getDiaryEntriesTool: ChatTool = {
   name: "get_diary_entries",
   label: "Read diary",
+  kind: "read",
   definition: {
     type: "function",
     function: {
@@ -112,19 +168,24 @@ export const getDiaryEntriesTool: ChatTool = {
         ? Math.min(fnArgs.limit, DIARY_TOOL_LIMIT_MAX)
         : DIARY_TOOL_LIMIT_DEFAULT;
     const dateFilter = typeof fnArgs.date === "string" ? fnArgs.date.trim() : "";
-    const entries: Doc<"diaryEntries">[] = await tc.ctx.runQuery(
-      internal.diary.listRecentInternal,
-      {
-        userId: tc.userId,
-        limit: dateFilter ? 50 : limit,
-      },
-    );
-    const filtered = dateFilter
-      ? entries.filter(
-          (entry) => new Date(entry._creationTime).toISOString().slice(0, 10) === dateFilter,
-        )
-      : entries;
-    const listed = filtered.slice(0, limit).map((entry) => ({
+    // A date filter needs the user's actual local day, not a UTC slice of
+    // _creationTime, and needs an indexed range query rather than filtering
+    // a fixed newest-N window — otherwise entries older than that window,
+    // or written near local midnight, silently vanish from the result.
+    const entries: Doc<"diaryEntries">[] = dateFilter
+      ? await (async () => {
+          const { startMs, endMs } = localDayRangeMs(dateFilter, tc.effectiveTimezone);
+          return tc.ctx.runQuery(internal.diary.listByDateRangeInternal, {
+            userId: tc.userId,
+            startMs,
+            endMs,
+          });
+        })()
+      : await tc.ctx.runQuery(internal.diary.listRecentInternal, {
+          userId: tc.userId,
+          limit,
+        });
+    const listed = entries.slice(0, limit).map((entry) => ({
       ...toDiaryCompact(entry, DIARY_TOOL_EXCERPT_CHARS),
       insights: (entry.structuredInsights ?? []).slice(0, DIARY_TOOL_INSIGHTS_MAX),
       action_items: entry.actionItems ?? [],
@@ -153,6 +214,7 @@ export const getDiaryEntriesTool: ChatTool = {
 export const getStatsTool: ChatTool = {
   name: "get_stats",
   label: "Compute stats",
+  kind: "read",
   definition: {
     type: "function",
     function: {
@@ -233,6 +295,7 @@ export const getStatsTool: ChatTool = {
 export const analyzeMemoriesTool: ChatTool = {
   name: "analyze_memories",
   label: "Analyze memories",
+  kind: "read",
   definition: {
     type: "function",
     function: {
@@ -272,9 +335,12 @@ export const analyzeMemoriesTool: ChatTool = {
       internal.diary.listRecentInternal,
       { userId: tc.userId, limit: DIARY_ANALYZE_FETCH },
     );
+    const exactTotal = tc.knowledgeDigest?.totalMemories ?? memories.length;
     return JSON.stringify({
       memories: memories.slice(0, limit).map((memory: MemoryDoc) => toMemoryCompact(memory)),
-      count: memories.length,
+      analyzed: memories.length,
+      total: exactTotal,
+      truncated: memories.length < exactTotal,
       diary_entries: analysisDiary.map((entry) =>
         toDiaryCompact(entry, DIARY_ANALYZE_EXCERPT_CHARS),
       ),

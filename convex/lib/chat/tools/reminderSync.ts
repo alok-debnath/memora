@@ -17,11 +17,19 @@ async function resolveTargetReminderId(
     targetMemoryId = tc.latestReferencedMemoryIds[0];
   }
   if (!targetMemoryId) {
+    // Restrict candidates to reminders — resolving against all memories
+    // risks syncing/unsyncing a plain (non-reminder) memory when the
+    // reference doesn't match anything. requireMatchForWrite additionally
+    // stops a weak/empty reference from defaulting to "most recent".
+    const reminderCandidates = (await tc.getRecentMemories()).filter(
+      (memory) => memory.entryKind === "reminder",
+    );
     const resolvedFallback = await resolveMemoryReference(tc.ctx, {
       token: tc.token,
       userId: tc.userId,
       reference: requestedQuery || tc.userMessage,
-      recentMemories: await tc.getRecentMemories(),
+      recentMemories: reminderCandidates,
+      requireMatchForWrite: true,
     });
     if (resolvedFallback) {
       targetMemoryId = String(resolvedFallback);
