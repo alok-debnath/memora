@@ -23,6 +23,14 @@ function rrfScore(rank: number) {
   return 1 / (RRF_K + rank);
 }
 
+/** Small multiplicative boost for newer memories — only meant to break ties/near-ties, decays to ~1.0 within a couple months. */
+const RECENCY_BOOST_MAX = 0.1;
+const RECENCY_BOOST_HALF_LIFE_DAYS = 21;
+function recencyMultiplier(creationTime: number, now: number): number {
+  const ageDays = Math.max(0, (now - creationTime) / (1000 * 60 * 60 * 24));
+  return 1 + RECENCY_BOOST_MAX * Math.pow(0.5, ageDays / RECENCY_BOOST_HALF_LIFE_DAYS);
+}
+
 // ─── Source registry ──────────────────────────────────────────────────────────
 //
 // Each searchable table is described as a set of ranked channels (vector,
@@ -114,6 +122,7 @@ function keywordMatchScore(
   memory: Doc<"memories">,
   queryTerms: string[],
   topicMap: Map<Id<"userTopics">, string>,
+  exactPhrase?: string,
 ): number {
   if (queryTerms.length === 0) {
     return 0;
@@ -151,7 +160,13 @@ function keywordMatchScore(
     }
   }
 
-  return matched / queryTerms.length;
+  const ratio = matched / queryTerms.length;
+  // Literal substring hit ranks above scattered term matches.
+  const phrase = exactPhrase?.trim().toLowerCase();
+  if (phrase && phrase.length >= 3 && haystack.includes(phrase)) {
+    return Math.min(1, ratio + 0.3);
+  }
+  return ratio;
 }
 
 // ─── Main entry ───────────────────────────────────────────────────────────────
@@ -299,7 +314,7 @@ export async function runSemanticSearch(
           return results
             .map((memory) => ({
               id: memory._id,
-              weight: keywordMatchScore(memory, contentTerms, topicMap),
+              weight: keywordMatchScore(memory, contentTerms, topicMap, cleanQuery),
             }))
             .filter((hit) => hit.weight >= KEYWORD_MIN_SCORE)
             .sort((a, b) => b.weight - a.weight);
@@ -398,14 +413,20 @@ export async function runSemanticSearch(
   });
 
   const byId = new Map(memories.map((memory) => [memory._id, memory] as const));
-  const results: SearchableMemory[] = [];
+  const now = Date.now();
+  const scored: SearchableMemory[] = [];
   for (const id of memoryPool.ranked) {
     const memory = byId.get(id);
     if (!memory) {
       continue;
     }
-    results.push({ ...memory, _score: memoryPool.scores.get(id) ?? 0 });
+    const baseScore = memoryPool.scores.get(id) ?? 0;
+    scored.push({ ...memory, _score: baseScore * recencyMultiplier(memory._creationTime, now) });
   }
+  // Re-rank the already-selected pool by recency-adjusted score — this only
+  // reorders ties/near-ties from the fusion step, it never pulls in items
+  // the fusion step excluded.
+  const results = scored.sort((a, b) => (b._score ?? 0) - (a._score ?? 0));
 
   await recordUsage(results.length);
 

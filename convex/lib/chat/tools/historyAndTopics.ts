@@ -45,9 +45,8 @@ export const historyTool: ChatTool = {
           ? { limit: Math.min(fnArgs.limit, HISTORY_TOOL_LIMIT_MAX) }
           : { limit: HISTORY_TOOL_LIMIT_DEFAULT }),
       });
-      await tc.setStreamingStatus({
+      await tc.reportProgress({
         phase: "loading",
-        toolName: "history",
         detail: `Loaded ${history.length} history snapshot${history.length === 1 ? "" : "s"}`,
         source: "memory_history",
         resultCount: history.length,
@@ -58,8 +57,6 @@ export const historyTool: ChatTool = {
             value: typeof fnArgs.memory_id === "string" ? "single memory" : "recent changes",
           },
         ],
-        step: 3,
-        totalSteps: 4,
       });
       result = JSON.stringify({
         history,
@@ -73,9 +70,8 @@ export const historyTool: ChatTool = {
       });
       result = JSON.stringify(undoResult);
       tc.invalidateRecentMemories();
-      await tc.setStreamingStatus({
+      await tc.reportProgress({
         phase: "writing",
-        toolName: "history",
         detail: "Reverted the latest edit",
         source: "memory_history",
         events: [
@@ -85,8 +81,6 @@ export const historyTool: ChatTool = {
             value: typeof fnArgs.memory_id === "string" ? fnArgs.memory_id : "latest edited memory",
           },
         ],
-        step: 3,
-        totalSteps: 4,
       });
       if (undoResult && typeof (undoResult as any).memoryId === "string") {
         tc.state.pendingCardIds.add(String((undoResult as any).memoryId));
@@ -100,17 +94,14 @@ export const historyTool: ChatTool = {
       });
       result = JSON.stringify(restoreResult);
       tc.invalidateRecentMemories();
-      await tc.setStreamingStatus({
+      await tc.reportProgress({
         phase: "writing",
-        toolName: "history",
         detail: "Restored a historical snapshot",
         source: "memory_history",
         events: [
           { label: "Action", value: "restore" },
           { label: "History ID", value: String(fnArgs.history_id) },
         ],
-        step: 3,
-        totalSteps: 4,
       });
       if (restoreResult && typeof (restoreResult as any).memoryId === "string") {
         tc.state.pendingCardIds.add(String((restoreResult as any).memoryId));
@@ -207,9 +198,8 @@ export const manageTopicsTool: ChatTool = {
         }),
       );
       tc.state.pendingCardIds.add(String(resolvedMemoryId));
-      await tc.setStreamingStatus({
+      await tc.reportProgress({
         phase: "writing",
-        toolName: "manage_topics",
         detail: "Retagged the selected memory",
         source: "topics",
         events: [
@@ -219,8 +209,6 @@ export const manageTopicsTool: ChatTool = {
             value: typeof fnArgs.topic_name === "string" ? fnArgs.topic_name : "selected topic",
           },
         ],
-        step: 3,
-        totalSteps: 4,
       });
       return result;
     }
@@ -240,9 +228,8 @@ export const manageTopicsTool: ChatTool = {
         topicName: typeof fnArgs.topic_name === "string" ? fnArgs.topic_name : undefined,
       }),
     );
-    await tc.setStreamingStatus({
+    await tc.reportProgress({
       phase: fnArgs.operation === "list" ? "loading" : "writing",
-      toolName: "manage_topics",
       detail:
         fnArgs.operation === "list"
           ? "Loaded topic organization"
@@ -254,8 +241,6 @@ export const manageTopicsTool: ChatTool = {
           value: String(fnArgs.operation || "update"),
         },
       ],
-      step: 3,
-      totalSteps: 4,
     });
     return result;
   },

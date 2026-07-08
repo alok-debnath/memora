@@ -39,24 +39,8 @@ export const searchMemoriesTool: ChatTool = {
   }),
   handler: async (tc, fnArgs) => {
     const searchQuery = String(fnArgs.query || "");
-    await tc.setStreamingStatus({
-      query: searchQuery,
-      phase: "searching",
-      toolName: "search_memories",
-      detail: searchQuery.trim()
-        ? `Searching memories for "${searchQuery.trim()}"`
-        : "Searching memories",
-      source: "memories",
-      events: [
-        {
-          label: "Scope",
-          value: "title, content, people, locations, topics",
-        },
-        { label: "Mode", value: "semantic + keyword" },
-      ],
-      step: 3,
-      totalSteps: 4,
-    });
+    // No pre-search status call here — the dispatch loop already emitted
+    // this tool's buildStatus() (identical fields) right before handler ran.
     try {
       const searchQueryHash = normalizeSearchQueryHash(searchQuery);
       const userMessageHash = normalizeSearchQueryHash(tc.userMessage);
@@ -96,10 +80,9 @@ export const searchMemoriesTool: ChatTool = {
         id: String(r.id),
         title: r.title ?? "",
       }));
-      await tc.setStreamingStatus({
+      await tc.reportProgress({
         query: searchQuery.trim() || undefined,
         phase: "searching",
-        toolName: "search_memories",
         detail:
           searchRes.count > 0
             ? `Found ${searchRes.count} matching ${searchRes.count === 1 ? "memory" : "memories"}`
@@ -135,8 +118,6 @@ export const searchMemoriesTool: ChatTool = {
                   : "no query text",
           },
         ],
-        step: 3,
-        totalSteps: 4,
       });
       return JSON.stringify({
         results: searchRes.results,

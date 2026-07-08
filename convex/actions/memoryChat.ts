@@ -11,6 +11,8 @@ import { extractChatAttachmentsForConversation, parseAttachments } from "../lib/
 import {
   HISTORY_CONTEXT_MESSAGES,
   HISTORY_MESSAGE_CHARS,
+  HISTORY_OLDER_MESSAGE_CHARS,
+  HISTORY_RECENT_TIER_MESSAGES,
   MAX_COMPLETION_TOKENS,
   MAX_ITERATIONS,
   PLANNER_TEMPERATURE,
@@ -157,14 +159,20 @@ export const chat = action({
     ]);
     const recentChat: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
     let latestReferencedMemoryIds: string[] = [];
-    for (const message of chatHistory as Array<{
+    const historyList = chatHistory as Array<{
       role: string;
       content?: string | null;
       meta?: { cards?: Array<{ table: string; id: string }> } | null;
-    }>) {
+    }>;
+    // chatHistory is oldest-first; only the last few turns matter much for
+    // resolving the current request, so give them the full char budget and
+    // truncate older ones harder — shrinks the token floor of every turn.
+    historyList.forEach((message, index) => {
+      const isRecentTier = historyList.length - index <= HISTORY_RECENT_TIER_MESSAGES;
+      const charCap = isRecentTier ? HISTORY_MESSAGE_CHARS : HISTORY_OLDER_MESSAGE_CHARS;
       recentChat.push({
         role: message.role as "user" | "assistant",
-        content: (message.content ?? "").slice(0, HISTORY_MESSAGE_CHARS),
+        content: (message.content ?? "").slice(0, charCap),
       });
       // After each assistant message, inject referenced memory IDs as a system hint so the
       // AI can resolve pronouns ("delete that", "edit it") in follow-up turns without a DB call.
@@ -180,7 +188,7 @@ export const chat = action({
           });
         }
       }
-    }
+    });
 
     const legacyAttachments = parseAttachments(args.message);
     const extractedChatAttachments = await extractChatAttachmentsForConversation(ctx, {
@@ -313,6 +321,9 @@ export const chat = action({
         }
       }
 
+      // Set by the dispatch loop right before each tool handler runs, so
+      // `reportProgress` can fill in the currently-executing tool's name.
+      let currentToolName = "";
       const toolContext: ToolContext = {
         ctx,
         token: args.token,
@@ -323,6 +334,13 @@ export const chat = action({
         chatMessageId,
         hasDirectAttachments,
         setStreamingStatus,
+        reportProgress: (status) =>
+          setStreamingStatus({
+            ...status,
+            toolName: currentToolName,
+            step: 3,
+            totalSteps: 4,
+          }),
         getRecentMemories,
         invalidateRecentMemories,
         grounding: initialGrounding,
@@ -362,20 +380,25 @@ export const chat = action({
           request: {
             messages: conversation,
             tools: CHAT_TOOL_DEFINITIONS,
-            // Forced, single tool call per turn: the model can no longer
-            // silently skip reporting which memories it used the way a
-            // freeform-text exit allowed. respond() is always one of the
-            // available choices, so this never blocks a normal reply.
+            // Forced tool call per turn: the model can no longer silently
+            // skip reporting which memories it used the way a freeform-text
+            // exit allowed. respond() is always one of the available
+            // choices, so this never blocks a normal reply.
             // On the last allowed iteration, force respond specifically —
             // otherwise an open-ended question can make the model chain
             // info-gathering tools indefinitely and exhaust the loop
             // without ever answering (observed: analyze_memories →
             // get_diary_entries → get_stats → get_diary_entries, no reply).
+            // Forced-respond iterations stay a solo call (tool_choice pins
+            // the single function); other iterations allow the model to
+            // batch independent info-gathering tools (e.g. search_memories
+            // + get_diary_entries) into one round trip instead of one tool
+            // per iteration — fewer resends of the growing conversation.
             tool_choice:
               forceRespondNextIteration || iteration === MAX_ITERATIONS - 1
                 ? { type: "function", function: { name: "respond" } }
                 : "required",
-            parallel_tool_calls: false,
+            parallel_tool_calls: !(forceRespondNextIteration || iteration === MAX_ITERATIONS - 1),
             temperature: PLANNER_TEMPERATURE,
             max_completion_tokens: MAX_COMPLETION_TOKENS,
           },
@@ -401,6 +424,7 @@ export const chat = action({
           }
 
           const fnName = toolCall.function.name;
+          currentToolName = fnName;
           appendFlowTool(state, fnName);
           const fnArgs = JSON.parse(toolCall.function.arguments || "{}") as Record<string, unknown>;
           const tool = CHAT_TOOLS_BY_NAME.get(fnName);

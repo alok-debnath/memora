@@ -78,10 +78,9 @@ export const proposeDeletionTool: ChatTool = {
       ...newItems.filter((i) => !existingIds.has(i.id)),
     ];
     const pendingCount = tc.state.pendingDeletionItems.length;
-    await tc.setStreamingStatus({
+    await tc.reportProgress({
       query: typeof fnArgs.query === "string" ? fnArgs.query : undefined,
       phase: "searching",
-      toolName: "propose_deletion",
       detail:
         pendingCount > 0
           ? `Prepared ${pendingCount} item${pendingCount === 1 ? "" : "s"} for delete confirmation`
@@ -95,8 +94,6 @@ export const proposeDeletionTool: ChatTool = {
         { label: "Mode", value: "proposal only" },
         { label: "Filter", value: entryKind },
       ],
-      step: 3,
-      totalSteps: 4,
     });
 
     return JSON.stringify(
@@ -147,9 +144,8 @@ export const listDeletedMemoriesTool: ChatTool = {
         token: tc.token,
         limit,
       });
-      await tc.setStreamingStatus({
+      await tc.reportProgress({
         phase: "loading",
-        toolName: "list_deleted_memories",
         detail: `Loaded ${deleted.length} deleted ${deleted.length === 1 ? "memory" : "memories"}`,
         source: "memories",
         resultCount: deleted.length,
@@ -158,8 +154,6 @@ export const listDeletedMemoriesTool: ChatTool = {
           { label: "Status", value: "deleted" },
           { label: "Limit", value: `${limit}` },
         ],
-        step: 3,
-        totalSteps: 4,
       });
       return JSON.stringify({
         deleted_memories: deleted.map((memory: MemoryDoc) => ({
@@ -208,17 +202,14 @@ export const restoreMemoryTool: ChatTool = {
       });
       tc.invalidateRecentMemories();
       tc.state.pendingCardIds.add(String(fnArgs.memory_id as string));
-      await tc.setStreamingStatus({
+      await tc.reportProgress({
         phase: "writing",
-        toolName: "restore_memory",
         detail: "Restored the deleted memory",
         source: "memories",
         events: [
           { label: "Operation", value: "restore" },
           { label: "Target", value: String(fnArgs.memory_id) },
         ],
-        step: 3,
-        totalSteps: 4,
       });
       return JSON.stringify({ success: true });
     } catch (error) {

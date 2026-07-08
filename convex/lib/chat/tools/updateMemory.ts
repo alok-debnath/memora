@@ -123,9 +123,8 @@ export const updateMemoryTool: ChatTool = {
           memoryId: targetMemoryId as Id<"memories">,
         });
       }
-      await tc.setStreamingStatus({
+      await tc.reportProgress({
         phase: "writing",
-        toolName: "update_memory",
         detail: "Updated the selected memory",
         source: "memories",
         previewItems: [
@@ -147,8 +146,6 @@ export const updateMemoryTool: ChatTool = {
                 },
               ]),
         ],
-        step: 3,
-        totalSteps: 4,
       });
       tc.state.writeToolCalled = true;
       return JSON.stringify({

@@ -54,9 +54,8 @@ export const listMemoriesTool: ChatTool = {
       id: String(m._id),
       title: m.title ?? "",
     }));
-    await tc.setStreamingStatus({
+    await tc.reportProgress({
       phase: "loading",
-      toolName: "list_memories",
       detail: `Loaded ${listed.length} of ${memories.length} stored memories`,
       source: "memories",
       resultCount: memories.length,
@@ -68,8 +67,6 @@ export const listMemoriesTool: ChatTool = {
         },
         { label: "Limit", value: `${limit}` },
       ],
-      step: 3,
-      totalSteps: 4,
     });
     return JSON.stringify({
       memories: listed.map((memory: MemoryDoc) => toMemoryCompact(memory)),
@@ -132,9 +129,8 @@ export const getDiaryEntriesTool: ChatTool = {
       insights: (entry.structuredInsights ?? []).slice(0, DIARY_TOOL_INSIGHTS_MAX),
       action_items: entry.actionItems ?? [],
     }));
-    await tc.setStreamingStatus({
+    await tc.reportProgress({
       phase: "loading",
-      toolName: "get_diary_entries",
       detail:
         listed.length > 0
           ? `Loaded ${listed.length} diary ${listed.length === 1 ? "entry" : "entries"}`
@@ -149,8 +145,6 @@ export const getDiaryEntriesTool: ChatTool = {
         { label: "Sort", value: "newest first" },
         ...(dateFilter ? [{ label: "Date", value: dateFilter }] : []),
       ],
-      step: 3,
-      totalSteps: 4,
     });
     return JSON.stringify({ diary_entries: listed, count: listed.length });
   },
@@ -214,9 +208,8 @@ export const getStatsTool: ChatTool = {
         moodDistribution[entry.mood] = (moodDistribution[entry.mood] ?? 0) + 1;
       }
     }
-    await tc.setStreamingStatus({
+    await tc.reportProgress({
       phase: "analyzing",
-      toolName: "get_stats",
       detail: `Computed stats across ${totalMemories} stored memories`,
       source: "memories",
       resultCount: totalMemories,
@@ -225,8 +218,6 @@ export const getStatsTool: ChatTool = {
         { label: "Recurring", value: `${recurring}` },
         { label: "Recent 7d", value: `${recentCount}` },
       ],
-      step: 3,
-      totalSteps: 4,
     });
     return JSON.stringify({
       total: totalMemories,
@@ -266,9 +257,8 @@ export const analyzeMemoriesTool: ChatTool = {
     const memories = await tc.getRecentMemories();
     const limit =
       typeof fnArgs.limit === "number" ? Math.min(fnArgs.limit, LIST_LIMIT_MAX) : LIST_LIMIT_MAX;
-    await tc.setStreamingStatus({
+    await tc.reportProgress({
       phase: "analyzing",
-      toolName: "analyze_memories",
       detail: `Preparing ${Math.min(limit, memories.length)} memories for analysis`,
       source: "memories",
       resultCount: memories.length,
@@ -277,8 +267,6 @@ export const analyzeMemoriesTool: ChatTool = {
         { label: "Limit", value: `${limit}` },
         { label: "Scope", value: "active memories only" },
       ],
-      step: 3,
-      totalSteps: 4,
     });
     const analysisDiary: Doc<"diaryEntries">[] = await tc.ctx.runQuery(
       internal.diary.listRecentInternal,

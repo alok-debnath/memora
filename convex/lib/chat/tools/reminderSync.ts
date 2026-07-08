@@ -73,9 +73,8 @@ export const syncReminderTool: ChatTool = {
       });
       tc.state.pendingCardIds.add(targetMemoryId);
 
-      await tc.setStreamingStatus({
+      await tc.reportProgress({
         phase: "writing",
-        toolName: "sync_reminder",
         detail: syncResult.queued
           ? syncResult.reason === "in_flight"
             ? "Reminder sync is already in progress"
@@ -89,8 +88,6 @@ export const syncReminderTool: ChatTool = {
             ? [{ label: "Result", value: syncResult.reason }]
             : []),
         ],
-        step: 3,
-        totalSteps: 4,
       });
       if (syncResult.queued) {
         tc.state.writeToolCalled = true;
@@ -155,9 +152,8 @@ export const removeReminderSyncTool: ChatTool = {
       });
       tc.state.pendingCardIds.add(targetMemoryId);
 
-      await tc.setStreamingStatus({
+      await tc.reportProgress({
         phase: "writing",
-        toolName: "remove_reminder_sync",
         detail: unsyncResult.removed
           ? "Removed Google Calendar sync for reminder"
           : "Google Calendar sync removal did not apply",
@@ -167,8 +163,6 @@ export const removeReminderSyncTool: ChatTool = {
           { label: "Target", value: targetMemoryId },
           { label: "Result", value: unsyncResult.reason },
         ],
-        step: 3,
-        totalSteps: 4,
       });
       if (unsyncResult.removed) {
         tc.state.writeToolCalled = true;

@@ -316,6 +316,88 @@ async function recordAiUsage(
 
 // ─── Tracked wrappers (public API) ────────────────────────────────────────────
 
+/**
+ * Runs one AI operation and records its usage/cost/status to analytics,
+ * whether it succeeds or throws. Every public `tracked*` function below is a
+ * thin "obtain the response" wrapper around this shared accounting skeleton.
+ */
+async function withUsageTracking<T extends { usage?: ChatUsage }>(
+  ctx: UsageRecorderCtx,
+  route: ResolvedRoute,
+  meta: {
+    userId: Id<"users">;
+    feature: AiFeature;
+    operation: string;
+    pricingOperation: AiPricingOperation;
+    stage?: string;
+    visibility?: AiVisibility;
+    metadata?: Record<string, string>;
+    link?: AnalyticsLink;
+    /** Only set for transcription — token-based ops derive usage from the response instead. */
+    audioSeconds?: number;
+  },
+  run: () => Promise<T>,
+): Promise<T> {
+  const startedAt = Date.now();
+  try {
+    const response = await run();
+    const usage = response.usage;
+    const pricing = await resolvePricing(ctx, {
+      provider: route.provider,
+      model: route.model,
+      operation: meta.pricingOperation,
+    });
+    const priced = estimatePricingMicros({
+      pricing,
+      inputTokens: usage?.prompt_tokens,
+      outputTokens: usage?.completion_tokens,
+      audioSeconds: meta.audioSeconds,
+    });
+    await recordAiUsage(ctx, route, {
+      userId: meta.userId,
+      feature: meta.feature,
+      operation: meta.operation,
+      model: route.model,
+      status: "success",
+      latencyMs: Date.now() - startedAt,
+      usage,
+      audioSeconds: meta.audioSeconds,
+      billedTo: resolveBilledTo(route),
+      costUsdMicros: priced.costUsdMicros,
+      costAvailability: priced.priceDisplayMode,
+      priceDisplayMode: priced.priceDisplayMode,
+      pricingOperation: meta.pricingOperation,
+      pricingVersion: pricing.pricingVersion,
+      pricingReason: priced.pricingReason,
+      stage: meta.stage ?? meta.operation,
+      visibility: meta.visibility ?? "background",
+      metadata: meta.metadata,
+      link: meta.link,
+    });
+    return response;
+  } catch (error) {
+    await recordAiUsage(ctx, route, {
+      userId: meta.userId,
+      feature: meta.feature,
+      operation: meta.operation,
+      model: route.model,
+      status: "error",
+      latencyMs: Date.now() - startedAt,
+      billedTo: resolveBilledTo(route),
+      costAvailability: "unavailable",
+      priceDisplayMode: "unavailable",
+      pricingOperation: meta.pricingOperation,
+      pricingVersion: DEFAULT_AI_PRICING_VERSION,
+      pricingReason: "request_failed",
+      stage: meta.stage ?? meta.operation,
+      visibility: meta.visibility ?? "background",
+      metadata: meta.metadata,
+      link: meta.link,
+    });
+    throw error;
+  }
+}
+
 export async function trackedChatCompletion(
   ctx: UsageRecorderCtx,
   args: {
@@ -330,62 +412,12 @@ export async function trackedChatCompletion(
 ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
   const route = await resolveAiRoute(ctx, { userId: args.userId, feature: args.feature });
   const adapter = getAdapter(route.provider);
-  const startedAt = Date.now();
-  try {
-    const response = await adapter.chatCompletion({ route, request: args.request });
-    const usage = response.usage as ChatUsage | undefined;
-    const pricing = await resolvePricing(ctx, {
-      provider: route.provider,
-      model: route.model,
-      operation: "chat_completion",
-    });
-    const priced = estimatePricingMicros({
-      pricing,
-      inputTokens: usage?.prompt_tokens,
-      outputTokens: usage?.completion_tokens,
-    });
-    await recordAiUsage(ctx, route, {
-      userId: args.userId,
-      feature: args.feature,
-      operation: "chat_completion",
-      model: route.model,
-      status: "success",
-      latencyMs: Date.now() - startedAt,
-      usage,
-      billedTo: resolveBilledTo(route),
-      costUsdMicros: priced.costUsdMicros,
-      costAvailability: priced.priceDisplayMode,
-      priceDisplayMode: priced.priceDisplayMode,
-      pricingOperation: "chat_completion",
-      pricingVersion: pricing.pricingVersion,
-      pricingReason: priced.pricingReason,
-      stage: args.stage ?? "chat_completion",
-      visibility: args.visibility ?? "background",
-      metadata: args.metadata,
-      link: args.link,
-    });
-    return response;
-  } catch (error) {
-    await recordAiUsage(ctx, route, {
-      userId: args.userId,
-      feature: args.feature,
-      operation: "chat_completion",
-      model: route.model,
-      status: "error",
-      latencyMs: Date.now() - startedAt,
-      billedTo: resolveBilledTo(route),
-      costAvailability: "unavailable",
-      priceDisplayMode: "unavailable",
-      pricingOperation: "chat_completion",
-      pricingVersion: DEFAULT_AI_PRICING_VERSION,
-      pricingReason: "request_failed",
-      stage: args.stage ?? "chat_completion",
-      visibility: args.visibility ?? "background",
-      metadata: args.metadata,
-      link: args.link,
-    });
-    throw error;
-  }
+  return withUsageTracking(
+    ctx,
+    route,
+    { ...args, operation: "chat_completion", pricingOperation: "chat_completion" },
+    () => adapter.chatCompletion({ route, request: args.request }),
+  );
 }
 
 /**
@@ -411,69 +443,20 @@ export async function trackedChatCompletionStream(
 ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
   const route = await resolveAiRoute(ctx, { userId: args.userId, feature: args.feature });
   const adapter = getAdapter(route.provider);
-  const startedAt = Date.now();
-  try {
-    const response = adapter.chatCompletionStream
-      ? await adapter.chatCompletionStream({
-          route,
-          request: args.request,
-          onDelta: args.onDelta,
-          streamToolTextField: args.streamToolTextField,
-        })
-      : await adapter.chatCompletion({ route, request: args.request });
-    const usage = response.usage as ChatUsage | undefined;
-    const pricing = await resolvePricing(ctx, {
-      provider: route.provider,
-      model: route.model,
-      operation: "chat_completion",
-    });
-    const priced = estimatePricingMicros({
-      pricing,
-      inputTokens: usage?.prompt_tokens,
-      outputTokens: usage?.completion_tokens,
-    });
-    await recordAiUsage(ctx, route, {
-      userId: args.userId,
-      feature: args.feature,
-      operation: "chat_completion",
-      model: route.model,
-      status: "success",
-      latencyMs: Date.now() - startedAt,
-      usage,
-      billedTo: resolveBilledTo(route),
-      costUsdMicros: priced.costUsdMicros,
-      costAvailability: priced.priceDisplayMode,
-      priceDisplayMode: priced.priceDisplayMode,
-      pricingOperation: "chat_completion",
-      pricingVersion: pricing.pricingVersion,
-      pricingReason: priced.pricingReason,
-      stage: args.stage ?? "chat_completion",
-      visibility: args.visibility ?? "background",
-      metadata: args.metadata,
-      link: args.link,
-    });
-    return response;
-  } catch (error) {
-    await recordAiUsage(ctx, route, {
-      userId: args.userId,
-      feature: args.feature,
-      operation: "chat_completion",
-      model: route.model,
-      status: "error",
-      latencyMs: Date.now() - startedAt,
-      billedTo: resolveBilledTo(route),
-      costAvailability: "unavailable",
-      priceDisplayMode: "unavailable",
-      pricingOperation: "chat_completion",
-      pricingVersion: DEFAULT_AI_PRICING_VERSION,
-      pricingReason: "request_failed",
-      stage: args.stage ?? "chat_completion",
-      visibility: args.visibility ?? "background",
-      metadata: args.metadata,
-      link: args.link,
-    });
-    throw error;
-  }
+  return withUsageTracking(
+    ctx,
+    route,
+    { ...args, operation: "chat_completion", pricingOperation: "chat_completion" },
+    () =>
+      adapter.chatCompletionStream
+        ? adapter.chatCompletionStream({
+            route,
+            request: args.request,
+            onDelta: args.onDelta,
+            streamToolTextField: args.streamToolTextField,
+          })
+        : adapter.chatCompletion({ route, request: args.request }),
+  );
 }
 
 /**
@@ -495,62 +478,12 @@ export async function trackedChatCompletionOnRoute(
   },
 ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
   const adapter = getAdapter(route.provider);
-  const startedAt = Date.now();
-  try {
-    const response = await adapter.chatCompletion({ route, request: args.request });
-    const usage = response.usage as ChatUsage | undefined;
-    const pricing = await resolvePricing(ctx, {
-      provider: route.provider,
-      model: route.model,
-      operation: "chat_completion",
-    });
-    const priced = estimatePricingMicros({
-      pricing,
-      inputTokens: usage?.prompt_tokens,
-      outputTokens: usage?.completion_tokens,
-    });
-    await recordAiUsage(ctx, route, {
-      userId: args.userId,
-      feature: args.feature,
-      operation: "chat_completion",
-      model: route.model,
-      status: "success",
-      latencyMs: Date.now() - startedAt,
-      usage,
-      billedTo: resolveBilledTo(route),
-      costUsdMicros: priced.costUsdMicros,
-      costAvailability: priced.priceDisplayMode,
-      priceDisplayMode: priced.priceDisplayMode,
-      pricingOperation: "chat_completion",
-      pricingVersion: pricing.pricingVersion,
-      pricingReason: priced.pricingReason,
-      stage: args.stage ?? "chat_completion",
-      visibility: args.visibility ?? "background",
-      metadata: args.metadata,
-      link: args.link,
-    });
-    return response;
-  } catch (error) {
-    await recordAiUsage(ctx, route, {
-      userId: args.userId,
-      feature: args.feature,
-      operation: "chat_completion",
-      model: route.model,
-      status: "error",
-      latencyMs: Date.now() - startedAt,
-      billedTo: resolveBilledTo(route),
-      costAvailability: "unavailable",
-      priceDisplayMode: "unavailable",
-      pricingOperation: "chat_completion",
-      pricingVersion: DEFAULT_AI_PRICING_VERSION,
-      pricingReason: "request_failed",
-      stage: args.stage ?? "chat_completion",
-      visibility: args.visibility ?? "background",
-      metadata: args.metadata,
-      link: args.link,
-    });
-    throw error;
-  }
+  return withUsageTracking(
+    ctx,
+    route,
+    { ...args, operation: "chat_completion", pricingOperation: "chat_completion" },
+    () => adapter.chatCompletion({ route, request: args.request }),
+  );
 }
 
 export async function trackedEmbedTexts(
@@ -567,60 +500,16 @@ export async function trackedEmbedTexts(
 ): Promise<number[][]> {
   const route = await resolveAiRoute(ctx, { userId: args.userId, feature: args.feature });
   const adapter = getAdapter(route.provider);
-  const startedAt = Date.now();
-  try {
-    const result = await adapter.embedTexts({ route, input: args.input });
-    const pricing = await resolvePricing(ctx, {
-      provider: route.provider,
-      model: route.model,
-      operation: "embedding",
-    });
-    const priced = estimatePricingMicros({
-      pricing,
-      inputTokens: result.usage.prompt_tokens,
-    });
-    await recordAiUsage(ctx, route, {
-      userId: args.userId,
-      feature: args.feature,
-      operation: "embedding",
-      model: route.model,
-      status: "success",
-      latencyMs: Date.now() - startedAt,
-      usage: result.usage,
-      billedTo: resolveBilledTo(route),
-      costUsdMicros: priced.costUsdMicros,
-      costAvailability: priced.priceDisplayMode,
-      priceDisplayMode: priced.priceDisplayMode,
-      pricingOperation: "embedding",
-      pricingVersion: pricing.pricingVersion,
-      pricingReason: priced.pricingReason,
-      stage: args.stage ?? "embedding",
-      visibility: args.visibility ?? "background",
-      metadata: args.metadata,
-      link: args.link,
-    });
-    return result.embeddings;
-  } catch (error) {
-    await recordAiUsage(ctx, route, {
-      userId: args.userId,
-      feature: args.feature,
-      operation: "embedding",
-      model: route.model,
-      status: "error",
-      latencyMs: Date.now() - startedAt,
-      billedTo: resolveBilledTo(route),
-      costAvailability: "unavailable",
-      priceDisplayMode: "unavailable",
-      pricingOperation: "embedding",
-      pricingVersion: DEFAULT_AI_PRICING_VERSION,
-      pricingReason: "request_failed",
-      stage: args.stage ?? "embedding",
-      visibility: args.visibility ?? "background",
-      metadata: args.metadata,
-      link: args.link,
-    });
-    throw error;
-  }
+  const result = await withUsageTracking(
+    ctx,
+    route,
+    { ...args, operation: "embedding", pricingOperation: "embedding" },
+    async () => {
+      const embedResult = await adapter.embedTexts({ route, input: args.input });
+      return { ...embedResult, usage: embedResult.usage as ChatUsage };
+    },
+  );
+  return result.embeddings;
 }
 
 export async function trackedEmbedText(
@@ -656,56 +545,28 @@ export async function trackedTranscribeBase64Audio(
   if (!adapter.transcribeAudio) {
     throw new Error(`Provider ${route.provider} does not support audio transcription.`);
   }
-  const startedAt = Date.now();
   const audioSeconds =
     typeof args.durationMs === "number" && args.durationMs > 0 ? args.durationMs / 1000 : undefined;
-  try {
-    const response = await adapter.transcribeAudio({
-      route,
-      audioBase64: args.audioBase64,
-      format: args.format,
-      language: args.language,
-    });
-    const pricing = await resolvePricing(ctx, {
-      provider: route.provider,
-      model: route.model,
-      operation: "transcription",
-    });
-    const priced = estimatePricingMicros({ pricing, audioSeconds });
-    await recordAiUsage(ctx, route, {
+  return withUsageTracking(
+    ctx,
+    route,
+    {
       userId: args.userId,
       feature: "audio_transcription",
       operation: "transcription",
-      model: route.model,
-      status: "success",
-      latencyMs: Date.now() - startedAt,
+      pricingOperation: "transcription",
       audioSeconds,
-      billedTo: resolveBilledTo(route),
-      costUsdMicros: priced.costUsdMicros,
-      costAvailability: priced.priceDisplayMode,
-      priceDisplayMode: priced.priceDisplayMode,
-      pricingOperation: "transcription",
-      pricingVersion: pricing.pricingVersion,
-      pricingReason: priced.pricingReason,
-    });
-    return response;
-  } catch (error) {
-    await recordAiUsage(ctx, route, {
-      userId: args.userId,
-      feature: "audio_transcription",
-      operation: "transcription",
-      model: route.model,
-      status: "error",
-      latencyMs: Date.now() - startedAt,
-      billedTo: resolveBilledTo(route),
-      costAvailability: "unavailable",
-      priceDisplayMode: "unavailable",
-      pricingOperation: "transcription",
-      pricingVersion: DEFAULT_AI_PRICING_VERSION,
-      pricingReason: "request_failed",
-    });
-    throw error;
-  }
+    },
+    async () => {
+      const response = await adapter.transcribeAudio!({
+        route,
+        audioBase64: args.audioBase64,
+        format: args.format,
+        language: args.language,
+      });
+      return { ...response, usage: undefined as ChatUsage | undefined };
+    },
+  );
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

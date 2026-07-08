@@ -165,7 +165,11 @@ export function buildGroundingSystemMessage(grounding: GroundingContext): string
           `Matched diary entries (cite by date; include used IDs in respond's used_ids): ${JSON.stringify(grounding.diaryResults)}`,
         ]
       : []),
-    `Recent memories: ${JSON.stringify(grounding.recentMemories)}`,
+    ...(grounding.recentMemories.length > 0
+      ? [
+          `Recent memories (fallback context — search found few/no direct hits): ${JSON.stringify(grounding.recentMemories)}`,
+        ]
+      : []),
     "CRITICAL: If you use any of the above memories to answer, list their IDs in respond's used_ids.",
   ].join("\n");
 }

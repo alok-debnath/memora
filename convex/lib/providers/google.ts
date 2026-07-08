@@ -15,6 +15,22 @@ function apiBase(model: string): string {
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}`;
 }
 
+/** POST JSON to a Google API endpoint, throwing with a truncated response body on non-2xx. */
+async function googleFetchJson<T>(url: string, body: object): Promise<T> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(
+      `Google API request failed with status ${response.status}${errorBody ? `: ${errorBody.slice(0, 200)}` : ""}`,
+    );
+  }
+  return response.json() as Promise<T>;
+}
+
 // ─── Content translation helpers ─────────────────────────────────────────────
 
 type OpenAIContentPart =
@@ -119,25 +135,7 @@ async function generateContent(args: {
       ]
     : contents;
 
-  const response = await fetch(`${apiBase(args.model)}:generateContent?key=${args.apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: contentToSend,
-      generationConfig: {
-        temperature: (args.request as { temperature?: number }).temperature ?? 0.3,
-      },
-    }),
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(
-      `Google generateContent failed with status ${response.status}${body ? `: ${body.slice(0, 200)}` : ""}`,
-    );
-  }
-
-  const data = (await response.json()) as {
+  const data = await googleFetchJson<{
     usageMetadata?: {
       promptTokenCount?: number;
       candidatesTokenCount?: number;
@@ -146,7 +144,12 @@ async function generateContent(args: {
     candidates?: Array<{
       content?: { parts?: Array<{ text?: string }> };
     }>;
-  };
+  }>(`${apiBase(args.model)}:generateContent?key=${args.apiKey}`, {
+    contents: contentToSend,
+    generationConfig: {
+      temperature: (args.request as { temperature?: number }).temperature ?? 0.3,
+    },
+  });
 
   const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
 
@@ -171,27 +174,14 @@ async function generateEmbeddings(args: {
   let totalTokens = 0;
 
   for (const value of values) {
-    const response = await fetch(`${apiBase(args.model)}:embedContent?key=${args.apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: `models/${args.model}`,
-        content: { parts: [{ text: value }] },
-        outputDimensionality: DEFAULT_EMBEDDING_DIMENSION,
-      }),
-    });
-
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(
-        `Google embeddings failed with status ${response.status}${body ? `: ${body.slice(0, 200)}` : ""}`,
-      );
-    }
-
-    const data = (await response.json()) as {
+    const data = await googleFetchJson<{
       embedding?: { values?: number[] };
       usageMetadata?: { promptTokenCount?: number; totalTokenCount?: number };
-    };
+    }>(`${apiBase(args.model)}:embedContent?key=${args.apiKey}`, {
+      model: `models/${args.model}`,
+      content: { parts: [{ text: value }] },
+      outputDimensionality: DEFAULT_EMBEDDING_DIMENSION,
+    });
     embeddings.push(data.embedding?.values ?? []);
     promptTokens += data.usageMetadata?.promptTokenCount ?? 0;
     totalTokens += data.usageMetadata?.totalTokenCount ?? data.usageMetadata?.promptTokenCount ?? 0;
@@ -218,24 +208,11 @@ export async function callGoogleVisionDirect(args: {
   model: string;
   body: object;
 }): Promise<string | undefined> {
-  const response = await fetch(`${apiBase(args.model)}:generateContent?key=${args.apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(args.body),
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(
-      `Google vision request failed with status ${response.status}${body ? `: ${body.slice(0, 200)}` : ""}`,
-    );
-  }
-
-  const data = (await response.json()) as {
+  const data = await googleFetchJson<{
     candidates?: Array<{
       content?: { parts?: Array<{ text?: string }> };
     }>;
-  };
+  }>(`${apiBase(args.model)}:generateContent?key=${args.apiKey}`, args.body);
 
   return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || undefined;
 }

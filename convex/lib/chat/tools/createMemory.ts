@@ -196,9 +196,8 @@ export const createMemoryTool: ChatTool = {
       tc.invalidateRecentMemories();
       tc.state.pendingCardIds.add(forcedUpdateTargetId);
       await linkAttachments(tc, forcedUpdateTargetId as Id<"memories">);
-      await tc.setStreamingStatus({
+      await tc.reportProgress({
         phase: "writing",
-        toolName: "create_memory",
         detail: "Applied edit to existing memory (duplicate prevented)",
         source: "memories",
         resultCount: existingMatchesCount || undefined,
@@ -218,8 +217,6 @@ export const createMemoryTool: ChatTool = {
               ]
             : []),
         ],
-        step: 3,
-        totalSteps: 4,
       });
       tc.state.writeToolCalled = true;
       return JSON.stringify({
@@ -241,9 +238,8 @@ export const createMemoryTool: ChatTool = {
       }
       tc.state.pendingCardIds.add(String(existingCreated.id));
       await linkAttachments(tc, existingCreated.id);
-      await tc.setStreamingStatus({
+      await tc.reportProgress({
         phase: "writing",
-        toolName: "create_memory",
         detail: "Reused an equivalent memory instead of creating a duplicate",
         source: "memories",
         previewItems: [truncateStatusText(existingCreated.title)],
@@ -251,8 +247,6 @@ export const createMemoryTool: ChatTool = {
           { label: "Operation", value: "deduplicated" },
           { label: "Target", value: String(existingCreated.id) },
         ],
-        step: 3,
-        totalSteps: 4,
       });
       return JSON.stringify({
         success: true,
@@ -289,9 +283,8 @@ export const createMemoryTool: ChatTool = {
     });
     tc.state.pendingCardIds.add(String(created.memoryId));
     await linkAttachments(tc, created.memoryId as Id<"memories">);
-    await tc.setStreamingStatus({
+    await tc.reportProgress({
       phase: "writing",
-      toolName: "create_memory",
       detail: "Saved a new memory entry",
       source: "memories",
       previewItems: [truncateStatusText(resolvedTitle)],
@@ -302,8 +295,6 @@ export const createMemoryTool: ChatTool = {
         },
         { label: "Target", value: String(created.memoryId) },
       ],
-      step: 3,
-      totalSteps: 4,
     });
     tc.state.writeToolCalled = true;
     return JSON.stringify({

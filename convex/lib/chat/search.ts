@@ -7,6 +7,7 @@ import { runSemanticSearch } from "../semanticSearch";
 import {
   GROUNDING_RESULTS_TOP,
   GROUNDING_RECENT_TOP,
+  GROUNDING_RECENT_FALLBACK_MAX_SEARCH_COUNT,
   RECENT_MEMORIES_LIMIT,
   SEARCH_FETCH_LIMIT,
   SEARCH_RESULTS_TOP,
@@ -167,6 +168,11 @@ export async function buildGroundingContext(
     chatTurnId: args.chatTurnId,
   });
 
+  // Recent-memories is a fallback context source for weak/empty search, not
+  // a constant tax on every grounded turn — skip shipping it when the
+  // search itself already found solid matches.
+  const includeRecentFallback = searchRes.count <= GROUNDING_RECENT_FALLBACK_MAX_SEARCH_COUNT;
+
   return {
     shouldGround,
     shouldPreferUpdate,
@@ -174,7 +180,9 @@ export async function buildGroundingContext(
     searchCount: searchRes.count,
     searchResults: searchRes.results.slice(0, GROUNDING_RESULTS_TOP),
     diaryResults: searchRes.diaryResults,
-    recentMemories: recentMemories.slice(0, GROUNDING_RECENT_TOP).map(toMemoryCompact),
+    recentMemories: includeRecentFallback
+      ? recentMemories.slice(0, GROUNDING_RECENT_TOP).map(toMemoryCompact)
+      : [],
     isCached: searchRes.isCached ?? false,
   };
 }

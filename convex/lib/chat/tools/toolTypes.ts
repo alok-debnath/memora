@@ -16,6 +16,14 @@ export type ToolContext = {
   chatMessageId: Id<"chatMessages">;
   hasDirectAttachments: boolean;
   setStreamingStatus: (status: StreamingStatus) => Promise<void>;
+  /**
+   * Report mid-execution progress for the tool currently running — fills in
+   * `toolName`/`step`/`totalSteps` (turn-loop constants the dispatch loop
+   * already knows) so tool handlers only supply their own status fields.
+   */
+  reportProgress: (
+    status: Omit<StreamingStatus, "toolName" | "step" | "totalSteps">,
+  ) => Promise<void>;
   /** Lazily-fetched recent memories, shared across tools within the turn. */
   getRecentMemories: () => Promise<MemoryDoc[]>;
   /** Invalidate the recent-memories cache after a write. */
