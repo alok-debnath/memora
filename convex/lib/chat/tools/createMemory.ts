@@ -248,6 +248,7 @@ export const createMemoryTool: ChatTool = {
           { label: "Target", value: String(existingCreated.id) },
         ],
       });
+      tc.state.writeToolCalled = true;
       return JSON.stringify({
         success: true,
         deduped: true,

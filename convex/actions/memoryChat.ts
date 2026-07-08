@@ -372,6 +372,7 @@ export const chat = action({
           visibility: "user_visible",
           link: analyticsLink,
           onDelta: replyStreamer.onDelta,
+          onRetry: replyStreamer.reset,
           // The final answer always arrives as the `respond` tool's
           // `message` argument (see tools/respond.ts) — extract it live
           // from the streaming tool-call arguments so it still reads as
@@ -426,7 +427,26 @@ export const chat = action({
           const fnName = toolCall.function.name;
           currentToolName = fnName;
           appendFlowTool(state, fnName);
-          const fnArgs = JSON.parse(toolCall.function.arguments || "{}") as Record<string, unknown>;
+          let fnArgs: Record<string, unknown>;
+          try {
+            fnArgs = JSON.parse(toolCall.function.arguments || "{}") as Record<string, unknown>;
+          } catch {
+            // Truncated/malformed arguments (e.g. completion cut off at
+            // max_completion_tokens mid-JSON) — feed the error back as the
+            // tool result instead of throwing, so the loop can recover
+            // (retry or answer some other way) rather than failing the
+            // whole turn after text may already have streamed. The
+            // assistant message carrying this tool_call was already pushed
+            // above (before this loop) — only the tool result is needed.
+            conversation.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: JSON.stringify({
+                error: "Malformed or truncated tool call arguments — retry with valid JSON.",
+              }),
+            });
+            continue;
+          }
           const tool = CHAT_TOOLS_BY_NAME.get(fnName);
           const streamingDetail: StreamingStatus = tool
             ? tool.buildStatus(fnArgs)
@@ -466,13 +486,13 @@ export const chat = action({
               ? await tool.handler(toolContext, fnArgs)
               : JSON.stringify({ error: "Unknown tool" });
             if (tool) state.calledToolSignatures.add(signature);
-            if (
-              shouldForceRespondAfterInfoTool &&
-              READ_ONLY_INFO_TOOLS.has(fnName) &&
-              !state.respondCalled
-            ) {
-              forceRespondNextIteration = true;
-            }
+          }
+          if (
+            shouldForceRespondAfterInfoTool &&
+            READ_ONLY_INFO_TOOLS.has(fnName) &&
+            !state.respondCalled
+          ) {
+            forceRespondNextIteration = true;
           }
 
           conversation.push({
@@ -618,7 +638,12 @@ export const chat = action({
       await ctx.runMutation(internal.chat.clearSearchStatus, {
         userId: session._id,
       });
-    } catch {
+    } catch (error) {
+      console.error("chat turn failed", {
+        userId: session._id,
+        chatMessageId,
+        error,
+      });
       await ctx.runMutation(internal.chat.clearSearchStatus, {
         userId: session._id,
       });

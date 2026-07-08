@@ -4,7 +4,11 @@ import type { ChatAttachmentExtraction, GroundingContext, KnowledgeDigest } from
  * Context-ordering invariant (provider prompt caching):
  * the static system prompt goes FIRST, the knowledge digest second, chat
  * history third, per-turn context (attachments/grounding) after that. Keep
- * the system prompt byte-stable across turns except for the timestamp block.
+ * the system prompt byte-stable across turns except for the timestamp block,
+ * which must stay LAST in the prompt string — anything after the first byte
+ * that differs between turns falls out of the provider's prefix cache, so
+ * the timestamp can't sit mid-prompt without also decaching every static
+ * rule that follows it.
  */
 
 export function buildSystemPrompt(userTimezone: string, currentTime: string) {
@@ -83,10 +87,6 @@ export function buildSystemPrompt(userTimezone: string, currentTime: string) {
 
 **TOPIC GUIDANCE**: Topics are AI-assigned by the system, but if the user explicitly wants a specific memory moved under a different topic, use manage_topics with operation="retag_memory". First identify the target memory: use a real memory_id if you already have it, otherwise search memories or infer the most recent relevant memory from context. Do not pass plain text like "class topic" into memory_id. Use rename/merge/recolor only for taxonomy-wide changes. When they ask "what topics do I have", use manage_topics with operation="list".
 
-**CURRENT DATE & TIME**: ${localDateStr} at ${localTimeStr} (${userTimezone}) — UTC: ${utcStr}
-Use this to resolve relative expressions like "in 5 hours", "next Monday", "after lunch", "tomorrow morning" into exact absolute datetimes before storing them.
-This timestamp came from the user's device at send-time. Treat it as the authoritative "now" for relative scheduling.
-
 **CRITICAL WORDING RULE — NO RELATIVE TIME IN STORED MEMORIES**:
 When writing memory title or content (stored via tools), NEVER use relative time words: "today", "tomorrow", "yesterday", "next week", "this morning", "this afternoon", "in 5 hours", "soon", "later", "recently", "just now", etc.
 Always write the actual resolved date/time in stored content: e.g. "Meeting with Sarah on 9 Apr 2026 at 14:00 IST" not "Meeting with Sarah tomorrow afternoon".
@@ -109,7 +109,11 @@ Your spoken REPLY to the user is still warm and personal — this rule only appl
 
 Use markdown only when it genuinely helps readability.
 
-**CRITICAL — ALWAYS CALL create_memory BEFORE CONFIRMING**: When the user wants to save, remember, note, or be reminded of something — including continuations like "another one for X", "also add X", "and remind me of X" — you MUST call create_memory immediately and then confirm with the result. Never say "Got it" or acknowledge an intent to save without first calling the tool in the same response turn. Each distinct item needs its own separate create_memory call.`;
+**CRITICAL — ALWAYS CALL create_memory BEFORE CONFIRMING**: When the user wants to save, remember, note, or be reminded of something — including continuations like "another one for X", "also add X", "and remind me of X" — you MUST call create_memory immediately and then confirm with the result. Never say "Got it" or acknowledge an intent to save without first calling the tool in the same response turn. Each distinct item needs its own separate create_memory call.
+
+**CURRENT DATE & TIME**: ${localDateStr} at ${localTimeStr} (${userTimezone}) — UTC: ${utcStr}
+Use this to resolve relative expressions like "in 5 hours", "next Monday", "after lunch", "tomorrow morning" into exact absolute datetimes before storing them.
+This timestamp came from the user's device at send-time. Treat it as the authoritative "now" for relative scheduling.`;
 }
 
 export function buildKnowledgeDigestMessage(digest: KnowledgeDigest): string {

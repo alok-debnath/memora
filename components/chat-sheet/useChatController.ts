@@ -207,8 +207,13 @@ export function useChatController(): ChatSheetController {
 
   const handleClearChat = useCallback(() => {
     if (!token) return;
-    clearChat({ token });
-    showToast({ title: "Chat cleared", tone: "info", duration: 2500 });
+    clearChat({ token })
+      .then(() => {
+        showToast({ title: "Chat cleared", tone: "info", duration: 2500 });
+      })
+      .catch(() => {
+        showToast({ title: "Failed to clear chat", tone: "error", duration: 3000 });
+      });
   }, [clearChat, showToast, token]);
 
   const handleEditMemory = useCallback((id: Id<"memories">) => {
@@ -223,9 +228,12 @@ export function useChatController(): ChatSheetController {
       !base.some(
         (message) =>
           isChatMessage(message) &&
-          message.content === optimisticMessage.content &&
           message.role === "user" &&
-          message._creationTime > optimisticMessage._creationTime - 5000,
+          message._creationTime > optimisticMessage._creationTime - 5000 &&
+          // Attachment-only sends persist as a single space (see memoryChat.ts's
+          // `text.trim() || " "`), not the "📎" placeholder shown optimistically.
+          (message.content === optimisticMessage.content ||
+            (optimisticMessage.content === "📎" && !message.content?.trim())),
       )
     ) {
       base.push(optimisticMessage);

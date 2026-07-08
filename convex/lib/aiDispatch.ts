@@ -314,6 +314,45 @@ async function recordAiUsage(
   });
 }
 
+// ─── Retry helper ─────────────────────────────────────────────────────────────
+
+const RETRYABLE_STATUS_CODES = new Set([408, 409, 429, 500, 502, 503, 504]);
+const RETRYABLE_ERROR_CODES = new Set([
+  "ECONNRESET",
+  "ETIMEDOUT",
+  "ECONNREFUSED",
+  "EPIPE",
+  "UND_ERR_SOCKET",
+]);
+
+/** True for transient network/rate-limit/server errors worth one retry, false for anything else (bad request, auth, etc). */
+function isRetryableAiError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const status = (error as { status?: unknown }).status;
+  if (typeof status === "number" && RETRYABLE_STATUS_CODES.has(status)) return true;
+  const code = (error as { code?: unknown }).code;
+  if (typeof code === "string" && RETRYABLE_ERROR_CODES.has(code)) return true;
+  const message = (error as { message?: unknown }).message;
+  return typeof message === "string" && /fetch failed|network|timeout/i.test(message);
+}
+
+/**
+ * Retries a single transient failure (network blip, 429, 5xx) once after a
+ * short delay. `onRetry` fires before the retry attempt so callers can reset
+ * any partial state a first attempt may have produced (e.g. streamed text
+ * already buffered for display). Non-retryable errors rethrow immediately.
+ */
+async function withRetry<T>(run: () => Promise<T>, onRetry?: () => void): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (!isRetryableAiError(error)) throw error;
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    onRetry?.();
+    return run();
+  }
+}
+
 // ─── Tracked wrappers (public API) ────────────────────────────────────────────
 
 /**
@@ -416,7 +455,7 @@ export async function trackedChatCompletion(
     ctx,
     route,
     { ...args, operation: "chat_completion", pricingOperation: "chat_completion" },
-    () => adapter.chatCompletion({ route, request: args.request }),
+    () => withRetry(() => adapter.chatCompletion({ route, request: args.request })),
   );
 }
 
@@ -437,6 +476,8 @@ export async function trackedChatCompletionStream(
     metadata?: Record<string, string>;
     link?: AnalyticsLink;
     onDelta: (textDelta: string) => void;
+    /** Called before a retry attempt so the caller can discard partial streamed state. */
+    onRetry?: () => void;
     streamToolTextField?: { toolName: string; argName: string };
     request: Omit<OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming, "model">;
   },
@@ -448,14 +489,18 @@ export async function trackedChatCompletionStream(
     route,
     { ...args, operation: "chat_completion", pricingOperation: "chat_completion" },
     () =>
-      adapter.chatCompletionStream
-        ? adapter.chatCompletionStream({
-            route,
-            request: args.request,
-            onDelta: args.onDelta,
-            streamToolTextField: args.streamToolTextField,
-          })
-        : adapter.chatCompletion({ route, request: args.request }),
+      withRetry(
+        () =>
+          adapter.chatCompletionStream
+            ? adapter.chatCompletionStream({
+                route,
+                request: args.request,
+                onDelta: args.onDelta,
+                streamToolTextField: args.streamToolTextField,
+              })
+            : adapter.chatCompletion({ route, request: args.request }),
+        args.onRetry,
+      ),
   );
 }
 
@@ -482,7 +527,7 @@ export async function trackedChatCompletionOnRoute(
     ctx,
     route,
     { ...args, operation: "chat_completion", pricingOperation: "chat_completion" },
-    () => adapter.chatCompletion({ route, request: args.request }),
+    () => withRetry(() => adapter.chatCompletion({ route, request: args.request })),
   );
 }
 
