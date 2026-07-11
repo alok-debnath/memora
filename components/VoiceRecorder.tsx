@@ -1,6 +1,5 @@
 import React, { useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Pressable, TextInput } from "react-native";
-import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { Feather } from "@/lib/icons";
 import * as Haptics from "expo-haptics";
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from "expo-speech-recognition";
@@ -51,13 +50,6 @@ interface VoiceRecorderProps {
    * VoiceRecorder can keep its accumulation refs in sync when the user resumes.
    */
   transcriptOverride?: string;
-  /**
-   * True when rendered inside a @gorhom/bottom-sheet BottomSheetModal, so the
-   * inline edit box uses BottomSheetTextInput and registers with the sheet's
-   * keyboard tracking (a plain TextInput here never lifts above the keyboard
-   * inside a sheet).
-   */
-  inBottomSheet?: boolean;
 }
 
 const SPEECH_END_STOP_MS = 2500;
@@ -78,12 +70,10 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
       onCancel,
       autoStart,
       transcriptOverride,
-      inBottomSheet,
     }: VoiceRecorderProps,
     ref,
   ) {
     const theme = useAppTheme();
-    const EditableTextInput = inBottomSheet ? BottomSheetTextInput : TextInput;
     const [isRecording, setIsRecording] = useState(false);
     const [isPaused, setIsPaused] = useState(false);
     const [isStarting, setIsStarting] = useState(false);
@@ -863,7 +853,7 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
 
         {/* Editable transcript during pause */}
         {editableText !== null && (
-          <EditableTextInput
+          <TextInput
             value={editableText}
             onChangeText={handleEditChange}
             multiline

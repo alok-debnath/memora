@@ -7,18 +7,14 @@ import {
   Alert,
   useWindowDimensions,
   Linking,
+  TextInput,
   View,
   StyleSheet,
 } from "react-native";
 import { Image } from "expo-image";
 import DateTimePicker from "@expo/ui/community/datetime-picker";
 import dayjs from "dayjs";
-import {
-  BottomSheetBackdrop,
-  BottomSheetModal,
-  BottomSheetScrollView,
-  BottomSheetTextInput,
-} from "@gorhom/bottom-sheet";
+import { BottomSheetBackdrop, BottomSheetModal, BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -336,7 +332,9 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
     <BottomSheetModal
       ref={modalRef}
       name="editMemory"
-      index={0}
+      // Start at the expanded snap point so the form scroll view is unlocked
+      // on first touch instead of consuming its initial drag to expand.
+      index={1}
       snapPoints={["70%", "94%"]}
       enablePanDownToClose
       detached={isLargeScreen}
@@ -367,47 +365,10 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
       backgroundStyle={{ backgroundColor: theme.surface.val }}
       onDismiss={handleDismiss}
     >
-      <YStack paddingHorizontal={20} paddingTop={10} paddingBottom={8} gap={12}>
-        <XStack alignItems="center" justifyContent="space-between" gap={12}>
-          <XStack flex={1} alignItems="center" gap={12}>
-            <XStack
-              width={40}
-              height={40}
-              borderRadius={20}
-              alignItems="center"
-              justifyContent="center"
-              backgroundColor={theme.primary.val + "15"}
-            >
-              <Feather name="edit-3" size={18} color={theme.primary.val} />
-            </XStack>
-            <YStack flex={1} minWidth={0} gap={2}>
-              <Text
-                fontSize={18}
-                fontFamily="$body"
-                fontWeight="700"
-                color={theme.color.val}
-                numberOfLines={1}
-              >
-                Edit Memory
-              </Text>
-              <Text fontSize={13} lineHeight={18} color={theme.colorMuted.val} numberOfLines={2}>
-                {memory?.title ? `Editing ${memory.title}` : "Update details, reminders, and files"}
-              </Text>
-            </YStack>
-          </XStack>
-          <PressableScale onPress={onClose}>
-            <YStack width={36} height={36} alignItems="center" justifyContent="center">
-              <Feather name="x" size={18} color={theme.colorMuted.val} />
-            </YStack>
-          </PressableScale>
-        </XStack>
-        <SegmentedControl options={MANUAL_OPTIONS} value={mode} onChange={setMode} />
-      </YStack>
-
       <BottomSheetScrollView
         contentContainerStyle={{
           paddingHorizontal: 20,
-          paddingTop: 8,
+          paddingTop: 10,
           gap: 16,
           paddingBottom: 56,
         }}
@@ -415,6 +376,46 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled
       >
+        {/* Keep the header in the scroll view so a drag beginning above the
+            first field still scrolls the form instead of becoming a tap. */}
+        <YStack paddingBottom={4} gap={12}>
+          <XStack alignItems="center" justifyContent="space-between" gap={12}>
+            <XStack flex={1} alignItems="center" gap={12}>
+              <XStack
+                width={40}
+                height={40}
+                borderRadius={20}
+                alignItems="center"
+                justifyContent="center"
+                backgroundColor={theme.primary.val + "15"}
+              >
+                <Feather name="edit-3" size={18} color={theme.primary.val} />
+              </XStack>
+              <YStack flex={1} minWidth={0} gap={2}>
+                <Text
+                  fontSize={18}
+                  fontFamily="$body"
+                  fontWeight="700"
+                  color={theme.color.val}
+                  numberOfLines={1}
+                >
+                  Edit Memory
+                </Text>
+                <Text fontSize={13} lineHeight={18} color={theme.colorMuted.val} numberOfLines={2}>
+                  {memory?.title
+                    ? `Editing ${memory.title}`
+                    : "Update details, reminders, and files"}
+                </Text>
+              </YStack>
+            </XStack>
+            <PressableScale onPress={onClose}>
+              <YStack width={36} height={36} alignItems="center" justifyContent="center">
+                <Feather name="x" size={18} color={theme.colorMuted.val} />
+              </YStack>
+            </PressableScale>
+          </XStack>
+          <SegmentedControl options={MANUAL_OPTIONS} value={mode} onChange={setMode} />
+        </YStack>
         {/* Time Capsule */}
         <TimeCapsuleToggle
           enabled={form.capsuleEnabled}
@@ -468,9 +469,10 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
               >
                 TITLE
               </Text>
-              <BottomSheetTextInput
+              <TextInput
                 value={form.title}
                 onChangeText={(v) => setField("title", v)}
+                rejectResponderTermination={false}
                 placeholder="Memory title"
                 placeholderTextColor={theme.colorMuted.val}
                 style={{
@@ -500,9 +502,10 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
               >
                 CONTENT
               </Text>
-              <BottomSheetTextInput
+              <TextInput
                 value={form.content}
                 onChangeText={(v) => setField("content", v)}
+                rejectResponderTermination={false}
                 placeholder="What happened?"
                 placeholderTextColor={theme.colorMuted.val}
                 multiline
@@ -1235,7 +1238,6 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                   onTranscriptionComplete={setVoiceTranscript}
                   onPauseChange={setIsVoicePaused}
                   inputMode="auto"
-                  inBottomSheet
                 />
                 <Text fontSize={16} fontFamily="$body" fontWeight="600" color={theme.color.val}>
                   Describe your edit
