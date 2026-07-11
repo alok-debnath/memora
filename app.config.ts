@@ -14,7 +14,7 @@ const config: ExpoConfig = {
     supportsTablet: true,
     bundleIdentifier: IS_DEV ? "com.alokdebnath.memora.dev" : "com.alokdebnath.memora",
     infoPlist: {
-      NSSpeechRecognitionUsageDescription: "Allow Memora to transcribe your speech in real time.",
+      NSSpeechRecognitionUsageDescription: "Allow Memora to transcribe your speech on device.",
       NSMicrophoneUsageDescription: "Allow Memora to use the microphone for voice dictation.",
     },
   },
@@ -34,12 +34,8 @@ const config: ExpoConfig = {
       "expo-speech-recognition",
       {
         microphonePermission: "Allow Memora to use the microphone for voice dictation.",
-        speechRecognitionPermission: "Allow Memora to transcribe your speech in real time.",
-        androidSpeechServicePackages: [
-          "com.google.android.as",
-          "com.google.android.tts",
-          "com.google.android.googlequicksearchbox",
-        ],
+        speechRecognitionPermission: "Allow Memora to transcribe your speech on device.",
+        androidSpeechServicePackages: ["com.google.android.as"],
       },
     ],
     "expo-secure-store",

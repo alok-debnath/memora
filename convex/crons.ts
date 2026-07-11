@@ -49,4 +49,11 @@ crons.interval(
   {},
 );
 
+crons.interval(
+  "cleanup abandoned transcription uploads",
+  { hours: 1 },
+  internal.transcriptionJobs.cleanupExpired,
+  {},
+);
+
 export default crons;

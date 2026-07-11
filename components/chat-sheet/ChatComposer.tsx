@@ -161,6 +161,7 @@ export const ChatComposer = React.memo(function ChatComposer({
                 onTranscriptionComplete={handleVoiceTranscript}
                 onCancel={() => setMode("keyboard")}
                 inputMode="auto"
+                transcriptionMode="device"
               />
               <Pressable
                 onPress={() => {

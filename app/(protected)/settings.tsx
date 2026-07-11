@@ -203,6 +203,17 @@ export default function AppSettingsScreen() {
             </YStack>
           </Card>
         </YStack>
+
+        <YStack>
+          <SectionLabel>Dictation privacy</SectionLabel>
+          <Card style={styles.groupCard}>
+            <Text fontSize={13} fontFamily="$body" lineHeight={19} color={theme.colorMuted.val}>
+              Voice recordings are sent temporarily to your configured transcription provider.
+              Memora deletes the audio after transcription and does not keep it as an attachment or
+              include it in exports.
+            </Text>
+          </Card>
+        </YStack>
       </YStack>
     </AppScreen>
   );

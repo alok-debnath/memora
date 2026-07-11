@@ -2,40 +2,73 @@
 
 import { v } from "convex/values";
 import { action } from "../_generated/server";
-import { api } from "../_generated/api";
-import { trackedTranscribeBase64Audio } from "../lib/aiDispatch";
+import { internal } from "../_generated/api";
+import { trackedTranscribeAudio } from "../lib/aiDispatch";
+
+const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
 export const transcribe = action({
-  args: {
-    token: v.string(),
-    audioBase64: v.string(),
-    format: v.string(),
-    durationMs: v.optional(v.number()),
-  },
-  handler: async (ctx, args): Promise<{ text: string }> => {
-    const user = await ctx.runQuery(api.auth.me, { token: args.token });
-    if (!user) {
-      return { text: "Authentication required." };
-    }
-
-    const maxSizeBytes = 10 * 1024 * 1024;
-    if (args.audioBase64.length > maxSizeBytes * 1.37) {
-      return { text: "Audio file too large. Maximum 10MB." };
-    }
-    try {
-      const response: { text?: string | null } = await trackedTranscribeBase64Audio(ctx, {
-        userId: user._id,
-        audioBase64: args.audioBase64,
-        format: args.format,
-        durationMs: args.durationMs,
-      });
-      return { text: response.text || "" };
-    } catch (error) {
+  args: { jobId: v.id("transcriptionJobs") },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<
+    { kind: "success"; text: string } | { kind: "error"; code: string; message: string }
+  > => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity)
+      return { kind: "error", code: "unauthenticated", message: "Sign in to transcribe audio." };
+    const job = await ctx.runQuery(internal.transcriptionJobs.getForTranscription, {
+      jobId: args.jobId,
+      tokenIdentifier: identity.tokenIdentifier,
+    });
+    if (!job?.storageId)
       return {
-        text:
+        kind: "error",
+        code: "invalid_job",
+        message: "This recording is no longer available.",
+      };
+    if (
+      !(await ctx.runMutation(internal.transcriptionJobs.markTranscribing, { jobId: args.jobId }))
+    )
+      return {
+        kind: "error",
+        code: "duplicate",
+        message: "This recording is already being processed.",
+      };
+    try {
+      const url = await ctx.storage.getUrl(job.storageId);
+      if (!url) throw new Error("Audio upload is unavailable.");
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Audio download failed.");
+      const audio = new Uint8Array(await response.arrayBuffer());
+      if (!audio.byteLength || audio.byteLength > MAX_AUDIO_BYTES)
+        throw new Error("Audio upload is invalid or too large.");
+      const result = await trackedTranscribeAudio(ctx, {
+        userId: job.userId,
+        audio,
+        format: job.mimeType.split("/")[1].replace("x-", ""),
+        language: "en",
+        durationMs: job.durationMs,
+      });
+      await ctx.runMutation(internal.transcriptionJobs.finish, {
+        jobId: args.jobId,
+        success: true,
+      });
+      return { kind: "success", text: result.text?.trim() ?? "" };
+    } catch (error) {
+      await ctx.runMutation(internal.transcriptionJobs.finish, {
+        jobId: args.jobId,
+        success: false,
+        errorCode: "transcription_failed",
+      });
+      return {
+        kind: "error",
+        code: "transcription_failed",
+        message:
           error instanceof Error && /not configured/i.test(error.message)
             ? "Transcription service is not configured."
-            : "Transcription failed. Please try again.",
+            : "Could not transcribe this recording. Try again.",
       };
     }
   },

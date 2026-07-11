@@ -52,8 +52,6 @@ export default function DiaryScreen() {
   const deleteEntry = useMutation(api.diary.remove);
 
   const [diaryText, setDiaryText] = useState("");
-  const [liveTranscript, setLiveTranscript] = useState("");
-  const [isVoicePaused, setIsVoicePaused] = useState(false);
   const [mode, setMode] = useState<"voice" | "type">("voice");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -71,17 +69,10 @@ export default function DiaryScreen() {
     }
   };
 
-  const handleVoiceComplete = async (text: string) => {
-    if (!text.trim() || !token) return;
-    setLiveTranscript("");
-    if (Platform.OS !== "web") {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
-    setIsSaving(true);
-    try {
-      await createEntry({ token, rawText: text.trim() });
-    } finally {
-      setIsSaving(false);
+  const handleVoiceComplete = (text: string) => {
+    if (text.trim()) {
+      setDiaryText(text);
+      setMode("type");
     }
   };
 
@@ -207,36 +198,16 @@ export default function DiaryScreen() {
               </YStack>
             ) : (
               <YStack gap={12} paddingVertical={12}>
-                <VoiceRecorder
-                  onTranscription={setLiveTranscript}
-                  onTranscriptionComplete={handleVoiceComplete}
-                  onPauseChange={setIsVoicePaused}
-                  inputMode="auto"
-                />
+                <VoiceRecorder onTranscriptionComplete={handleVoiceComplete} inputMode="auto" />
                 {/* Hide while paused — VoiceRecorder shows the editable TextInput internally */}
-                {!isVoicePaused && liveTranscript.trim().length > 0 ? (
-                  <YStack
-                    backgroundColor={theme.card.val}
-                    borderRadius={14}
-                    borderWidth={1}
-                    borderColor={theme.borderColor.val}
-                    padding={14}
-                    marginHorizontal={4}
-                  >
-                    <Text fontSize={14} fontFamily="$body" color={theme.color.val} lineHeight={21}>
-                      {liveTranscript}
-                    </Text>
-                  </YStack>
-                ) : !isVoicePaused ? (
-                  <Text
-                    fontSize={13}
-                    fontFamily="$body"
-                    color={theme.colorMuted.val}
-                    textAlign="center"
-                  >
-                    Tap to start — speak naturally. Entry is analyzed after you stop.
-                  </Text>
-                ) : null}
+                <Text
+                  fontSize={13}
+                  fontFamily="$body"
+                  color={theme.colorMuted.val}
+                  textAlign="center"
+                >
+                  Your transcript opens for review before you save.
+                </Text>
               </YStack>
             )
           ) : (

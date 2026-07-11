@@ -24,6 +24,23 @@ import {
 } from "./lib/validators";
 
 export default defineSchema({
+  transcriptionJobs: defineTable({
+    userId: v.id("users"),
+    status: v.union(
+      v.literal("uploading"),
+      v.literal("uploaded"),
+      v.literal("transcribing"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("cancelled"),
+    ),
+    storageId: v.optional(v.id("_storage")),
+    mimeType: v.string(),
+    durationMs: v.number(),
+    expiresAt: v.number(),
+    errorCode: v.optional(v.string()),
+  }).index("by_status_and_expires_at", ["status", "expiresAt"]),
+
   users: defineTable({
     tokenIdentifier: v.optional(v.string()),
     authUserId: v.optional(v.string()),

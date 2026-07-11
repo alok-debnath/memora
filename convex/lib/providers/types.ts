@@ -84,7 +84,7 @@ export interface AiProviderAdapter {
    */
   transcribeAudio?(args: {
     route: ResolvedRoute;
-    audioBase64: string;
+    audio: Uint8Array;
     format: string;
     language?: string;
   }): Promise<{ text?: string | null }>;

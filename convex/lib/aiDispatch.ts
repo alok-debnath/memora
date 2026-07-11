@@ -611,11 +611,11 @@ export async function trackedEmbedText(
   return (await trackedEmbedTexts(ctx, args))[0];
 }
 
-export async function trackedTranscribeBase64Audio(
+export async function trackedTranscribeAudio(
   ctx: UsageRecorderCtx,
   args: {
     userId: Id<"users">;
-    audioBase64: string;
+    audio: Uint8Array;
     format: string;
     language?: string;
     durationMs?: number;
@@ -644,7 +644,7 @@ export async function trackedTranscribeBase64Audio(
     async () => {
       const response = await adapter.transcribeAudio!({
         route,
-        audioBase64: args.audioBase64,
+        audio: args.audio,
         format: args.format,
         language: args.language,
       });

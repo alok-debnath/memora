@@ -148,7 +148,7 @@ export const PROVIDER_DEFAULT_MODELS: Record<AiProvider, Partial<Record<AiCapabi
     structured_text: "gpt-4o-mini",
     embeddings: "text-embedding-3-small",
     vision: "gpt-4o",
-    transcription: "gpt-4o-mini-transcribe",
+    transcription: "gpt-4o-transcribe",
     image_generation: "gpt-image-1",
   },
   google: {
@@ -209,7 +209,7 @@ export const DEFAULT_ROUTING: Record<AiCapability, AiRoutingEntry> = {
   },
   transcription: {
     provider: "openai",
-    model: "gpt-4o-mini-transcribe",
+    model: "gpt-4o-transcribe",
     enabled: true,
     // Google does not support transcription
   },

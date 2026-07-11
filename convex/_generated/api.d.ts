@@ -90,6 +90,7 @@ import type * as processMemoryMutations from "../processMemoryMutations.js";
 import type * as retrievalRebuildJobs from "../retrievalRebuildJobs.js";
 import type * as review from "../review.js";
 import type * as sharing from "../sharing.js";
+import type * as transcriptionJobs from "../transcriptionJobs.js";
 import type * as userTopics from "../userTopics.js";
 
 import type {
@@ -181,6 +182,7 @@ declare const fullApi: ApiFromModules<{
   retrievalRebuildJobs: typeof retrievalRebuildJobs;
   review: typeof review;
   sharing: typeof sharing;
+  transcriptionJobs: typeof transcriptionJobs;
   userTopics: typeof userTopics;
 }>;
 

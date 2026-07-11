@@ -116,10 +116,9 @@ export const openAiAdapter: AiProviderAdapter = {
     };
   },
 
-  async transcribeAudio({ route, audioBase64, format, language }) {
+  async transcribeAudio({ route, audio, format, language }) {
     const client = getClientForCredentials({ apiKey: route.apiKey, baseURL: route.baseUrl });
     if (!client) throw new Error("OpenAI client is not available for this route.");
-    const audio = Buffer.from(audioBase64, "base64");
     const file = await toFile(audio, `recording.${format}`);
     return await client.audio.transcriptions.create({
       file,
