@@ -132,7 +132,6 @@ async function extractImageWithFallback(
     userId: analytics.userId,
     feature: "attachment_extraction",
   });
-
   const file = await downloadDriveFile(accessToken, driveFileId);
   if (!file) {
     return { processingStatus: "failed", processingError: "Could not download image from Drive." };
@@ -283,6 +282,11 @@ async function extractPdfContent(
     userId: analytics.userId,
     feature: "attachment_extraction",
   });
+  const link = {
+    chatTurnId: analytics.chatTurnId,
+    chatMessageId: analytics.chatMessageId,
+    conversationId: analytics.conversationId,
+  };
 
   // For BYOK and platform primary, try the resolved route first
   try {
@@ -292,6 +296,7 @@ async function extractPdfContent(
       stage: "pdf_extraction",
       visibility: "background",
       metadata: { attachmentType: "document" },
+      link,
       request: pdfRequest,
     });
     const text = extractTextContent(response.choices[0]?.message?.content);
@@ -325,6 +330,7 @@ async function extractPdfContent(
       stage: "pdf_extraction_fallback",
       visibility: "background",
       metadata: { attachmentType: "document" },
+      link,
       request: pdfRequest,
     });
     const text = extractTextContent(response.choices[0]?.message?.content);

@@ -13,6 +13,7 @@ import {
   buildMemorySearchText,
   normalizeMemoryRetrievalFields,
 } from "../convex/lib/memoryRetrieval";
+import { estimatePricingMicros } from "../convex/lib/aiPricing";
 
 describe("personal recall grounding", () => {
   for (const query of [
@@ -90,6 +91,34 @@ describe("retrieval representation", () => {
     expect(buildMemoryEmbeddingText({ title: "Sitting Fix", ...fields })).toContain(
       "Related concepts: health, work calls, sedentary lifestyle",
     );
+  });
+});
+
+describe("AI cost estimation", () => {
+  test("uses the cached-input rate when provider usage reports cached tokens", () => {
+    expect(
+      estimatePricingMicros({
+        pricing: {
+          inputUsdPer1M: 2,
+          cachedInputUsdPer1M: 0.5,
+          outputUsdPer1M: 8,
+          priceDisplayMode: "estimated",
+        },
+        inputTokens: 1_000_000,
+        cachedInputTokens: 400_000,
+        outputTokens: 100_000,
+      }),
+    ).toMatchObject({ costUsdMicros: 2_200_000, priceDisplayMode: "estimated" });
+  });
+
+  test("falls back to the standard input rate when no cached-input price is configured", () => {
+    expect(
+      estimatePricingMicros({
+        pricing: { inputUsdPer1M: 2, priceDisplayMode: "estimated" },
+        inputTokens: 1_000_000,
+        cachedInputTokens: 400_000,
+      }),
+    ).toMatchObject({ costUsdMicros: 2_000_000, priceDisplayMode: "estimated" });
   });
 });
 

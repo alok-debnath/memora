@@ -56,6 +56,7 @@ export const proposeDeletionTool: ChatTool = {
             query: deletionQuery,
             userId: tc.userId,
             recentMemories: await tc.getRecentMemories(),
+            chatTurnId: tc.chatMessageId,
           });
 
     let matchedItems = searchResult.results;

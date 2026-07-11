@@ -327,34 +327,30 @@ export const chat = action({
           })
           .filter((snapshot): snapshot is CardSnapshot => snapshot !== null);
       }
-      const meta: ChatMessageMeta | undefined =
-        cardRefs.length > 0 || state.pendingDeletionItems.length > 0
+      // Reply telemetry belongs to every completed assistant message, not only
+      // to replies that happen to surface memory or diary cards. The frontend
+      // uses this stable user-turn ID to open the cost/operation breakdown.
+      const meta: ChatMessageMeta = {
+        turns: finalIteration + 1,
+        flow: buildCardFlowPayload({
+          chatTurnId: String(chatMessageId),
+          assistantProvider: chatRoute.provider,
+          turns: finalIteration + 1,
+          cardCount: visualCardRefs.length,
+          pathMode: state.pendingSearchIsCached ? "cached" : "fresh",
+          searches: state.flowSearches,
+          toolSequence: state.flowToolSequence,
+          attachments: flowAttachments,
+        }),
+        ...(cardRefs.length > 0
           ? {
-              ...(cardRefs.length > 0
-                ? {
-                    cards: cardRefs,
-                    ...(cardSnapshots.length > 0 ? { cardSnapshots } : {}),
-                    ...(visualCardRefs.length > 0
-                      ? {
-                          isCached: state.pendingSearchIsCached,
-                          turns: finalIteration + 1,
-                          flow: buildCardFlowPayload({
-                            chatTurnId: String(chatMessageId),
-                            assistantProvider: chatRoute.provider,
-                            turns: finalIteration + 1,
-                            cardCount: visualCardRefs.length,
-                            pathMode: state.pendingSearchIsCached ? "cached" : "fresh",
-                            searches: state.flowSearches,
-                            toolSequence: state.flowToolSequence,
-                            attachments: flowAttachments,
-                          }),
-                        }
-                      : {}),
-                  }
-                : {}),
-              ...(hasDeletionProposal ? { deletionProposal: state.pendingDeletionItems } : {}),
+              cards: cardRefs,
+              ...(cardSnapshots.length > 0 ? { cardSnapshots } : {}),
+              ...(visualCardRefs.length > 0 ? { isCached: state.pendingSearchIsCached } : {}),
             }
-          : undefined;
+          : {}),
+        ...(hasDeletionProposal ? { deletionProposal: state.pendingDeletionItems } : {}),
+      };
 
       return { resolvedText, meta };
     };

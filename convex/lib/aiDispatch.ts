@@ -381,6 +381,9 @@ async function withUsageTracking<T extends { usage?: ChatUsage }>(
   try {
     const response = await run();
     const usage = response.usage;
+    const cachedInputTokens = (
+      usage as (ChatUsage & { prompt_tokens_details?: { cached_tokens?: number } }) | undefined
+    )?.prompt_tokens_details?.cached_tokens;
     const pricing = await resolvePricing(ctx, {
       provider: route.provider,
       model: route.model,
@@ -389,6 +392,7 @@ async function withUsageTracking<T extends { usage?: ChatUsage }>(
     const priced = estimatePricingMicros({
       pricing,
       inputTokens: usage?.prompt_tokens,
+      cachedInputTokens,
       outputTokens: usage?.completion_tokens,
       audioSeconds: meta.audioSeconds,
     });
@@ -410,7 +414,10 @@ async function withUsageTracking<T extends { usage?: ChatUsage }>(
       pricingReason: priced.pricingReason,
       stage: meta.stage ?? meta.operation,
       visibility: meta.visibility ?? "background",
-      metadata: meta.metadata,
+      metadata:
+        typeof cachedInputTokens === "number" && cachedInputTokens > 0
+          ? { ...meta.metadata, cachedInputTokens: String(cachedInputTokens) }
+          : meta.metadata,
       link: meta.link,
     });
     return response;

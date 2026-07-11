@@ -93,6 +93,7 @@ export const searchMemoriesTool: ChatTool = {
               query: expandedQuery,
               userId: tc.userId,
               recentMemories: await tc.getRecentMemories(),
+              chatTurnId: tc.chatMessageId,
             });
       tc.state.pendingSearchIsCached = searchRes.isCached ?? false;
       tc.state.flowSearches.push({

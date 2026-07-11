@@ -101,6 +101,7 @@ export const createMemoryTool: ChatTool = {
               query: tc.userMessage,
               userId: tc.userId,
               recentMemories: await tc.getRecentMemories(),
+              chatTurnId: tc.chatMessageId,
             });
       existingMatchesCount = existingMatches.count;
       existingMatchesPreview = existingMatches.results;

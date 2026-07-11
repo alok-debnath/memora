@@ -186,12 +186,14 @@ export function estimatePricingMicros(args: {
   pricing: Pick<
     AiModelPricingRow,
     | "inputUsdPer1M"
+    | "cachedInputUsdPer1M"
     | "outputUsdPer1M"
     | "audioUsdPerMinute"
     | "imageUsdPerUnit"
     | "priceDisplayMode"
   > | null;
   inputTokens?: number;
+  cachedInputTokens?: number;
   outputTokens?: number;
   audioSeconds?: number;
   imageUnits?: number;
@@ -204,9 +206,23 @@ export function estimatePricingMicros(args: {
     };
   }
 
+  const cachedInputTokens = Math.max(
+    0,
+    Math.min(args.cachedInputTokens ?? 0, args.inputTokens ?? 0),
+  );
+  const standardInputTokens = Math.max(0, (args.inputTokens ?? 0) - cachedInputTokens);
   const inputCost =
-    args.pricing.inputUsdPer1M && args.inputTokens
-      ? microsFromUsd((args.inputTokens / 1_000_000) * args.pricing.inputUsdPer1M)
+    args.pricing.inputUsdPer1M && standardInputTokens
+      ? microsFromUsd((standardInputTokens / 1_000_000) * args.pricing.inputUsdPer1M)
+      : 0;
+  // If a catalog row does not declare a cache-discount rate, conservatively
+  // charge cached input at the standard rate instead of understating spend.
+  const cachedInputCost =
+    args.pricing.inputUsdPer1M && cachedInputTokens
+      ? microsFromUsd(
+          (cachedInputTokens / 1_000_000) *
+            (args.pricing.cachedInputUsdPer1M ?? args.pricing.inputUsdPer1M),
+        )
       : 0;
   const outputCost =
     args.pricing.outputUsdPer1M && args.outputTokens
@@ -220,7 +236,7 @@ export function estimatePricingMicros(args: {
     args.pricing.imageUsdPerUnit && args.imageUnits
       ? microsFromUsd(args.imageUnits * args.pricing.imageUsdPerUnit)
       : 0;
-  const total = inputCost + outputCost + audioCost + imageCost;
+  const total = inputCost + cachedInputCost + outputCost + audioCost + imageCost;
 
   if (total <= 0) {
     return {

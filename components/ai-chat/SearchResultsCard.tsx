@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
@@ -12,80 +12,13 @@ import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import { useAppToast } from "@/components/ui/toast";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { useSemanticColors } from "@/hooks/useSemanticColors";
 import { Feather } from "@/lib/icons";
 import { useUIStore } from "@/store/ui";
-import type { CardFlow, CardSnapshot, SearchResultItem } from "./types";
+import type { CardSnapshot, SearchResultItem } from "./types";
 import { MemoryResultRow } from "./cards/MemoryResultRow";
 import { DiaryResultRow, type DiaryCardDoc } from "./cards/DiaryResultRow";
 
 const getBubbleShadow = (shadowColor: string) => appShadow(shadowColor, "xs");
-
-function PerformancePill({
-  isCached,
-  turns = 1,
-  onOpenTelemetry,
-}: {
-  isCached: boolean;
-  turns?: number;
-  flow?: CardFlow;
-  onOpenTelemetry?: () => void;
-}) {
-  const theme = useAppTheme();
-  const semantic = useSemanticColors();
-  const isReasoned = turns > 1;
-  const baseColor = isReasoned
-    ? semantic.integration.reasoning
-    : isCached
-      ? semantic.status.warning
-      : theme.primary.val;
-
-  const pill = (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 5,
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 999,
-        backgroundColor: withAlpha(baseColor, "15"),
-        borderWidth: 1,
-        borderColor: withAlpha(baseColor, "32"),
-      }}
-    >
-      <Feather name={isCached ? "zap" : "search"} size={11} color={baseColor} />
-      <Text fontSize={11} fontFamily={FontFamily.bold} color={baseColor} style={{ opacity: 0.9 }}>
-        {isCached ? "Fast" : "Full scan"}
-      </Text>
-      {isReasoned ? (
-        <>
-          <View
-            style={{
-              width: 1,
-              height: 10,
-              backgroundColor: baseColor,
-              opacity: 0.2,
-              marginLeft: 2,
-            }}
-          />
-          <Feather name="layers" size={11} color={baseColor} />
-          <Text
-            fontSize={11}
-            fontFamily={FontFamily.bold}
-            color={baseColor}
-            style={{ opacity: 0.9 }}
-          >
-            {`× ${turns}`}
-          </Text>
-        </>
-      ) : null}
-    </View>
-  );
-
-  if (!onOpenTelemetry) return pill;
-  return <Pressable onPress={onOpenTelemetry}>{pill}</Pressable>;
-}
 
 /**
  * Card shell for AI-surfaced document snapshots. The backend validates IDs and
@@ -93,17 +26,11 @@ function PerformancePill({
  */
 export function SearchResultsCard({
   cardSnapshots = [],
-  isCached,
-  turns = 1,
-  flow,
   token,
   calendarSyncEnabled,
   onEdit,
 }: {
   cardSnapshots?: CardSnapshot[];
-  isCached: boolean;
-  turns?: number;
-  flow?: CardFlow;
   token?: string | null;
   calendarSyncEnabled?: boolean;
   onEdit?: (id: Id<"memories">) => void;
@@ -123,7 +50,6 @@ export function SearchResultsCard({
   const removeReminderSync = useMutation(api.integrations.removeReminderSync);
   const { showToast } = useAppToast();
   const { confirm } = useAppConfirm();
-  const openTurnBreakdown = useUIStore((state) => state.openTurnBreakdown);
 
   const items = useMemo<SearchResultItem[]>(
     () =>
@@ -322,14 +248,6 @@ export function SearchResultsCard({
               {headerLabel || "Results"}
             </Text>
           </XStack>
-          <PerformancePill
-            isCached={isCached}
-            turns={turns}
-            flow={flow}
-            onOpenTelemetry={
-              flow?.chatTurnId ? () => openTurnBreakdown(flow.chatTurnId!) : undefined
-            }
-          />
         </XStack>
 
         <YStack>

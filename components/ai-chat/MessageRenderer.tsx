@@ -48,18 +48,16 @@ export function useAIChatMessageRenderer({
       let deletionItems: DeletionItem[] | undefined;
       let cardSnapshots: CardSnapshot[] | undefined;
       let displayMsg = item;
-      let cardIsCached: boolean | undefined;
-      let cardTurns: number | undefined;
-      let cardFlow: CardFlow | undefined;
+      let turns: number | undefined;
+      let flow: CardFlow | undefined;
 
       if (item.role !== "user") {
         const presentation = extractAssistantPresentation(item);
         deletionItems = presentation.deletionItems;
         cardSnapshots =
           presentation.cardSnapshots.length > 0 ? presentation.cardSnapshots : undefined;
-        cardIsCached = presentation.isCached;
-        cardTurns = presentation.turns;
-        cardFlow = presentation.flow;
+        turns = presentation.turns;
+        flow = presentation.flow;
         displayMsg = {
           ...displayMsg,
           content: presentation.cleanText,
@@ -77,9 +75,8 @@ export function useAIChatMessageRenderer({
           token={token}
           deletionItems={deletionItems}
           cardSnapshots={cardSnapshots}
-          cardIsCached={cardIsCached}
-          cardTurns={cardTurns}
-          cardFlow={cardFlow}
+          turns={turns}
+          flow={flow}
           calendarSyncEnabled={calendarSyncEnabled}
           onEditMemory={onEditMemory}
         />

@@ -18,6 +18,7 @@ import { useAppTheme } from "@/hooks/useAppTheme";
 import { Feather } from "@/lib/icons";
 import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import { DeletionProposalCard } from "./DeletionProposalCard";
+import { ReplyTelemetryFooter } from "./ReplyTelemetryFooter";
 import { SearchResultsCard } from "./SearchResultsCard";
 import { STREAM_CURSOR, useStreamReveal, useStreamRevealMotion } from "./streamReveal";
 import type { CardFlow, CardSnapshot, ChatMsg, DeletionItem } from "./types";
@@ -82,9 +83,8 @@ export const ChatBubble = React.memo(function ChatBubble({
   token,
   deletionItems,
   cardSnapshots,
-  cardIsCached,
-  cardTurns,
-  cardFlow,
+  turns,
+  flow,
   calendarSyncEnabled,
   onEditMemory,
 }: {
@@ -97,9 +97,8 @@ export const ChatBubble = React.memo(function ChatBubble({
   token?: string | null;
   deletionItems?: DeletionItem[];
   cardSnapshots?: CardSnapshot[];
-  cardIsCached?: boolean;
-  cardTurns?: number;
-  cardFlow?: CardFlow;
+  turns?: number;
+  flow?: CardFlow;
   calendarSyncEnabled?: boolean;
   onEditMemory?: (id: Id<"memories">) => void;
 }) {
@@ -281,15 +280,13 @@ export const ChatBubble = React.memo(function ChatBubble({
         </YStack>
       </XStack>
 
+      {!isUser && presentationReady ? <ReplyTelemetryFooter turns={turns} flow={flow} /> : null}
       {!isUser && presentationReady && deletionItems?.length ? (
         <DeletionProposalCard items={deletionItems} token={token} />
       ) : null}
       {!isUser && presentationReady && cardSnapshots?.length ? (
         <SearchResultsCard
           cardSnapshots={cardSnapshots}
-          isCached={cardIsCached ?? false}
-          turns={cardTurns}
-          flow={cardFlow}
           token={token}
           calendarSyncEnabled={calendarSyncEnabled}
           onEdit={onEditMemory}
