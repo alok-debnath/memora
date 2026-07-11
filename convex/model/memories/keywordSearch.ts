@@ -10,7 +10,8 @@ export async function executeKeywordSearch(
   ctx: QueryCtx,
   userId: Id<"users">,
   queryTerms: string[],
-): Promise<{ memory: Doc<"memories">; proportion: number; matched: number }[]> {
+  exactPhrase?: string,
+): Promise<{ memory: Doc<"memories">; proportion: number; matched: number; score: number }[]> {
   const memories = await ctx.db
     .query("memories")
     .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", "active"))
@@ -40,6 +41,9 @@ export async function executeKeywordSearch(
         ...(m.locations ?? []),
         m.lifeArea,
         m.entryKind,
+        m.semanticSummary,
+        ...(m.searchAliases ?? []),
+        ...(m.searchConcepts ?? []),
         ...topicNames,
       ]
         .filter(Boolean)
@@ -60,11 +64,16 @@ export async function executeKeywordSearch(
         }
       }
       const proportion = matched / queryTerms.length;
-      return { memory: m, proportion, matched };
+      const phrase = exactPhrase?.trim().toLowerCase();
+      const score =
+        phrase && phrase.length >= 3 && haystack.includes(phrase)
+          ? Math.min(1, proportion + 0.3)
+          : proportion;
+      return { memory: m, proportion, matched, score };
     })
     .filter(({ matched, proportion }) => {
       if (queryTerms.length === 1) return matched >= 1;
       return proportion >= 0.4;
     })
-    .sort((a, b) => b.proportion - a.proportion || b.matched - a.matched);
+    .sort((a, b) => b.score - a.score || b.matched - a.matched);
 }

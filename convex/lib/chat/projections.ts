@@ -12,6 +12,16 @@ import type { CardSnapshot } from "./types";
 type MemoryDoc = Doc<"memories">;
 
 export function toMemorySummary(memory: MemoryDoc) {
+  const match = (
+    memory as MemoryDoc & {
+      _match?: {
+        confidence: "strong" | "related" | "weak";
+        relation: "direct" | "related";
+        channels: string[];
+        matchedConcepts: string[];
+      };
+    }
+  )._match;
   return {
     id: memory._id,
     title: memory.title,
@@ -21,6 +31,7 @@ export function toMemorySummary(memory: MemoryDoc) {
     primary_topic_id: memory.primaryTopicId ?? null,
     ...toMemorySummaryFields(memory),
     created_at: new Date(memory._creationTime).toISOString(),
+    ...(match ? { match } : {}),
   };
 }
 

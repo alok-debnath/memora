@@ -16,8 +16,8 @@ Convex agent skills for common tasks can be installed by running
 
 ## Agent Context Docs
 
-- `agent-context/ai-architecture.md`: **read before touching the AI pipeline** (chat, tools, cards, search, streaming, providers) — extension recipes, cost/architecture invariants, and hard-won gotchas from the 2026-07 revamp.
-- Add future deep-dive docs to `agent-context/` and list them here; keep this file itself to durable rules only.
+- `agent-context/ai-architecture.md`: **read before touching the AI pipeline** (chat, tools, cards, search, streaming, providers), and update it automatically when that work changes a durable invariant, extension pattern, lifecycle, cost rule, or known limitation. Keep it compact and current—not a changelog—by editing before appending and removing stale, superseded, duplicated, easily discoverable, or no-longer-useful material. Retain only context that prevents likely mistakes or materially speeds up future AI-pipeline work.
+- Add future deep-dive docs to `agent-context/` and list them here; keep this file itself focused on durable rules only.
 
 ## Maintaining This File
 

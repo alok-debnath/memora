@@ -6,15 +6,26 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { getEmbeddingFingerprintForUser, trackedEmbedText } from "./aiDispatch";
 import { toDiaryCompact } from "./diaryText";
 import { cleanSearchQuery, extractSearchTerms, normalizeSearchQueryHash } from "./search";
+import {
+  SEARCH_RELATIVE_SCORE_FLOOR,
+  SEARCH_VECTOR_CANDIDATES,
+  SEARCH_VECTOR_MIN_SCORE,
+} from "./chat/budgets";
 
-type SearchableMemory = Doc<"memories"> & { _score?: number };
+export type SearchEvidence = {
+  confidence: "strong" | "related" | "weak";
+  relation: "direct" | "related";
+  channels: string[];
+  matchedConcepts: string[];
+};
+type SearchableMemory = Doc<"memories"> & { _score?: number; _match?: SearchEvidence };
 
 export type DiarySearchHit = ReturnType<typeof toDiaryCompact>;
 
-const VECTOR_MIN_SCORE = 0.4;
+const VECTOR_MIN_SCORE = SEARCH_VECTOR_MIN_SCORE;
 const RRF_K = 60;
 const MIN_RRF_SCORE = 0.006;
-const RELATIVE_SCORE_FLOOR = 0.6;
+const RELATIVE_SCORE_FLOOR = SEARCH_RELATIVE_SCORE_FLOOR;
 const KEYWORD_MIN_SCORE = 0.4;
 const DIARY_TAKE = 5;
 const QUERY_CACHE_TOUCH_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -54,6 +65,7 @@ type FusedSource<TId> = {
   ranked: TId[];
   scores: Map<TId, number>;
   channelHits: Map<string, number>;
+  evidence: Map<TId, { channels: string[]; weights: Map<string, number> }>;
 };
 
 async function fuseSource<TId>(args: {
@@ -71,7 +83,7 @@ async function fuseSource<TId>(args: {
     })),
   );
 
-  const fused = new Map<TId, { score: number; sources: string[] }>();
+  const fused = new Map<TId, { score: number; sources: string[]; weights: Map<string, number> }>();
   const channelHits = new Map<string, number>();
   for (const { channel, hits } of channelResults) {
     channelHits.set(channel.name, hits.length);
@@ -81,11 +93,16 @@ async function fuseSource<TId>(args: {
       const existing = fused.get(hit.id);
       if (existing) {
         existing.score += contribution;
+        existing.weights.set(channel.name, hit.weight ?? 1);
         if (!existing.sources.includes(channel.name)) {
           existing.sources.push(channel.name);
         }
       } else {
-        fused.set(hit.id, { score: contribution, sources: [channel.name] });
+        fused.set(hit.id, {
+          score: contribution,
+          sources: [channel.name],
+          weights: new Map([[channel.name, hit.weight ?? 1]]),
+        });
       }
     }
   }
@@ -113,60 +130,16 @@ async function fuseSource<TId>(args: {
     ranked: filtered.slice(0, args.take).map(([id]) => id),
     scores: new Map(rankedEntries.map(([id, entry]) => [id, entry.score])),
     channelHits,
+    evidence: new Map(
+      Array.from(fused.entries()).map(([id, entry]) => [
+        id,
+        {
+          channels: entry.sources,
+          weights: entry.weights,
+        },
+      ]),
+    ),
   };
-}
-
-// ─── Keyword scoring (memory source only) ─────────────────────────────────────
-
-function keywordMatchScore(
-  memory: Doc<"memories">,
-  queryTerms: string[],
-  topicMap: Map<Id<"userTopics">, string>,
-  exactPhrase?: string,
-): number {
-  if (queryTerms.length === 0) {
-    return 0;
-  }
-
-  const topicNames = (memory.topicIds ?? []).map((id) => topicMap.get(id)).filter(Boolean);
-  const primaryTopic = memory.primaryTopicId ? topicMap.get(memory.primaryTopicId) : "";
-  if (primaryTopic) {
-    topicNames.push(primaryTopic);
-  }
-
-  const haystack = [
-    memory.title ?? "",
-    memory.content ?? "",
-    ...(memory.people ?? []),
-    ...(memory.locations ?? []),
-    memory.lifeArea,
-    ...topicNames,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  let matched = 0;
-  for (const term of queryTerms) {
-    let singular = term;
-    if (term.endsWith("ies") && term.length > 4) {
-      singular = `${term.substring(0, term.length - 3)}y`;
-    } else if (term.endsWith("s") && term.length > 3) {
-      singular = term.substring(0, term.length - 1);
-    }
-
-    if (haystack.includes(term) || (singular !== term && haystack.includes(singular))) {
-      matched += 1;
-    }
-  }
-
-  const ratio = matched / queryTerms.length;
-  // Literal substring hit ranks above scattered term matches.
-  const phrase = exactPhrase?.trim().toLowerCase();
-  if (phrase && phrase.length >= 3 && haystack.includes(phrase)) {
-    return Math.min(1, ratio + 0.3);
-  }
-  return ratio;
 }
 
 // ─── Main entry ───────────────────────────────────────────────────────────────
@@ -267,6 +240,8 @@ export async function runSemanticSearch(
   };
 
   const queryEmbeddingPromise = getQueryEmbedding();
+  const hydratedMemories = new Map<Id<"memories">, Doc<"memories">>();
+  const hydratedDiaryEntries = new Map<Id<"diaryEntries">, Doc<"diaryEntries">>();
 
   // ── Memory source ──
   const memorySourcePromise = fuseSource<Id<"memories">>({
@@ -284,12 +259,12 @@ export async function runSemanticSearch(
           }
           const vectorResults = await ctx.vectorSearch("memories", "by_embedding", {
             vector: queryEmbedding,
-            limit: 30,
+            limit: SEARCH_VECTOR_CANDIDATES,
             filter: (q) => q.eq("userId", args.userId),
           });
           return vectorResults
             .filter((result) => result._score >= VECTOR_MIN_SCORE)
-            .map((result) => ({ id: result._id }));
+            .map((result) => ({ id: result._id, weight: result._score }));
         },
       },
       {
@@ -301,6 +276,7 @@ export async function runSemanticSearch(
             query: cleanQuery,
             limit: 20,
           });
+          for (const memory of results) hydratedMemories.set(memory._id, memory);
           return results.map((memory) => ({ id: memory._id }));
         },
       },
@@ -311,25 +287,13 @@ export async function runSemanticSearch(
           if (contentTerms.length === 0) {
             return [];
           }
-          const userTopics = await ctx.runQuery(internal.userTopics.listActiveNames, {
-            userId: args.userId,
-          });
-          const topicMap = new Map<Id<"userTopics">, string>(
-            userTopics.map(
-              (topic: { _id: Id<"userTopics">; name: string }) =>
-                [topic._id, topic.name.toLowerCase()] as const,
-            ),
+          const results: Array<{ memory: Doc<"memories">; score: number }> = await ctx.runQuery(
+            internal.memories.searchByKeywordScored,
+            { userId: args.userId, query: rawQuery, limit: 30 },
           );
-          const results: Doc<"memories">[] = await ctx.runQuery(internal.memories.searchByKeyword, {
-            userId: args.userId,
-            query: rawQuery,
-            limit: 30,
-          });
+          for (const { memory } of results) hydratedMemories.set(memory._id, memory);
           return results
-            .map((memory) => ({
-              id: memory._id,
-              weight: keywordMatchScore(memory, contentTerms, topicMap, cleanQuery),
-            }))
+            .map(({ memory, score }) => ({ id: memory._id, weight: score }))
             .filter((hit) => hit.weight >= KEYWORD_MIN_SCORE)
             .sort((a, b) => b.weight - a.weight);
         },
@@ -372,25 +336,34 @@ export async function runSemanticSearch(
                   limit: 10,
                 },
               );
+              for (const entry of results) hydratedDiaryEntries.set(entry._id, entry);
               return results.map((entry) => ({ id: entry._id }));
             },
           },
         ],
       })
-    : Promise.resolve({ ranked: [], scores: new Map(), channelHits: new Map() });
+    : Promise.resolve({
+        ranked: [],
+        scores: new Map(),
+        channelHits: new Map(),
+        evidence: new Map(),
+      });
 
   const [memoryPool, diaryPool] = await Promise.all([memorySourcePromise, diarySourcePromise]);
 
   // ── Hydration ──
   let diaryResults: DiarySearchHit[] = [];
   if (diaryPool.ranked.length > 0) {
-    const diaryDocs: Doc<"diaryEntries">[] = await ctx.runQuery(internal.diary.listByIdsInternal, {
-      userId: args.userId,
-      ids: diaryPool.ranked,
-    });
-    const diaryById = new Map(diaryDocs.map((entry) => [entry._id, entry] as const));
+    const missingDiaryIds = diaryPool.ranked.filter((id) => !hydratedDiaryEntries.has(id));
+    if (missingDiaryIds.length > 0) {
+      const diaryDocs: Doc<"diaryEntries">[] = await ctx.runQuery(
+        internal.diary.listByIdsInternal,
+        { userId: args.userId, ids: missingDiaryIds },
+      );
+      for (const entry of diaryDocs) hydratedDiaryEntries.set(entry._id, entry);
+    }
     diaryResults = diaryPool.ranked
-      .map((id) => diaryById.get(id))
+      .map((id) => hydratedDiaryEntries.get(id))
       .filter((entry): entry is Doc<"diaryEntries"> => !!entry)
       .map((entry) => toDiaryCompact(entry));
   }
@@ -421,21 +394,51 @@ export async function runSemanticSearch(
     return { results: [], diaryResults, isCached };
   }
 
-  const memories: Doc<"memories">[] = await ctx.runQuery(internal.memories.listByIdsInternal, {
-    userId: args.userId,
-    ids: memoryPool.ranked,
-  });
-
-  const byId = new Map(memories.map((memory) => [memory._id, memory] as const));
+  const missingMemoryIds = memoryPool.ranked.filter((id) => !hydratedMemories.has(id));
+  if (missingMemoryIds.length > 0) {
+    const memories: Doc<"memories">[] = await ctx.runQuery(internal.memories.listByIdsInternal, {
+      userId: args.userId,
+      ids: missingMemoryIds,
+    });
+    for (const memory of memories) hydratedMemories.set(memory._id, memory);
+  }
   const now = Date.now();
   const scored: SearchableMemory[] = [];
   for (const id of memoryPool.ranked) {
-    const memory = byId.get(id);
+    const memory = hydratedMemories.get(id);
     if (!memory) {
       continue;
     }
     const baseScore = memoryPool.scores.get(id) ?? 0;
-    scored.push({ ...memory, _score: baseScore * recencyMultiplier(memory._creationTime, now) });
+    const evidence = memoryPool.evidence.get(id);
+    const channels = evidence?.channels ?? [];
+    const vectorScore = evidence?.weights.get("vector") ?? 0;
+    const lexicalAgreement = channels.includes("fulltext") || channels.includes("keyword");
+    const confidence =
+      channels.length >= 2 || vectorScore >= 0.62
+        ? "strong"
+        : vectorScore >= VECTOR_MIN_SCORE
+          ? "related"
+          : "weak";
+    const queryTerms = new Set(contentTerms);
+    const matchedConcepts = (memory.searchConcepts ?? [])
+      .filter((concept) =>
+        concept
+          .toLowerCase()
+          .split(/\s+/)
+          .some((term) => queryTerms.has(term)),
+      )
+      .slice(0, 5);
+    scored.push({
+      ...memory,
+      _score: baseScore * recencyMultiplier(memory._creationTime, now),
+      _match: {
+        confidence,
+        relation: lexicalAgreement || confidence === "strong" ? "direct" : "related",
+        channels,
+        matchedConcepts,
+      },
+    });
   }
   // Re-rank the already-selected pool by recency-adjusted score — this only
   // reorders ties/near-ties from the fusion step, it never pulls in items

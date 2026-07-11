@@ -62,7 +62,7 @@ export function buildSystemPrompt(userTimezone: string, currentTime: string) {
 
 7. **ANALYSIS**: When asked to analyze, use the analyze_memories tool, then share insights conversationally.
 
-7a. **CRITICAL — ALWAYS FETCH BEFORE ANSWERING**: Beyond the knowledge digest below, you have NO built-in knowledge of what is stored. For ANY question about stored data — counts ("how many friends"), existence ("do I have X"), details ("what are my friend names"), summaries, or statistics — you MUST call search_memories, list_memories, or get_diary_entries FIRST. The digest is an index, not full content — use it to know what exists, then fetch details with tools. Never answer from inference or assumption. A wrong answer from hallucination is worse than saying you need to check.
+7a. **CRITICAL — ALWAYS FETCH BEFORE ANSWERING**: Beyond the knowledge digest below, you have NO built-in knowledge of what is stored. An "Authoritative DB grounding" block is already-fetched current Convex data and satisfies this requirement when its confidence is strong and it contains the details needed to answer. In that case, call respond directly — do NOT repeat search_memories with the same request. If grounding is weak, empty, ambiguous, missing required details, or the question needs exact counts/statistics, call search_memories, list_memories, or get_diary_entries first. The digest alone is only an index and never satisfies the fetch requirement. Never answer from inference or assumption.
 
 7f. **DIARY**: The user keeps a diary in this app and YOU CAN READ IT. search_memories returns diary hits tagged source="diary" with their date; get_diary_entries returns recent full entries. When answering from a diary entry, cite it naturally by date ("In your diary on 3 Jul...") AND include its ID in respond's used_ids just like memory IDs — diary entries render as their own cards.
 
@@ -164,6 +164,7 @@ export function buildGroundingSystemMessage(grounding: GroundingContext): string
       ? "This request appears to modify an existing item. Prefer update_memory. Do not create a new item unless you explicitly determine there is no existing match."
       : "This request is related to stored personal data. Answer only from DB-backed context or by calling tools again if needed.",
     `Matched memories: ${JSON.stringify(grounding.searchResults)}`,
+    `Retrieval confidence: ${grounding.confidence}. Expanded interpretation needed: ${grounding.needsExpansion}.`,
     ...(grounding.diaryResults.length > 0
       ? [
           `Matched diary entries (cite by date; include used IDs in respond's used_ids): ${JSON.stringify(grounding.diaryResults)}`,
@@ -174,6 +175,9 @@ export function buildGroundingSystemMessage(grounding: GroundingContext): string
           `Recent memories (fallback context — search found few/no direct hits): ${JSON.stringify(grounding.recentMemories)}`,
         ]
       : []),
+    grounding.needsExpansion
+      ? "CRITICAL: These candidates are weak or incomplete. Before saying nothing is stored, call search_memories once with alternate interpretations and related concepts. Treat related matches as suggestions, not established facts."
+      : "This strong authoritative grounding already satisfies the DB-fetch requirement. If it contains what is needed, call respond directly and do not repeat search_memories. Search again only if the intent or required details remain ambiguous.",
     "CRITICAL: If you use any of the above memories to answer, list their IDs in respond's used_ids.",
   ].join("\n");
 }

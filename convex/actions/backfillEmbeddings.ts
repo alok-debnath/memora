@@ -6,33 +6,7 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { getEmbeddingFingerprintForUser, trackedEmbedTexts } from "../lib/aiDispatch";
 import { buildDiarySearchText } from "../lib/diaryText";
-
-function buildEmbeddingText(m: {
-  title?: string;
-  content?: string;
-  people?: string[];
-  locations?: string[];
-  lifeArea?: string;
-  entryKind?: string;
-  attachmentExcerpt?: string;
-}): string {
-  const parts: string[] = [];
-  if (m.title) parts.push(`Title: ${m.title}`);
-  if (m.content) parts.push(`Content: ${m.content}`);
-  if (m.people && m.people.length > 0) {
-    parts.push(`People: ${m.people.join(", ")}`);
-  }
-  if (m.locations && m.locations.length > 0) {
-    parts.push(`Locations: ${m.locations.join(", ")}`);
-  }
-  if (m.lifeArea) parts.push(`Category: ${m.lifeArea}`);
-  if (m.entryKind === "reminder") parts.push("Type: reminder");
-  // Re-embedding (e.g. this backfill cron) must keep including the folded-in
-  // attachment excerpt (see foldAttachmentIntoMemory.ts), or a later re-embed
-  // silently drops attachment text from the vector.
-  if (m.attachmentExcerpt) parts.push(`Attachment content: ${m.attachmentExcerpt}`);
-  return parts.length > 0 ? parts.join("\n") : `${m.title ?? ""}\n${m.content ?? ""}`;
-}
+import { buildMemoryEmbeddingText } from "../lib/memoryRetrieval";
 
 function averageVectors(vectors: number[][]) {
   if (vectors.length === 0) {
@@ -87,18 +61,23 @@ export const backfill = internalAction({
           feature: "memory_search",
           stage: "backfill_missing_embeddings",
           visibility: "background",
-          input: batch.map((memory) => buildEmbeddingText(memory).slice(0, 6000)),
+          input: batch.map((memory) => buildMemoryEmbeddingText(memory).slice(0, 6000)),
           metadata: { stage: "backfill_missing_embeddings" },
         });
-        for (let i = 0; i < batch.length; i += 1) {
-          const embedding = embeddings[i];
-          if (!embedding) continue;
-          processed += 1;
-          await ctx.runMutation(internal.processMemoryMutations.updateEmbedding, {
-            memoryId: batch[i]._id,
-            embedding,
-            embeddingFingerprint: fingerprint,
-          });
+        const updates = batch.flatMap((memory, index) =>
+          embeddings[index]
+            ? [
+                {
+                  memoryId: memory._id,
+                  embedding: embeddings[index],
+                  embeddingFingerprint: fingerprint,
+                },
+              ]
+            : [],
+        );
+        processed += updates.length;
+        if (updates.length > 0) {
+          await ctx.runMutation(internal.processMemoryMutations.updateEmbeddingsBatch, { updates });
         }
       } catch {
         continue;
@@ -175,14 +154,21 @@ export const backfillDiary = internalAction({
           input: embedTargets.map(({ text }) => text),
           metadata: { stage: "backfill_diary_embeddings" },
         });
-        for (let i = 0; i < embedTargets.length; i += 1) {
-          const embedding = embeddings[i];
-          if (!embedding) continue;
-          processed += 1;
-          await ctx.runMutation(internal.processDiaryMutations.updateDiaryEmbedding, {
-            entryId: embedTargets[i].entry._id,
-            embedding,
-            embeddingFingerprint: fingerprint,
+        const updates = embedTargets.flatMap(({ entry }, index) =>
+          embeddings[index]
+            ? [
+                {
+                  entryId: entry._id,
+                  embedding: embeddings[index],
+                  embeddingFingerprint: fingerprint,
+                },
+              ]
+            : [],
+        );
+        processed += updates.length;
+        if (updates.length > 0) {
+          await ctx.runMutation(internal.processDiaryMutations.updateDiaryEmbeddingsBatch, {
+            updates,
           });
         }
       } catch {
@@ -266,18 +252,23 @@ export const rebuildUserEmbeddings = internalAction({
           feature: "memory_search",
           stage: "embedding_rebuild",
           visibility: "background",
-          input: targets.map((memory) => buildEmbeddingText(memory).slice(0, 6000)),
+          input: targets.map((memory) => buildMemoryEmbeddingText(memory).slice(0, 6000)),
           metadata: { stage: "embedding_rebuild" },
         });
-        for (let i = 0; i < targets.length; i += 1) {
-          const embedding = embeddings[i];
-          if (!embedding) continue;
-          processedThisRun += 1;
-          await ctx.runMutation(internal.processMemoryMutations.updateEmbedding, {
-            memoryId: targets[i]._id,
-            embedding,
-            embeddingFingerprint: state.targetEmbeddingFingerprint,
-          });
+        const updates = targets.flatMap((memory, index) =>
+          embeddings[index]
+            ? [
+                {
+                  memoryId: memory._id,
+                  embedding: embeddings[index],
+                  embeddingFingerprint: state.targetEmbeddingFingerprint,
+                },
+              ]
+            : [],
+        );
+        processedThisRun += updates.length;
+        if (updates.length > 0) {
+          await ctx.runMutation(internal.processMemoryMutations.updateEmbeddingsBatch, { updates });
         }
       } catch (error) {
         await ctx.runMutation(internal.aiProviders.updateEmbeddingRebuildStateInternal, {

@@ -160,3 +160,26 @@ export const updateDiaryEmbedding = internalMutation({
     });
   },
 });
+
+export const updateDiaryEmbeddingsBatch = internalMutation({
+  args: {
+    updates: v.array(
+      v.object({
+        entryId: v.id("diaryEntries"),
+        embedding: v.array(v.float64()),
+        embeddingFingerprint: v.optional(v.string()),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    for (const update of args.updates.slice(0, 50)) {
+      const entry = await ctx.db.get(update.entryId);
+      if (!entry) continue;
+      await ctx.db.patch(update.entryId, {
+        embedding: update.embedding,
+        embeddingFingerprint: update.embeddingFingerprint,
+        embeddingState: "ready",
+      });
+    }
+  },
+});

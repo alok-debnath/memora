@@ -11,7 +11,8 @@ How to extend the system without regressions, redundancy, or cost creep. Written
 5. **Prompt ordering is a caching contract**: static system prompt first, knowledge digest second, chat history third, per-turn context after. Keep the system prompt byte-stable across turns (only the timestamp block varies) so provider prompt caching keeps hitting.
 6. **Every cost knob lives in `convex/lib/chat/budgets.ts`.** New caps/limits/excerpt lengths go there, not inline.
 7. **`"use node"` propagates.** Any `convex/lib` module that (transitively) imports a node-tainted module (`aiDispatch`, `semanticSearch`, `attachmentExtraction`, `aiSecrets`) needs `"use node"` at the top, or deploy fails with an unhelpful "Node APIs" error.
-8. **The final answer is always a forced tool call, never freeform text.** Every planner iteration runs with `tool_choice: "required"` + `parallel_tool_calls: false`; the model ends a turn by calling `respond({message, used_ids})` (`lib/chat/tools/respond.ts`) — never by returning plain content. `used_ids` is a mandatory argument, not a voluntary follow-up, which is what makes card selection reliable without a second completion call. `message` streams to the user via a live JSON-argument extractor (`lib/streamJsonField.ts`, wired in `providers/openai.ts`'s `streamToolTextField`), so it still reads as ordinary streamed text. Don't reintroduce a freeform "just answer in text" exit path or a nag/retry completion to recover missing IDs — that was the previous design and it doubled AI cost on most grounded turns.
+8. **The final answer is always a forced tool call, never freeform text.** Every planner iteration uses required tool choice; non-terminal iterations may batch independent tools, while forced-respond iterations disable parallel calls. The model ends through `respond({message, used_ids})` (`lib/chat/tools/respond.ts`). `used_ids` is mandatory, and `message` streams through the JSON-argument extractor in `providers/openai.ts`. Don't reintroduce a freeform exit or a nag/retry completion for missing IDs.
+9. **Strong initial grounding is already a DB fetch.** When the authoritative grounding block is strong and contains the required details, the planner should call `respond` directly rather than repeat `search_memories`. Weak, empty, or ambiguous grounding must still run expanded retrieval; exact counts require an exact DB-backed tool result. Keep this distinction aligned across the system prompt, grounding message, and tool descriptions.
 
 ## Extension recipes
 
@@ -32,6 +33,10 @@ How to extend the system without regressions, redundancy, or cost creep. Written
 
 One source descriptor in `convex/lib/semanticSearch.ts` via `fuseSource()` — declare channels (`vector`/`fulltext`/…, each with boost + `run()`), it reuses the single shared query-embedding promise. Each source ranks in its own RRF pool so it never displaces another source's results. Prereqs on the table: `searchText` denormalized field + search index, `embedding` + vector index (1536 dims), write-time embed in the processing action (feature `"memory_search"` — see gotcha below).
 
+Memory retrieval representations are versioned and centralized in `lib/memoryRetrieval.ts`. Capture, processing, attachment folding, and embedding backfills must use its normalization/search-text/embedding-text builders. The extraction tool must require `semanticSummary`, `searchAliases`, and `searchConcepts`; optional enrichment silently produced a nominally upgraded but semantically empty corpus in v2. Increment `MEMORY_RETRIEVAL_VERSION` whenever stored meaning changes and run `actions/rebuildRetrieval.ts`; inspect progress/failures through `retrievalRebuildJobs:latest`.
+
+Search channels should reuse already-hydrated documents: full-text and scored-keyword hits populate the per-search hydration maps, and only vector-only winners are fetched by ID. Keep keyword topic lookup and scoring inside `memories:searchByKeywordScored` rather than fetching topics twice in the action. Embedding backfills batch provider inputs and persist vectors through the bounded batch mutations in `processMemoryMutations.ts` / `processDiaryMutations.ts`.
+
 ### Add an AI provider
 
 One adapter file in `convex/lib/providers/` implementing `AiProviderAdapter` + entry in `ADAPTERS` (`aiDispatch.ts`). `chatCompletionStream` is optional — dispatch falls back to non-streaming automatically. Update `PROVIDER_MODELS` / routing in `lib/ai.ts`, and add a row in `lib/aiPricing.ts`'s default catalog for every `(provider, model, operation)` triple you route to — a missing row silently records cost as `unavailable`/$0, not an error. Errors thrown by the adapter's raw HTTP call must carry a `.status` (see `googleFetchJson` in `providers/google.ts`) so `isRetryableAiError`/`withRetry` in `aiDispatch.ts` can actually retry them — a plain `Error` with the code only in the message string never matches and skips both retry and the admin-configured fallback route (`resolveAiFallbackRoute`, wired into `trackedChatCompletion`/`trackedChatCompletionStream`).
@@ -40,9 +45,9 @@ One adapter file in `convex/lib/providers/` implementing `AiProviderAdapter` + e
 
 Put it in `convex/model/<domain>/` as plain functions taking `(ctx, args)`. Existing homes: `model/memories/{helpers,topicLinks,deletion,keywordSearch}.ts`, `model/analytics/aggregates.ts`. Thin registrations stay in the root convex file.
 
-## Chat turn lifecycle (memoryChat.ts, ~550 lines)
+## Chat turn lifecycle
 
-auth → send user msg → **grounding search fired concurrently** with history+digest fetch and attachment extraction → conversation assembly (prompt-order invariant) → agent loop (≤`MAX_ITERATIONS`, forced tool call per iteration via `trackedChatCompletionStream`, registry dispatch, ends when `respond` runs) → finalize: `validateCardIds`, build meta, `replyStreamer.finalize({content, meta})`.
+auth → send user msg → **grounding search fired concurrently** with history+digest fetch and attachment extraction → conversation assembly → planner: strong complete grounding can go directly to `respond`; weak/ambiguous grounding expands through tools → finalize: `validateCardIds`, build meta, `replyStreamer.finalize({content, meta})`.
 
 Streaming: `lib/chat/replyStreamer.ts` — assistant doc created lazily on first visible text (`streaming: true`), patched ≥400ms apart in order. The visible text is the `respond` tool call's `message` argument, extracted live from streaming JSON (never raw markup, so nothing needs stripping). Client (`useChatController`) drops the progress bubble once a streaming assistant message exists.
 
@@ -54,21 +59,22 @@ Streaming: `lib/chat/replyStreamer.ts` — assistant doc created lazily on first
 - **Exact counts come from aggregate tables** (`userMemoryStats` via `diary.getKnowledgeDigestInternal`), never from counting a capped list.
 - **Deploy after backend changes**: `bun x convex dev --once`. A stale deployment reproduces "fixed" bugs.
 - **Usage tracking with streaming**: keep `stream_options: { include_usage: true }` so token accounting stays exact.
+- **Operational writes are deduplicated**: `chat.setSearchStatus` and `chat.patchMessageContent` skip semantically identical updates. Preserve this guard when adding status fields so reactive subscribers are not invalidated by no-op patches.
 
 ## Verification checklist per change
 
-1. `bun run typecheck`
-2. `bun x convex dev --once` (must succeed — watch for "use node" errors)
-3. Smoke internal functions directly: `bun x convex run <file>:<fn> '<json>'`, inspect data via `bun x convex data <table>`
-4. In-app regression set: chat streams reply; search/diary questions surface cards; create memory/reminder; deletion proposal flow; deep scan; reminder calendar sync.
+1. `bun test`
+2. `bun run typecheck`
+3. `bun x convex dev --once` (must succeed — watch for "use node" errors)
+4. Smoke internal functions directly: `bun x convex run <file>:<fn> '<json>'`, inspect data via `bun x convex data <table>`
+5. In-app regression set: chat streams reply; search/diary questions surface cards; create memory/reminder; deletion proposal flow; deep scan; reminder calendar sync.
 
-## Known open items (as of 2026-07-08)
+## Known open items (as of 2026-07-11)
 
-- No automated tests — highest-value next investment (`convex-test` over validation gate, fuseSource ranking, tool registry).
+- Retrieval now has Bun/`convex-test` coverage for grounding gates, query normalization, representation building, vector ranking, and ownership filtering. Validation-gate and full fused-channel integration coverage remain worthwhile.
 - No per-user AI spend caps — analytics records exact cost per request; enforce in `resolveAiRoute` when needed.
 - Google provider has no streaming adapter (falls back to non-streaming — chat reply appears all at once for Google-routed turns instead of token-by-token).
 - Diary card "View in Diary" opens the tab, not the specific entry (no deep link).
 - `conversationId` exists on chatMessages but UI is single-conversation.
 - A global/admin embedding-route change doesn't rebuild existing users' stored vectors (only the per-user BYOK change path does, via `rebuildUserEmbeddings`) — the query-cache fingerprint check (`searchQueryCache.embeddingFingerprint`, see `semanticSearch.ts`) stops a _stale query vector_ from being served, but a corpus left half-migrated between two embedding spaces is still a relevance/dimension problem an admin-side route change can create.
 - Diary embeddings and memory embeddings are both retried by 6h crons now (`backfill` / `backfillDiary` in `backfillEmbeddings.ts`, wired in `crons.ts`) — a transient embed failure at write time is recoverable, but a hard dimension mismatch (wrong model selected) will just fail every retry silently forever; there's no alerting on a memory stuck in `embeddingState: "missing"` past N retries.
-- Attachment text search (`memories.attachmentExcerpt`, folded in by `foldAttachmentIntoMemory.ts`) covers the vector channel only, not the `search_content` fulltext index (which still reads `content` only) — a receipt photo's extracted text is semantically searchable but won't match an exact-keyword fulltext hit unless it also happens to score well on vectors.

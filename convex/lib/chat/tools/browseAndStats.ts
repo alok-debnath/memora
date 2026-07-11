@@ -64,7 +64,7 @@ export const listMemoriesTool: ChatTool = {
     function: {
       name: "list_memories",
       description:
-        "List memories with optional filters for browsing or counting. Use this for count questions ('how many X'), existence checks, or when the user asks to see/list stored items. You MUST call this (or search_memories) before answering any factual question about stored data.",
+        "List memories with optional filters for browsing or exact counting. Use this for count questions ('how many X'), existence checks, or when the user asks to see/list stored items. Strong Authoritative DB grounding can answer details directly, but exact counts still require this or another exact DB-backed result.",
       parameters: {
         type: "object",
         properties: {

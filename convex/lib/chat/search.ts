@@ -50,6 +50,8 @@ export async function searchMemories(
       diaryResults: [],
       count: recentMemories.length,
       searchMode: "recent_only",
+      confidence: recentMemories.length > 0 ? "weak" : "empty",
+      needsExpansion: true,
     };
   }
 
@@ -69,12 +71,17 @@ export async function searchMemories(
     includeDiary: true,
   });
 
+  const results = semanticResults.results.slice(0, SEARCH_RESULTS_TOP).map(toMemorySummary);
+  const strongCount = results.filter((result) => result.match?.confidence === "strong").length;
+  const confidence = results.length === 0 ? "empty" : strongCount > 0 ? "strong" : "weak";
   return {
-    results: semanticResults.results.slice(0, SEARCH_RESULTS_TOP).map(toMemorySummary),
+    results,
     diaryResults: semanticResults.diaryResults,
     count: semanticResults.results.length + semanticResults.diaryResults.length,
     isCached: semanticResults.isCached,
     searchMode: semanticResults.isCached ? "semantic_cached" : "semantic_fresh",
+    confidence,
+    needsExpansion: confidence !== "strong",
   };
 }
 
@@ -164,6 +171,8 @@ export async function buildGroundingContext(
       diaryResults: [],
       recentMemories: [],
       isCached: false,
+      confidence: "empty",
+      needsExpansion: false,
     };
   }
 
@@ -192,5 +201,7 @@ export async function buildGroundingContext(
       ? recentMemories.slice(0, GROUNDING_RECENT_TOP).map(toMemoryCompact)
       : [],
     isCached: searchRes.isCached ?? false,
+    confidence: searchRes.confidence,
+    needsExpansion: searchRes.needsExpansion,
   };
 }

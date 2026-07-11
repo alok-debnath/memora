@@ -127,6 +127,8 @@ export const SEARCH_NOISE_WORDS = new Set([
   "anything",
   "info",
   "information",
+  "memory",
+  "memories",
   "stuff",
   "things",
   "related",

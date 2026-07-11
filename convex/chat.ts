@@ -116,6 +116,10 @@ export const send = internalMutation({
 
 // ─── Chat search streaming status ─────────────────────────────────────────────
 
+function sameOperationalValue(left: unknown, right: unknown) {
+  return left === right || JSON.stringify(left) === JSON.stringify(right);
+}
+
 /** Written by the chat action when search_memories is invoked. */
 export const setSearchStatus = internalMutation({
   args: {
@@ -159,6 +163,14 @@ export const setSearchStatus = internalMutation({
       updatedAt: Date.now(),
     };
     if (existing) {
+      const meaningfulPatch = Object.entries(patch).filter(([key]) => key !== "updatedAt");
+      if (
+        meaningfulPatch.every(([key, value]) =>
+          sameOperationalValue((existing as Record<string, unknown>)[key], value),
+        )
+      ) {
+        return;
+      }
       await ctx.db.patch(existing._id, patch);
     } else {
       await ctx.db.insert("chatSearchStatus", {
@@ -359,6 +371,15 @@ export const patchMessageContent = internalMutation({
     streaming: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    const existing = await ctx.db.get(args.id);
+    if (!existing) return;
+    if (
+      (args.content === undefined || args.content === existing.content) &&
+      (args.streaming === undefined || args.streaming === existing.streaming) &&
+      (args.meta === undefined || sameOperationalValue(args.meta, existing.meta))
+    ) {
+      return;
+    }
     await ctx.db.patch(args.id, {
       ...(args.content !== undefined ? { content: args.content } : {}),
       ...(args.meta !== undefined ? { meta: args.meta } : {}),

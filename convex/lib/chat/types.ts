@@ -48,6 +48,8 @@ export type MemorySearchResult = {
   count: number;
   isCached?: boolean;
   searchMode: "recent_only" | "semantic_fresh" | "semantic_cached";
+  confidence: "strong" | "weak" | "empty";
+  needsExpansion: boolean;
 };
 
 export type GroundingContext = {
@@ -59,6 +61,8 @@ export type GroundingContext = {
   diaryResults: DiarySearchHit[];
   recentMemories: MemoryCompact[];
   isCached: boolean;
+  confidence: "strong" | "weak" | "empty";
+  needsExpansion: boolean;
 };
 
 export type DeletionItem = {

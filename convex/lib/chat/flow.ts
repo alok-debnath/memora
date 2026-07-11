@@ -10,6 +10,10 @@ export type CardFlowSearch = {
   resultCount: number;
   cacheState?: "cached" | "fresh";
   searchMode?: MemorySearchResult["searchMode"];
+  confidence?: MemorySearchResult["confidence"];
+  needsExpansion?: boolean;
+  interpretedAs?: string[];
+  relatedConcepts?: string[];
 };
 
 export type CardFlowAttachment = {

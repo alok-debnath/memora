@@ -24,6 +24,12 @@ export const RECENT_MEMORIES_LIMIT = 100;
 /** Semantic search: internal fetch size and results surfaced to the model. */
 export const SEARCH_FETCH_LIMIT = 12;
 export const SEARCH_RESULTS_TOP = 10;
+export const SEARCH_VECTOR_CANDIDATES = 50;
+export const SEARCH_VECTOR_MIN_SCORE = 0.25;
+export const SEARCH_RELATIVE_SCORE_FLOOR = 0.35;
+export const SEARCH_ALIASES_MAX = 12;
+export const SEARCH_CONCEPTS_MAX = 16;
+export const SEARCH_TEXT_CHARS = 12_000;
 
 /** Grounding context caps. */
 export const GROUNDING_RESULTS_TOP = 8;

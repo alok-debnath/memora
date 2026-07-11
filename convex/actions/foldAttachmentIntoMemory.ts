@@ -5,7 +5,7 @@ import { internal } from "../_generated/api";
 import { internalAction } from "../_generated/server";
 import { getEmbeddingFingerprintForUser, trackedEmbedText } from "../lib/aiDispatch";
 import { ATTACHMENT_EXCERPT_CHARS } from "../lib/chat/budgets";
-import { buildEmbeddingText } from "./processMemory";
+import { buildMemoryEmbeddingText, buildMemorySearchText } from "../lib/memoryRetrieval";
 
 /**
  * Folds a memory's linked attachments' extracted text (OCR/PDF, see
@@ -17,7 +17,7 @@ import { buildEmbeddingText } from "./processMemory";
  *
  * Write-time only (one embed per attachment upload, triggered right after
  * extraction/linking completes) — adds no per-chat-turn AI cost. See
- * buildEmbeddingText in processMemory.ts / backfillEmbeddings.ts for why
+ * buildMemoryEmbeddingText in lib/memoryRetrieval.ts for why
  * attachmentExcerpt must also be threaded through every future re-embed of
  * this memory, not just this one.
  */
@@ -47,7 +47,7 @@ export const foldAttachmentIntoMemory = internalAction({
         feature: "memory_processing",
         stage: "attachment_fold_embedding",
         visibility: "background",
-        input: buildEmbeddingText({
+        input: buildMemoryEmbeddingText({
           title: memory.title,
           content: memory.content,
           people: memory.people,
@@ -55,6 +55,9 @@ export const foldAttachmentIntoMemory = internalAction({
           lifeArea: memory.lifeArea,
           entryKind: memory.entryKind,
           attachmentExcerpt,
+          semanticSummary: memory.semanticSummary,
+          searchAliases: memory.searchAliases,
+          searchConcepts: memory.searchConcepts,
         }),
       });
       const embeddingFingerprint = await getEmbeddingFingerprintForUser(ctx, memory.userId);
@@ -62,6 +65,7 @@ export const foldAttachmentIntoMemory = internalAction({
         memoryId: args.memoryId,
         embedding,
         embeddingFingerprint,
+        searchText: buildMemorySearchText({ ...memory, attachmentExcerpt }),
       });
       await ctx.runMutation(internal.memories.patchAttachmentExcerptInternal, {
         memoryId: args.memoryId,

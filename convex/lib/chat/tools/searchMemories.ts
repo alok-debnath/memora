@@ -14,11 +14,25 @@ export const searchMemoriesTool: ChatTool = {
     function: {
       name: "search_memories",
       description:
-        "Search across ALL of the user's stored data — memories, reminders, AND diary entries — using semantic plus fuzzy search. Results are tagged with source ('memory' or 'diary'). Use whenever the user asks about stored facts, counts, past events, feelings, or wants to recall information. You MUST call this (or list_memories) before answering any factual question about stored data — never answer from inference.",
+        "Search across ALL stored memories, reminders, and diary entries using semantic plus fuzzy search. Call this for stored facts unless strong Authoritative DB grounding already contains the answer; never repeat the same search just to satisfy a tool-use rule. Weak/empty grounding must be expanded before concluding nothing exists.",
       parameters: {
         type: "object",
         properties: {
           query: { type: "string", description: "The search query." },
+          interpretations: {
+            type: "array",
+            maxItems: 4,
+            items: { type: "string" },
+            description:
+              "Alternate meanings or phrasings when the user's wording is broad, indirect, or ambiguous.",
+          },
+          related_concepts: {
+            type: "array",
+            maxItems: 8,
+            items: { type: "string" },
+            description:
+              "Activities, goals, situations, or problems that could make a memory useful even without exact wording.",
+          },
         },
         required: ["query"],
         additionalProperties: false,
@@ -40,10 +54,24 @@ export const searchMemoriesTool: ChatTool = {
   }),
   handler: async (tc, fnArgs) => {
     const searchQuery = String(fnArgs.query || "");
+    const interpretations = Array.isArray(fnArgs.interpretations)
+      ? fnArgs.interpretations
+          .filter((item): item is string => typeof item === "string")
+          .slice(0, 4)
+      : [];
+    const relatedConcepts = Array.isArray(fnArgs.related_concepts)
+      ? fnArgs.related_concepts
+          .filter((item): item is string => typeof item === "string")
+          .slice(0, 8)
+      : [];
+    const expandedQuery = [searchQuery, ...interpretations, ...relatedConcepts]
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .join(" ");
     // No pre-search status call here — the dispatch loop already emitted
     // this tool's buildStatus() (identical fields) right before handler ran.
     try {
-      const searchQueryHash = normalizeSearchQueryHash(searchQuery);
+      const searchQueryHash = normalizeSearchQueryHash(expandedQuery);
       const userMessageHash = normalizeSearchQueryHash(tc.userMessage);
       const searchRes =
         tc.grounding.shouldGround &&
@@ -57,10 +85,12 @@ export const searchMemoriesTool: ChatTool = {
               searchMode: tc.grounding.isCached
                 ? ("semantic_cached" as const)
                 : ("semantic_fresh" as const),
+              confidence: tc.grounding.confidence,
+              needsExpansion: tc.grounding.needsExpansion,
             }
           : await searchMemories(tc.ctx, {
               token: tc.token,
-              query: searchQuery,
+              query: expandedQuery,
               userId: tc.userId,
               recentMemories: await tc.getRecentMemories(),
             });
@@ -76,6 +106,10 @@ export const searchMemoriesTool: ChatTool = {
               ? "fresh"
               : undefined,
         searchMode: searchRes.searchMode,
+        confidence: searchRes.confidence,
+        needsExpansion: searchRes.needsExpansion,
+        interpretedAs: interpretations,
+        relatedConcepts,
       });
       tc.state.surfaceCandidates = searchRes.results.map((r: { id: string; title?: string }) => ({
         id: String(r.id),

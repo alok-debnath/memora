@@ -74,6 +74,15 @@ export default defineSchema({
      * Not shown in the UI; feeds the embedding text only.
      */
     attachmentExcerpt: v.optional(v.string()),
+    /** Versioned, AI-enriched representation used by lexical and semantic recall. */
+    searchText: v.optional(v.string()),
+    semanticSummary: v.optional(v.string()),
+    searchAliases: v.optional(v.array(v.string())),
+    searchConcepts: v.optional(v.array(v.string())),
+    retrievalVersion: v.optional(v.number()),
+    retrievalState: v.optional(
+      v.union(v.literal("pending"), v.literal("ready"), v.literal("failed")),
+    ),
     embedding: v.optional(v.array(v.float64())),
     embeddingFingerprint: v.optional(v.string()),
     embeddingState: v.union(v.literal("missing"), v.literal("ready")),
@@ -119,6 +128,10 @@ export default defineSchema({
     })
     .searchIndex("search_title", {
       searchField: "title",
+      filterFields: ["userId"],
+    })
+    .searchIndex("search_enriched", {
+      searchField: "searchText",
       filterFields: ["userId"],
     })
     .vectorIndex("by_embedding", {
@@ -716,6 +729,19 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_user_hash", ["userId", "queryHash"])
     .index("by_last_used_at", ["lastUsedAt"]),
+
+  retrievalRebuildJobs: defineTable({
+    status: v.union(v.literal("running"), v.literal("completed"), v.literal("failed")),
+    targetVersion: v.number(),
+    cursor: v.optional(v.string()),
+    inspected: v.number(),
+    rebuilt: v.number(),
+    failures: v.number(),
+    lastError: v.optional(v.string()),
+    startedAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  }).index("by_startedAt", ["startedAt"]),
 
   aiRoutingConfig: defineTable({
     capability: aiCapabilityValidator,

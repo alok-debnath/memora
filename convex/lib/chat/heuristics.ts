@@ -101,6 +101,9 @@ const FACTUAL_GROUNDING_PATTERNS = [
   /\blist\b/i,
   /\bshow\b/i,
   /\bfind\b/i,
+  /\bwhat about\b/i,
+  /\banything about\b/i,
+  /\brelated to\b/i,
   /\bdelete\b/i,
   /\bremove\b/i,
   /\brestore\b/i,
@@ -129,7 +132,10 @@ export function shouldGroundAgainstDb(message: string) {
     return false;
   }
 
-  return PERSONAL_QUERY_PATTERNS.some((pattern) => pattern.test(trimmed));
+  return (
+    PERSONAL_QUERY_PATTERNS.some((pattern) => pattern.test(trimmed)) ||
+    FACTUAL_GROUNDING_PATTERNS.some((pattern) => pattern.test(trimmed))
+  );
 }
 
 export function shouldPreferUpdatingExisting(message: string) {

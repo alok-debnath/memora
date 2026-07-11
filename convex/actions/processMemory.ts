@@ -14,6 +14,12 @@ import {
 import { normalizeMemoryFields } from "../lib/aiNormalization";
 import { toStoredMemoryFields } from "../lib/memoryKind";
 import { getReminderTitleWithoutSchedule } from "../lib/reminderTitle";
+import {
+  buildMemoryEmbeddingText,
+  buildMemorySearchText,
+  MEMORY_RETRIEVAL_VERSION,
+  normalizeMemoryRetrievalFields,
+} from "../lib/memoryRetrieval";
 
 type Conflict = {
   existingMemoryId: string;
@@ -61,6 +67,9 @@ type AIExtractedMemory = {
     actionType?: "task" | "reminder" | "fact" | "decision";
   }>;
   conflicts?: Conflict[];
+  semanticSummary?: string;
+  searchAliases?: string[];
+  searchConcepts?: string[];
 };
 
 function buildExtractionSystemPrompt(
@@ -108,7 +117,13 @@ Only report REAL conflicts where information genuinely contradicts. Do NOT flag 
 ${existingContext ? `EXISTING MEMORIES FOR CONFLICT CHECKING:\n${existingContext}` : "No existing memories provided for conflict checking."}
 
 EXTRACT DATA:
-Extract people, locations, importance, life_area, context_tags, sentiment_score, and actions.`;
+Extract people, locations, importance, life_area, context_tags, sentiment_score, and actions.
+
+RETRIEVAL ENRICHMENT (REQUIRED):
+- semanticSummary: explain the memory's meaning, why it may matter later, and situations where it could help.
+- searchAliases: alternate natural phrases the person may use when they cannot remember the original wording.
+- searchConcepts: broader activities, goals, problems, contexts, and indirect associations. Include useful implications, not merely words copied from the note.
+Always return all three fields. Use an empty array only when no honest alias or concept exists.`;
 }
 
 function fallbackStructuredData(content: string): AIExtractedMemory {
@@ -156,36 +171,6 @@ function isSameValue(left: unknown, right: unknown) {
  * Category: family
  * ```
  */
-function buildEmbeddingText(args: {
-  title?: string;
-  content?: string;
-  people?: string[];
-  locations?: string[];
-  lifeArea?: string;
-  entryKind?: string;
-  attachmentExcerpt?: string;
-}): string {
-  const parts: string[] = [];
-  if (args.title) parts.push(`Title: ${args.title}`);
-  if (args.content) parts.push(`Content: ${args.content}`);
-  if (args.people && args.people.length > 0) {
-    parts.push(`People: ${args.people.join(", ")}`);
-  }
-  if (args.locations && args.locations.length > 0) {
-    parts.push(`Locations: ${args.locations.join(", ")}`);
-  }
-  if (args.lifeArea) parts.push(`Category: ${args.lifeArea}`);
-  if (args.entryKind === "reminder") parts.push(`Type: reminder`);
-  // Keep including the folded-in attachment excerpt (see
-  // foldAttachmentIntoMemory.ts) on every re-embed of this memory, or a
-  // later edit/re-process silently drops attachment text from the vector.
-  if (args.attachmentExcerpt) parts.push(`Attachment content: ${args.attachmentExcerpt}`);
-  // Fall back to simple concatenation if no structured parts
-  return parts.length > 0 ? parts.join("\n") : `${args.title ?? ""}\n${args.content ?? ""}`;
-}
-
-export { buildEmbeddingText };
-
 async function extractStructuredMemory(args: {
   ctx: Pick<ActionCtx, "runMutation" | "runQuery">;
   userId: Id<"users">;
@@ -298,6 +283,25 @@ async function extractStructuredMemory(args: {
                     required: ["text", "type"],
                   },
                 },
+                semanticSummary: {
+                  type: "string",
+                  description:
+                    "Concise meaning-based summary including why this may matter and situations where it is useful.",
+                },
+                searchAliases: {
+                  type: "array",
+                  maxItems: 12,
+                  items: { type: "string" },
+                  description:
+                    "Alternate natural phrasings someone might use to recall this without its exact words.",
+                },
+                searchConcepts: {
+                  type: "array",
+                  maxItems: 16,
+                  items: { type: "string" },
+                  description:
+                    "Broader activities, goals, problems, contexts, and related concepts implied by this memory.",
+                },
                 conflicts: {
                   type: "array",
                   items: {
@@ -319,7 +323,7 @@ async function extractStructuredMemory(args: {
                   },
                 },
               },
-              required: ["content"],
+              required: ["content", "semanticSummary", "searchAliases", "searchConcepts"],
               additionalProperties: false,
             },
           },
@@ -348,6 +352,9 @@ async function buildMemoryEmbedding(args: {
   lifeArea?: string;
   entryKind?: string;
   attachmentExcerpt?: string;
+  semanticSummary?: string;
+  searchAliases?: string[];
+  searchConcepts?: string[];
   chatTurnId?: Id<"chatMessages">;
 }) {
   const embedding = await trackedEmbedText(args.ctx, {
@@ -355,7 +362,7 @@ async function buildMemoryEmbedding(args: {
     feature: args.feature,
     stage: "embedding",
     visibility: "background",
-    input: buildEmbeddingText({
+    input: buildMemoryEmbeddingText({
       title: args.title,
       content: args.content,
       people: args.people,
@@ -363,6 +370,9 @@ async function buildMemoryEmbedding(args: {
       lifeArea: args.lifeArea,
       entryKind: args.entryKind,
       attachmentExcerpt: args.attachmentExcerpt,
+      semanticSummary: args.semanticSummary,
+      searchAliases: args.searchAliases,
+      searchConcepts: args.searchConcepts,
     }),
     link: args.chatTurnId
       ? { chatTurnId: args.chatTurnId, chatMessageId: args.chatTurnId }
@@ -491,6 +501,11 @@ export const processMemory = action({
         ...normalized,
         title: normalizedTitle,
       };
+      const retrieval = normalizeMemoryRetrievalFields({
+        semanticSummary: extracted?.semanticSummary,
+        searchAliases: extracted?.searchAliases,
+        searchConcepts: extracted?.searchConcepts,
+      });
 
       await ctx.runMutation(internal.processMemoryMutations.updateAIFields, {
         memoryId: args.memoryId,
@@ -503,6 +518,18 @@ export const processMemory = action({
         linkedUrls: normalizedForWrite.linkedUrls,
         sentimentScore: normalizedForWrite.sentimentScore,
         extractedActions: normalizedForWrite.extractedActions,
+        ...retrieval,
+        searchText: buildMemorySearchText({
+          title: normalizedForWrite.title ?? args.title,
+          content: args.content,
+          people: normalizedForWrite.people,
+          locations: normalizedForWrite.locations,
+          lifeArea: normalizedForWrite.lifeArea,
+          ...retrieval,
+          attachmentExcerpt: memory.attachmentExcerpt,
+        }),
+        retrievalVersion: MEMORY_RETRIEVAL_VERSION,
+        retrievalState: "ready",
       });
 
       const finalImportance = normalizedForWrite.importance ?? memory.importance;
@@ -537,6 +564,11 @@ export const processMemory = action({
         lifeArea: normalizedForWrite.lifeArea,
         entryKind: normalizedForWrite.entryKind,
         attachmentExcerpt: memory.attachmentExcerpt,
+        ...normalizeMemoryRetrievalFields({
+          semanticSummary: extracted?.semanticSummary,
+          searchAliases: extracted?.searchAliases,
+          searchConcepts: extracted?.searchConcepts,
+        }),
         chatTurnId: args.sourceChatTurnId,
       });
 
@@ -706,6 +738,9 @@ export const captureMemory = internalAction({
           locations: structured.locations,
           lifeArea: structured.lifeArea,
           entryKind: structured.entryKind,
+          semanticSummary: structured.semanticSummary,
+          searchAliases: structured.searchAliases,
+          searchConcepts: structured.searchConcepts,
           chatTurnId: args.sourceChatTurnId,
         });
         embedding = result.embedding;
@@ -736,7 +771,10 @@ export const captureMemory = internalAction({
     if (
       embedding ||
       structured.sentimentScore !== undefined ||
-      structured.extractedActions !== undefined
+      structured.extractedActions !== undefined ||
+      structured.semanticSummary !== undefined ||
+      structured.searchAliases !== undefined ||
+      structured.searchConcepts !== undefined
     ) {
       await ctx.runMutation(internal.processMemoryMutations.updateAIFields, {
         memoryId,
@@ -752,6 +790,19 @@ export const captureMemory = internalAction({
         extractedActions: structured.extractedActions,
         embedding,
         embeddingFingerprint,
+        ...normalizeMemoryRetrievalFields(structured),
+        searchText: buildMemorySearchText({
+          title: structured.title || fallback.title,
+          content: args.content,
+          people: structured.people,
+          locations: structured.locations,
+          lifeArea: structured.lifeArea,
+          semanticSummary: structured.semanticSummary,
+          searchAliases: structured.searchAliases,
+          searchConcepts: structured.searchConcepts,
+        }),
+        retrievalVersion: MEMORY_RETRIEVAL_VERSION,
+        retrievalState: "ready",
       });
 
       if (embedding) {

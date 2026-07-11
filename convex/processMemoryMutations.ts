@@ -62,6 +62,37 @@ export const updateEmbedding = internalMutation({
   },
 });
 
+export const updateEmbeddingsBatch = internalMutation({
+  args: {
+    updates: v.array(
+      v.object({
+        memoryId: v.id("memories"),
+        embedding: v.array(v.float64()),
+        embeddingFingerprint: v.optional(v.string()),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    for (const update of args.updates.slice(0, 50)) {
+      const memory = await ctx.db.get(update.memoryId);
+      if (
+        !memory ||
+        memory.status !== "active" ||
+        isSameValue(memory.embedding, update.embedding)
+      ) {
+        continue;
+      }
+      await ctx.db.patch(update.memoryId, {
+        embedding: update.embedding,
+        ...(update.embeddingFingerprint
+          ? { embeddingFingerprint: update.embeddingFingerprint }
+          : {}),
+        embeddingState: deriveEmbeddingState(update.embedding),
+      });
+    }
+  },
+});
+
 export const updateAnalysis = internalMutation({
   args: {
     memoryId: v.id("memories"),
@@ -97,6 +128,14 @@ export const updateAIFields = internalMutation({
     extractedActions: v.optional(extractedActionsValidator),
     embedding: v.optional(v.array(v.float64())),
     embeddingFingerprint: v.optional(v.string()),
+    searchText: v.optional(v.string()),
+    semanticSummary: v.optional(v.string()),
+    searchAliases: v.optional(v.array(v.string())),
+    searchConcepts: v.optional(v.array(v.string())),
+    retrievalVersion: v.optional(v.number()),
+    retrievalState: v.optional(
+      v.union(v.literal("pending"), v.literal("ready"), v.literal("failed")),
+    ),
   },
   handler: async (ctx, args) => {
     const memory = await ctx.db.get(args.memoryId);

@@ -274,7 +274,13 @@ export const searchByContent = internalQuery({
     const cleanedQuery = cleanSearchQuery(args.query);
     if (!cleanedQuery) return [];
 
-    const [contentResults, titleResults] = await Promise.all([
+    const [enrichedResults, contentResults, titleResults] = await Promise.all([
+      ctx.db
+        .query("memories")
+        .withSearchIndex("search_enriched", (q) =>
+          q.search("searchText", cleanedQuery).eq("userId", args.userId),
+        )
+        .take(maxResults),
       ctx.db
         .query("memories")
         .withSearchIndex("search_content", (q) =>
@@ -291,7 +297,7 @@ export const searchByContent = internalQuery({
 
     const seen = new Set<Id<"memories">>();
     const merged: Doc<"memories">[] = [];
-    for (const m of [...contentResults, ...titleResults]) {
+    for (const m of [...enrichedResults, ...titleResults, ...contentResults]) {
       if (!seen.has(m._id) && isActiveMemory(m)) {
         seen.add(m._id);
         merged.push(m);
@@ -314,6 +320,27 @@ export const searchByKeyword = internalQuery({
 
     const scored = await executeKeywordSearch(ctx, args.userId, queryTerms);
     return scored.slice(0, maxResults).map((s) => s.memory);
+  },
+});
+
+/** Keyword candidates with the exact score used by semantic fusion. */
+export const searchByKeywordScored = internalQuery({
+  args: {
+    userId: v.id("users"),
+    query: v.string(),
+    limit: v.optional(v.float64()),
+  },
+  handler: async (ctx, args) => {
+    const maxResults = args.limit ? Math.min(args.limit, 30) : 15;
+    const queryTerms = extractSearchTerms(args.query);
+    if (queryTerms.length === 0) return [];
+    const scored = await executeKeywordSearch(
+      ctx,
+      args.userId,
+      queryTerms,
+      cleanSearchQuery(args.query),
+    );
+    return scored.slice(0, maxResults).map(({ memory, score }) => ({ memory, score }));
   },
 });
 
@@ -1256,6 +1283,9 @@ export const listWithoutEmbeddings = internalQuery({
       lifeArea: m.lifeArea,
       entryKind: m.entryKind,
       attachmentExcerpt: m.attachmentExcerpt,
+      semanticSummary: m.semanticSummary,
+      searchAliases: m.searchAliases,
+      searchConcepts: m.searchConcepts,
     }));
   },
 });
@@ -1288,6 +1318,11 @@ export const listForReembedding = internalQuery({
       locations: m.locations,
       lifeArea: m.lifeArea,
       entryKind: m.entryKind,
+      attachmentExcerpt: m.attachmentExcerpt,
+      semanticSummary: m.semanticSummary,
+      searchAliases: m.searchAliases,
+      searchConcepts: m.searchConcepts,
+      retrievalVersion: m.retrievalVersion,
     }));
 
     return {
