@@ -71,7 +71,7 @@ const IND_OVERLAP = 2;
 const IND_W = SLOT_W + IND_OVERLAP * 2;
 const IND_H = BAR_H - IND_PAD_Y * 2;
 const IND_Y = IND_PAD_Y;
-const FADE_H = 80; // Height of the fade gradient above the bar
+const FADE_H = 14; // Height of the fade gradient above the bar
 const BAR_BOTTOM_MARGIN = 14; // How far the pill floats above the safe-area bottom
 
 // Maps state.index (0–3) → visual slot (0, 1, 3, 4) → indicator translateX
@@ -423,13 +423,12 @@ function FloatingTabBar({
     const bg = theme.background.val;
     return [
       withAlpha(bg, "00"),
-      withAlpha(bg, "0D"),
-      withAlpha(bg, "21"),
-      withAlpha(bg, "40"),
-      withAlpha(bg, "6B"),
-      withAlpha(bg, "99"),
-      withAlpha(bg, "BF"),
-      withAlpha(bg, "D9"),
+      withAlpha(bg, "4D"),
+      withAlpha(bg, "80"),
+      withAlpha(bg, "A6"),
+      withAlpha(bg, "C5"),
+      withAlpha(bg, "D8"),
+      withAlpha(bg, "E6"),
     ] as string[];
   }, [theme.background.val]);
 
@@ -451,8 +450,9 @@ function FloatingTabBar({
       {/* Fade gradient so content dissolves behind the bar */}
       <LinearGradient
         colors={fadeColors as [string, string, ...string[]]}
+        locations={[0, 0.12, 0.28, 0.48, 0.68, 0.84, 1]}
         style={StyleSheet.absoluteFill}
-        pointerEvents="none"
+        pointerEvents="auto"
       />
       <Animated.View
         style={[

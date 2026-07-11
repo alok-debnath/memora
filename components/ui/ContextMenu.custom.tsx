@@ -62,7 +62,9 @@ const SCREEN_MARGIN = 12;
 const PREVIEW_SCREEN_MARGIN = 20;
 const BOTTOM_FLOAT_MARGIN = 24;
 const LONG_PRESS_MIN_DURATION = 350;
-const TAP_MOVE_TOLERANCE = 8;
+// Keep this below the scroll-view pan threshold so a drag is cancelled before
+// it can fall through to the trigger's short-press action.
+const TAP_MOVE_TOLERANCE = 4;
 const TRIGGER_PRESS_SCALE = 0.96;
 const CARD_SPRING = { damping: 36, stiffness: 260, mass: 0.9 } as const;
 
@@ -467,7 +469,7 @@ export const ContextMenu = React.forwardRef<ContextMenuHandle, ContextMenuProps>
       // scroll/drag that aborted it.
       return Gesture.LongPress()
         .minDuration(LONG_PRESS_MIN_DURATION)
-        .maxDistance(24)
+        .maxDistance(TAP_MOVE_TOLERANCE)
         .enabled(!anySheetOpen)
         .onBegin((event) => {
           if (activeMenuCount.value > 0) return;
