@@ -5,9 +5,9 @@ import {
   Pressable,
   ActivityIndicator,
   Alert,
+  Keyboard,
   useWindowDimensions,
   Linking,
-  TextInput,
   View,
   StyleSheet,
 } from "react-native";
@@ -36,6 +36,7 @@ import { SegmentedControl } from "./ui/SegmentedControl";
 import { TagInput } from "./ui/TagInput";
 import { PickerField, type PickerOption } from "./ui/PickerField";
 import { TimeCapsuleToggle } from "./ui/TimeCapsuleToggle";
+import { BottomSheetAwareTextInput } from "./ui/BottomSheetAwareTextInput";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { useAppConfirm } from "./ui/confirm/AppConfirmProvider";
 import { FontFamily } from "@/constants/fonts";
@@ -108,6 +109,8 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
   const isLargeScreen = useIsLargeScreen();
   const modalRef = useRef<BottomSheetModal>(null);
   const presentedRef = useRef(false);
+  const closingRef = useRef(false);
+  const lastStableSheetIndexRef = useRef(1);
   const { confirm } = useAppConfirm();
   const colors = useColors();
   const { width } = useWindowDimensions();
@@ -164,6 +167,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
 
   const handleDismiss = useCallback(() => {
     presentedRef.current = false;
+    closingRef.current = false;
     onClose();
   }, [onClose]);
 
@@ -181,6 +185,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
 
   useEffect(() => {
     if (visible && !presentedRef.current) {
+      closingRef.current = false;
       modalRef.current?.present();
       presentedRef.current = true;
       return;
@@ -190,6 +195,20 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
       modalRef.current?.dismiss();
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+
+    const subscription = Keyboard.addListener("keyboardDidHide", () => {
+      if (!presentedRef.current || closingRef.current) return;
+
+      requestAnimationFrame(() => {
+        modalRef.current?.snapToIndex(lastStableSheetIndexRef.current);
+      });
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   const handleRequestDriveAccess = () => {
     Alert.alert(
@@ -336,7 +355,9 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
       // on first touch instead of consuming its initial drag to expand.
       index={1}
       snapPoints={["70%", "94%"]}
-      enablePanDownToClose
+      // Closing is intentionally limited to the backdrop and explicit close
+      // actions so a keyboard-dismiss touch cannot become a close gesture.
+      enablePanDownToClose={false}
       detached={isLargeScreen}
       style={
         isLargeScreen
@@ -351,8 +372,15 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
       topInset={isLargeScreen ? insets.top + 16 : insets.top}
       bottomInset={isLargeScreen ? insets.bottom + 16 : insets.bottom}
       enableDynamicSizing={false}
+      // Let the form's BottomSheetScrollView own vertical drags, including
+      // drags that begin on a text input. The sheet can still be moved or
+      // dismissed from its handle.
+      enableContentPanningGesture={false}
       keyboardBehavior="interactive"
-      keyboardBlurBehavior="restore"
+      // Gorhom can resolve its temporary keyboard position to index -1 when
+      // using "restore", dismissing the modal as the keyboard hides. We
+      // restore the last real snap point from keyboardDidHide instead.
+      keyboardBlurBehavior="none"
       enableBlurKeyboardOnGesture
       // AndroidManifest sets adjustResize, but Android edge-to-edge (mandatory
       // on targetSdk 35+) stops the OS from actually resizing the window.
@@ -363,6 +391,12 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
       stackBehavior="push"
       backdropComponent={renderBackdrop}
       backgroundStyle={{ backgroundColor: theme.surface.val }}
+      onChange={(index) => {
+        if (index >= 0) lastStableSheetIndexRef.current = index;
+      }}
+      onAnimate={(_, toIndex) => {
+        closingRef.current = toIndex === -1;
+      }}
       onDismiss={handleDismiss}
     >
       <BottomSheetScrollView
@@ -469,10 +503,9 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
               >
                 TITLE
               </Text>
-              <TextInput
+              <BottomSheetAwareTextInput
                 value={form.title}
                 onChangeText={(v) => setField("title", v)}
-                rejectResponderTermination={false}
                 placeholder="Memory title"
                 placeholderTextColor={theme.colorMuted.val}
                 style={{
@@ -502,14 +535,14 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
               >
                 CONTENT
               </Text>
-              <TextInput
+              <BottomSheetAwareTextInput
                 value={form.content}
                 onChangeText={(v) => setField("content", v)}
-                rejectResponderTermination={false}
                 placeholder="What happened?"
                 placeholderTextColor={theme.colorMuted.val}
                 multiline
                 numberOfLines={5}
+                scrollEnabled={false}
                 style={{
                   borderRadius: 12,
                   paddingHorizontal: 14,
@@ -532,6 +565,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
               value={form.people}
               onChange={(v) => setField("people", v)}
               placeholder="Add person..."
+              withinBottomSheet
             />
 
             {/* Locations */}
@@ -540,6 +574,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
               value={form.locations}
               onChange={(v) => setField("locations", v)}
               placeholder="Add location..."
+              withinBottomSheet
             />
 
             <YStack gap={6}>
@@ -1238,6 +1273,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                   onTranscriptionComplete={setVoiceTranscript}
                   onPauseChange={setIsVoicePaused}
                   inputMode="auto"
+                  withinBottomSheet
                 />
                 <Text fontSize={16} fontFamily="$body" fontWeight="600" color={theme.color.val}>
                   Describe your edit

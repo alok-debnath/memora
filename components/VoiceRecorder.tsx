@@ -14,6 +14,7 @@ import { api } from "@/convex/_generated/api";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useOnDeviceDictation } from "@/hooks/useOnDeviceDictation";
 import { Text, XStack, YStack } from "tamagui";
+import { BottomSheetAwareTextInput } from "@/components/ui/BottomSheetAwareTextInput";
 
 export type VoiceInputMode = "standard" | "continuous" | "walkie-talkie" | "auto";
 export type VoiceTranscriptionMode = "cloud" | "device";
@@ -30,6 +31,8 @@ interface VoiceRecorderProps {
   transcriptOverride?: string;
   /** Select the transcription implementation for this product flow. */
   transcriptionMode?: VoiceTranscriptionMode;
+  /** Register the editable transcript with a containing Gorhom bottom sheet. */
+  withinBottomSheet?: boolean;
 }
 
 export interface VoiceRecorderHandle {
@@ -58,6 +61,7 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
       autoStart,
       transcriptOverride,
       transcriptionMode = "cloud",
+      withinBottomSheet = false,
     },
     ref,
   ) {
@@ -75,6 +79,7 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
     >("idle");
     const [text, setText] = useState("");
     const [error, setError] = useState<string | null>(null);
+    const TranscriptInput = withinBottomSheet ? BottomSheetAwareTextInput : TextInput;
     const stoppedRef = useRef(false);
     const uriRef = useRef<string | null>(null);
     const device = useOnDeviceDictation({
@@ -260,10 +265,11 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
         );
       return (
         <YStack gap={10} width="100%">
-          <TextInput
+          <TranscriptInput
             value={text}
             onChangeText={setText}
             multiline
+            scrollEnabled={!withinBottomSheet}
             placeholder="Your transcription"
             placeholderTextColor={theme.colorMuted.val}
             style={{

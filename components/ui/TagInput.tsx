@@ -4,17 +4,26 @@ import { Feather } from "@/lib/icons";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { FontFamily } from "@/constants/fonts";
+import { BottomSheetAwareTextInput } from "./BottomSheetAwareTextInput";
 
 interface TagInputProps {
   value: string[];
   onChange: (tags: string[]) => void;
   placeholder?: string;
   label?: string;
+  withinBottomSheet?: boolean;
 }
 
-export function TagInput({ value, onChange, placeholder = "Add tag...", label }: TagInputProps) {
+export function TagInput({
+  value,
+  onChange,
+  placeholder = "Add tag...",
+  label,
+  withinBottomSheet = false,
+}: TagInputProps) {
   const theme = useAppTheme();
   const [input, setInput] = useState("");
+  const Input = withinBottomSheet ? BottomSheetAwareTextInput : TextInput;
 
   const addTag = () => {
     const trimmed = input.trim();
@@ -71,11 +80,10 @@ export function TagInput({ value, onChange, placeholder = "Add tag...", label }:
             </XStack>
           ))}
           <XStack flex={1} minWidth={80} alignItems="center" gap={4}>
-            <TextInput
+            <Input
               value={input}
               onChangeText={setInput}
               onSubmitEditing={addTag}
-              rejectResponderTermination={false}
               placeholder={placeholder}
               placeholderTextColor={theme.colorMuted.val}
               style={{
