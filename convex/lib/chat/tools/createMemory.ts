@@ -97,10 +97,9 @@ export const createMemoryTool: ChatTool = {
               count: tc.grounding.searchCount,
             }
           : await searchMemories(tc.ctx, {
-              token: tc.token,
               query: tc.userMessage,
               userId: tc.userId,
-              recentMemories: await tc.getRecentMemories(),
+              getRecentMemories: tc.getRecentMemories,
               chatTurnId: tc.chatMessageId,
             });
       existingMatchesCount = existingMatches.count;

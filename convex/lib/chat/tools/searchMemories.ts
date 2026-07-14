@@ -70,107 +70,93 @@ export const searchMemoriesTool: ChatTool = {
       .join(" ");
     // No pre-search status call here — the dispatch loop already emitted
     // this tool's buildStatus() (identical fields) right before handler ran.
-    try {
-      const searchQueryHash = normalizeSearchQueryHash(expandedQuery);
-      const userMessageHash = normalizeSearchQueryHash(tc.userMessage);
-      const searchRes =
-        tc.grounding.shouldGround &&
-        searchQueryHash.length > 0 &&
-        searchQueryHash === userMessageHash
-          ? {
-              results: tc.grounding.searchResults,
-              diaryResults: tc.grounding.diaryResults,
-              count: tc.grounding.searchCount,
-              isCached: tc.grounding.isCached,
-              searchMode: tc.grounding.isCached
-                ? ("semantic_cached" as const)
-                : ("semantic_fresh" as const),
-              confidence: tc.grounding.confidence,
-              needsExpansion: tc.grounding.needsExpansion,
-            }
-          : await searchMemories(tc.ctx, {
-              token: tc.token,
-              query: expandedQuery,
-              userId: tc.userId,
-              recentMemories: await tc.getRecentMemories(),
-              chatTurnId: tc.chatMessageId,
-            });
-      tc.state.pendingSearchIsCached = searchRes.isCached ?? false;
-      tc.state.flowSearches.push({
-        source: "tool",
-        query: searchQuery.trim() || undefined,
-        resultCount: searchRes.count,
-        cacheState:
-          searchRes.searchMode === "semantic_cached"
-            ? "cached"
-            : searchRes.searchMode === "semantic_fresh"
-              ? "fresh"
-              : undefined,
-        searchMode: searchRes.searchMode,
-        confidence: searchRes.confidence,
-        needsExpansion: searchRes.needsExpansion,
-        interpretedAs: interpretations,
-        relatedConcepts,
-      });
-      tc.state.surfaceCandidates = searchRes.results.map((r: { id: string; title?: string }) => ({
-        id: String(r.id),
-        title: r.title ?? "",
-      }));
-      await tc.reportProgress({
-        query: searchQuery.trim() || undefined,
-        phase: "searching",
-        detail:
-          searchRes.count > 0
-            ? `Found ${searchRes.count} matching ${searchRes.count === 1 ? "memory" : "memories"}`
-            : "No matching memories found",
-        source: "memories",
-        cacheState:
-          searchRes.searchMode === "semantic_cached"
-            ? "cached"
-            : searchRes.searchMode === "semantic_fresh"
-              ? "fresh"
-              : undefined,
-        resultCount: searchRes.count,
-        previewItems: toPreviewItems(searchRes.results, "Stored memory"),
-        events: [
-          {
-            label: "Scope",
-            value: "title, content, people, locations, topics",
-          },
-          {
-            label: "Ranking",
-            value:
-              searchRes.searchMode === "recent_only"
-                ? "recent memory list"
-                : "semantic + keyword fusion",
-          },
-          {
-            label: "Cache",
-            value:
-              searchRes.searchMode === "semantic_cached"
-                ? "embedding cache hit"
-                : searchRes.searchMode === "semantic_fresh"
-                  ? "fresh semantic search"
-                  : "no query text",
-          },
-        ],
-      });
-      return JSON.stringify({
-        results: searchRes.results,
-        diary_entries: searchRes.diaryResults,
-        count: searchRes.count,
-        isCached: searchRes.isCached,
-        searchMode: searchRes.searchMode,
-      });
-    } finally {
-      await tc.setStreamingStatus({
-        phase: "thinking",
-        toolName: "planner",
-        detail: "Processing search results",
-        source: "chat",
-        step: 3,
-        totalSteps: 4,
-      });
-    }
+    const searchQueryHash = normalizeSearchQueryHash(expandedQuery);
+    const userMessageHash = normalizeSearchQueryHash(tc.userMessage);
+    const searchRes =
+      tc.grounding.shouldGround && searchQueryHash.length > 0 && searchQueryHash === userMessageHash
+        ? {
+            results: tc.grounding.searchResults,
+            diaryResults: tc.grounding.diaryResults,
+            count: tc.grounding.searchCount,
+            isCached: tc.grounding.isCached,
+            searchMode: tc.grounding.isCached
+              ? ("semantic_cached" as const)
+              : ("semantic_fresh" as const),
+            confidence: tc.grounding.confidence,
+            needsExpansion: tc.grounding.needsExpansion,
+          }
+        : await searchMemories(tc.ctx, {
+            query: expandedQuery,
+            userId: tc.userId,
+            getRecentMemories: tc.getRecentMemories,
+            chatTurnId: tc.chatMessageId,
+          });
+    tc.state.pendingSearchIsCached = searchRes.isCached ?? false;
+    tc.state.flowSearches.push({
+      source: "tool",
+      query: searchQuery.trim() || undefined,
+      resultCount: searchRes.count,
+      cacheState:
+        searchRes.searchMode === "semantic_cached"
+          ? "cached"
+          : searchRes.searchMode === "semantic_fresh"
+            ? "fresh"
+            : undefined,
+      searchMode: searchRes.searchMode,
+      confidence: searchRes.confidence,
+      needsExpansion: searchRes.needsExpansion,
+      interpretedAs: interpretations,
+      relatedConcepts,
+    });
+    tc.state.surfaceCandidates = searchRes.results.map((r: { id: string; title?: string }) => ({
+      id: String(r.id),
+      title: r.title ?? "",
+    }));
+    await tc.reportProgress({
+      query: searchQuery.trim() || undefined,
+      phase: "searching",
+      detail:
+        searchRes.count > 0
+          ? `Found ${searchRes.count} matching ${searchRes.count === 1 ? "memory" : "memories"}`
+          : "No matching memories found",
+      source: "memories",
+      cacheState:
+        searchRes.searchMode === "semantic_cached"
+          ? "cached"
+          : searchRes.searchMode === "semantic_fresh"
+            ? "fresh"
+            : undefined,
+      resultCount: searchRes.count,
+      previewItems: toPreviewItems(searchRes.results, "Stored memory"),
+      events: [
+        {
+          label: "Scope",
+          value: "title, content, people, locations, topics",
+        },
+        {
+          label: "Ranking",
+          value:
+            searchRes.searchMode === "recent_only"
+              ? "recent memory list"
+              : "semantic + keyword fusion",
+        },
+        {
+          label: "Cache",
+          value:
+            searchRes.searchMode === "semantic_cached"
+              ? "embedding cache hit"
+              : searchRes.searchMode === "semantic_fresh"
+                ? "fresh semantic search"
+                : "no query text",
+        },
+      ],
+    });
+    return JSON.stringify({
+      results: searchRes.results,
+      diary_entries: searchRes.diaryResults,
+      count: searchRes.count,
+      isCached: searchRes.isCached,
+      searchMode: searchRes.searchMode,
+    });
   },
 };

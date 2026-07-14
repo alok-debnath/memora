@@ -52,10 +52,9 @@ export const proposeDeletionTool: ChatTool = {
             count: tc.grounding.searchCount,
           }
         : await searchMemories(tc.ctx, {
-            token: tc.token,
             query: deletionQuery,
             userId: tc.userId,
-            recentMemories: await tc.getRecentMemories(),
+            getRecentMemories: tc.getRecentMemories,
             chatTurnId: tc.chatMessageId,
           });
 

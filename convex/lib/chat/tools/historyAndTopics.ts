@@ -176,7 +176,6 @@ export const manageTopicsTool: ChatTool = {
   handler: async (tc, fnArgs) => {
     if (fnArgs.operation === "retag_memory") {
       const resolvedMemoryId = await resolveMemoryReference(tc.ctx, {
-        token: tc.token,
         userId: tc.userId,
         reference: typeof fnArgs.memory_id === "string" ? fnArgs.memory_id : undefined,
         recentMemories: await tc.getRecentMemories(),

@@ -75,6 +75,15 @@ export type CardFlowPayload = {
   searches: CardFlowSearch[];
   attachments: CardFlowAttachment[];
   summary: CardFlowSummary;
+  performance?: {
+    totalLatencyMs: number;
+    preparationLatencyMs: number;
+    plannerLatencyMs: number;
+    toolCalls: number;
+    toolBatches: number;
+    toolPaletteSize: number;
+    cachedInputTokens: number;
+  };
   steps: CardFlowStep[];
 };
 
@@ -87,6 +96,7 @@ export function buildCardFlowPayload(args: {
   searches: CardFlowSearch[];
   toolSequence: string[];
   attachments: CardFlowAttachment[];
+  performance?: CardFlowPayload["performance"];
 }): CardFlowPayload {
   const { searches, toolSequence, attachments } = args;
   const attachmentMethods = Array.from(
@@ -146,6 +156,7 @@ export function buildCardFlowPayload(args: {
     toolSequence,
     searches,
     attachments,
+    ...(args.performance ? { performance: args.performance } : {}),
     summary: {
       assistantProvider: args.assistantProvider,
       turns: args.turns,

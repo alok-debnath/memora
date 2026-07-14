@@ -4,8 +4,12 @@ import {
   shouldGroundAgainstDb,
   shouldRunInitialGroundingSearch,
 } from "../convex/lib/chat/heuristics";
-import { buildGroundingSystemMessage } from "../convex/lib/chat/prompts";
+import { buildGroundingSystemMessage, buildSystemPrompt } from "../convex/lib/chat/prompts";
+import { selectChatTools } from "../convex/lib/chat/tools";
 import { cleanSearchQuery, normalizeSearchQueryHash } from "../convex/lib/search";
+import { buildGroundingContext, deriveSearchConfidence } from "../convex/lib/chat/search";
+import type { Id } from "../convex/_generated/dataModel";
+import type { ActionCtx } from "../convex/_generated/server";
 import schema from "../convex/schema";
 import { convexTest } from "convex-test";
 import {
@@ -30,6 +34,19 @@ describe("personal recall grounding", () => {
 
   test("does not ground a generic knowledge question", () => {
     expect(shouldGroundAgainstDb("explain how photosynthesis works")).toBe(false);
+  });
+
+  test("does not resolve the recent-memory cache when grounding is skipped", async () => {
+    let recentMemoryReads = 0;
+    await buildGroundingContext({} as ActionCtx, {
+      message: "explain how photosynthesis works",
+      userId: "user" as Id<"users">,
+      getRecentMemories: async () => {
+        recentMemoryReads += 1;
+        return [];
+      },
+    });
+    expect(recentMemoryReads).toBe(0);
   });
 });
 
@@ -63,6 +80,59 @@ describe("adaptive planner boundary", () => {
     });
     expect(prompt).toContain("call search_memories once with alternate interpretations");
   });
+
+  test("a strong diary-only hit satisfies grounding", () => {
+    expect(
+      deriveSearchConfidence({
+        memoryResults: [],
+        diaryResults: [{ match: { confidence: "strong" } }],
+      }),
+    ).toBe("strong");
+  });
+});
+
+describe("planner context efficiency", () => {
+  test("compact prompt preserves core grounding and write invariants", () => {
+    const currentTime = "2026-07-14T12:00:00.000Z";
+    const prompt = buildSystemPrompt("Asia/Kolkata", currentTime);
+    expect(prompt).toContain("call respond directly");
+    expect(prompt).toContain("Call create_memory before confirming any save");
+    expect(prompt).toContain("Deletion is proposal-only");
+    expect(prompt.length).toBeLessThan(4_000);
+  });
+
+  test("uses a small core palette for ordinary turns", () => {
+    expect(selectChatTools("What is my passport number?").map((tool) => tool.name)).toEqual([
+      "search_memories",
+      "create_memory",
+      "update_memory",
+      "respond",
+    ]);
+  });
+
+  test("adds specialized tools for explicit intent", () => {
+    const names = selectChatTools("Restore the reminder I deleted").map((tool) => tool.name);
+    expect(names).toContain("list_deleted_memories");
+    expect(names).toContain("restore_memory");
+    expect(names).not.toContain("propose_deletion");
+  });
+
+  test("keeps every tool for ambiguous referential follow-ups", () => {
+    expect(selectChatTools("do it").length).toBe(15);
+  });
+
+  for (const [message, expectedTool] of [
+    ["Delete the passport memory", "propose_deletion"],
+    ["Sync my dentist reminder to Google Calendar", "sync_reminder"],
+    ["Move that memory to the Health topic", "manage_topics"],
+    ["Undo the last edit", "history"],
+    ["How many diary entries mention work?", "get_stats"],
+    ["Analyze patterns in my mood", "analyze_memories"],
+  ] as const) {
+    test(`includes ${expectedTool} for: ${message}`, () => {
+      expect(selectChatTools(message).map((tool) => tool.name)).toContain(expectedTool);
+    });
+  }
 });
 
 describe("recall query normalization", () => {

@@ -494,6 +494,18 @@ type ChatCompletionStreamArgs = {
   request: Omit<OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming, "model">;
 };
 
+type EmbeddingArgs = {
+  userId: Id<"users">;
+  feature: AiFeature;
+  input: string | string[];
+  stage?: string;
+  visibility?: AiVisibility;
+  metadata?: Record<string, string>;
+  link?: AnalyticsLink;
+};
+
+type SingleEmbeddingArgs = Omit<EmbeddingArgs, "input"> & { input: string };
+
 /**
  * Like `trackedChatCompletionStream` but with a pre-resolved route — used by
  * the fallback path below so the failover attempt doesn't re-resolve the
@@ -528,8 +540,10 @@ async function trackedChatCompletionStreamOnRoute(
 export async function trackedChatCompletionStream(
   ctx: UsageRecorderCtx,
   args: ChatCompletionStreamArgs,
+  preResolvedRoute?: ResolvedRoute,
 ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
-  const route = await resolveAiRoute(ctx, { userId: args.userId, feature: args.feature });
+  const route =
+    preResolvedRoute ?? (await resolveAiRoute(ctx, { userId: args.userId, feature: args.feature }));
   try {
     return await trackedChatCompletionStreamOnRoute(ctx, route, args);
   } catch (error) {
@@ -572,17 +586,18 @@ export async function trackedChatCompletionOnRoute(
 
 export async function trackedEmbedTexts(
   ctx: UsageRecorderCtx,
-  args: {
-    userId: Id<"users">;
-    feature: AiFeature;
-    input: string | string[];
-    stage?: string;
-    visibility?: AiVisibility;
-    metadata?: Record<string, string>;
-    link?: AnalyticsLink;
-  },
+  args: EmbeddingArgs,
 ): Promise<number[][]> {
   const route = await resolveAiRoute(ctx, { userId: args.userId, feature: args.feature });
+  return trackedEmbedTextsOnRoute(ctx, route, args);
+}
+
+/** Execute an embedding request on an already-resolved route. */
+export async function trackedEmbedTextsOnRoute(
+  ctx: UsageRecorderCtx,
+  route: ResolvedRoute,
+  args: EmbeddingArgs,
+): Promise<number[][]> {
   const adapter = getAdapter(route.provider);
   const result = await withUsageTracking(
     ctx,
@@ -598,17 +613,17 @@ export async function trackedEmbedTexts(
 
 export async function trackedEmbedText(
   ctx: UsageRecorderCtx,
-  args: {
-    userId: Id<"users">;
-    feature: AiFeature;
-    input: string;
-    stage?: string;
-    visibility?: AiVisibility;
-    metadata?: Record<string, string>;
-    link?: AnalyticsLink;
-  },
+  args: SingleEmbeddingArgs,
 ): Promise<number[]> {
   return (await trackedEmbedTexts(ctx, args))[0];
+}
+
+export async function trackedEmbedTextOnRoute(
+  ctx: UsageRecorderCtx,
+  route: ResolvedRoute,
+  args: SingleEmbeddingArgs,
+): Promise<number[]> {
+  return (await trackedEmbedTextsOnRoute(ctx, route, args))[0];
 }
 
 export async function trackedTranscribeAudio(

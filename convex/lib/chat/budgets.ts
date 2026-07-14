@@ -27,6 +27,8 @@ export const SEARCH_RESULTS_TOP = 10;
 export const SEARCH_VECTOR_CANDIDATES = 50;
 export const SEARCH_VECTOR_MIN_SCORE = 0.25;
 export const SEARCH_RELATIVE_SCORE_FLOOR = 0.35;
+/** Skip the broad 200-row keyword fallback when lexical search already has enough direct hits. */
+export const SEARCH_KEYWORD_FALLBACK_MIN_DIRECT_HITS = 3;
 export const SEARCH_ALIASES_MAX = 12;
 export const SEARCH_CONCEPTS_MAX = 16;
 export const SEARCH_TEXT_CHARS = 12_000;

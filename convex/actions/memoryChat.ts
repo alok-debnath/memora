@@ -29,8 +29,8 @@ import {
 } from "../lib/chat/prompts";
 import { buildGroundingContext, listMemoriesForAI } from "../lib/chat/search";
 import {
-  CHAT_TOOL_DEFINITIONS,
   CHAT_TOOLS_BY_NAME,
+  getChatToolDefinitions,
   READ_ONLY_INFO_TOOL_NAMES,
   type ToolContext,
 } from "../lib/chat/tools";
@@ -64,6 +64,18 @@ const driveAttachmentArg = v.object({
 const ACTION_INTENT_PATTERN =
   /\b(delete|remove|restore|undo|sync|resync|retry|unsync|disconnect|edit|update|change|modify|fix|rename|move|convert|turn|make|remember|save|note|add|capture|store|remind me)\b/i;
 
+type ChatActionResult = {
+  reply: string;
+  attachmentFailures: Array<{ name: string; reason: string }>;
+};
+
+type ChatHistoryItem = {
+  _id: Id<"chatMessages">;
+  role: "user" | "assistant";
+  content?: string | null;
+  meta?: { cards?: Array<{ table: string; id: string }> } | null;
+};
+
 export const chat = action({
   args: {
     token: v.string(),
@@ -72,16 +84,12 @@ export const chat = action({
     currentTimezone: v.optional(v.string()),
     attachments: v.optional(v.array(driveAttachmentArg)),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<ChatActionResult> => {
+    const turnStartedAt = Date.now();
     const session = await ctx.runQuery(api.auth.me, { token: args.token });
     if (!session) {
       throw new Error("Unauthorized");
     }
-    const chatRoute = await resolveAiRoute(ctx, {
-      userId: session._id,
-      feature: "memory_chat",
-    });
-
     const effectiveTimezone = args.currentTimezone?.trim() || session.timezone || "UTC";
     const hasDirectAttachments = (args.attachments?.length ?? 0) > 0;
     const shouldSkipInitialGroundingForCreate =
@@ -89,11 +97,17 @@ export const chat = action({
       CREATE_ONLY_INTENT_PATTERNS.some((pattern) => pattern.test(args.message)) &&
       !shouldPreferUpdatingExisting(args.message);
 
-    const chatMessageId = await ctx.runMutation(internal.chat.send, {
-      userId: session._id,
-      content: args.message,
-      role: "user",
-    });
+    const [chatRoute, chatMessageId] = await Promise.all([
+      resolveAiRoute(ctx, {
+        userId: session._id,
+        feature: "memory_chat",
+      }),
+      ctx.runMutation(internal.chat.send, {
+        userId: session._id,
+        content: args.message,
+        role: "user",
+      }),
+    ]);
     const analyticsLink = {
       chatTurnId: chatMessageId,
       chatMessageId,
@@ -138,39 +152,42 @@ export const chat = action({
 
     // Grounding search runs concurrently with history/digest fetch and
     // attachment extraction — it only depends on the user message.
-    const groundingPromise = (async () =>
-      buildGroundingContext(ctx, {
-        token: args.token,
-        message: args.message,
-        userId: session._id,
-        recentMemories: await getRecentMemories(),
-        skipInitialGroundingSearch: shouldSkipInitialGroundingForCreate,
-        chatTurnId: chatMessageId,
-      }))();
+    const groundingPromise = buildGroundingContext(ctx, {
+      message: args.message,
+      userId: session._id,
+      getRecentMemories,
+      skipInitialGroundingSearch: shouldSkipInitialGroundingForCreate,
+      chatTurnId: chatMessageId,
+    });
 
-    const [chatHistory, knowledgeDigest] = await Promise.all([
+    const attachmentExtractionPromise = extractChatAttachmentsForConversation(ctx, {
+      userId: session._id,
+      attachments: chatAttachments,
+      setStreamingStatus,
+      chatTurnId: chatMessageId,
+    });
+
+    const [chatHistory, knowledgeDigest, extractedChatAttachments] = await Promise.all([
       ctx.runQuery(api.chat.list, {
         token: args.token,
         limit: HISTORY_CONTEXT_MESSAGES,
-      }),
+      }) as Promise<ChatHistoryItem[]>,
       ctx
         .runQuery(internal.diary.getKnowledgeDigestInternal, {
           userId: session._id,
         })
         .catch(() => null) as Promise<KnowledgeDigest | null>,
+      attachmentExtractionPromise,
     ]);
+    const preparationLatencyMs = Date.now() - turnStartedAt;
     const recentChat: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
     let latestReferencedMemoryIds: string[] = [];
-    const historyList = chatHistory as Array<{
-      role: string;
-      content?: string | null;
-      meta?: { cards?: Array<{ table: string; id: string }> } | null;
-    }>;
     // chatHistory is oldest-first; only the last few turns matter much for
     // resolving the current request, so give them the full char budget and
     // truncate older ones harder — shrinks the token floor of every turn.
-    historyList.forEach((message, index) => {
-      const isRecentTier = historyList.length - index <= HISTORY_RECENT_TIER_MESSAGES;
+    const priorHistory = chatHistory.filter((message) => message._id !== chatMessageId);
+    priorHistory.forEach((message, index) => {
+      const isRecentTier = priorHistory.length - index <= HISTORY_RECENT_TIER_MESSAGES;
       const charCap = isRecentTier ? HISTORY_MESSAGE_CHARS : HISTORY_OLDER_MESSAGE_CHARS;
       recentChat.push({
         role: message.role as "user" | "assistant",
@@ -193,18 +210,13 @@ export const chat = action({
     });
 
     const legacyAttachments = parseAttachments(args.message);
-    const extractedChatAttachments = await extractChatAttachmentsForConversation(ctx, {
-      userId: session._id,
-      attachments: chatAttachments,
-      setStreamingStatus,
-      chatTurnId: chatMessageId,
-    });
     const flowAttachments: CardFlowAttachment[] = extractedChatAttachments.map((attachment) => ({
       name: attachment.name,
       type: attachment.type,
       status: attachment.processingStatus,
       method: attachment.extractionMethod,
     }));
+    const chatToolDefinitions = getChatToolDefinitions(args.message);
 
     let aiResponse = "I'm having trouble connecting right now. Please try again in a moment.";
     let responseMeta: ChatMessageMeta | undefined;
@@ -217,6 +229,12 @@ export const chat = action({
     // a write already succeeded (see finalizeFromState below).
     let state: TurnState | undefined;
     let finalIteration = 0;
+    const plannerMetrics = {
+      latencyMs: 0,
+      toolCalls: 0,
+      toolBatches: 0,
+      cachedInputTokens: 0,
+    };
 
     // Resolves the visible reply text + response meta (cards, deletion
     // proposal, flow payload) from whatever turn state exists so far. Used
@@ -341,6 +359,15 @@ export const chat = action({
           searches: state.flowSearches,
           toolSequence: state.flowToolSequence,
           attachments: flowAttachments,
+          performance: {
+            totalLatencyMs: Date.now() - turnStartedAt,
+            preparationLatencyMs,
+            plannerLatencyMs: plannerMetrics.latencyMs,
+            toolCalls: plannerMetrics.toolCalls,
+            toolBatches: plannerMetrics.toolBatches,
+            toolPaletteSize: chatToolDefinitions.length,
+            cachedInputTokens: plannerMetrics.cachedInputTokens,
+          },
         }),
         ...(cardRefs.length > 0
           ? {
@@ -409,12 +436,13 @@ export const chat = action({
 
       const initialGrounding = await groundingPromise;
 
-      state = createTurnState();
+      const turnState = createTurnState();
+      state = turnState;
       const shouldForceRespondAfterInfoTool =
         !ACTION_INTENT_PATTERN.test(args.message) && !shouldPreferUpdatingExisting(args.message);
 
       if (initialGrounding.shouldGround) {
-        state.flowSearches.push({
+        turnState.flowSearches.push({
           source: "grounding",
           query: args.message,
           resultCount: initialGrounding.searchCount,
@@ -459,18 +487,15 @@ export const chat = action({
       // Candidate pool kept for flow/context bookkeeping only — the final
       // card set always comes from the model's own respond(used_ids) call.
       if (initialGrounding.shouldGround) {
-        state.pendingSearchIsCached = initialGrounding.isCached;
+        turnState.pendingSearchIsCached = initialGrounding.isCached;
         if (initialGrounding.searchResults.length > 0) {
-          state.surfaceCandidates = initialGrounding.searchResults.map((mem) => ({
+          turnState.surfaceCandidates = initialGrounding.searchResults.map((mem) => ({
             id: String(mem.id),
             title: mem.title ?? "",
           }));
         }
       }
 
-      // Set by the dispatch loop right before each tool handler runs, so
-      // `reportProgress` can fill in the currently-executing tool's name.
-      let currentToolName = "";
       const toolContext: ToolContext = {
         ctx,
         token: args.token,
@@ -484,7 +509,7 @@ export const chat = action({
         reportProgress: (status) =>
           setStreamingStatus({
             ...status,
-            toolName: currentToolName,
+            toolName: "planner",
             step: 3,
             totalSteps: 4,
           }),
@@ -493,7 +518,7 @@ export const chat = action({
         grounding: initialGrounding,
         knowledgeDigest,
         latestReferencedMemoryIds,
-        state,
+        state: turnState,
       };
 
       let forceRespondNextIteration = false;
@@ -511,45 +536,57 @@ export const chat = action({
           totalSteps: 4,
         });
         replyStreamer.reset();
-        const response = await trackedChatCompletionStream(ctx, {
-          userId: session._id,
-          feature: "memory_chat",
-          stage: "planner",
-          visibility: "user_visible",
-          link: analyticsLink,
-          onDelta: replyStreamer.onDelta,
-          onRetry: replyStreamer.reset,
-          // The final answer always arrives as the `respond` tool's
-          // `message` argument (see tools/respond.ts) — extract it live
-          // from the streaming tool-call arguments so it still reads as
-          // plain streamed text to the user.
-          streamToolTextField: { toolName: "respond", argName: "message" },
-          request: {
-            messages: conversation,
-            tools: CHAT_TOOL_DEFINITIONS,
-            // Forced tool call per turn: the model can no longer silently
-            // skip reporting which memories it used the way a freeform-text
-            // exit allowed. respond() is always one of the available
-            // choices, so this never blocks a normal reply.
-            // On the last allowed iteration, force respond specifically —
-            // otherwise an open-ended question can make the model chain
-            // info-gathering tools indefinitely and exhaust the loop
-            // without ever answering (observed: analyze_memories →
-            // get_diary_entries → get_stats → get_diary_entries, no reply).
-            // Forced-respond iterations stay a solo call (tool_choice pins
-            // the single function); other iterations allow the model to
-            // batch independent info-gathering tools (e.g. search_memories
-            // + get_diary_entries) into one round trip instead of one tool
-            // per iteration — fewer resends of the growing conversation.
-            tool_choice:
-              forceRespondNextIteration || iteration === MAX_ITERATIONS - 1
-                ? { type: "function", function: { name: "respond" } }
-                : "required",
-            parallel_tool_calls: !(forceRespondNextIteration || iteration === MAX_ITERATIONS - 1),
-            temperature: PLANNER_TEMPERATURE,
-            max_completion_tokens: MAX_COMPLETION_TOKENS,
+        const plannerCallStartedAt = Date.now();
+        const response = await trackedChatCompletionStream(
+          ctx,
+          {
+            userId: session._id,
+            feature: "memory_chat",
+            stage: "planner",
+            visibility: "user_visible",
+            link: analyticsLink,
+            onDelta: replyStreamer.onDelta,
+            onRetry: replyStreamer.reset,
+            // The final answer always arrives as the `respond` tool's
+            // `message` argument (see tools/respond.ts) — extract it live
+            // from the streaming tool-call arguments so it still reads as
+            // plain streamed text to the user.
+            streamToolTextField: { toolName: "respond", argName: "message" },
+            request: {
+              messages: conversation,
+              tools: chatToolDefinitions,
+              // Forced tool call per turn: the model can no longer silently
+              // skip reporting which memories it used the way a freeform-text
+              // exit allowed. respond() is always one of the available
+              // choices, so this never blocks a normal reply.
+              // On the last allowed iteration, force respond specifically —
+              // otherwise an open-ended question can make the model chain
+              // info-gathering tools indefinitely and exhaust the loop
+              // without ever answering (observed: analyze_memories →
+              // get_diary_entries → get_stats → get_diary_entries, no reply).
+              // Forced-respond iterations stay a solo call (tool_choice pins
+              // the single function); other iterations allow the model to
+              // batch independent info-gathering tools (e.g. search_memories
+              // + get_diary_entries) into one round trip instead of one tool
+              // per iteration — fewer resends of the growing conversation.
+              tool_choice:
+                forceRespondNextIteration || iteration === MAX_ITERATIONS - 1
+                  ? { type: "function", function: { name: "respond" } }
+                  : "required",
+              parallel_tool_calls: !(forceRespondNextIteration || iteration === MAX_ITERATIONS - 1),
+              temperature: PLANNER_TEMPERATURE,
+              max_completion_tokens: MAX_COMPLETION_TOKENS,
+            },
+            metadata: {
+              iteration: String(iteration + 1),
+              toolPaletteSize: String(chatToolDefinitions.length),
+            },
           },
-        });
+          chatRoute,
+        );
+        plannerMetrics.latencyMs += Date.now() - plannerCallStartedAt;
+        plannerMetrics.cachedInputTokens +=
+          response.usage?.prompt_tokens_details?.cached_tokens ?? 0;
 
         const choice = response.choices[0]?.message;
         if (!choice?.tool_calls?.length) {
@@ -558,6 +595,8 @@ export const chat = action({
           finalText = extractTextContent(choice?.content) || finalText;
           break;
         }
+        plannerMetrics.toolCalls += choice.tool_calls.length;
+        plannerMetrics.toolBatches += 1;
 
         conversation.push({
           role: "assistant",
@@ -578,105 +617,120 @@ export const chat = action({
           ) &&
           choice.tool_calls.some((tc) => tc.type === "function" && tc.function.name !== "respond");
 
-        for (const toolCall of choice.tool_calls) {
-          if (toolCall.type !== "function") {
-            continue;
-          }
-
+        const functionCalls = choice.tool_calls.filter(
+          (toolCall): toolCall is OpenAI.Chat.Completions.ChatCompletionMessageFunctionToolCall =>
+            toolCall.type === "function",
+        );
+        const executeToolCall = async (
+          toolCall: OpenAI.Chat.Completions.ChatCompletionMessageFunctionToolCall,
+        ) => {
           const fnName = toolCall.function.name;
-          currentToolName = fnName;
-
           if (fnName === "respond" && respondBatchedWithOtherTools) {
-            conversation.push({
-              role: "tool",
-              tool_call_id: toolCall.id,
-              content: JSON.stringify({
-                error:
-                  "Deferred — you called respond in the same batch as other tools. Review their results below, then call respond again with an answer that reflects them.",
-              }),
+            return JSON.stringify({
+              error:
+                "Deferred — review the other tool results, then call respond with an updated answer.",
             });
-            continue;
           }
-          appendFlowTool(state, fnName);
+
+          appendFlowTool(turnState, fnName);
           let fnArgs: Record<string, unknown>;
           try {
             fnArgs = JSON.parse(toolCall.function.arguments || "{}") as Record<string, unknown>;
           } catch {
-            // Truncated/malformed arguments (e.g. completion cut off at
-            // max_completion_tokens mid-JSON) — feed the error back as the
-            // tool result instead of throwing, so the loop can recover
-            // (retry or answer some other way) rather than failing the
-            // whole turn after text may already have streamed. The
-            // assistant message carrying this tool_call was already pushed
-            // above (before this loop) — only the tool result is needed.
-            conversation.push({
-              role: "tool",
-              tool_call_id: toolCall.id,
-              content: JSON.stringify({
-                error: "Malformed or truncated tool call arguments — retry with valid JSON.",
-              }),
+            return JSON.stringify({
+              error: "Malformed or truncated tool call arguments — retry with valid JSON.",
             });
-            continue;
           }
+
           const tool = CHAT_TOOLS_BY_NAME.get(fnName);
           const streamingDetail: StreamingStatus = tool
             ? tool.buildStatus(fnArgs)
-            : {
-                phase: "working",
-                detail: `Running ${fnName}`,
-                source: "backend",
-              };
-          await setStreamingStatus({
-            query: streamingDetail.query,
-            phase: streamingDetail.phase,
-            toolName: fnName,
-            detail: streamingDetail.detail,
-            source: streamingDetail.source,
-            cacheState: undefined,
-            resultCount: undefined,
-            previewItems: undefined,
-            events: streamingDetail.events,
-            step: 3,
-            totalSteps: 4,
-          });
+            : { phase: "working", detail: `Running ${fnName}`, source: "backend" };
+          if (!canRunBatchConcurrently) {
+            await setStreamingStatus({
+              query: streamingDetail.query,
+              phase: streamingDetail.phase,
+              toolName: fnName,
+              detail: streamingDetail.detail,
+              source: streamingDetail.source,
+              events: streamingDetail.events,
+              step: 3,
+              totalSteps: 4,
+            });
+          }
 
-          // Structural backstop for the "never repeat an identical call"
-          // prompt rule: skip re-running the handler (and re-hitting the
-          // DB) if the model dispatches the exact same tool+args again
-          // this turn, and nudge it toward respond instead of looping.
           const signature = `${fnName}:${toolCall.function.arguments ?? ""}`;
-          const isRepeatCall = fnName !== "respond" && state.calledToolSignatures.has(signature);
-
+          const isRepeatCall =
+            fnName !== "respond" && turnState.calledToolSignatures.has(signature);
           let result: string;
           if (isRepeatCall) {
             result = JSON.stringify({
-              note: "Skipped — you already called this exact tool with these exact arguments earlier in this turn. Reuse that result, or call respond now if you have enough information.",
+              note: "Skipped — this exact tool call already ran. Reuse its result or call respond.",
             });
           } else {
+            // Claim the signature before awaiting so duplicate calls in the
+            // same parallel batch cannot both reach the backend.
+            if (tool) turnState.calledToolSignatures.add(signature);
+            const scopedToolContext: ToolContext = {
+              ...toolContext,
+              reportProgress: canRunBatchConcurrently
+                ? async () => {}
+                : (status) =>
+                    setStreamingStatus({
+                      ...status,
+                      toolName: fnName,
+                      step: 3,
+                      totalSteps: 4,
+                    }),
+            };
             result = tool
-              ? await tool.handler(toolContext, fnArgs)
+              ? await tool.handler(scopedToolContext, fnArgs)
               : JSON.stringify({ error: "Unknown tool" });
-            if (tool) state.calledToolSignatures.add(signature);
           }
           if (
             shouldForceRespondAfterInfoTool &&
             READ_ONLY_INFO_TOOL_NAMES.has(fnName) &&
-            !state.respondCalled
+            !turnState.respondCalled
           ) {
             forceRespondNextIteration = true;
           }
+          return result;
+        };
 
+        const canRunBatchConcurrently =
+          functionCalls.length > 1 &&
+          functionCalls.every((toolCall) => {
+            const name = toolCall.function.name;
+            return name === "respond" || READ_ONLY_INFO_TOOL_NAMES.has(name);
+          });
+        const toolResults: string[] = [];
+        if (canRunBatchConcurrently) {
+          await setStreamingStatus({
+            phase: "working",
+            toolName: "planner",
+            detail: `Running ${functionCalls.length} independent lookups`,
+            source: "backend",
+            step: 3,
+            totalSteps: 4,
+          });
+          toolResults.push(...(await Promise.all(functionCalls.map(executeToolCall))));
+        } else {
+          for (const toolCall of functionCalls) {
+            toolResults.push(await executeToolCall(toolCall));
+          }
+        }
+        functionCalls.forEach((toolCall, index) => {
           conversation.push({
             role: "tool",
             tool_call_id: toolCall.id,
-            content: result,
+            content: toolResults[index],
           });
-        }
+        });
 
         // respond() ends the turn — its message + used_ids are already in
         // state, no further iteration needed.
-        if (state.respondCalled) {
-          finalText = state.finalMessage;
+        if (turnState.respondCalled) {
+          finalText = turnState.finalMessage;
           break;
         }
       }
@@ -727,7 +781,7 @@ export const chat = action({
       ...(responseMeta ? { meta: responseMeta } : {}),
     });
 
-    const attachmentFailures = extractedChatAttachments
+    const attachmentFailures: ChatActionResult["attachmentFailures"] = extractedChatAttachments
       .filter(
         (
           attachment,

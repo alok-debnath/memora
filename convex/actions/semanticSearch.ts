@@ -22,7 +22,6 @@ export const search = action({
     }
 
     return await runSemanticSearch(ctx, {
-      token: args.token,
       userId: session._id,
       query: args.query,
       limit: args.limit,

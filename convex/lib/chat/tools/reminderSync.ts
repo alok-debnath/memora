@@ -25,7 +25,6 @@ async function resolveTargetReminderId(
       (memory) => memory.entryKind === "reminder",
     );
     const resolvedFallback = await resolveMemoryReference(tc.ctx, {
-      token: tc.token,
       userId: tc.userId,
       reference: requestedQuery || tc.userMessage,
       recentMemories: reminderCandidates,

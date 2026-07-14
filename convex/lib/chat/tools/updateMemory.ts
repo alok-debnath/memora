@@ -93,7 +93,6 @@ export const updateMemoryTool: ChatTool = {
         // fall back to the most recently created memory — that risks
         // overwriting an unrelated entry with no user-visible error.
         const resolvedFallback = await resolveMemoryReference(tc.ctx, {
-          token: tc.token,
           userId: tc.userId,
           reference: tc.userMessage,
           recentMemories: await tc.getRecentMemories(),

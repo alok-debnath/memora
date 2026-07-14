@@ -3,10 +3,12 @@
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import { getEmbeddingFingerprintForUser, trackedEmbedText } from "./aiDispatch";
+import { resolveAiRoute, trackedEmbedTextOnRoute } from "./aiDispatch";
+import { buildEmbeddingFingerprint } from "./ai";
 import { toDiaryCompact } from "./diaryText";
 import { cleanSearchQuery, extractSearchTerms, normalizeSearchQueryHash } from "./search";
 import {
+  SEARCH_KEYWORD_FALLBACK_MIN_DIRECT_HITS,
   SEARCH_RELATIVE_SCORE_FLOOR,
   SEARCH_VECTOR_CANDIDATES,
   SEARCH_VECTOR_MIN_SCORE,
@@ -20,18 +22,30 @@ export type SearchEvidence = {
 };
 type SearchableMemory = Doc<"memories"> & { _score?: number; _match?: SearchEvidence };
 
-export type DiarySearchHit = ReturnType<typeof toDiaryCompact>;
+export type DiarySearchHit = ReturnType<typeof toDiaryCompact> & { match?: SearchEvidence };
 
 const VECTOR_MIN_SCORE = SEARCH_VECTOR_MIN_SCORE;
 const RRF_K = 60;
 const MIN_RRF_SCORE = 0.006;
 const RELATIVE_SCORE_FLOOR = SEARCH_RELATIVE_SCORE_FLOOR;
 const KEYWORD_MIN_SCORE = 0.4;
+const STRONG_VECTOR_SCORE = 0.62;
 const DIARY_TAKE = 5;
 const QUERY_CACHE_TOUCH_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 function rrfScore(rank: number) {
   return 1 / (RRF_K + rank);
+}
+
+function classifyEvidence(
+  channels: string[],
+  vectorScore: number,
+  fullTextIsRelated = false,
+): SearchEvidence["confidence"] {
+  if (channels.length >= 2 || vectorScore >= STRONG_VECTOR_SCORE) return "strong";
+  return vectorScore >= VECTOR_MIN_SCORE || (fullTextIsRelated && channels.includes("fulltext"))
+    ? "related"
+    : "weak";
 }
 
 /** Small multiplicative boost for newer memories — only meant to break ties/near-ties, decays to ~1.0 within a couple months. */
@@ -45,9 +59,11 @@ function recencyMultiplier(creationTime: number, now: number): number {
 // ─── Source registry ──────────────────────────────────────────────────────────
 //
 // Each searchable table is described as a set of ranked channels (vector,
-// fulltext, keyword, …). Channels run in parallel; each source is fused with
-// Reciprocal Rank Fusion in its OWN pool, so one source's hits never displace
-// another's (memory cards stay memory-ranked, diary rides along as context).
+// fulltext, keyword, …). Independent channels run in parallel; a channel may
+// deliberately await another when it is an expensive fallback. Each source is
+// fused with Reciprocal Rank Fusion in its OWN pool, so one source's hits never
+// displace another's (memory cards stay memory-ranked, diary rides along as
+// context).
 // Adding a searchable table = one more source descriptor below.
 
 /** One ranked hit from a channel. `weight` scales the channel boost (e.g. keyword match ratio). */
@@ -147,7 +163,6 @@ async function fuseSource<TId>(args: {
 export async function runSemanticSearch(
   ctx: Pick<ActionCtx, "runQuery" | "runMutation" | "vectorSearch">,
   args: {
-    token: string;
     userId: Id<"users">;
     query: string;
     limit?: number;
@@ -170,11 +185,12 @@ export async function runSemanticSearch(
   let isCached = false;
 
   const queryHash = normalizeSearchQueryHash(rawQuery);
-  const embeddingStatus: {
-    isRebuilding: boolean;
-  } = await ctx.runQuery(internal.aiProviders.getEmbeddingStatusInternal, {
-    userId: args.userId,
-  });
+  const [embeddingStatus, embeddingRoute] = await Promise.all([
+    ctx.runQuery(internal.aiProviders.getEmbeddingStatusInternal, {
+      userId: args.userId,
+    }) as Promise<{ isRebuilding: boolean }>,
+    resolveAiRoute(ctx, { userId: args.userId, feature: "memory_search" }),
+  ]);
 
   // Resolve the query embedding once (cache-first); every vector channel in
   // every source reuses the same promise, so additional sources add zero
@@ -184,7 +200,10 @@ export async function runSemanticSearch(
       return null;
     }
     try {
-      const currentFingerprint = await getEmbeddingFingerprintForUser(ctx, args.userId);
+      const currentFingerprint = buildEmbeddingFingerprint(
+        embeddingRoute.provider,
+        embeddingRoute.model,
+      );
       const cached = await ctx.runQuery(internal.memories.getQueryCache, {
         userId: args.userId,
         queryHash,
@@ -213,7 +232,7 @@ export async function runSemanticSearch(
         return cached.embedding ?? null;
       }
 
-      const queryEmbedding = await trackedEmbedText(ctx, {
+      const queryEmbedding = await trackedEmbedTextOnRoute(ctx, embeddingRoute, {
         userId: args.userId,
         feature: "memory_search",
         stage: "search_grounding",
@@ -243,6 +262,17 @@ export async function runSemanticSearch(
   const hydratedMemories = new Map<Id<"memories">, Doc<"memories">>();
   const hydratedDiaryEntries = new Map<Id<"diaryEntries">, Doc<"diaryEntries">>();
 
+  // Start lexical retrieval immediately. The broad keyword scan is retained
+  // as a fuzzy-recall fallback, but it waits on this result and is skipped
+  // when direct full-text retrieval already has enough evidence.
+  const memoryFullTextPromise: Promise<Doc<"memories">[]> = ctx
+    .runQuery(internal.memories.searchByContent, {
+      userId: args.userId,
+      query: cleanQuery,
+      limit: 20,
+    })
+    .catch(() => [] as Doc<"memories">[]);
+
   // ── Memory source ──
   const memorySourcePromise = fuseSource<Id<"memories">>({
     take: maxResults,
@@ -271,11 +301,7 @@ export async function runSemanticSearch(
         name: "fulltext",
         boost: 1.0,
         run: async () => {
-          const results: Doc<"memories">[] = await ctx.runQuery(internal.memories.searchByContent, {
-            userId: args.userId,
-            query: cleanQuery,
-            limit: 20,
-          });
+          const results = await memoryFullTextPromise;
           for (const memory of results) hydratedMemories.set(memory._id, memory);
           return results.map((memory) => ({ id: memory._id }));
         },
@@ -285,6 +311,10 @@ export async function runSemanticSearch(
         boost: 0.8,
         run: async () => {
           if (contentTerms.length === 0) {
+            return [];
+          }
+          const directResults = await memoryFullTextPromise;
+          if (directResults.length >= SEARCH_KEYWORD_FALLBACK_MIN_DIRECT_HITS) {
             return [];
           }
           const results: Array<{ memory: Doc<"memories">; score: number }> = await ctx.runQuery(
@@ -321,7 +351,7 @@ export async function runSemanticSearch(
               });
               return vectorResults
                 .filter((result) => result._score >= VECTOR_MIN_SCORE)
-                .map((result) => ({ id: result._id }));
+                .map((result) => ({ id: result._id, weight: result._score }));
             },
           },
           {
@@ -362,10 +392,26 @@ export async function runSemanticSearch(
       );
       for (const entry of diaryDocs) hydratedDiaryEntries.set(entry._id, entry);
     }
-    diaryResults = diaryPool.ranked
-      .map((id) => hydratedDiaryEntries.get(id))
-      .filter((entry): entry is Doc<"diaryEntries"> => !!entry)
-      .map((entry) => toDiaryCompact(entry));
+    diaryResults = diaryPool.ranked.flatMap((id): DiarySearchHit[] => {
+      const entry = hydratedDiaryEntries.get(id);
+      if (!entry) return [];
+      const evidence = diaryPool.evidence.get(id);
+      const channels = evidence?.channels ?? [];
+      const vectorScore = evidence?.weights.get("vector") ?? 0;
+      const confidence = classifyEvidence(channels, vectorScore, true);
+      return [
+        {
+          ...toDiaryCompact(entry),
+          match: {
+            confidence,
+            relation:
+              channels.includes("fulltext") || confidence === "strong" ? "direct" : "related",
+            channels,
+            matchedConcepts: [],
+          } satisfies SearchEvidence,
+        },
+      ];
+    });
   }
 
   const usedVector = (memoryPool.channelHits.get("vector") ?? 0) > 0;
@@ -414,12 +460,7 @@ export async function runSemanticSearch(
     const channels = evidence?.channels ?? [];
     const vectorScore = evidence?.weights.get("vector") ?? 0;
     const lexicalAgreement = channels.includes("fulltext") || channels.includes("keyword");
-    const confidence =
-      channels.length >= 2 || vectorScore >= 0.62
-        ? "strong"
-        : vectorScore >= VECTOR_MIN_SCORE
-          ? "related"
-          : "weak";
+    const confidence = classifyEvidence(channels, vectorScore);
     const queryTerms = new Set(contentTerms);
     const matchedConcepts = (memory.searchConcepts ?? [])
       .filter((concept) =>

@@ -1,6 +1,5 @@
 "use node";
 
-import type OpenAI from "openai";
 import {
   analyzeMemoriesTool,
   getDiaryEntriesTool,
@@ -42,8 +41,71 @@ const REGISTERED_TOOLS: ChatTool[] = [
   respondTool,
 ];
 
-export const CHAT_TOOL_DEFINITIONS: OpenAI.Chat.Completions.ChatCompletionTool[] =
-  REGISTERED_TOOLS.map((tool) => tool.definition);
+const CORE_TOOL_NAMES = new Set(["search_memories", "create_memory", "update_memory", "respond"]);
+const REFERENTIAL_FOLLOW_UP =
+  /^(?:yes|no|okay|ok|sure|please|do it|go ahead|that one|this one|the same|undo that|restore it)[.!\s]*$/i;
+
+/**
+ * Keep the planner's schema surface proportional to the request. Core tools
+ * remain available on every turn; specialized tools are added conservatively
+ * from explicit intent. Ambiguous short follow-ups retain the full palette so
+ * context-dependent operations never disappear.
+ */
+export function selectChatTools(message: string): ChatTool[] {
+  const normalized = message.trim();
+  if (!normalized || REFERENTIAL_FOLLOW_UP.test(normalized)) {
+    return REGISTERED_TOOLS;
+  }
+
+  const names = new Set(CORE_TOOL_NAMES);
+  const include = (...toolNames: string[]) => toolNames.forEach((name) => names.add(name));
+
+  if (
+    /\b(list|show|browse|which|what are|do i have|exist|how many|count|memories|reminders)\b/i.test(
+      normalized,
+    )
+  ) {
+    include("list_memories");
+  }
+  if (/\b(diary|journal|mood|feel(?:ing)?s?|felt|wrote|entry|entries)\b/i.test(normalized)) {
+    include("get_diary_entries");
+  }
+  if (/\b(stat(?:s|istics)?|how many|count|overview|total)\b/i.test(normalized)) {
+    include("get_stats", "list_memories");
+  }
+  if (
+    /\b(analy[sz]e|analysis|trend|pattern|insight|compare|connection|summari[sz]e)\b/i.test(
+      normalized,
+    )
+  ) {
+    include("analyze_memories", "get_diary_entries");
+  }
+  if (/\b(delete|remove|trash|discard)\b/i.test(normalized)) {
+    include("propose_deletion");
+  }
+  if (/\b(deleted|trash|restore|recover|bring back)\b/i.test(normalized)) {
+    include("list_deleted_memories", "restore_memory");
+  }
+  if (
+    /\b(history|version|revert|rollback|undo(?: an? edit| change)?|snapshot)\b/i.test(normalized)
+  ) {
+    include("history");
+  }
+  if (
+    /\b(topic|topics|tag|tags|category|categor(?:y|ize)|retag|recolor|merge)\b/i.test(normalized)
+  ) {
+    include("manage_topics");
+  }
+  if (/\b(sync|resync|calendar|google event)\b/i.test(normalized)) {
+    include("sync_reminder", "remove_reminder_sync");
+  }
+
+  return REGISTERED_TOOLS.filter((tool) => names.has(tool.name));
+}
+
+export function getChatToolDefinitions(message: string) {
+  return selectChatTools(message).map((tool) => tool.definition);
+}
 
 export const CHAT_TOOLS_BY_NAME: ReadonlyMap<string, ChatTool> = new Map(
   REGISTERED_TOOLS.map((tool) => [tool.name, tool]),

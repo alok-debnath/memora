@@ -21,6 +21,19 @@ import {
 import { toMemoryCompact, toMemorySummary } from "./projections";
 import type { GroundingContext, MemoryDoc, MemorySearchResult } from "./types";
 
+export function deriveSearchConfidence(args: {
+  memoryResults: Array<{ match?: { confidence: string } }>;
+  diaryResults: Array<{ match?: { confidence: string } }>;
+}): MemorySearchResult["confidence"] {
+  const totalResultCount = args.memoryResults.length + args.diaryResults.length;
+  if (totalResultCount === 0) return "empty";
+  return [...args.memoryResults, ...args.diaryResults].some(
+    (result) => result.match?.confidence === "strong",
+  )
+    ? "strong"
+    : "weak";
+}
+
 export async function listMemoriesForAI(
   ctx: ActionCtx,
   userId: Id<"users">,
@@ -35,16 +48,20 @@ export async function listMemoriesForAI(
 export async function searchMemories(
   ctx: ActionCtx,
   args: {
-    token: string;
     query: string;
     userId: Id<"users">;
     recentMemories?: MemoryDoc[];
+    getRecentMemories?: () => Promise<MemoryDoc[]>;
     chatTurnId?: Id<"chatMessages">;
   },
 ): Promise<MemorySearchResult> {
-  const recentMemories = args.recentMemories ?? (await listMemoriesForAI(ctx, args.userId));
   const normalizedQuery = args.query.trim();
   if (!normalizedQuery) {
+    const recentMemories =
+      args.recentMemories ??
+      (args.getRecentMemories
+        ? await args.getRecentMemories()
+        : await listMemoriesForAI(ctx, args.userId));
     return {
       results: recentMemories.slice(0, SEARCH_RESULTS_TOP).map(toMemorySummary),
       diaryResults: [],
@@ -62,7 +79,6 @@ export async function searchMemories(
   // 4. Proportional keyword matching (prevents single-term noise)
   // 5. RRF fusion ranking across all sources
   const semanticResults = await runSemanticSearch(ctx, {
-    token: args.token,
     userId: args.userId,
     query: normalizedQuery,
     limit: SEARCH_FETCH_LIMIT,
@@ -72,8 +88,10 @@ export async function searchMemories(
   });
 
   const results = semanticResults.results.slice(0, SEARCH_RESULTS_TOP).map(toMemorySummary);
-  const strongCount = results.filter((result) => result.match?.confidence === "strong").length;
-  const confidence = results.length === 0 ? "empty" : strongCount > 0 ? "strong" : "weak";
+  const confidence = deriveSearchConfidence({
+    memoryResults: results,
+    diaryResults: semanticResults.diaryResults,
+  });
   return {
     results,
     diaryResults: semanticResults.diaryResults,
@@ -88,7 +106,6 @@ export async function searchMemories(
 export async function resolveMemoryReference(
   ctx: ActionCtx,
   args: {
-    token: string;
     userId: Id<"users">;
     reference?: string;
     recentMemories?: MemoryDoc[];
@@ -148,10 +165,10 @@ export async function resolveMemoryReference(
 export async function buildGroundingContext(
   ctx: ActionCtx,
   args: {
-    token: string;
     message: string;
     userId: Id<"users">;
     recentMemories?: MemoryDoc[];
+    getRecentMemories?: () => Promise<MemoryDoc[]>;
     skipInitialGroundingSearch?: boolean;
     chatTurnId?: Id<"chatMessages">;
   },
@@ -176,12 +193,11 @@ export async function buildGroundingContext(
     };
   }
 
-  const recentMemories = args.recentMemories ?? (await listMemoriesForAI(ctx, args.userId, 40));
   const searchRes = await searchMemories(ctx, {
-    token: args.token,
     query: args.message,
     userId: args.userId,
-    recentMemories,
+    recentMemories: args.recentMemories,
+    getRecentMemories: args.getRecentMemories,
     chatTurnId: args.chatTurnId,
   });
 
@@ -189,6 +205,12 @@ export async function buildGroundingContext(
   // a constant tax on every grounded turn — skip shipping it when the
   // search itself already found solid matches.
   const includeRecentFallback = searchRes.count <= GROUNDING_RECENT_FALLBACK_MAX_SEARCH_COUNT;
+  const recentMemories = includeRecentFallback
+    ? (args.recentMemories ??
+      (args.getRecentMemories
+        ? await args.getRecentMemories()
+        : await listMemoriesForAI(ctx, args.userId, 40)))
+    : [];
 
   return {
     shouldGround,
