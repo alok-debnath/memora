@@ -57,18 +57,18 @@ function RootAppProviders({ auth, children, defaultTheme, tamaguiConfig }: RootA
   return (
     <TamaguiProvider config={tamaguiConfig} defaultTheme={defaultTheme}>
       <AppThemeProvider>
-        <AppConfirmProvider>
-          <TopOverlayProvider>
-            <BottomSheetModalProvider>
-              <BackdropBlurProvider>
-                <AuthContext.Provider value={auth}>
+        <AuthContext.Provider value={auth}>
+          <AppConfirmProvider>
+            <TopOverlayProvider>
+              <BottomSheetModalProvider>
+                <BackdropBlurProvider>
                   {children}
                   <AppToastRenderer />
-                </AuthContext.Provider>
-              </BackdropBlurProvider>
-            </BottomSheetModalProvider>
-          </TopOverlayProvider>
-        </AppConfirmProvider>
+                </BackdropBlurProvider>
+              </BottomSheetModalProvider>
+            </TopOverlayProvider>
+          </AppConfirmProvider>
+        </AuthContext.Provider>
       </AppThemeProvider>
     </TamaguiProvider>
   );

@@ -1,25 +1,27 @@
 import React, { useMemo } from "react";
 import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
+import type { ViewProps } from "react-native";
 import { XStack, YStack, Text } from "tamagui";
 import { Feather } from "@/lib/icons";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { withAlpha } from "@/components/ui/themeHelpers";
 import type { ChatSheetController } from "./types";
 
-function EmptyState() {
+function EmptyState({ style, onLayout }: Pick<ViewProps, "style" | "onLayout">) {
   const theme = useAppTheme();
 
   return (
-    // Inverted FlatList rotates its scroll content 180deg, so anything
-    // rendered inside it (including this empty state) renders upside down
-    // unless counter-rotated the same way.
+    // VirtualizedList injects the correct platform-specific counter-transform
+    // into its empty component. Forward it rather than hard-coding a rotation:
+    // web/iOS use scaleY(-1), while Android uses scale(-1).
     <YStack
+      onLayout={onLayout}
       flex={1}
       alignItems="center"
       justifyContent="center"
       paddingHorizontal={32}
       gap={12}
-      style={{ transform: [{ rotate: "180deg" }] }}
+      style={style}
     >
       <XStack
         width={52}
