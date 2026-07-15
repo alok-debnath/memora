@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { ScrollView, Pressable } from "react-native";
+import { FlatList, ScrollView, Pressable } from "react-native";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { Feather } from "@/lib/icons";
@@ -7,12 +7,32 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/useAuth";
-import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { AppScreen } from "@/components/ui/AppScreen";
-import { radius } from "@/constants/uiTokens";
+import { AppScreen, SectionCard } from "@/components/ui/AppScreen";
+import { ResponsiveStatGrid, WorkspaceSplit } from "@/components/ui/Responsive";
+import { PressableScale } from "@/components/ui/PressableScale";
+import { radius, spacing } from "@/constants/uiTokens";
 import { getReminderDate, isReminder } from "@/types/memoryKind";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+
+function ReminderWorkspace({
+  children,
+  aside,
+}: {
+  children: React.ReactNode;
+  aside: React.ReactNode;
+}) {
+  const { isExpanded } = useResponsiveLayout();
+  if (!isExpanded) return children;
+  return (
+    <YStack flex={1} width="100%" paddingHorizontal={spacing.lg}>
+      <WorkspaceSplit aside={aside} asideWidth={310} splitAt={760} gap={spacing.lg} fill>
+        {children}
+      </WorkspaceSplit>
+    </YStack>
+  );
+}
 
 type ReminderItem = {
   _id: Id<"memories">;
@@ -70,6 +90,7 @@ function isOverdue(dateStr: string) {
 export default function RemindersScreen() {
   const theme = useAppTheme();
   const { token } = useAuth();
+  const { isExpanded } = useResponsiveLayout();
   const [activeFilter, setActiveFilter] = useState<FilterKey>("week");
 
   const dueNow = useQuery(api.memories.reminders, token ? { token } : "skip") ?? [];
@@ -92,135 +113,202 @@ export default function RemindersScreen() {
     () => getFilteredReminders(withReminders, activeFilter),
     [withReminders, activeFilter],
   );
+  const overdueCount = withReminders.filter((item) => isOverdue(getReminderDate(item)!)).length;
+  const todayCount = getFilteredReminders(withReminders, "today").length;
+  const upcomingCount = Math.max(0, withReminders.length - overdueCount);
   return (
-    <AppScreen showBack title="Reminders">
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: 8, paddingBottom: 12 }}
-      >
-        {FILTERS.map((f) => {
-          const active = activeFilter === f.key;
-          const count = getFilteredReminders(withReminders, f.key).length;
-          return (
-            <Pressable
-              key={f.key}
-              onPress={() => setActiveFilter(f.key)}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 6,
-                paddingHorizontal: 14,
-                paddingVertical: 8,
-                borderRadius: 999,
-                borderWidth: 1,
-                borderColor: active ? theme.primary.val : theme.borderColor.val,
-                backgroundColor: active ? theme.primary.val + "18" : theme.backgroundStrong.val,
-              }}
+    <AppScreen
+      showBack
+      title="Reminders"
+      subtitle="An agenda for overdue commitments, today’s priorities, and what comes next."
+      contentWidth="workspace"
+      noScroll
+    >
+      <ReminderWorkspace
+        aside={
+          <YStack gap={12}>
+            <SectionCard
+              title="Agenda summary"
+              eyebrow="Schedule"
+              density="compact"
+              emphasis="quiet"
             >
-              <Text
-                fontSize={13}
-                fontFamily="$body"
-                fontWeight={active ? "600" : "400"}
-                color={active ? theme.primary.val : theme.colorMuted.val}
+              <ResponsiveStatGrid
+                maximumColumns={2}
+                minimumColumnWidth={110}
+                items={[
+                  { label: "Overdue", value: overdueCount, color: theme.destructive.val },
+                  { label: "Due today", value: todayCount },
+                  { label: "Upcoming", value: upcomingCount },
+                  { label: "All", value: withReminders.length },
+                ]}
+              />
+            </SectionCard>
+            <SectionCard title="Range" density="compact" emphasis="quiet">
+              <YStack gap={6}>
+                {FILTERS.map((filter) => {
+                  const active = activeFilter === filter.key;
+                  const count = getFilteredReminders(withReminders, filter.key).length;
+                  return (
+                    <PressableScale key={filter.key} onPress={() => setActiveFilter(filter.key)}>
+                      <XStack
+                        alignItems="center"
+                        justifyContent="space-between"
+                        gap={8}
+                        paddingHorizontal={10}
+                        paddingVertical={9}
+                        borderRadius={radius.sm}
+                        backgroundColor={active ? theme.surfaceAccent.val : "transparent"}
+                      >
+                        <Text
+                          fontSize={12}
+                          fontWeight={active ? "700" : "500"}
+                          color={active ? theme.primary.val : theme.color.val}
+                        >
+                          {filter.label}
+                        </Text>
+                        <Text fontSize={11} fontFamily="$utility" color={theme.colorMuted.val}>
+                          {count}
+                        </Text>
+                      </XStack>
+                    </PressableScale>
+                  );
+                })}
+              </YStack>
+            </SectionCard>
+          </YStack>
+        }
+      >
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => String(item._id)}
+          ListHeaderComponent={
+            isExpanded ? null : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 8, paddingBottom: 12 }}
               >
-                {f.label}
-              </Text>
-              {count > 0 && (
+                {FILTERS.map((filter) => {
+                  const active = activeFilter === filter.key;
+                  const count = getFilteredReminders(withReminders, filter.key).length;
+                  return (
+                    <Pressable
+                      key={filter.key}
+                      onPress={() => setActiveFilter(filter.key)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 6,
+                        paddingHorizontal: 14,
+                        paddingVertical: 8,
+                        borderRadius: radius.pill,
+                        borderWidth: 1,
+                        borderColor: active ? theme.primary.val : theme.borderColor.val,
+                        backgroundColor: active
+                          ? theme.surfaceAccent.val
+                          : theme.backgroundStrong.val,
+                      }}
+                    >
+                      <Text
+                        fontSize={13}
+                        fontWeight={active ? "700" : "500"}
+                        color={active ? theme.primary.val : theme.colorMuted.val}
+                      >
+                        {filter.label}
+                      </Text>
+                      {count > 0 ? (
+                        <YStack
+                          backgroundColor={active ? theme.primary.val : theme.borderColor.val}
+                          borderRadius={10}
+                          minWidth={18}
+                          height={18}
+                          alignItems="center"
+                          justifyContent="center"
+                          paddingHorizontal={4}
+                        >
+                          <Text
+                            fontSize={10}
+                            fontFamily="$utility"
+                            fontWeight="700"
+                            color={active ? theme.textInverse.val : theme.color.val}
+                          >
+                            {count}
+                          </Text>
+                        </YStack>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            )
+          }
+          renderItem={({ item }) => {
+            const overdue = isOverdue(getReminderDate(item)!);
+            return (
+              <XStack
+                alignItems="center"
+                gap={12}
+                paddingHorizontal={14}
+                paddingVertical={13}
+                borderWidth={1}
+                borderColor={theme.borderSubtle.val}
+                backgroundColor={theme.surface.val}
+                borderRadius={radius.md}
+              >
                 <YStack
-                  backgroundColor={active ? theme.primary.val : theme.borderColor.val}
+                  width={36}
+                  height={36}
                   borderRadius={10}
-                  minWidth={18}
-                  height={18}
                   alignItems="center"
                   justifyContent="center"
-                  paddingHorizontal={4}
+                  backgroundColor={overdue ? theme.surfaceDangerSoft.val : theme.surfaceAccent.val}
                 >
-                  <Text
-                    fontSize={10}
-                    fontFamily="$body"
-                    fontWeight="600"
-                    color={active ? theme.textInverse.val : theme.color.val}
-                  >
-                    {count}
+                  <Feather
+                    name="bell"
+                    size={16}
+                    color={overdue ? theme.destructive.val : theme.primary.val}
+                  />
+                </YStack>
+                <YStack flex={1} minWidth={0}>
+                  <Text fontSize={15} fontWeight="600" color={theme.color.val} numberOfLines={1}>
+                    {item.title}
+                  </Text>
+                  <Text fontSize={12} marginTop={2} color={theme.colorMuted.val}>
+                    {new Date(getReminderDate(item)!).toLocaleString(undefined, {
+                      weekday: "short",
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
                   </Text>
                 </YStack>
-              )}
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-
-      <YStack>
-        {filtered.length === 0 ? (
-          <EmptyState
-            icon="bell"
-            title="No reminders"
-            description={
-              activeFilter === "today"
-                ? "Nothing due today."
-                : activeFilter === "all"
-                  ? "Set reminder dates on your memories to see them here."
-                  : `No reminders in the next ${FILTERS.find((f) => f.key === activeFilter)?.label.toLowerCase()}.`
-            }
-          />
-        ) : (
-          <Card style={{ padding: 0, borderRadius: radius.md, overflow: "hidden" }}>
-            {filtered.map((m, i) => {
-              const overdue = isOverdue(getReminderDate(m)!);
-              const isLast = i === filtered.length - 1;
-              return (
-                <XStack
-                  key={m._id}
-                  alignItems="center"
-                  gap={12}
-                  paddingHorizontal={14}
-                  paddingVertical={12}
-                  borderBottomWidth={isLast ? 0 : 1}
-                  borderBottomColor={theme.borderSubtle.val}
-                >
-                  <YStack
-                    width={32}
-                    height={32}
-                    borderRadius={9}
-                    alignItems="center"
-                    justifyContent="center"
-                    backgroundColor={overdue ? theme.destructive.val : theme.primary.val}
-                  >
-                    <Feather name="bell" size={16} color={theme.textInverse.val} />
-                  </YStack>
-                  <YStack flex={1} minWidth={0}>
-                    <Text
-                      fontSize={15}
-                      fontFamily="$body"
-                      fontWeight="600"
-                      color={theme.color.val}
-                      numberOfLines={1}
-                    >
-                      {m.title}
-                    </Text>
-                    <Text
-                      fontSize={12}
-                      fontFamily="$body"
-                      marginTop={2}
-                      color={theme.colorMuted.val}
-                    >
-                      {new Date(getReminderDate(m)!).toLocaleString(undefined, {
-                        weekday: "short",
-                        month: "short",
-                        day: "numeric",
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
-                    </Text>
-                  </YStack>
-                  {overdue && <Badge label="overdue" color={theme.destructive.val} small />}
-                </XStack>
-              );
-            })}
-          </Card>
-        )}
-      </YStack>
+                {overdue ? <Badge label="overdue" color={theme.destructive.val} small /> : null}
+              </XStack>
+            );
+          }}
+          ItemSeparatorComponent={() => <YStack height={10} />}
+          ListEmptyComponent={
+            <EmptyState
+              icon="bell"
+              title="No reminders"
+              description={
+                activeFilter === "today"
+                  ? "Nothing due today."
+                  : activeFilter === "all"
+                    ? "Set reminder dates on your memories to see them here."
+                    : `No reminders in the next ${FILTERS.find((f) => f.key === activeFilter)?.label.toLowerCase()}.`
+              }
+            />
+          }
+          showsVerticalScrollIndicator={false}
+          style={{ width: "100%", alignSelf: "center" }}
+          contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl }}
+        />
+      </ReminderWorkspace>
     </AppScreen>
   );
 }

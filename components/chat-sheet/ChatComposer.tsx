@@ -1,5 +1,5 @@
 import React, { type ComponentRef, useCallback, useEffect, useRef, useState } from "react";
-import { Platform, Pressable, StyleSheet, View } from "react-native";
+import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { SheetTextInput as BottomSheetTextInput } from "@/components/ui/SheetTextInput";
 import { YStack, Text } from "tamagui";
@@ -58,6 +58,7 @@ export const ChatComposer = React.memo(function ChatComposer({
   onPickDocument,
   driveConnected,
   onRequestDriveAccess,
+  standalone = false,
 }: {
   isSending: boolean;
   onSend: (text: string) => Promise<void>;
@@ -71,11 +72,13 @@ export const ChatComposer = React.memo(function ChatComposer({
   onPickDocument: () => void;
   driveConnected: boolean;
   onRequestDriveAccess: () => void;
+  standalone?: boolean;
 }) {
   const theme = useAppTheme();
   const [text, setText] = useState("");
   const [mode, setMode] = useState<"keyboard" | "voice">("keyboard");
-  const inputRef = useRef<ComponentRef<typeof BottomSheetTextInput>>(null);
+  const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
+  const ComposerTextInput = standalone ? TextInput : BottomSheetTextInput;
   const recorderRef = useRef<VoiceRecorderHandle>(null);
 
   // Edit-and-resend: one-shot prefill from a previous user message.
@@ -210,8 +213,8 @@ export const ChatComposer = React.memo(function ChatComposer({
                 size={20}
               />
 
-              <BottomSheetTextInput
-                ref={inputRef}
+              <ComposerTextInput
+                ref={inputRef as never}
                 value={text}
                 onChangeText={setText}
                 placeholder="Ask Memora anything..."

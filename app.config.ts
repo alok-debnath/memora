@@ -6,7 +6,7 @@ const config: ExpoConfig = {
   name: IS_DEV ? "Memora (Dev)" : "Memora",
   slug: "memora",
   version: "1.0.0",
-  orientation: "portrait",
+  orientation: "default",
   icon: "./assets/images/icon.png",
   scheme: IS_DEV ? "memora-dev" : "memora",
   userInterfaceStyle: "automatic",
@@ -29,7 +29,16 @@ const config: ExpoConfig = {
     "expo-dev-client",
     "expo-router",
     "expo-font",
+    "expo-asset",
     "expo-web-browser",
+    [
+      "@siteed/audio-studio",
+      {
+        enablePhoneStateHandling: false,
+        enableNotifications: false,
+        enableBackgroundAudio: false,
+      },
+    ],
     [
       "expo-speech-recognition",
       {

@@ -5,6 +5,7 @@ import { Text, XStack, YStack } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { withAlpha } from "@/components/ui/themeHelpers";
 import { StatStrip, type StatStripItem } from "@/components/ui/StatStrip";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 
 type PageHeroStat = StatStripItem;
 
@@ -30,6 +31,7 @@ export function PageHero({
   accentStyle = "rail",
 }: PageHeroProps) {
   const theme = useAppTheme();
+  const responsive = useResponsiveLayout();
   const accent = iconColor ?? theme.primary.val;
 
   return (
@@ -57,8 +59,8 @@ export function PageHero({
             </Text>
           ) : null}
           <Text
-            fontSize={26}
-            lineHeight={30}
+            fontSize={responsive.isExpanded ? 36 : responsive.isMedium ? 31 : 27}
+            lineHeight={responsive.isExpanded ? 41 : responsive.isMedium ? 36 : 32}
             fontFamily="$heading"
             fontWeight="700"
             color={theme.color.val}
@@ -66,7 +68,13 @@ export function PageHero({
             {title}
           </Text>
           {description ? (
-            <Text fontSize={13} lineHeight={18} fontFamily="$body" color={theme.colorMuted.val}>
+            <Text
+              fontSize={responsive.isExpanded ? 15 : 13}
+              lineHeight={responsive.isExpanded ? 22 : 19}
+              fontFamily="$body"
+              color={theme.colorMuted.val}
+              maxWidth={760}
+            >
               {description}
             </Text>
           ) : null}

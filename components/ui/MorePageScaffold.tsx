@@ -15,7 +15,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Text, XStack, YStack } from "tamagui";
 
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import { layout, spacing } from "@/constants/uiTokens";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 
@@ -60,7 +61,8 @@ export function MorePageScaffold({
 }: MorePageScaffoldProps) {
   const router = useRouter();
   const theme = useAppTheme();
-  const isLargeScreen = useIsLargeScreen();
+  const responsive = useResponsiveLayout();
+  const maxContentWidth = layout.standardMaxWidth;
   const scrollY = useSharedValue(0);
   const headerTop = HEADER_TOP_MARGIN;
   const contentTopPadding = headerTop + HEADER_HEIGHT + CONTENT_TOP_GAP;
@@ -131,7 +133,16 @@ export function MorePageScaffold({
         />
 
         {noScroll ? (
-          <View style={{ flex: 1 }}>{children}</View>
+          <View
+            style={{
+              flex: 1,
+              width: "100%",
+              maxWidth: layout.standardMaxWidth,
+              alignSelf: "center",
+            }}
+          >
+            {children}
+          </View>
         ) : (
           <Animated.ScrollView
             showsVerticalScrollIndicator={false}
@@ -143,14 +154,14 @@ export function MorePageScaffold({
               {
                 paddingTop: contentTopPadding,
                 paddingBottom: 144,
-                paddingHorizontal: 16,
+                paddingHorizontal: spacing.lg,
               },
               scrollProps?.contentContainerStyle,
             ]}
           >
             <YStack
               width="100%"
-              maxWidth={isLargeScreen ? 1040 : undefined}
+              maxWidth={responsive.isCompact ? undefined : maxContentWidth - spacing.lg * 2}
               alignSelf="center"
               gap={14}
             >
@@ -184,7 +195,7 @@ export function MorePageScaffold({
           <Animated.View
             style={[
               styles.nativeHeaderWrap,
-              isLargeScreen ? styles.nativeHeaderWrapLarge : null,
+              !responsive.isCompact ? styles.nativeHeaderWrapLarge : null,
               headerCapsuleStyle,
             ]}
           >
@@ -275,7 +286,7 @@ const styles = StyleSheet.create({
     left: undefined,
     right: undefined,
     width: "100%",
-    maxWidth: 1040,
-    paddingHorizontal: 16,
+    maxWidth: layout.standardMaxWidth,
+    paddingHorizontal: spacing.lg,
   },
 });

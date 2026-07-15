@@ -2,12 +2,7 @@ import React, { useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Platform, Pressable, TextInput } from "react-native";
 import { useAction, useMutation } from "convex/react";
 import { File } from "expo-file-system";
-import {
-  RecordingPresets,
-  requestRecordingPermissionsAsync,
-  useAudioRecorder,
-  useAudioRecorderState,
-} from "expo-audio";
+import { useAudioRecorder } from "@siteed/audio-studio";
 import * as Haptics from "expo-haptics";
 import { Feather } from "@/lib/icons";
 import { api } from "@/convex/_generated/api";
@@ -15,6 +10,10 @@ import { useAppTheme } from "@/hooks/useAppTheme";
 import { useOnDeviceDictation } from "@/hooks/useOnDeviceDictation";
 import { Text, XStack, YStack } from "tamagui";
 import { BottomSheetAwareTextInput } from "@/components/ui/BottomSheetAwareTextInput";
+import {
+  prepareAudioForTranscription,
+  TRANSCRIPTION_AUDIO_SAMPLE_RATE,
+} from "@/lib/audio/transcriptionPreprocessor";
 
 export type VoiceInputMode = "standard" | "continuous" | "walkie-talkie" | "auto";
 export type VoiceTranscriptionMode = "cloud" | "device";
@@ -39,15 +38,22 @@ export interface VoiceRecorderHandle {
   cancel: () => void;
 }
 
-function mimeForUri(uri: string) {
-  if (uri.endsWith(".webm")) return "audio/webm";
-  if (uri.endsWith(".3gp")) return "audio/3gpp";
-  return "audio/mp4";
-}
-
 function formatDuration(milliseconds: number) {
   const seconds = Math.floor(milliseconds / 1000);
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function cleanupRecordingUri(uri: string | null | undefined) {
+  if (!uri) return;
+  if (Platform.OS === "web") {
+    if (uri.startsWith("blob:")) URL.revokeObjectURL(uri);
+    return;
+  }
+  try {
+    new File(uri).delete();
+  } catch {
+    /* cache cleanup is best effort */
+  }
 }
 
 export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorderProps>(
@@ -66,11 +72,7 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
     ref,
   ) {
     const theme = useAppTheme();
-    const recorder = useAudioRecorder({
-      ...RecordingPresets.HIGH_QUALITY,
-      android: { ...RecordingPresets.HIGH_QUALITY.android, audioSource: "voice_recognition" },
-    });
-    const recorderState = useAudioRecorderState(recorder, 250);
+    const recorder = useAudioRecorder();
     const createUpload = useMutation(api.transcriptionJobs.createUpload);
     const attachUpload = useMutation(api.transcriptionJobs.attachUpload);
     const transcribe = useAction(api.actions.transcribeAudio.transcribe);
@@ -82,6 +84,7 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
     const TranscriptInput = withinBottomSheet ? BottomSheetAwareTextInput : TextInput;
     const stoppedRef = useRef(false);
     const uriRef = useRef<string | null>(null);
+    const pcmChunksRef = useRef<Float32Array[]>([]);
     const device = useOnDeviceDictation({
       enabled: transcriptionMode === "device",
       onPartialTranscript: onTranscription,
@@ -99,15 +102,14 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
 
     const discard = () => {
       device.cancel();
-      if (recorderState.isRecording) void recorder.stop();
-      if (uriRef.current && Platform.OS !== "web") {
-        try {
-          new File(uriRef.current).delete();
-        } catch {
-          /* cache cleanup is best effort */
-        }
-      }
+      if (recorder.isRecording)
+        void recorder
+          .stopRecording()
+          .then((recording) => cleanupRecordingUri(recording?.fileUri))
+          .catch(() => undefined);
+      cleanupRecordingUri(uriRef.current);
       uriRef.current = null;
+      pcmChunksRef.current = [];
       stoppedRef.current = false;
       setText("");
       setError(null);
@@ -132,35 +134,50 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
         }
         return;
       }
-      const permission = await requestRecordingPermissionsAsync();
-      if (!permission.granted) {
-        setError("Allow microphone access in device settings to record a dictation.");
-        return;
-      }
       stoppedRef.current = false;
+      pcmChunksRef.current = [];
       try {
-        await recorder.prepareToRecordAsync();
-        recorder.record({ forDuration: MAX_DURATION_MS / 1000 });
+        await recorder.startRecording({
+          sampleRate: TRANSCRIPTION_AUDIO_SAMPLE_RATE,
+          channels: 1,
+          encoding: "pcm_16bit",
+          bufferDurationSeconds: 0.1,
+          streamFormat: "float32",
+          maxDurationMs: MAX_DURATION_MS,
+          autoStopOnMaxDuration: false,
+          keepAwake: false,
+          output: { primary: { enabled: true, format: "wav" } },
+          onAudioStream: async (event) => {
+            if (event.streamFormat === "float32" && event.data.length > 0)
+              pcmChunksRef.current.push(event.data.slice());
+          },
+        });
         setPhase("recording");
-      } catch {
-        setError("Could not start recording. Try again.");
+      } catch (caught) {
+        setError(
+          caught instanceof Error && /permission|microphone/i.test(caught.message)
+            ? "Allow microphone access in device settings to record a dictation."
+            : "Could not start recording. Try again.",
+        );
         setPhase("error");
       }
     };
 
-    const uploadAndTranscribe = async (uri: string, durationMs: number) => {
+    const uploadAndTranscribe = async (args: {
+      audio: ArrayBuffer | Blob;
+      mimeType: string;
+      durationMs: number;
+    }) => {
       setPhase("processing");
       try {
-        const mimeType = mimeForUri(uri);
-        const { jobId, uploadUrl } = await createUpload({ mimeType, durationMs });
-        const audio =
-          Platform.OS === "web"
-            ? await (await fetch(uri)).blob()
-            : await new File(uri).arrayBuffer();
+        const { jobId, uploadUrl } = await createUpload({
+          mimeType: args.mimeType,
+          durationMs: args.durationMs,
+        });
         const uploaded = await fetch(uploadUrl, {
           method: "POST",
-          headers: { "Content-Type": mimeType },
-          body: audio,
+          headers: { "Content-Type": args.mimeType },
+          body: args.audio,
         });
         if (!uploaded.ok) throw new Error("Upload failed.");
         const { storageId } = await uploaded.json();
@@ -175,11 +192,7 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
         setError(caught instanceof Error ? caught.message : "Could not transcribe this recording.");
         setPhase("error");
       } finally {
-        if (uriRef.current && Platform.OS !== "web") {
-          try {
-            new File(uriRef.current).delete();
-          } catch {}
-        }
+        cleanupRecordingUri(uriRef.current);
         uriRef.current = null;
       }
     };
@@ -192,13 +205,34 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
         return;
       }
       try {
-        await recorder.stop();
-        const uri = recorder.uri ?? recorderState.url;
-        const durationMs = recorderState.durationMillis;
-        if (!uri || durationMs < 500) throw new Error("Record a little longer, then try again.");
-        uriRef.current = uri;
+        const recording = await recorder.stopRecording();
+        if (!recording || recording.durationMs < 500)
+          throw new Error("Record a little longer, then try again.");
+        uriRef.current = recording.fileUri;
         onPauseChange?.(false);
-        await uploadAndTranscribe(uri, Math.min(durationMs, MAX_DURATION_MS));
+        setPhase("processing");
+        // Let the processing state render before the synchronous DSP work starts.
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        try {
+          const prepared = prepareAudioForTranscription(pcmChunksRef.current);
+          await uploadAndTranscribe(prepared);
+        } catch (processingError) {
+          console.warn(
+            "Frontend audio preprocessing failed; using original WAV.",
+            processingError instanceof Error ? processingError.message : processingError,
+          );
+          const original =
+            Platform.OS === "web"
+              ? await (await fetch(recording.fileUri)).blob()
+              : await new File(recording.fileUri).arrayBuffer();
+          await uploadAndTranscribe({
+            audio: original,
+            mimeType: "audio/wav",
+            durationMs: Math.min(recording.durationMs, MAX_DURATION_MS),
+          });
+        } finally {
+          pcmChunksRef.current = [];
+        }
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : "Could not finish recording.");
         setPhase("error");
@@ -208,13 +242,11 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
     const pauseOrResume = async () => {
       try {
         if (phase === "recording") {
-          recorder.pause();
+          await recorder.pauseRecording();
           setPhase("paused");
           onPauseChange?.(true);
         } else if (phase === "paused") {
-          recorder.record({
-            forDuration: Math.max(1, (MAX_DURATION_MS - recorderState.durationMillis) / 1000),
-          });
+          await recorder.resumeRecording();
           setPhase("recording");
           onPauseChange?.(false);
         }
@@ -228,16 +260,19 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
       if (autoStart && phase === "idle") void start();
     }, [autoStart]);
     useEffect(() => {
-      const duration =
-        transcriptionMode === "device" ? device.elapsedMs : recorderState.durationMillis;
+      const duration = transcriptionMode === "device" ? device.elapsedMs : recorder.durationMs;
       if (phase === "recording" && duration >= MAX_DURATION_MS) void stop();
-    }, [device.elapsedMs, phase, recorderState.durationMillis, transcriptionMode]);
+    }, [device.elapsedMs, phase, recorder.durationMs, transcriptionMode]);
     useEffect(() => {
       if (transcriptOverride !== undefined && phase === "review") setText(transcriptOverride);
     }, [phase, transcriptOverride]);
     useEffect(
       () => () => {
-        if (recorderState.isRecording) void recorder.stop();
+        if (recorder.isRecording)
+          void recorder
+            .stopRecording()
+            .then((recording) => cleanupRecordingUri(recording?.fileUri))
+            .catch(() => undefined);
         device.cancel();
       },
       [],
@@ -328,8 +363,7 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
         </YStack>
       );
     const active = phase === "recording" || phase === "paused" || device.status === "starting";
-    const duration =
-      transcriptionMode === "device" ? device.elapsedMs : recorderState.durationMillis;
+    const duration = transcriptionMode === "device" ? device.elapsedMs : recorder.durationMs;
     const listeningLabel =
       transcriptionMode === "device" && device.status === "starting"
         ? "Starting on-device dictation…"

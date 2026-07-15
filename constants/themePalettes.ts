@@ -669,56 +669,75 @@ function ensureContrast(fgHex: string, bgHex: string, minRatio: number): string 
 export function createThemeColors(seedColor: string, mode: ResolvedThemeMode): ThemeColorValues {
   const isDark = mode === "dark";
   const seedHct = hctFromHex(seedColor);
+  // Memora's archive neutrals stay cool and quiet regardless of the chosen
+  // personalization accent. Accent-derived neutrals made each preset feel
+  // like an entirely different product and turned amber into a beige wash.
+  const archiveHct = hctFromHex("#315064");
   const primary = tuneSeed(seedHct, mode);
   const primaryHover = isDark ? tone(seedHct, 0.8, 0.72, 0.38) : tone(seedHct, 0.86, 0.34, 0.38);
   const neutralSaturation = isDark ? 0.26 : 0.34;
   const containerSaturation = isDark ? 0.34 : 0.42;
   const accentSaturation = isDark ? 0.48 : 0.5;
-  const background = tone(seedHct, neutralSaturation, isDark ? 0.17 : 0.925, isDark ? 0.1 : 0.08);
+  const background = tone(
+    archiveHct,
+    neutralSaturation,
+    isDark ? 0.17 : 0.925,
+    isDark ? 0.1 : 0.08,
+  );
   const backgroundHover = tone(
-    seedHct,
+    archiveHct,
     neutralSaturation,
     isDark ? 0.205 : 0.895,
     isDark ? 0.11 : 0.09,
   );
   const backgroundPress = tone(
-    seedHct,
+    archiveHct,
     neutralSaturation,
     isDark ? 0.25 : 0.85,
     isDark ? 0.12 : 0.1,
   );
   const backgroundStrong = tone(
-    seedHct,
+    archiveHct,
     neutralSaturation,
     isDark ? 0.22 : 0.955,
     isDark ? 0.1 : 0.07,
   );
   const color = ensureContrast(
-    tone(seedHct, 0.18, isDark ? 0.94 : 0.105, isDark ? 0.05 : 0.04),
+    tone(archiveHct, 0.18, isDark ? 0.94 : 0.105, isDark ? 0.05 : 0.04),
     background,
     4.5,
   );
-  const colorMuted = tone(seedHct, 0.22, isDark ? 0.73 : 0.36, isDark ? 0.06 : 0.05);
-  const secondary = tone(seedHct, containerSaturation, isDark ? 0.18 : 0.86, isDark ? 0.12 : 0.1);
+  const colorMuted = tone(archiveHct, 0.22, isDark ? 0.73 : 0.36, isDark ? 0.06 : 0.05);
+  const secondary = tone(
+    archiveHct,
+    containerSaturation,
+    isDark ? 0.18 : 0.86,
+    isDark ? 0.12 : 0.1,
+  );
   const secondaryHover = tone(
-    seedHct,
+    archiveHct,
     containerSaturation,
     isDark ? 0.225 : 0.81,
     isDark ? 0.14 : 0.12,
   );
   const accent = tone(seedHct, accentSaturation, isDark ? 0.235 : 0.82, isDark ? 0.18 : 0.16);
   const accentHover = tone(seedHct, accentSaturation, isDark ? 0.29 : 0.74, isDark ? 0.2 : 0.18);
-  const borderColor = tone(seedHct, containerSaturation, isDark ? 0.34 : 0.71, isDark ? 0.12 : 0.1);
+  const borderColor = tone(
+    archiveHct,
+    containerSaturation,
+    isDark ? 0.34 : 0.71,
+    isDark ? 0.12 : 0.1,
+  );
   const borderColorHover = tone(
-    seedHct,
+    archiveHct,
     containerSaturation,
     isDark ? 0.4 : 0.63,
     isDark ? 0.14 : 0.12,
   );
-  const card = tone(seedHct, neutralSaturation, isDark ? 0.21 : 0.945, isDark ? 0.1 : 0.075);
-  const surface = tone(seedHct, neutralSaturation, isDark ? 0.21 : 0.938, isDark ? 0.1 : 0.08);
+  const card = tone(archiveHct, neutralSaturation, isDark ? 0.21 : 0.945, isDark ? 0.1 : 0.075);
+  const surface = tone(archiveHct, neutralSaturation, isDark ? 0.21 : 0.938, isDark ? 0.1 : 0.08);
   const surfaceElevated = tone(
-    seedHct,
+    archiveHct,
     neutralSaturation,
     isDark ? 0.26 : 0.968,
     isDark ? 0.11 : 0.065,
@@ -726,7 +745,7 @@ export function createThemeColors(seedColor: string, mode: ResolvedThemeMode): T
   const surfaceAccent = tone(seedHct, accentSaturation, isDark ? 0.265 : 0.86, isDark ? 0.2 : 0.16);
   const borderStrong = tone(seedHct, accentSaturation, isDark ? 0.48 : 0.49, isDark ? 0.18 : 0.16);
   const borderSubtle = tone(
-    seedHct,
+    archiveHct,
     containerSaturation,
     isDark ? 0.27 : 0.79,
     isDark ? 0.12 : 0.1,

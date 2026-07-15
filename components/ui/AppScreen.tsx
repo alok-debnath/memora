@@ -2,18 +2,21 @@ import React from "react";
 import { type ScrollViewProps, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import { XStack, YStack, Text } from "tamagui";
 
 import { Feather } from "@/lib/icons";
-import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
-import { CONTENT_GAP, spacing } from "@/constants/uiTokens";
+import { CONTENT_GAP, layout, radius, spacing } from "@/constants/uiTokens";
+import { getNavigationContext } from "@/constants/appNavigation";
+
+export type AppScreenContentWidth = "readable" | "standard" | "workspace" | "full";
 
 type AppScreenProps = {
   children: React.ReactNode;
@@ -39,6 +42,9 @@ type AppScreenProps = {
    * Defaults to true (correct for stack-pushed screens).
    */
   safeTop?: boolean;
+  /** Controls the content measure without making screens own breakpoint logic. */
+  contentWidth?: AppScreenContentWidth;
+  headerEyebrow?: string;
 };
 
 const FLOATING_HEADER_HEIGHT = 58;
@@ -59,13 +65,33 @@ export function AppScreen({
   fallbackHref = "/",
   noScroll,
   safeTop = true,
+  contentWidth = "standard",
+  headerEyebrow,
 }: AppScreenProps) {
-  const isLargeScreen = useIsLargeScreen();
+  const responsive = useResponsiveLayout();
+  const pathname = usePathname();
   const tabBarPadding = useTabBarBottomPadding();
   const theme = useAppTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const topInset = safeTop ? insets.top : 0;
+  const topInset = safeTop && responsive.isCompact ? insets.top : 0;
+  const bottomPadding = showBack ? insets.bottom + spacing.xl : tabBarPadding;
+  const maxContentWidth =
+    contentWidth === "readable"
+      ? layout.readableMaxWidth
+      : contentWidth === "workspace"
+        ? layout.workspaceMaxWidth
+        : contentWidth === "full"
+          ? undefined
+          : layout.standardMaxWidth;
+  const innerMaxContentWidth =
+    maxContentWidth === undefined
+      ? undefined
+      : Math.max(0, maxContentWidth - (padded ? spacing.lg * 2 : 0));
+  const navigationContext = getNavigationContext(pathname);
+  const desktopSubpage = Boolean(showBack && responsive.navigationMode !== "bottom");
+  const resolvedHeaderEyebrow =
+    headerEyebrow ?? (desktopSubpage ? navigationContext?.sectionLabel : "Memora") ?? "Workspace";
 
   const handleBackPress = React.useCallback(() => {
     if (router.canGoBack()) {
@@ -96,31 +122,77 @@ export function AppScreen({
   // Sub-pages (showBack) get a floating header pinned above the scroll
   // content, matching the old fixed back+title capsule. Tab-root screens
   // (no back button) keep a plain inline header that scrolls with content.
-  const useFloatingHeader = Boolean(showBack);
+  const useFloatingHeader = Boolean(showBack && responsive.isCompact);
 
-  const inlineHeader = !useFloatingHeader && (title || subtitle || headerRight) && (
-    <XStack alignItems="center" justifyContent="space-between" gap={CONTENT_GAP}>
-      <YStack flex={1} gap={3}>
-        {title ? (
+  const inlineHeader = !useFloatingHeader &&
+    !desktopSubpage &&
+    (title || subtitle || headerRight) && (
+      <XStack alignItems="center" justifyContent="space-between" gap={CONTENT_GAP}>
+        <YStack flex={1} gap={3}>
+          {title ? (
+            <Text
+              color={theme.color.val}
+              fontSize={responsive.isExpanded ? 34 : responsive.isMedium ? 30 : 26}
+              lineHeight={responsive.isExpanded ? 39 : responsive.isMedium ? 34 : 30}
+              fontFamily="$heading"
+              fontWeight="700"
+            >
+              {title}
+            </Text>
+          ) : null}
+          {subtitle ? (
+            <Text color={theme.colorMuted.val} fontSize={13} lineHeight={18} maxWidth={720}>
+              {subtitle}
+            </Text>
+          ) : null}
+        </YStack>
+        {headerRight}
+      </XStack>
+    );
+
+  const desktopSubpageHeader = desktopSubpage ? (
+    <YStack
+      gap={spacing.sm}
+      paddingTop={spacing.xs}
+      paddingBottom={spacing.sm}
+      borderBottomWidth={1}
+      borderBottomColor={theme.borderSubtle.val}
+    >
+      <XStack alignItems="flex-end" justifyContent="space-between" gap={spacing.xl}>
+        <YStack flex={1} minWidth={0} gap={spacing.xs}>
+          <Text
+            color={theme.primary.val}
+            fontFamily="$utility"
+            fontWeight="700"
+            fontSize={10}
+            lineHeight={13}
+            textTransform="uppercase"
+            letterSpacing={1.1}
+          >
+            {resolvedHeaderEyebrow}
+          </Text>
           <Text
             color={theme.color.val}
-            fontSize={isLargeScreen ? 30 : 26}
-            lineHeight={isLargeScreen ? 34 : 30}
+            fontSize={responsive.isWide ? 38 : 33}
+            lineHeight={responsive.isWide ? 43 : 38}
             fontFamily="$heading"
             fontWeight="700"
+            numberOfLines={1}
           >
             {title}
           </Text>
-        ) : null}
-        {subtitle ? (
-          <Text color={theme.colorMuted.val} fontSize={13} lineHeight={18} maxWidth={720}>
-            {subtitle}
-          </Text>
-        ) : null}
-      </YStack>
-      {headerRight}
-    </XStack>
-  );
+          {subtitle ? (
+            <Text color={theme.colorMuted.val} fontSize={14} lineHeight={21} maxWidth={760}>
+              {subtitle}
+            </Text>
+          ) : null}
+        </YStack>
+        {headerRight}
+      </XStack>
+    </YStack>
+  ) : null;
+
+  const pageHeader = desktopSubpageHeader ?? inlineHeader;
 
   const floatingHeader = useFloatingHeader ? (
     <>
@@ -154,7 +226,7 @@ export function AppScreen({
               textTransform="uppercase"
               letterSpacing={0.8}
             >
-              More
+              {resolvedHeaderEyebrow}
             </Text>
             <Text
               color={theme.color.val}
@@ -181,16 +253,26 @@ export function AppScreen({
       {floatingHeader}
       <YStack
         width="100%"
-        maxWidth={isLargeScreen ? 1100 : undefined}
+        maxWidth={maxContentWidth}
         alignSelf="center"
         gap={CONTENT_GAP}
         paddingTop={contentTopPadding}
         paddingHorizontal={padded ? spacing.lg : 0}
       >
-        {inlineHeader}
+        {pageHeader}
         {hero}
       </YStack>
-      <View style={{ flex: 1, marginTop: inlineHeader || hero ? CONTENT_GAP : 0 }}>{children}</View>
+      <View
+        style={{
+          flex: 1,
+          width: "100%",
+          maxWidth: maxContentWidth,
+          alignSelf: "center",
+          marginTop: pageHeader || hero ? CONTENT_GAP : 0,
+        }}
+      >
+        {children}
+      </View>
     </>
   );
 
@@ -203,19 +285,14 @@ export function AppScreen({
         contentContainerStyle={[
           {
             paddingTop: contentTopPadding,
-            paddingBottom: tabBarPadding,
+            paddingBottom: bottomPadding,
             paddingHorizontal: padded ? spacing.lg : 0,
           },
           scrollProps?.contentContainerStyle,
         ]}
       >
-        <YStack
-          width="100%"
-          maxWidth={isLargeScreen ? 1100 : undefined}
-          alignSelf="center"
-          gap={CONTENT_GAP}
-        >
-          {inlineHeader}
+        <YStack width="100%" maxWidth={innerMaxContentWidth} alignSelf="center" gap={CONTENT_GAP}>
+          {pageHeader}
           {hero}
           {children}
         </YStack>
@@ -258,14 +335,35 @@ type SectionCardProps = {
   eyebrow?: string;
   action?: React.ReactNode;
   padded?: boolean;
+  density?: "compact" | "default" | "comfortable";
+  emphasis?: "primary" | "supporting" | "quiet";
+  fullHeight?: boolean;
 };
 
-export function SectionCard({ children, title, eyebrow, action, padded = true }: SectionCardProps) {
+export function SectionCard({
+  children,
+  title,
+  eyebrow,
+  action,
+  padded = true,
+  density = "default",
+  emphasis = "supporting",
+  fullHeight = false,
+}: SectionCardProps) {
   const theme = useAppTheme();
+  const padding =
+    density === "compact" ? spacing.md : density === "comfortable" ? spacing.xl : spacing.lg;
+  const gap = density === "compact" ? spacing.sm : spacing.md;
 
   return (
-    <SurfaceCard variant="frosted" padding={padded ? 14 : 0} radius={16}>
-      <YStack gap={12}>
+    <SurfaceCard
+      variant={emphasis === "primary" ? "glass" : emphasis === "quiet" ? "solid" : "frosted"}
+      padding={padded ? padding : 0}
+      radius={radius.md}
+      shadowed={emphasis !== "quiet"}
+      style={fullHeight ? { height: "100%" } : undefined}
+    >
+      <YStack gap={gap} flex={fullHeight ? 1 : undefined}>
         {(title || eyebrow || action) && (
           <XStack alignItems="center" justifyContent="space-between" gap={12}>
             <YStack flex={1} gap={4}>

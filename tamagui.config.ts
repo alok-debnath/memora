@@ -33,61 +33,82 @@ const animations = createAnimations({
   },
 });
 
-const appFont = createFont({
-  family: FontFamily.regular,
-  size: {
-    1: 11,
-    2: 12,
-    3: 13,
-    4: 14,
-    true: 14,
-    5: 16,
-    6: 18,
-    7: 20,
-    8: 24,
-    9: 30,
-    10: 36,
-  },
-  lineHeight: {
-    1: 15,
-    2: 17,
-    3: 18,
-    4: 20,
-    true: 20,
-    5: 22,
-    6: 25,
-    7: 28,
-    8: 32,
-    9: 40,
-    10: 46,
-  },
-  weight: {
-    4: "400",
-    5: "500",
-    6: "600",
-    7: "700",
-    true: "400",
-  },
-  letterSpacing: {
-    1: 0.2,
-    2: 0.1,
-    3: 0,
-    4: 0,
-    true: 0,
-    5: 0,
-    6: 0,
-    7: 0,
-    8: 0,
-    9: 0,
-    10: 0,
-  },
-  face: {
-    400: { normal: FontFamily.regular },
-    500: { normal: FontFamily.medium },
-    600: { normal: FontFamily.semiBold },
-    700: { normal: FontFamily.bold },
-    800: { normal: FontFamily.bold },
-  },
+function createAppFont(family: {
+  regular: string;
+  medium: string;
+  semiBold: string;
+  bold: string;
+}) {
+  return createFont({
+    family: family.regular,
+    size: {
+      1: 11,
+      2: 12,
+      3: 13,
+      4: 14,
+      true: 14,
+      5: 16,
+      6: 18,
+      7: 20,
+      8: 24,
+      9: 30,
+      10: 36,
+    },
+    lineHeight: {
+      1: 15,
+      2: 17,
+      3: 18,
+      4: 20,
+      true: 20,
+      5: 22,
+      6: 25,
+      7: 28,
+      8: 32,
+      9: 40,
+      10: 46,
+    },
+    weight: {
+      4: "400",
+      5: "500",
+      6: "600",
+      7: "700",
+      true: "400",
+    },
+    letterSpacing: {
+      1: 0.2,
+      2: 0.1,
+      3: 0,
+      4: 0,
+      true: 0,
+      5: 0,
+      6: 0,
+      7: 0,
+      8: 0,
+      9: 0,
+      10: 0,
+    },
+    face: {
+      400: { normal: family.regular },
+      500: { normal: family.medium },
+      600: { normal: family.semiBold },
+      700: { normal: family.bold },
+      800: { normal: family.bold },
+    },
+  });
+}
+
+const bodyFont = createAppFont(FontFamily);
+const headingFont = createAppFont({
+  regular: FontFamily.displayRegular,
+  medium: FontFamily.displayMedium,
+  semiBold: FontFamily.displaySemiBold,
+  bold: FontFamily.displayBold,
+});
+const utilityFont = createAppFont({
+  regular: FontFamily.utilityRegular,
+  medium: FontFamily.utilityMedium,
+  semiBold: FontFamily.utilitySemiBold,
+  bold: FontFamily.utilityBold,
 });
 
 export const lightTheme = createThemeColors(MEMORA_ACCENT, "light");
@@ -105,8 +126,9 @@ export function createAppTamaguiConfig(themes?: {
     themeClassNameOnRoot: true,
     fonts: {
       ...defaultConfig.fonts,
-      heading: appFont,
-      body: appFont,
+      heading: headingFont,
+      body: bodyFont,
+      utility: utilityFont,
     },
     themes: themes ?? {
       light: lightTheme,

@@ -8,6 +8,7 @@ import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { StatStrip } from "@/components/ui/StatStrip";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { SectionGrid } from "@/components/ui/Responsive";
 import { moodIcons, moodLabels, type Mood } from "@/constants/categories";
 
 export type DiaryInsightsData = {
@@ -26,7 +27,7 @@ export type DiaryInsightsData = {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   const theme = useAppTheme();
   return (
-    <SurfaceCard variant="frosted" radius={16} padding={14}>
+    <SurfaceCard variant="frosted" radius={16} padding={14} style={{ height: "100%" }}>
       <YStack gap={12}>
         <Text fontSize={14} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
           {title}
@@ -107,7 +108,7 @@ export function DiaryInsights({ data }: { data: DiaryInsightsData | undefined })
   }));
 
   return (
-    <YStack gap={14}>
+    <SectionGrid minimumColumnWidth={280} maximumColumns={3} gap={14} featuredFirst>
       <StatStrip
         items={[
           { label: "Entries", value: data.totalInRange },
@@ -242,6 +243,6 @@ export function DiaryInsights({ data }: { data: DiaryInsightsData | undefined })
           Based on the most recent {data.totalInRange} entries in this range.
         </Text>
       ) : null}
-    </YStack>
+    </SectionGrid>
   );
 }

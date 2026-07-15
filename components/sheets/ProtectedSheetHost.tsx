@@ -5,6 +5,7 @@ import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppToast } from "@/components/ui/toast";
 import { selectSheetOpen, selectSheetPayload, selectSheetStack, useUIStore } from "@/store/ui";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 
 const ChatSheet = lazy(() =>
   import("@/components/chat-sheet/ChatSheet").then((module) => ({ default: module.ChatSheet })),
@@ -66,6 +67,7 @@ export function ProtectedSheetHost() {
   const closeCommand = useUIStore((state) => state.closeCommand);
   const closeEditMemory = useUIStore((state) => state.closeEditMemory);
   const closeSheet = useUIStore((state) => state.closeSheet);
+  const { isWide } = useResponsiveLayout();
 
   useEffect(() => {
     const backSub = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -101,7 +103,7 @@ export function ProtectedSheetHost() {
 
   return (
     <>
-      <ChatSheet visible={isCommandOpen} onClose={closeCommand} />
+      {!isWide ? <ChatSheet visible={isCommandOpen} onClose={closeCommand} /> : null}
       {editMemoryPayload?.memory ? (
         <EditMemorySheet
           key={editMemoryPayload.memory.id}

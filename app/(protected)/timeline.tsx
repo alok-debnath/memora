@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from "react";
-import { YStack, Text } from "tamagui";
-import { useAppTheme } from "@/hooks/useAppTheme";
+import React, { useMemo, useRef, useState } from "react";
+import { SectionList } from "react-native";
+import { Text, XStack, YStack } from "tamagui";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -8,8 +8,31 @@ import { MemoryCard } from "@/components/MemoryCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { SectionLabel } from "@/components/ui/SectionLabel";
-import { AppScreen } from "@/components/ui/AppScreen";
+import { AppScreen, SectionCard } from "@/components/ui/AppScreen";
+import { ResponsiveStatGrid, WorkspaceSplit } from "@/components/ui/Responsive";
+import { PressableScale } from "@/components/ui/PressableScale";
 import type { MemoryNote } from "@/types/memory";
+import { spacing } from "@/constants/uiTokens";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import { useAppTheme } from "@/hooks/useAppTheme";
+
+function TimelineWorkspace({
+  children,
+  aside,
+}: {
+  children: React.ReactNode;
+  aside: React.ReactNode;
+}) {
+  const { isExpanded } = useResponsiveLayout();
+  if (!isExpanded) return children;
+  return (
+    <YStack flex={1} width="100%" paddingHorizontal={spacing.lg}>
+      <WorkspaceSplit aside={aside} asideWidth={300} splitAt={760} gap={spacing.lg} fill>
+        {children}
+      </WorkspaceSplit>
+    </YStack>
+  );
+}
 
 function groupByDate(
   memories: Array<{
@@ -49,6 +72,7 @@ export default function TimelineScreen() {
   const theme = useAppTheme();
   const { token } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
+  const listRef = useRef<SectionList<any>>(null);
 
   const memoryResult = useQuery(api.memories.list, token ? { token, limit: 100 } : "skip");
   const allMemories = memoryResult?.memories ?? [];
@@ -66,57 +90,133 @@ export default function TimelineScreen() {
     return [...filtered].sort((a, b) => b._creationTime - a._creationTime);
   }, [allMemories, searchQuery]);
 
-  const groups = useMemo(() => groupByDate(sorted as any), [sorted]);
-  const sectionCount = Object.keys(groups).length;
+  const sections = useMemo(
+    () => Object.entries(groupByDate(sorted as any)).map(([title, data]) => ({ title, data })),
+    [sorted],
+  );
 
   return (
-    <AppScreen showBack title="Timeline">
-      <SearchBar
-        value={searchQuery}
-        onChangeText={setSearchQuery}
-        placeholder="Search your timeline..."
-      />
-
-      {sectionCount === 0 ? (
-        <EmptyState
-          icon="clock"
-          title="No timeline"
-          description="Create memories to see them on your timeline."
-        />
-      ) : (
-        Object.entries(groups).map(([label, items]) => (
-          <YStack key={label}>
-            <SectionLabel>{label}</SectionLabel>
-            <YStack gap={10}>
-              {items.map((m, i: number) => (
-                <MemoryCard
-                  key={m._id}
-                  memory={
-                    {
-                      ...m,
-                      id: m._id,
-                      userId: "" as never,
-                      people: [],
-                      locations: [],
-                      entryKind: "memory",
-                      schedule: undefined,
-                      reminderDate: undefined,
-                      isRecurring: false,
-                      recurrenceType: undefined,
-                      importance: "normal" as const,
-                      linkedUrls: [],
-                      extractedActions: [],
-                      createdAt: new Date(m._creationTime).toISOString(),
-                      updatedAt: new Date(m._creationTime).toISOString(),
-                    } as MemoryNote
-                  }
-                  index={i}
-                />
-              ))}
-            </YStack>
+    <AppScreen
+      showBack
+      title="Timeline"
+      subtitle="Browse your archive chronologically and jump between meaningful time periods."
+      contentWidth="workspace"
+      noScroll
+    >
+      <TimelineWorkspace
+        aside={
+          <YStack gap={12}>
+            <SectionCard
+              title="Archive summary"
+              eyebrow="Current view"
+              density="compact"
+              emphasis="quiet"
+            >
+              <ResponsiveStatGrid
+                maximumColumns={2}
+                minimumColumnWidth={105}
+                items={[
+                  { label: "Memories", value: sorted.length },
+                  { label: "Periods", value: sections.length },
+                ]}
+              />
+              {searchQuery.trim() ? (
+                <Text fontSize={12} lineHeight={18} color={theme.colorMuted.val}>
+                  Showing matches for “{searchQuery.trim()}”.
+                </Text>
+              ) : null}
+            </SectionCard>
+            {sections.length > 0 ? (
+              <SectionCard title="Jump to" density="compact" emphasis="quiet">
+                <YStack gap={6}>
+                  {sections.slice(0, 8).map((section, sectionIndex) => (
+                    <PressableScale
+                      key={section.title}
+                      onPress={() =>
+                        listRef.current?.scrollToLocation({
+                          sectionIndex,
+                          itemIndex: 0,
+                          animated: true,
+                        })
+                      }
+                    >
+                      <XStack
+                        alignItems="center"
+                        justifyContent="space-between"
+                        gap={8}
+                        paddingVertical={5}
+                      >
+                        <Text flex={1} fontSize={12} fontWeight="600" color={theme.color.val}>
+                          {section.title}
+                        </Text>
+                        <Text fontSize={11} color={theme.colorMuted.val}>
+                          {section.data.length}
+                        </Text>
+                      </XStack>
+                    </PressableScale>
+                  ))}
+                </YStack>
+              </SectionCard>
+            ) : null}
           </YStack>
-        ))
-      )}
+        }
+      >
+        <SectionList
+          ref={listRef}
+          sections={sections}
+          keyExtractor={(item) => String(item._id)}
+          renderItem={({ item, index }) => (
+            <MemoryCard
+              memory={
+                {
+                  ...item,
+                  id: item._id,
+                  userId: "" as never,
+                  people: [],
+                  locations: [],
+                  entryKind: "memory",
+                  schedule: undefined,
+                  reminderDate: undefined,
+                  isRecurring: false,
+                  recurrenceType: undefined,
+                  importance: "normal" as const,
+                  linkedUrls: [],
+                  extractedActions: [],
+                  createdAt: new Date(item._creationTime).toISOString(),
+                  updatedAt: new Date(item._creationTime).toISOString(),
+                } as MemoryNote
+              }
+              index={index}
+            />
+          )}
+          renderSectionHeader={({ section }) => <SectionLabel>{section.title}</SectionLabel>}
+          ItemSeparatorComponent={() => <YStack height={10} />}
+          SectionSeparatorComponent={() => <YStack height={spacing.sm} />}
+          ListHeaderComponent={
+            <SearchBar
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search your timeline..."
+            />
+          }
+          ListHeaderComponentStyle={{ marginBottom: spacing.md }}
+          ListEmptyComponent={
+            <EmptyState
+              icon="clock"
+              title={searchQuery.trim() ? "No matching memories" : "No timeline"}
+              description={
+                searchQuery.trim()
+                  ? "Try a different word or phrase."
+                  : "Create memories to see them on your timeline."
+              }
+            />
+          }
+          stickySectionHeadersEnabled
+          showsVerticalScrollIndicator={false}
+          style={{ width: "100%", alignSelf: "center" }}
+          contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl }}
+        />
+      </TimelineWorkspace>
     </AppScreen>
   );
 }

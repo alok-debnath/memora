@@ -9,7 +9,7 @@ import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { withAlpha } from "@/components/ui/themeHelpers";
 import { spacing, radius } from "@/constants/uiTokens";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 
 type AuthShellProps = {
   title: string;
@@ -108,7 +108,7 @@ function MemoryIndexRail() {
 
 export function AuthShell({ title, subtitle, children, accentIcon = "zap" }: AuthShellProps) {
   const theme = useAppTheme();
-  const isLargeScreen = useIsLargeScreen();
+  const { isExpanded: isLargeScreen } = useResponsiveLayout();
 
   return (
     <YStack flex={1} backgroundColor={theme.background.val}>

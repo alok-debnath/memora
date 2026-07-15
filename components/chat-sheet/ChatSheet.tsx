@@ -7,18 +7,11 @@ import {
 } from "@gorhom/bottom-sheet";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
-import { YStack } from "tamagui";
-import { withAlpha } from "@/components/ui/themeHelpers";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
 import { SheetIdProvider } from "@/components/ui/ContextMenu.shared";
 import { ScreenErrorBoundary } from "@/components/ui/ScreenErrorBoundary";
-import { useChatController } from "./useChatController";
-import { ChatHeader } from "./ChatHeader";
-import { ChatMessageList } from "./ChatMessageList";
-import { ChatComposer } from "./ChatComposer";
-import { ConversationList } from "./ConversationList";
+import { ChatSurface } from "./ChatSurface";
 
 // gorhom renders the sheet at the height of its TALLEST detent and translates
 // it down for lower snap points, so a flex-filled child would extend below the
@@ -56,17 +49,6 @@ export function ChatSheet({ visible, onClose }: { visible: boolean; onClose: () 
   const isLargeScreen = useIsLargeScreen();
   const modalRef = useRef<BottomSheetModal>(null);
   const presentedRef = useRef(false);
-  const controller = useChatController();
-  const [showConversations, setShowConversations] = React.useState(false);
-
-  const activeTitle = useMemo(() => {
-    if (controller.activeConversationId === null) return "Memora";
-    return (
-      controller.conversations.find((c) => c._id === controller.activeConversationId)?.title ??
-      "Memora"
-    );
-  }, [controller.activeConversationId, controller.conversations]);
-
   const snapPoints = useMemo(() => (isLargeScreen ? ["80%"] : ["95%"]), [isLargeScreen]);
   const sheetBottomInset = isLargeScreen ? insets.bottom + 16 : insets.bottom;
 
@@ -155,51 +137,7 @@ export function ChatSheet({ visible, onClose }: { visible: boolean; onClose: () 
       <SheetIdProvider value="unifiedCommand">
         <ScreenErrorBoundary label="Chat">
           <VisibleContentContainer>
-            <ChatHeader
-              messageCount={controller.messages.length}
-              title={activeTitle}
-              showingConversations={showConversations}
-              onToggleConversations={() => setShowConversations((value) => !value)}
-              onClear={controller.handleClearChat}
-              onClose={onClose}
-            />
-            {showConversations ? (
-              <ConversationList
-                controller={controller}
-                onClose={() => setShowConversations(false)}
-              />
-            ) : (
-              /* Composer floats over the list instead of sitting in its own row —
-               the list runs full height underneath and scrolls visibly behind
-               the gaps around the rounded pill. */
-              <YStack flex={1} position="relative">
-                <ChatMessageList controller={controller} />
-                {/* Fades messages out as they scroll under the floating pill,
-                  instead of a hard clip against the transparent overlay. */}
-                <LinearGradient
-                  colors={[withAlpha(theme.background.val, "00"), theme.background.val]}
-                  locations={[0, 0.75]}
-                  pointerEvents="none"
-                  style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 80 }}
-                />
-                <YStack pointerEvents="box-none" position="absolute" left={0} right={0} bottom={0}>
-                  <ChatComposer
-                    isSending={controller.isSending}
-                    onSend={controller.handleSend}
-                    onStop={controller.handleStop}
-                    prefillText={controller.prefillText}
-                    onPrefillConsumed={controller.consumePrefill}
-                    attachments={controller.attachments}
-                    onRemoveAttachment={controller.onRemoveAttachment}
-                    onPickImages={controller.onPickImages}
-                    onPickCamera={controller.onPickCamera}
-                    onPickDocument={controller.onPickDocument}
-                    driveConnected={controller.driveConnected}
-                    onRequestDriveAccess={controller.onRequestDriveAccess}
-                  />
-                </YStack>
-              </YStack>
-            )}
+            <ChatSurface onClose={onClose} />
           </VisibleContentContainer>
         </ScreenErrorBoundary>
       </SheetIdProvider>

@@ -20,10 +20,13 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { AppScreen } from "@/components/ui/AppScreen";
+import { AppScreen, SectionCard } from "@/components/ui/AppScreen";
+import { ResponsiveStatGrid, WorkspaceSplit } from "@/components/ui/Responsive";
 import { PageHero } from "@/components/ui/PageHero";
+import { layout } from "@/constants/uiTokens";
 import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
 import { useSemanticColors } from "@/hooks/useSemanticColors";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -64,6 +67,26 @@ const RATING_DEFS = [
 ] as const;
 
 type RatingOption = (typeof RATING_DEFS)[number] & { color: string };
+
+function ReviewWorkspace({
+  children,
+  aside,
+}: {
+  children: React.ReactNode;
+  aside: React.ReactNode;
+}) {
+  const { isExpanded } = useResponsiveLayout();
+
+  if (!isExpanded) return children;
+
+  return (
+    <YStack flex={1} width="100%" paddingHorizontal={16}>
+      <WorkspaceSplit aside={aside} asideWidth={292} splitAt={760} gap={16} fill>
+        {children}
+      </WorkspaceSplit>
+    </YStack>
+  );
+}
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
@@ -571,6 +594,7 @@ export default function ReviewScreen() {
     <AppScreen
       noScroll
       safeTop={false}
+      contentWidth="workspace"
       hero={
         <PageHero
           eyebrow="Spaced repetition"
@@ -582,7 +606,13 @@ export default function ReviewScreen() {
     >
       {/* Progress bar — only show when session is active */}
       {sessionQueue.length > 0 && !sessionDone && (
-        <YStack paddingHorizontal={16} paddingTop={12}>
+        <YStack
+          width="100%"
+          maxWidth={layout.readableMaxWidth}
+          alignSelf="center"
+          paddingHorizontal={16}
+          paddingTop={12}
+        >
           <ProgressBar progress={progress} />
         </YStack>
       )}
@@ -631,84 +661,129 @@ export default function ReviewScreen() {
         </ScrollView>
       ) : (
         /* ── Active session ── */
-        <YStack flex={1} alignItems="center" paddingHorizontal={16} paddingBottom={tabBarPadding}>
-          {/* Flashcard */}
+        <ReviewWorkspace
+          aside={
+            <YStack gap={12}>
+              <SectionCard
+                title="Session"
+                eyebrow="Queue progress"
+                density="compact"
+                emphasis="quiet"
+              >
+                <ResponsiveStatGrid
+                  maximumColumns={2}
+                  minimumColumnWidth={108}
+                  items={[
+                    { label: "Card", value: `${sessionIndex + 1}/${sessionQueue.length}` },
+                    { label: "Rated", value: sessionRatings.length },
+                  ]}
+                />
+                <ProgressBar progress={progress} />
+              </SectionCard>
+              <SectionCard title="Rating guide" density="compact" emphasis="quiet">
+                <YStack gap={10}>
+                  {ratings.map((rating) => (
+                    <XStack key={rating.label} alignItems="center" gap={8}>
+                      <Text fontSize={12}>{rating.emoji}</Text>
+                      <Text flex={1} fontSize={12} fontWeight="600" color={theme.color.val}>
+                        {rating.label}
+                      </Text>
+                      <Text fontSize={11} color={theme.colorMuted.val}>
+                        {rating.quality < 3 ? "repeat soon" : "extend interval"}
+                      </Text>
+                    </XStack>
+                  ))}
+                </YStack>
+              </SectionCard>
+            </YStack>
+          }
+        >
           <YStack
+            flex={1}
             width="100%"
-            style={{ flex: 1, maxHeight: 380, position: "relative" }}
-            marginBottom={16}
+            maxWidth={layout.readableMaxWidth}
+            alignSelf="center"
+            alignItems="center"
+            paddingBottom={tabBarPadding}
           >
-            {/* Front */}
-            <Animated.View
-              pointerEvents={isRevealed ? "none" : "auto"}
-              style={[StyleSheet.absoluteFill, frontStyle]}
+            {/* Flashcard */}
+            <YStack
+              width="100%"
+              style={{ flex: 1, maxHeight: 380, position: "relative" }}
+              marginBottom={16}
             >
-              <PressableScale onPress={handleReveal} style={{ flex: 1 }}>
+              {/* Front */}
+              <Animated.View
+                pointerEvents={isRevealed ? "none" : "auto"}
+                style={[StyleSheet.absoluteFill, frontStyle]}
+              >
+                <PressableScale onPress={handleReveal} style={{ flex: 1 }}>
+                  <Card style={{ flex: 1 }} noPadding>
+                    <CardFront
+                      card={currentCard}
+                      cardCount={sessionQueue.length}
+                      cardIndex={sessionIndex}
+                    />
+                  </Card>
+                </PressableScale>
+              </Animated.View>
+
+              {/* Back */}
+              <Animated.View
+                pointerEvents={isRevealed ? "auto" : "none"}
+                style={[StyleSheet.absoluteFill, backStyle]}
+              >
                 <Card style={{ flex: 1 }} noPadding>
-                  <CardFront
-                    card={currentCard}
-                    cardCount={sessionQueue.length}
-                    cardIndex={sessionIndex}
-                  />
+                  <CardBack card={currentCard} />
                 </Card>
+              </Animated.View>
+            </YStack>
+
+            {/* Rating buttons */}
+            {isRevealed && (
+              <YStack width="100%">
+                <Text
+                  fontSize={12}
+                  fontFamily="$body"
+                  color={theme.colorMuted.val}
+                  textAlign="center"
+                  marginBottom={10}
+                >
+                  How well did you remember this?
+                </Text>
+                <XStack gap={8} width="100%">
+                  {ratings.map((r) => (
+                    <RatingButton
+                      key={r.label}
+                      rating={r}
+                      card={currentCard}
+                      onPress={() => handleRate(r.quality)}
+                    />
+                  ))}
+                </XStack>
+              </YStack>
+            )}
+
+            {/* Remove from queue */}
+            <Animated.View entering={FadeIn.delay(200).duration(300)} style={{ marginTop: 14 }}>
+              <PressableScale
+                onPress={handleRemove}
+                style={[
+                  styles.removeButton,
+                  {
+                    borderColor: theme.borderColor.val,
+                    backgroundColor: theme.card.val,
+                  },
+                ]}
+              >
+                <Feather name="x-circle" size={15} color={theme.colorMuted.val} />
+                <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val} marginLeft={6}>
+                  Remove from queue
+                </Text>
               </PressableScale>
             </Animated.View>
-
-            {/* Back */}
-            <Animated.View
-              pointerEvents={isRevealed ? "auto" : "none"}
-              style={[StyleSheet.absoluteFill, backStyle]}
-            >
-              <Card style={{ flex: 1 }} noPadding>
-                <CardBack card={currentCard} />
-              </Card>
-            </Animated.View>
           </YStack>
-
-          {/* Rating buttons */}
-          {isRevealed && (
-            <YStack width="100%">
-              <Text
-                fontSize={12}
-                fontFamily="$body"
-                color={theme.colorMuted.val}
-                textAlign="center"
-                marginBottom={10}
-              >
-                How well did you remember this?
-              </Text>
-              <XStack gap={8} width="100%">
-                {ratings.map((r) => (
-                  <RatingButton
-                    key={r.label}
-                    rating={r}
-                    card={currentCard}
-                    onPress={() => handleRate(r.quality)}
-                  />
-                ))}
-              </XStack>
-            </YStack>
-          )}
-
-          {/* Remove from queue */}
-          <Animated.View entering={FadeIn.delay(200).duration(300)} style={{ marginTop: 14 }}>
-            <PressableScale
-              onPress={handleRemove}
-              style={[
-                styles.removeButton,
-                {
-                  borderColor: theme.borderColor.val,
-                  backgroundColor: theme.card.val,
-                },
-              ]}
-            >
-              <Feather name="x-circle" size={15} color={theme.colorMuted.val} />
-              <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val} marginLeft={6}>
-                Remove from queue
-              </Text>
-            </PressableScale>
-          </Animated.View>
-        </YStack>
+        </ReviewWorkspace>
       )}
     </AppScreen>
   );

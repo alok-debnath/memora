@@ -10,7 +10,6 @@
         "@convex-dev/better-auth": "^0.12.5",
         "@convex-dev/migrations": "^0.3.5",
         "@expo-google-fonts/dm-sans": "^0.4.2",
-        "@expo-google-fonts/inter": "^0.4.2",
         "@expo-google-fonts/space-grotesk": "^0.4.1",
         "@expo/ui": "~57.0.3",
         "@gorhom/bottom-sheet": "^5.2.14",
@@ -20,6 +19,7 @@
         "@react-native-vector-icons/feather": "^13.1.2",
         "@react-native-vector-icons/fontawesome5": "^13.1.2",
         "@shopify/flash-list": "2.0.2",
+        "@siteed/audio-studio": "^3.2.1",
         "@stardazed/streams-text-encoding": "^1.0.2",
         "@tamagui/animations-react-native": "2.4.0",
         "@tamagui/config": "2.4.0",
@@ -30,6 +30,7 @@
         "convex": "^1.42.1",
         "dayjs": "^1.11.21",
         "expo": "57",
+        "expo-asset": "~57.0.3",
         "expo-audio": "^57.0.0",
         "expo-auth-session": "~57.0.1",
         "expo-blur": "~57.0.0",
@@ -320,8 +321,6 @@
 
     "@expo-google-fonts/dm-sans": ["@expo-google-fonts/dm-sans@0.4.2", "", {}, "sha512-e/fLH5aCJzkEenz7axvEn8N7IJAKhUwNjIxS75h9j+Ip1M9S7d22M19gJN3A7QW4egVkBJRyQh1hQFhngQn9yA=="],
 
-    "@expo-google-fonts/inter": ["@expo-google-fonts/inter@0.4.2", "", {}, "sha512-syfiImMaDmq7cFi0of+waE2M4uSCyd16zgyWxdPOY7fN2VBmSLKEzkfbZgeOjJq61kSqPBNNtXjggiQiSD6gMQ=="],
-
     "@expo-google-fonts/material-symbols": ["@expo-google-fonts/material-symbols@0.4.27", "", {}, "sha512-cnb3DZnWUWpezGFkJ8y4MT5f/lw6FcgDzeJzic+T+vpQHLHG1cg3SC3i1w1i8Bk4xKR4HPY3t9iIRNvtr5ml8A=="],
 
     "@expo-google-fonts/space-grotesk": ["@expo-google-fonts/space-grotesk@0.4.1", "", {}, "sha512-ZVQYw4Ok/pgcSJiufP8oRZE3AVxS9xtmKEUfsurbHkHNdMc/GA1gDXP9G4Cr7KL4KqSc0haexR2TuMigotCn4Q=="],
@@ -547,6 +546,8 @@
     "@sinclair/typebox": ["@sinclair/typebox@0.27.10", "", {}, "sha512-MTBk/3jGLNB2tVxv6uLlFh1iu64iYOQ2PbdOSK3NW8JZsmlaOh2q6sdtKowBhfw8QFLmYNzTW4/oK4uATIi6ZA=="],
 
     "@sindresorhus/is": ["@sindresorhus/is@4.6.0", "", {}, "sha512-t09vSN3MdfsyCHoFcTRCH/iUtG7OJ0CsjzB8cjAmKc/va/kIgeDI/TxsigdncE/4be734m0cvIYwNaV4i2XqAw=="],
+
+    "@siteed/audio-studio": ["@siteed/audio-studio@3.2.1", "", { "peerDependencies": { "@expo/config-plugins": ">=7.0.0", "expo": ">=52.0.0", "react": "*", "react-native": "*" } }, "sha512-H566BMZYD5p60vrc22S2C50CXNwW39ppdMBr2hE8/m1JHsBTtoxYt1e8WjP1bgztsUjpuevSrKZuUMSFo+GgqQ=="],
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 

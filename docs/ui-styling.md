@@ -18,6 +18,35 @@ Memora now treats Tamagui as the primary styling system for app UI.
 - Prefer semantic variants and tones over passing arbitrary colors.
 - Keep palette generation and gradients centralized in `constants/themePalettes.ts`.
 
+## Responsive Layout
+
+- Use `useResponsiveLayout()` instead of screen-local breakpoint checks:
+  - compact: `<600px` — floating bottom navigation and single-column content
+  - medium: `600–1023px` — icon rail and adaptive content
+  - expanded: `1024–1279px` — sectioned sidebar
+  - wide: `>=1280px` — sectioned sidebar, workspace layouts, and docked chat
+- Use `AppScreen` content widths (`readable`, `standard`, `workspace`, `full`) and the shared
+  container-measured `WorkspaceSplit`, `SectionGrid`, and `ResponsiveStatGrid` primitives before
+  adding custom width math. `AdaptiveGrid` / `AdaptiveSplit` remain compatibility aliases.
+- Protected pages use the `standard` 1120px frame by default. Headers, scroll bodies, and
+  virtualized-list viewports must share that frame; narrower reading or focus lanes belong inside
+  it and must not redefine the page's outer alignment.
+- Derive grids from their available container width. Do not read `Dimensions` at module load;
+  it does not react correctly to web resizing or orientation changes.
+- Native supports portrait and landscape. Layout changes must not discard navigation, form,
+  list-scroll, or open-surface state.
+- `showBack` is adaptive: compact stack pages receive the mobile floating back header, while
+  rail/sidebar pages receive a section-aware workspace header without a redundant back action.
+
+## Visual System
+
+- Space Grotesk is the display face. DM Sans handles body, control, metadata, numeric, and
+  operational UI; the `$utility` token is an alias to DM Sans for semantic clarity.
+- Neutral surfaces use Memora's cool archive palette; the selected user accent controls focus and
+  selection without recoloring every neutral surface.
+- Web interactions require visible keyboard focus, appropriate cursors, hover/pressed feedback,
+  and keyboard-reachable actions. Respect reduced motion and animate transforms/opacity only.
+
 ## Allowed `StyleSheet` Usage
 
 - animation helpers

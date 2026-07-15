@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { AppScreen } from "@/components/ui/AppScreen";
+import { ResponsiveStatGrid, WorkspaceSplit } from "@/components/ui/Responsive";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -336,237 +337,286 @@ export default function DataScreen() {
   // ── render ────────────────────────────────────────────────────────────────
 
   return (
-    <AppScreen showBack title="Data">
-      {/* Tabbed deleted / completed section */}
-      <Card style={{ padding: 16, borderRadius: 16 }}>
-        <YStack gap={14}>
-          {/* Tab pills */}
-          <XStack backgroundColor={theme.secondary.val} borderRadius={14} padding={4} gap={4}>
-            <TabPill
-              label="Deleted"
-              count={deletedMemories.length}
-              active={activeTab === "deleted"}
-              onPress={() => {
-                setActiveTab("deleted");
-                setOpenMenuId(null);
-              }}
-            />
-            <TabPill
-              label="Completed"
-              count={completedMemories.length}
-              active={activeTab === "completed"}
-              onPress={() => {
-                setActiveTab("completed");
-                setOpenMenuId(null);
-              }}
-            />
-          </XStack>
-
-          {/* Deleted tab */}
-          {activeTab === "deleted" && (
-            <YStack>
-              <YStack gap={14}>
-                <YStack gap={4}>
+    <AppScreen
+      showBack
+      title="Data"
+      subtitle="Restore archived items or permanently remove data from your account."
+      contentWidth="workspace"
+    >
+      <WorkspaceSplit
+        splitAt={900}
+        asideWidth={320}
+        aside={
+          <YStack gap={16}>
+            <Card style={{ padding: 16, borderRadius: 16 }}>
+              <YStack gap={12}>
+                <YStack gap={3}>
                   <Text
-                    fontSize={17}
+                    fontSize={16}
                     fontFamily="$heading"
                     fontWeight="700"
                     color={theme.color.val}
                   >
-                    Deleted memories
+                    Archive summary
                   </Text>
-                  <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val}>
-                    Deleted memories are moved to trash and stay here until you remove them forever.
-                    You can restore any item at any time — there is no auto-expiry.
+                  <Text fontSize={12} lineHeight={18} color={theme.colorMuted.val}>
+                    Items remain recoverable until you remove them permanently.
                   </Text>
-                  <XStack
-                    marginTop={4}
-                    backgroundColor={theme.primary.val + "12"}
-                    borderRadius={12}
-                    padding={10}
-                    gap={8}
-                    alignItems="flex-start"
-                  >
-                    <Feather
-                      name="info"
-                      size={13}
-                      color={theme.primary.val}
-                      style={{ marginTop: 1 }}
-                    />
-                    <Text
-                      fontSize={12}
-                      fontFamily="$body"
-                      color={theme.primary.val}
-                      flex={1}
-                      lineHeight={17}
-                    >
-                      Edit &amp; undo history is kept for 7 days. After that, you can still restore
-                      deleted memories but cannot undo individual edits.
-                    </Text>
-                  </XStack>
                 </YStack>
-                {deletedMemories.length > 0 && (
-                  <XStack justifyContent="flex-end">
-                    <PressableScale
-                      onPress={handlePermanentDeleteAll}
-                      style={{
-                        paddingHorizontal: 12,
-                        paddingVertical: 10,
-                        borderRadius: 14,
-                        backgroundColor: theme.destructive.val + "16",
-                      }}
-                    >
-                      <Text
-                        fontSize={12}
-                        fontFamily="$body"
-                        fontWeight="700"
-                        color={theme.destructive.val}
-                      >
-                        Delete all forever
-                      </Text>
-                    </PressableScale>
-                  </XStack>
-                )}
-                {deletedMemories.length === 0 ? (
-                  <EmptyState
-                    icon="archive"
-                    title="Trash is empty"
-                    description="Deleted memories appear here until restored or permanently removed."
-                  />
-                ) : (
-                  <YStack gap={10}>
-                    {deletedMemories.map((memory) => (
-                      <MemoryRow
-                        key={memory._id}
-                        title={memory.title}
-                        content={memory.content}
-                        timestamp={memory.deletedAt}
-                        timestampLabel="Deleted"
-                        accentColor={semantic.status.warningStrong}
-                        icon="archive"
-                        menuOpen={openMenuId === memory._id}
-                        onMenuToggle={() =>
-                          setOpenMenuId((cur) => (cur === memory._id ? null : memory._id))
-                        }
-                        menuItems={[
-                          {
-                            label: "Restore",
-                            onPress: () => handleRestore(memory._id),
-                          },
-                          {
-                            label: "Delete forever",
-                            color: theme.destructive.val,
-                            onPress: () => handlePermanentDelete(memory._id),
-                          },
-                        ]}
-                      />
-                    ))}
-                  </YStack>
-                )}
+                <ResponsiveStatGrid
+                  maximumColumns={2}
+                  minimumColumnWidth={110}
+                  items={[
+                    { label: "Deleted", value: deletedMemories.length },
+                    { label: "Completed", value: completedMemories.length },
+                  ]}
+                />
               </YStack>
-            </YStack>
-          )}
+            </Card>
 
-          {/* Completed tab */}
-          {activeTab === "completed" && (
-            <YStack>
+            <Card style={{ padding: 16, borderRadius: 16 }}>
               <YStack gap={14}>
                 <YStack gap={4}>
                   <Text
-                    fontSize={17}
+                    fontSize={18}
                     fontFamily="$heading"
                     fontWeight="700"
                     color={theme.color.val}
                   >
-                    Completed reminders
+                    Clean slate
                   </Text>
-                  <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val}>
-                    Reminders you have marked as done. Restore to re-activate or permanently remove.
+                  <Text
+                    fontSize={13}
+                    lineHeight={19}
+                    fontFamily="$body"
+                    color={theme.colorMuted.val}
+                  >
+                    Removes all memories, reminders, review cards, topic links, attachments, and
+                    deleted or completed items.
                   </Text>
                 </YStack>
-                {completedMemories.length > 0 && (
-                  <XStack justifyContent="flex-end">
-                    <PressableScale
-                      onPress={handleClearAllCompleted}
-                      style={{
-                        paddingHorizontal: 12,
-                        paddingVertical: 10,
-                        borderRadius: 14,
-                        backgroundColor: theme.destructive.val + "16",
-                      }}
-                    >
-                      <Text
-                        fontSize={12}
-                        fontFamily="$body"
-                        fontWeight="700"
-                        color={theme.destructive.val}
-                      >
-                        Clear all forever
-                      </Text>
-                    </PressableScale>
-                  </XStack>
-                )}
-                {completedMemories.length === 0 ? (
-                  <EmptyState
-                    icon="check-circle"
-                    title="Nothing completed yet"
-                    description="Tap the ✓ on any reminder to mark it as done. It will appear here."
-                  />
-                ) : (
-                  <YStack gap={10}>
-                    {completedMemories.map((memory) => (
-                      <MemoryRow
-                        key={memory._id}
-                        title={memory.title}
-                        content={memory.content}
-                        timestamp={memory.completedAt}
-                        timestampLabel="Completed"
-                        accentColor={semantic.status.successStrong}
-                        icon="check-circle"
-                        menuOpen={openMenuId === memory._id}
-                        onMenuToggle={() =>
-                          setOpenMenuId((cur) => (cur === memory._id ? null : memory._id))
-                        }
-                        menuItems={[
-                          {
-                            label: "Restore to active",
-                            onPress: () => handleUncomplete(memory._id),
-                          },
-                          {
-                            label: "Delete forever",
-                            color: theme.destructive.val,
-                            onPress: () => handlePermanentRemoveCompleted(memory._id),
-                          },
-                        ]}
-                      />
-                    ))}
-                  </YStack>
-                )}
+                <GradientButton
+                  title="Delete All Memory Data"
+                  icon="trash-2"
+                  onPress={handleClearSlate}
+                />
               </YStack>
-            </YStack>
-          )}
-        </YStack>
-      </Card>
-
-      {/* Clean slate */}
-      <Card style={{ padding: 16, borderRadius: 16 }}>
-        <YStack gap={14}>
-          <YStack gap={4}>
-            <Text fontSize={18} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-              Clean slate
-            </Text>
-            <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val}>
-              Removes all memories, reminders, review cards, topic links, attachments, and
-              deleted/completed items.
-            </Text>
+            </Card>
           </YStack>
-          <GradientButton
-            title="Delete All Memory Data"
-            icon="trash-2"
-            onPress={handleClearSlate}
-          />
-        </YStack>
-      </Card>
+        }
+      >
+        {/* Tabbed deleted / completed section */}
+        <Card style={{ padding: 16, borderRadius: 16 }}>
+          <YStack gap={14}>
+            {/* Tab pills */}
+            <XStack backgroundColor={theme.secondary.val} borderRadius={14} padding={4} gap={4}>
+              <TabPill
+                label="Deleted"
+                count={deletedMemories.length}
+                active={activeTab === "deleted"}
+                onPress={() => {
+                  setActiveTab("deleted");
+                  setOpenMenuId(null);
+                }}
+              />
+              <TabPill
+                label="Completed"
+                count={completedMemories.length}
+                active={activeTab === "completed"}
+                onPress={() => {
+                  setActiveTab("completed");
+                  setOpenMenuId(null);
+                }}
+              />
+            </XStack>
+
+            {/* Deleted tab */}
+            {activeTab === "deleted" && (
+              <YStack>
+                <YStack gap={14}>
+                  <YStack gap={4}>
+                    <Text
+                      fontSize={17}
+                      fontFamily="$heading"
+                      fontWeight="700"
+                      color={theme.color.val}
+                    >
+                      Deleted memories
+                    </Text>
+                    <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val}>
+                      Deleted memories are moved to trash and stay here until you remove them
+                      forever. You can restore any item at any time — there is no auto-expiry.
+                    </Text>
+                    <XStack
+                      marginTop={4}
+                      backgroundColor={theme.primary.val + "12"}
+                      borderRadius={12}
+                      padding={10}
+                      gap={8}
+                      alignItems="flex-start"
+                    >
+                      <Feather
+                        name="info"
+                        size={13}
+                        color={theme.primary.val}
+                        style={{ marginTop: 1 }}
+                      />
+                      <Text
+                        fontSize={12}
+                        fontFamily="$body"
+                        color={theme.primary.val}
+                        flex={1}
+                        lineHeight={17}
+                      >
+                        Edit &amp; undo history is kept for 7 days. After that, you can still
+                        restore deleted memories but cannot undo individual edits.
+                      </Text>
+                    </XStack>
+                  </YStack>
+                  {deletedMemories.length > 0 && (
+                    <XStack justifyContent="flex-end">
+                      <PressableScale
+                        onPress={handlePermanentDeleteAll}
+                        style={{
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                          borderRadius: 14,
+                          backgroundColor: theme.destructive.val + "16",
+                        }}
+                      >
+                        <Text
+                          fontSize={12}
+                          fontFamily="$body"
+                          fontWeight="700"
+                          color={theme.destructive.val}
+                        >
+                          Delete all forever
+                        </Text>
+                      </PressableScale>
+                    </XStack>
+                  )}
+                  {deletedMemories.length === 0 ? (
+                    <EmptyState
+                      icon="archive"
+                      title="Trash is empty"
+                      description="Deleted memories appear here until restored or permanently removed."
+                    />
+                  ) : (
+                    <YStack gap={10}>
+                      {deletedMemories.map((memory) => (
+                        <MemoryRow
+                          key={memory._id}
+                          title={memory.title}
+                          content={memory.content}
+                          timestamp={memory.deletedAt}
+                          timestampLabel="Deleted"
+                          accentColor={semantic.status.warningStrong}
+                          icon="archive"
+                          menuOpen={openMenuId === memory._id}
+                          onMenuToggle={() =>
+                            setOpenMenuId((cur) => (cur === memory._id ? null : memory._id))
+                          }
+                          menuItems={[
+                            {
+                              label: "Restore",
+                              onPress: () => handleRestore(memory._id),
+                            },
+                            {
+                              label: "Delete forever",
+                              color: theme.destructive.val,
+                              onPress: () => handlePermanentDelete(memory._id),
+                            },
+                          ]}
+                        />
+                      ))}
+                    </YStack>
+                  )}
+                </YStack>
+              </YStack>
+            )}
+
+            {/* Completed tab */}
+            {activeTab === "completed" && (
+              <YStack>
+                <YStack gap={14}>
+                  <YStack gap={4}>
+                    <Text
+                      fontSize={17}
+                      fontFamily="$heading"
+                      fontWeight="700"
+                      color={theme.color.val}
+                    >
+                      Completed reminders
+                    </Text>
+                    <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val}>
+                      Reminders you have marked as done. Restore to re-activate or permanently
+                      remove.
+                    </Text>
+                  </YStack>
+                  {completedMemories.length > 0 && (
+                    <XStack justifyContent="flex-end">
+                      <PressableScale
+                        onPress={handleClearAllCompleted}
+                        style={{
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                          borderRadius: 14,
+                          backgroundColor: theme.destructive.val + "16",
+                        }}
+                      >
+                        <Text
+                          fontSize={12}
+                          fontFamily="$body"
+                          fontWeight="700"
+                          color={theme.destructive.val}
+                        >
+                          Clear all forever
+                        </Text>
+                      </PressableScale>
+                    </XStack>
+                  )}
+                  {completedMemories.length === 0 ? (
+                    <EmptyState
+                      icon="check-circle"
+                      title="Nothing completed yet"
+                      description="Tap the ✓ on any reminder to mark it as done. It will appear here."
+                    />
+                  ) : (
+                    <YStack gap={10}>
+                      {completedMemories.map((memory) => (
+                        <MemoryRow
+                          key={memory._id}
+                          title={memory.title}
+                          content={memory.content}
+                          timestamp={memory.completedAt}
+                          timestampLabel="Completed"
+                          accentColor={semantic.status.successStrong}
+                          icon="check-circle"
+                          menuOpen={openMenuId === memory._id}
+                          onMenuToggle={() =>
+                            setOpenMenuId((cur) => (cur === memory._id ? null : memory._id))
+                          }
+                          menuItems={[
+                            {
+                              label: "Restore to active",
+                              onPress: () => handleUncomplete(memory._id),
+                            },
+                            {
+                              label: "Delete forever",
+                              color: theme.destructive.val,
+                              onPress: () => handlePermanentRemoveCompleted(memory._id),
+                            },
+                          ]}
+                        />
+                      ))}
+                    </YStack>
+                  )}
+                </YStack>
+              </YStack>
+            )}
+          </YStack>
+        </Card>
+      </WorkspaceSplit>
     </AppScreen>
   );
 }

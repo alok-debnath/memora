@@ -645,7 +645,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                           background: "transparent",
                           color: theme.color.val,
                           fontSize: 14,
-                          fontFamily: "Inter, sans-serif",
+                          fontFamily: "DM Sans, sans-serif",
                           outline: "none",
                         }}
                       />

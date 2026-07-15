@@ -17,13 +17,11 @@ import Animated, {
 } from "react-native-reanimated";
 import { XStack, YStack, Text } from "tamagui";
 
-import { AppButton } from "@/components/ui/AppButton";
 import { useBackdropBlurHost } from "@/components/ui/BackdropBlurProvider";
 import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import { FontFamily } from "@/constants/fonts";
-import { radius, spacing } from "@/constants/uiTokens";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { useThemeStore } from "@/store/theme";
 import { useUIStore } from "@/store/ui";
 
@@ -678,158 +676,12 @@ function MobileTabLayout() {
   );
 }
 
-// ─── Desktop sidebar layout ───────────────────────────────────────────────────
-
-function DesktopSidebarLayout() {
-  const theme = useAppTheme();
-  const openCommand = useUIStore((s) => s.openCommand);
-  const { triggers } = useNavController();
-
-  return (
-    <SafeAreaView
-      style={{ flex: 1, backgroundColor: theme.background.val }}
-      edges={["top", "bottom"]}
-    >
-      <XStack flex={1} backgroundColor={theme.background.val}>
-        <YStack
-          width={276}
-          borderRightWidth={1}
-          borderRightColor={theme.borderSubtle.val}
-          backgroundColor={theme.background.val}
-          paddingHorizontal={spacing.lg}
-          paddingTop={spacing.lg}
-          paddingBottom={spacing.lg}
-        >
-          <YStack
-            paddingHorizontal={spacing.sm}
-            paddingVertical={spacing.sm}
-            marginBottom={spacing.lg}
-            gap={spacing.sm}
-          >
-            <XStack alignItems="center" gap={12}>
-              <YStack
-                width={38}
-                height={38}
-                borderRadius={radius.sm}
-                backgroundColor={theme.surfaceAccent.val}
-                borderWidth={1}
-                borderColor={withAlpha(theme.primary.val, "20")}
-                alignItems="center"
-                justifyContent="center"
-              >
-                <Feather name="layers" size={18} color={theme.primary.val} />
-              </YStack>
-              <YStack flex={1}>
-                <Text fontSize={21} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-                  Memora
-                </Text>
-                <Text fontSize={12} color={theme.colorMuted.val} numberOfLines={1}>
-                  Memory workspace
-                </Text>
-              </YStack>
-            </XStack>
-          </YStack>
-
-          <YStack gap={spacing.xs}>
-            {NAV_ITEMS.map((item) => {
-              const trigger = triggers.find((t) => t.name === item.name)!;
-              const active = trigger.isFocused;
-              return (
-                <Pressable
-                  key={item.name}
-                  onPress={trigger.onPress}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: active }}
-                  accessibilityLabel={item.title}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: spacing.md,
-                    minHeight: 58,
-                    paddingVertical: spacing.sm,
-                    paddingHorizontal: spacing.md,
-                    borderRadius: radius.md,
-                    borderWidth: 1,
-                    borderColor: active ? withAlpha(theme.primary.val, "24") : "transparent",
-                    backgroundColor: active ? theme.surfaceAccent.val : "transparent",
-                  }}
-                >
-                  <YStack
-                    width={3}
-                    height={26}
-                    borderRadius={radius.pill}
-                    backgroundColor={active ? theme.primary.val : "transparent"}
-                    marginLeft={-spacing.xs}
-                  />
-                  <YStack
-                    width={34}
-                    height={34}
-                    borderRadius={radius.sm}
-                    alignItems="center"
-                    justifyContent="center"
-                    backgroundColor={
-                      active ? withAlpha(theme.primary.val, "16") : theme.secondary.val
-                    }
-                  >
-                    <Feather
-                      name={item.icon}
-                      size={18}
-                      color={active ? theme.primary.val : theme.colorMuted.val}
-                    />
-                  </YStack>
-                  <YStack flex={1} gap={2}>
-                    <Text
-                      fontSize={15}
-                      fontFamily="$body"
-                      fontWeight={active ? "700" : "600"}
-                      color={active ? theme.color.val : theme.color.val}
-                      numberOfLines={1}
-                    >
-                      {item.title}
-                    </Text>
-                    <Text fontSize={12} color={theme.colorMuted.val} numberOfLines={1}>
-                      {item.detail}
-                    </Text>
-                  </YStack>
-                </Pressable>
-              );
-            })}
-          </YStack>
-
-          <YStack flex={1} />
-
-          <AppButton
-            title="New Memory"
-            onPress={openCommand}
-            icon="plus"
-            variant="primary"
-            fullWidth
-          />
-        </YStack>
-
-        <YStack flex={1} padding={14}>
-          <YStack
-            flex={1}
-            borderRadius={radius.lg}
-            overflow="hidden"
-            borderWidth={1}
-            borderColor={theme.borderSubtle.val}
-            backgroundColor={theme.background.val}
-          >
-            <TabSlot style={{ flex: 1, backgroundColor: theme.background.val }} />
-          </YStack>
-        </YStack>
-      </XStack>
-    </SafeAreaView>
-  );
-}
-
 // ─── Root export ──────────────────────────────────────────────────────────────
-// Single <Tabs> instance shared by both the mobile floating pill bar and the
-// desktop sidebar, so route focus/switching always goes through one engine.
+// The Tabs instance owns route state. The protected layout owns medium/wide
+// navigation so tab and secondary routes share one stable application shell.
 
 export default function TabLayout() {
-  const isLargeScreen = useIsLargeScreen();
+  const { navigationMode } = useResponsiveLayout();
 
   return (
     <Tabs>
@@ -844,7 +696,7 @@ export default function TabLayout() {
         {/* __fab.tsx exists for file-system routing but is not a nav tab */}
         <TabTrigger name="__fab" href="/__fab" />
       </TabList>
-      {isLargeScreen ? <DesktopSidebarLayout /> : <MobileTabLayout />}
+      {navigationMode === "bottom" ? <MobileTabLayout /> : <TabSlot style={{ flex: 1 }} />}
     </Tabs>
   );
 }

@@ -1,25 +1,30 @@
-import React, { useState, useCallback } from "react";
-import { FlatList, Pressable, StyleSheet, RefreshControl, View, Dimensions } from "react-native";
-import { AppImage } from "@/components/ui/AppImage";
-import { XStack, YStack, Text } from "tamagui";
-import { Feather } from "@/lib/icons";
-import { useQuery } from "convex/react";
+import React, { useCallback, useMemo, useState } from "react";
+import { FlatList, RefreshControl, StyleSheet } from "react-native";
+import { Text, XStack, YStack } from "tamagui";
+
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { AppImage } from "@/components/ui/AppImage";
+import { AppScreen, SectionCard } from "@/components/ui/AppScreen";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { PressableScale } from "@/components/ui/PressableScale";
+import { StatStrip } from "@/components/ui/StatStrip";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
+import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
+import { radius, spacing } from "@/constants/uiTokens";
 import { useAuth } from "@/hooks/useAuth";
-import { AppScreen } from "@/components/ui/AppScreen";
+import { useAppRouter } from "@/hooks/useAppRouter";
 import { useColors } from "@/hooks/useColors";
 import { useDrivePreviewUrls } from "@/hooks/useDrivePreviewUrls";
-import { useAppToast } from "@/components/ui/toast";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { useSemanticColors } from "@/hooks/useSemanticColors";
-import { useUIStore } from "@/store/ui";
+import { Feather, type FeatherIconName } from "@/lib/icons";
 import { canUseGoogleDrive } from "@/lib/googleIntegration";
-import { appShadow } from "@/components/ui/themeHelpers";
+import { useUIStore } from "@/store/ui";
+import { useQuery } from "convex/react";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const GRID_PADDING = 16;
-const GRID_GAP = 10;
-const CARD_SIZE = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP) / 2;
+const GRID_PADDING = spacing.lg;
+const GRID_GAP = spacing.md;
 
 type AttachmentDoc = {
   _id: Id<"memoryAttachments">;
@@ -38,203 +43,409 @@ type AttachmentDoc = {
 };
 
 type FilterType = "all" | "image" | "document";
+type ViewMode = "grid" | "list";
+
+const FILTERS: Array<{ value: FilterType; label: string; icon: FeatherIconName }> = [
+  { value: "all", label: "All files", icon: "archive" },
+  { value: "image", label: "Images", icon: "image" },
+  { value: "document", label: "Documents", icon: "file-text" },
+];
 
 export default function FilesScreen() {
   const colors = useColors();
   const semantic = useSemanticColors();
-  const auth = useAuth();
-  const token = auth.token;
-  const { showToast } = useAppToast();
+  const router = useAppRouter();
+  const { token } = useAuth();
   const openFilePreview = useUIStore((state) => state.openFilePreview);
-
+  const responsive = useResponsiveLayout();
+  const [gridWidth, setGridWidth] = useState(0);
   const [filter, setFilter] = useState<FilterType>("all");
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
 
   const googleIntegration = useQuery(
     api.integrations.getGoogleIntegration,
     token ? { token } : "skip",
   );
-
-  const attachmentsResult = useQuery(
+  const allAttachmentsResult = useQuery(
     api.attachments.listAttachmentsForUser,
     token
       ? {
           token,
           paginationOpts: { numItems: 60, cursor: null },
-          type: filter === "all" ? undefined : filter,
+        }
+      : "skip",
+  );
+  const filteredAttachmentsResult = useQuery(
+    api.attachments.listAttachmentsForUser,
+    token && filter !== "all"
+      ? {
+          token,
+          paginationOpts: { numItems: 60, cursor: null },
+          type: filter,
         }
       : "skip",
   );
 
-  const attachments = (attachmentsResult?.page ?? []) as AttachmentDoc[];
-  const isLoading = attachmentsResult === undefined;
+  const allAttachments = (allAttachmentsResult?.page ?? []) as AttachmentDoc[];
+  const attachments = (
+    filter === "all" ? allAttachments : (filteredAttachmentsResult?.page ?? [])
+  ) as AttachmentDoc[];
   const previewUrls = useDrivePreviewUrls(attachments, token);
-
+  const isLoading =
+    allAttachmentsResult === undefined ||
+    (filter !== "all" && filteredAttachmentsResult === undefined);
   const driveConnected = canUseGoogleDrive(googleIntegration ?? null);
-  const processingColors = React.useMemo(
+
+  const imageCount = allAttachments.filter((item) => item.type === "image").length;
+  const documentCount = allAttachments.length - imageCount;
+  const processingCount = allAttachments.filter(
+    (item) => item.processingStatus === "pending" || item.processingStatus === "processing",
+  ).length;
+  const totalBytes = allAttachments.reduce((sum, item) => sum + item.sizeBytes, 0);
+
+  const availableWidth = Math.max(
+    0,
+    Math.min(gridWidth || responsive.contentWidth, 1440) - GRID_PADDING * 2,
+  );
+  const availableColumnCount =
+    viewMode === "list"
+      ? 1
+      : getFileColumnCount(availableWidth, responsive.isWide ? 5 : 4, GRID_GAP);
+  const columnCount =
+    viewMode === "list" ? 1 : Math.min(availableColumnCount, Math.max(1, attachments.length));
+  const cardWidth = Math.max(
+    viewMode === "list" ? availableWidth : 156,
+    (availableWidth - GRID_GAP * Math.max(0, columnCount - 1)) / columnCount,
+  );
+
+  const processingColors = useMemo(
     () => ({
       pending: semantic.documentStatus.pending,
       processing: semantic.documentStatus.processing,
       completed: semantic.documentStatus.completed,
       failed: semantic.documentStatus.failed,
     }),
-    [
-      semantic.documentStatus.completed,
-      semantic.documentStatus.failed,
-      semantic.documentStatus.pending,
-      semantic.documentStatus.processing,
-    ],
+    [semantic.documentStatus],
   );
 
   const renderItem = useCallback(
-    ({ item }: { item: AttachmentDoc; index: number }) => {
+    ({ item }: { item: AttachmentDoc }) => {
       const previewUri =
         item.type === "image"
           ? (previewUrls[item.driveFileId] ?? item.driveThumbnailLink)
           : undefined;
+      const statusColor = processingColors[item.processingStatus];
+      const extension = getExtension(item.filename);
+
+      if (viewMode === "list") {
+        return (
+          <PressableScale
+            onPress={() => openFilePreview(item as never)}
+            style={[
+              styles.listCard,
+              appShadow(colors.shadow, "xs"),
+              { width: cardWidth, backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <YStack
+              width={82}
+              height={82}
+              overflow="hidden"
+              alignItems="center"
+              justifyContent="center"
+              backgroundColor={withAlpha(colors.primary, "10")}
+            >
+              {previewUri ? (
+                <AppImage
+                  source={{ uri: previewUri }}
+                  style={StyleSheet.absoluteFill}
+                  contentFit="cover"
+                  recyclingKey={String(item._id)}
+                />
+              ) : (
+                <FileGlyph extension={extension} color={colors.primary} />
+              )}
+            </YStack>
+            <YStack flex={1} minWidth={0} gap={5} paddingVertical={12}>
+              <Text fontSize={14} fontWeight="700" color={colors.text} numberOfLines={1}>
+                {item.filename}
+              </Text>
+              <Text fontSize={11} color={colors.textSecondary} numberOfLines={1}>
+                {formatBytes(item.sizeBytes)} · {formatDate(item.createdAt)}
+              </Text>
+              <XStack alignItems="center" gap={5}>
+                <YStack width={6} height={6} borderRadius={3} backgroundColor={statusColor} />
+                <Text fontSize={10} color={colors.textSecondary} textTransform="capitalize">
+                  {item.processingStatus}
+                </Text>
+              </XStack>
+            </YStack>
+            <Feather name="chevron-right" size={17} color={colors.textTertiary} />
+          </PressableScale>
+        );
+      }
 
       return (
-        <Pressable
-          onPress={() => {
-            openFilePreview(item as any);
-          }}
-          style={({ pressed }) => [
-            styles.card,
+        <PressableScale
+          onPress={() => openFilePreview(item as never)}
+          style={[
+            styles.gridCard,
             appShadow(colors.shadow, "xs"),
-            {
-              backgroundColor: colors.surface,
-              borderColor: colors.border,
-              opacity: pressed ? 0.85 : 1,
-            },
+            { width: cardWidth, backgroundColor: colors.surface, borderColor: colors.border },
           ]}
         >
-          {item.type === "image" && previewUri ? (
-            <AppImage
-              source={{ uri: previewUri }}
-              style={styles.thumbnail}
-              contentFit="cover"
-              transition={300}
-              recyclingKey={String(item._id)}
-              placeholder={{ blurhash: "L6PZfSi_.AyE_3t7t7R**0o#DgR4" }}
-            />
-          ) : (
-            <View
-              style={[styles.docIconContainer, { backgroundColor: colors.backgroundSecondary }]}
+          <YStack
+            height={Math.min(220, Math.max(140, cardWidth * 0.55))}
+            overflow="hidden"
+            alignItems="center"
+            justifyContent="center"
+            backgroundColor={
+              item.type === "image" ? colors.backgroundSecondary : withAlpha(colors.primary, "0D")
+            }
+          >
+            {previewUri ? (
+              <AppImage
+                source={{ uri: previewUri }}
+                style={StyleSheet.absoluteFill}
+                contentFit="cover"
+                transition={220}
+                recyclingKey={String(item._id)}
+                placeholder={{ blurhash: "L6PZfSi_.AyE_3t7t7R**0o#DgR4" }}
+              />
+            ) : (
+              <FileGlyph extension={extension} color={colors.primary} large />
+            )}
+            <YStack
+              position="absolute"
+              top={10}
+              right={10}
+              paddingHorizontal={8}
+              paddingVertical={4}
+              borderRadius={radius.pill}
+              backgroundColor={withAlpha(colors.background, "DC")}
             >
-              <Feather name="file-text" size={36} color={colors.primary} />
-            </View>
-          )}
+              <Text fontSize={9} fontWeight="700" color={colors.textSecondary}>
+                {extension}
+              </Text>
+            </YStack>
+          </YStack>
 
           <YStack
-            paddingHorizontal={8}
-            paddingVertical={6}
-            gap={2}
-            borderTopWidth={StyleSheet.hairlineWidth}
-            borderTopColor={colors.border}
+            padding={spacing.md}
+            gap={6}
+            borderTopWidth={1}
+            borderTopColor={colors.borderLight}
           >
-            <Text fontSize={11} fontWeight="600" color={colors.text} numberOfLines={1}>
+            <Text fontSize={13} fontWeight="700" color={colors.text} numberOfLines={1}>
               {item.filename}
             </Text>
-            <XStack alignItems="center" gap={4}>
-              <View
-                style={[
-                  styles.statusDot,
-                  {
-                    backgroundColor: processingColors[item.processingStatus],
-                  },
-                ]}
-              />
+            <XStack alignItems="center" justifyContent="space-between" gap={8}>
               <Text fontSize={10} color={colors.textSecondary}>
-                {formatDate(item.createdAt)}
+                {formatBytes(item.sizeBytes)} · {formatDate(item.createdAt)}
               </Text>
+              <YStack width={7} height={7} borderRadius={4} backgroundColor={statusColor} />
             </XStack>
           </YStack>
-        </Pressable>
+        </PressableScale>
       );
     },
-    [colors, openFilePreview, previewUrls],
+    [cardWidth, colors, openFilePreview, previewUrls, processingColors, viewMode],
   );
 
   const listHeader = (
-    <View>
-      {!driveConnected && (
-        <Pressable
-          onPress={() =>
-            showToast({
-              title: googleIntegration?.connected
-                ? "Google Drive uploads are turned off"
-                : "Connect Google in Settings to sync files",
-              tone: "info",
-            })
-          }
-          style={[
-            styles.banner,
-            {
-              backgroundColor: colors.backgroundSecondary,
-              borderColor: colors.border,
-            },
-          ]}
+    <YStack gap={spacing.lg} paddingBottom={spacing.lg}>
+      <SectionCard emphasis="quiet" density="compact">
+        <XStack
+          alignItems="flex-start"
+          justifyContent="space-between"
+          gap={spacing.xl}
+          flexWrap="wrap"
+          flexDirection={responsive.isExpanded ? "row" : "column"}
         >
-          <Feather name="alert-circle" size={14} color={colors.primary} />
-          <Text fontSize={12} color={colors.text} flex={1}>
-            {googleIntegration?.connected
-              ? googleIntegration.hasDriveScope
-                ? "Turn Google Drive uploads back on in Profile to add new files"
-                : "Reconnect Google in Profile to grant Drive upload access"
-              : "Connect Google Drive to store and sync files"}
-          </Text>
-          <Feather name="external-link" size={14} color={colors.textSecondary} />
-        </Pressable>
-      )}
-      <XStack paddingHorizontal={16} paddingBottom={12} gap={8}>
-        {(["all", "image", "document"] as FilterType[]).map((f) => (
-          <Pressable
-            key={f}
-            onPress={() => setFilter(f)}
-            style={[
-              styles.filterChip,
-              {
-                backgroundColor: filter === f ? colors.primary : colors.backgroundSecondary,
-                borderColor: filter === f ? colors.primary : colors.border,
-              },
-            ]}
+          <YStack width={300} maxWidth="100%" gap={spacing.sm}>
+            <XStack alignItems="center" gap={10}>
+              <YStack
+                width={42}
+                height={42}
+                borderRadius={14}
+                alignItems="center"
+                justifyContent="center"
+                backgroundColor={withAlpha(colors.primary, "16")}
+              >
+                <Feather name="archive" size={19} color={colors.primary} />
+              </YStack>
+              <YStack gap={1}>
+                <Text fontSize={18} fontFamily="$heading" fontWeight="700" color={colors.text}>
+                  Your file archive
+                </Text>
+                <Text fontSize={12} lineHeight={18} color={colors.textSecondary}>
+                  Images and documents attached across memories and conversations.
+                </Text>
+              </YStack>
+            </XStack>
+          </YStack>
+          <YStack
+            minWidth={0}
+            width={responsive.isExpanded ? (responsive.isWide ? 520 : 440) : "100%"}
+            maxWidth="100%"
           >
-            <Text
-              fontSize={12}
-              fontWeight="600"
-              color={filter === f ? colors.destructiveForeground : colors.textSecondary}
-              textTransform="capitalize"
-            >
-              {f === "all" ? "All" : f === "image" ? "Images" : "Documents"}
-            </Text>
-          </Pressable>
-        ))}
+            <StatStrip
+              items={[
+                { label: "Files", value: allAttachments.length },
+                { label: "Images", value: imageCount },
+                { label: "Documents", value: documentCount },
+                {
+                  label: processingCount > 0 ? "Processing" : "Stored",
+                  value: processingCount > 0 ? processingCount : formatBytes(totalBytes),
+                  color: processingCount > 0 ? semantic.documentStatus.processing : undefined,
+                },
+              ]}
+            />
+          </YStack>
+        </XStack>
+      </SectionCard>
+
+      {!driveConnected ? (
+        <PressableScale onPress={() => router.push("/(protected)/profile")}>
+          <SurfaceCard variant="solid" padding={spacing.md} radius={radius.sm}>
+            <XStack alignItems="center" gap={10}>
+              <Feather name="cloud-off" size={16} color={colors.primary} />
+              <YStack flex={1} gap={2}>
+                <Text fontSize={12} fontWeight="700" color={colors.text}>
+                  {googleIntegration?.connected
+                    ? "Drive uploads are paused"
+                    : "Drive is not connected"}
+                </Text>
+                <Text fontSize={11} lineHeight={16} color={colors.textSecondary}>
+                  {googleIntegration?.connected
+                    ? "Existing files remain available. Re-enable Drive in Profile to add more."
+                    : "Connect Google in Profile to store and sync new attachments."}
+                </Text>
+              </YStack>
+              <Feather name="arrow-up-right" size={15} color={colors.textTertiary} />
+            </XStack>
+          </SurfaceCard>
+        </PressableScale>
+      ) : null}
+
+      <SurfaceCard variant="solid" padding={spacing.sm} radius={radius.md}>
+        <XStack alignItems="center" justifyContent="space-between" gap={spacing.md} flexWrap="wrap">
+          <XStack gap={spacing.xs} flexWrap="wrap">
+            {FILTERS.map((option) => {
+              const active = filter === option.value;
+              const count =
+                option.value === "all"
+                  ? allAttachments.length
+                  : option.value === "image"
+                    ? imageCount
+                    : documentCount;
+              return (
+                <PressableScale key={option.value} onPress={() => setFilter(option.value)}>
+                  <XStack
+                    alignItems="center"
+                    gap={6}
+                    paddingHorizontal={11}
+                    paddingVertical={8}
+                    borderRadius={radius.sm}
+                    backgroundColor={active ? withAlpha(colors.primary, "16") : "transparent"}
+                  >
+                    <Feather
+                      name={option.icon}
+                      size={13}
+                      color={active ? colors.primary : colors.textSecondary}
+                    />
+                    <Text
+                      fontSize={12}
+                      fontWeight={active ? "700" : "500"}
+                      color={active ? colors.primary : colors.textSecondary}
+                    >
+                      {option.label}
+                    </Text>
+                    <Text fontSize={10} color={colors.textTertiary}>
+                      {count}
+                    </Text>
+                  </XStack>
+                </PressableScale>
+              );
+            })}
+          </XStack>
+          <XStack
+            gap={4}
+            padding={3}
+            borderRadius={radius.sm}
+            backgroundColor={colors.backgroundSecondary}
+          >
+            {(["grid", "list"] as ViewMode[]).map((mode) => {
+              const active = viewMode === mode;
+              return (
+                <PressableScale
+                  key={mode}
+                  onPress={() => setViewMode(mode)}
+                  accessibilityLabel={`${mode} view`}
+                >
+                  <YStack
+                    width={34}
+                    height={32}
+                    borderRadius={10}
+                    alignItems="center"
+                    justifyContent="center"
+                    backgroundColor={active ? colors.surfaceElevated : "transparent"}
+                  >
+                    <Feather
+                      name={mode === "grid" ? "grid" : "list"}
+                      size={15}
+                      color={active ? colors.primary : colors.textSecondary}
+                    />
+                  </YStack>
+                </PressableScale>
+              );
+            })}
+          </XStack>
+        </XStack>
+      </SurfaceCard>
+
+      <XStack alignItems="center" justifyContent="space-between" gap={12}>
+        <Text fontSize={15} fontFamily="$heading" fontWeight="700" color={colors.text}>
+          {filter === "all" ? "All files" : filter === "image" ? "Images" : "Documents"}
+        </Text>
+        <Text fontSize={11} color={colors.textSecondary}>
+          {attachments.length} shown
+        </Text>
       </XStack>
-    </View>
+    </YStack>
   );
 
   return (
-    <AppScreen showBack title="Files" noScroll>
+    <AppScreen
+      showBack
+      title="Files"
+      subtitle="Browse the visual material and documents connected to your memory archive."
+      contentWidth="workspace"
+      noScroll
+    >
       <FlatList
+        key={`files-${viewMode}-${columnCount}`}
+        onLayout={(event) => setGridWidth(event.nativeEvent.layout.width)}
         data={attachments}
         renderItem={renderItem}
         keyExtractor={(item) => item._id}
-        numColumns={2}
-        columnWrapperStyle={styles.columnWrapper}
+        numColumns={columnCount}
+        columnWrapperStyle={columnCount > 1 ? styles.columnWrapper : undefined}
         contentContainerStyle={styles.gridContent}
         ListHeaderComponent={listHeader}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={isLoading} tintColor={colors.primary} />}
         ListEmptyComponent={
           !isLoading ? (
-            <YStack flex={1} alignItems="center" justifyContent="center" gap={12} paddingTop={80}>
-              <Feather name="paperclip" size={40} color={colors.textTertiary} />
-              <Text fontSize={15} color={colors.textSecondary} textAlign="center">
-                No files yet
-              </Text>
-              <Text fontSize={13} color={colors.textTertiary} textAlign="center" maxWidth={240}>
-                Attach images or PDFs in chat or memories to see them here
-              </Text>
-            </YStack>
+            <EmptyState
+              icon={filter === "all" ? "paperclip" : filter === "image" ? "image" : "file-text"}
+              title={filter === "all" ? "No files yet" : `No ${filter}s found`}
+              description={
+                filter === "all"
+                  ? "Attach an image or document in chat or a memory to start this archive."
+                  : "Choose another file type or attach something new."
+              }
+            />
           ) : null
         }
       />
@@ -242,57 +453,72 @@ export default function FilesScreen() {
   );
 }
 
-function formatDate(ms: number): string {
-  return new Date(ms).toLocaleDateString("en-US", {
+function FileGlyph({
+  extension,
+  color,
+  large = false,
+}: {
+  extension: string;
+  color: string;
+  large?: boolean;
+}) {
+  return (
+    <YStack alignItems="center" gap={large ? 8 : 4}>
+      <Feather name="file-text" size={large ? 42 : 28} color={color} />
+      <Text fontSize={large ? 11 : 9} fontWeight="800" letterSpacing={0.8} color={color}>
+        {extension}
+      </Text>
+    </YStack>
+  );
+}
+
+function getFileColumnCount(width: number, maximum: number, gap: number) {
+  const minimum = width >= 1000 ? 190 : width >= 600 ? 176 : 156;
+  return Math.max(1, Math.min(maximum, Math.floor((width + gap) / (minimum + gap))));
+}
+
+function getExtension(filename: string) {
+  const extension = filename.split(".").pop()?.trim().toUpperCase();
+  return extension && extension.length <= 5 ? extension : "FILE";
+}
+
+function formatDate(ms: number) {
+  return new Date(ms).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
+    year: "numeric",
   });
 }
 
+function formatBytes(bytes: number) {
+  if (bytes <= 0) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+}
+
 const styles = StyleSheet.create({
-  banner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginHorizontal: 16,
-    marginBottom: 12,
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  columnWrapper: {
-    paddingHorizontal: GRID_PADDING,
-    gap: GRID_GAP,
-  },
   gridContent: {
     gap: GRID_GAP,
+    paddingHorizontal: GRID_PADDING,
     paddingBottom: 40,
   },
-  card: {
-    width: CARD_SIZE,
-    borderRadius: 16,
+  columnWrapper: {
+    gap: GRID_GAP,
+  },
+  gridCard: {
+    borderRadius: radius.md,
     borderWidth: 1,
     overflow: "hidden",
   },
-  thumbnail: {
-    width: "100%",
-    height: CARD_SIZE,
-  },
-  docIconContainer: {
-    width: "100%",
-    height: CARD_SIZE * 0.75,
+  listCard: {
+    minHeight: 82,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    overflow: "hidden",
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    gap: spacing.md,
+    paddingRight: spacing.md,
   },
 });

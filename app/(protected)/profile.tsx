@@ -1,21 +1,17 @@
 import React from "react";
 import { Platform, Switch, Alert, TextInput, Pressable, StyleSheet } from "react-native";
-import DateTimePicker from "@expo/ui/community/datetime-picker";
-import dayjs from "dayjs";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { Feather, type FeatherIconName } from "@/lib/icons";
-import { appRouter as router } from "@/lib/appRouter";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
 import { Card } from "@/components/ui/Card";
 import { SectionLabel } from "@/components/ui/SectionLabel";
-import { PressableScale } from "@/components/ui/PressableScale";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { Badge } from "@/components/ui/Badge";
 import { AppScreen } from "@/components/ui/AppScreen";
+import { SectionGrid } from "@/components/ui/Responsive";
 import { useAppToast } from "@/components/ui/toast";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { FontFamily } from "@/constants/fonts";
@@ -33,8 +29,6 @@ type TimezoneOption = {
   offsetInMinutes: number;
 };
 
-type VisibleAiCapability = "chat" | "structured_text" | "embeddings" | "vision" | "transcription";
-
 const formatUtcOffset = (offsetInMinutes: number) => {
   const sign = offsetInMinutes >= 0 ? "+" : "-";
   const absoluteMinutes = Math.abs(offsetInMinutes);
@@ -42,13 +36,6 @@ const formatUtcOffset = (offsetInMinutes: number) => {
   const minutes = String(absoluteMinutes % 60).padStart(2, "0");
   return `UTC${sign}${hours}:${minutes}`;
 };
-
-const formatUsdMicros = (value: number) =>
-  new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: value >= 100_000 ? 2 : 4,
-  }).format(value / 1_000_000);
 
 // Computed once at module load — avoids blocking the JS thread on every mount.
 const ALL_TIMEZONE_OPTIONS: TimezoneOption[] = getTimeZones({
@@ -146,218 +133,11 @@ function IntegrationFeatureRow({
   );
 }
 
-function SettingsToggleRow({
-  theme,
-  icon,
-  title,
-  description,
-  value,
-  disabled,
-  onValueChange,
-  isLast,
-  children,
-}: {
-  theme: ReturnType<typeof useAppTheme>;
-  icon: FeatherIconName;
-  title: string;
-  description?: React.ReactNode;
-  value: boolean;
-  disabled?: boolean;
-  onValueChange: (value: boolean) => void;
-  isLast?: boolean;
-  children?: React.ReactNode;
-}) {
-  return (
-    <YStack
-      borderBottomWidth={isLast ? 0 : 1}
-      borderBottomColor={theme.borderSubtle.val}
-      paddingBottom={children ? 12 : 0}
-    >
-      <XStack alignItems="center" gap={12} paddingVertical={10}>
-        <SettingsRowIcon theme={theme} icon={icon} />
-        <YStack flex={1}>
-          <Text fontSize={15} fontFamily="$body" fontWeight="600" color={theme.color.val}>
-            {title}
-          </Text>
-          {description ? (
-            <Text
-              fontSize={12}
-              fontFamily="$body"
-              marginTop={2}
-              lineHeight={17}
-              color={theme.colorMuted.val}
-            >
-              {description}
-            </Text>
-          ) : null}
-        </YStack>
-        <Switch
-          value={value}
-          onValueChange={onValueChange}
-          disabled={disabled}
-          trackColor={{
-            true: theme.primary.val,
-            false: theme.borderColor.val,
-          }}
-          thumbColor={theme.textInverse.val}
-        />
-      </XStack>
-      {children}
-    </YStack>
-  );
-}
-
-function SettingsActionRow({
-  theme,
-  icon,
-  label,
-  tone = "primary",
-  onPress,
-}: {
-  theme: ReturnType<typeof useAppTheme>;
-  icon: FeatherIconName;
-  label: string;
-  tone?: "primary" | "destructive";
-  onPress: () => void;
-}) {
-  const color = tone === "destructive" ? theme.destructive.val : theme.color.val;
-  return (
-    <PressableScale onPress={onPress}>
-      <XStack alignItems="center" gap={12} paddingVertical={12}>
-        <SettingsRowIcon theme={theme} icon={icon} tone={tone} />
-        <Text flex={1} fontSize={15} fontFamily="$body" fontWeight="600" color={color}>
-          {label}
-        </Text>
-      </XStack>
-    </PressableScale>
-  );
-}
-
-function getTimePreferenceDate(value: string) {
-  const [hours = "9", minutes = "0"] = value.split(":");
-  return dayjs()
-    .hour(Number.parseInt(hours, 10) || 0)
-    .minute(Number.parseInt(minutes, 10) || 0)
-    .second(0)
-    .millisecond(0)
-    .toDate();
-}
-
-function formatTimePreference(date: Date) {
-  return dayjs(date).format("HH:mm");
-}
-
-function TimePreferenceField({
-  label,
-  value,
-  placeholder,
-  theme,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  placeholder: string;
-  theme: ReturnType<typeof useAppTheme>;
-  onChange: (value: string) => void;
-}) {
-  const [showAndroidPicker, setShowAndroidPicker] = React.useState(false);
-  const pickerDate = getTimePreferenceDate(value || placeholder);
-
-  return (
-    <YStack gap={6}>
-      <Text
-        fontSize={12}
-        fontFamily="$heading"
-        fontWeight="600"
-        textTransform="uppercase"
-        letterSpacing={0.8}
-        marginLeft={4}
-        color={theme.colorMuted.val}
-      >
-        {label}
-      </Text>
-      {Platform.OS === "web" ? (
-        <TextInput
-          value={value}
-          onChangeText={onChange}
-          placeholder={placeholder}
-          placeholderTextColor={theme.colorMuted.val}
-          style={[
-            styles.input,
-            {
-              backgroundColor: theme.secondary.val,
-              color: theme.color.val,
-              borderColor: theme.borderColor.val,
-            },
-          ]}
-        />
-      ) : Platform.OS === "ios" ? (
-        <XStack
-          alignItems="center"
-          justifyContent="space-between"
-          style={[
-            styles.input,
-            {
-              backgroundColor: theme.secondary.val,
-              borderColor: theme.borderColor.val,
-            },
-          ]}
-        >
-          <Text fontSize={15} fontFamily="$body" color={theme.color.val}>
-            {value || placeholder}
-          </Text>
-          <DateTimePicker
-            value={pickerDate}
-            mode="time"
-            display="compact"
-            presentation="inline"
-            accentColor={theme.primary.val}
-            onValueChange={(_, date) => onChange(formatTimePreference(date))}
-          />
-        </XStack>
-      ) : (
-        <>
-          <Pressable
-            onPress={() => setShowAndroidPicker(true)}
-            style={[
-              styles.input,
-              {
-                backgroundColor: theme.secondary.val,
-                borderColor: theme.borderColor.val,
-                justifyContent: "center",
-              },
-            ]}
-          >
-            <Text fontSize={15} fontFamily="$body" color={theme.color.val}>
-              {value || placeholder}
-            </Text>
-          </Pressable>
-          {showAndroidPicker ? (
-            <DateTimePicker
-              value={pickerDate}
-              mode="time"
-              presentation="dialog"
-              accentColor={theme.primary.val}
-              positiveButton={{ label: "Set" }}
-              negativeButton={{ label: "Cancel" }}
-              onValueChange={(_, date) => {
-                onChange(formatTimePreference(date));
-                setShowAndroidPicker(false);
-              }}
-              onDismiss={() => setShowAndroidPicker(false)}
-            />
-          ) : null}
-        </>
-      )}
-    </YStack>
-  );
-}
-
 export default function ProfileScreen() {
   const theme = useAppTheme();
   const { showToast } = useAppToast();
   const { confirm } = useAppConfirm();
-  const { user, token, logout } = useAuth();
+  const { user, token } = useAuth();
   const [displayName, setDisplayName] = React.useState(user?.name ?? "");
   const [timezone, setTimezone] = React.useState(
     user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
@@ -383,29 +163,7 @@ export default function ProfileScreen() {
     setTimezoneSearchText("");
     timezoneDropdownRef.current?.close();
   }, []);
-  const exportDataOnce = useAction(api.dataExport.exportAllDataOnce);
-  const [isExportingData, setIsExportingData] = React.useState(false);
-
-  const nowMs = React.useMemo(() => Date.now(), []);
-  const memoryStats = useQuery(api.memories.stats, token ? { token, asOf: nowMs } : "skip");
-  const notificationPrefs = useQuery(api.notifications.get, token ? { token } : "skip");
-  const updateNotifications = useMutation(api.notifications.upsert);
-  const deleteAccount = useMutation(api.auth.deleteAccount);
   const updateProfile = useMutation(api.auth.updateProfile);
-  const aiProviderSettings = useQuery(api.aiProviders.getSettings, token ? {} : "skip");
-  const aiUsageOverview = useQuery(
-    api.analytics.overview,
-    token ? { token, range: "30d", spendSource: "combined" } : "skip",
-  );
-  const setAiByokPreference = useMutation(api.aiProviders.setByokPreference);
-  const deleteAiProviderKey = useMutation(api.aiProviders.deleteProviderKey);
-  const upsertAiProviderKey = useAction(api.actions.aiProviderKeys.upsertProviderKey);
-  const [selectedAiProvider, setSelectedAiProvider] = React.useState<"openai" | "google">("openai");
-  const [aiApiKey, setAiApiKey] = React.useState("");
-  const [aiBaseUrl, setAiBaseUrl] = React.useState("");
-  const [aiCapabilityModels, setAiCapabilityModels] = React.useState<Record<string, string>>({});
-  const [isSavingAiKey, setIsSavingAiKey] = React.useState(false);
-  const [isUpdatingByok, setIsUpdatingByok] = React.useState(false);
 
   // --- Google Integration (Calendar + Drive) ---
   const googleIntegration = useQuery(api.integrations.getGoogleIntegration, {
@@ -570,121 +328,6 @@ export default function ProfileScreen() {
     setTimezone(user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   }, [user?.timezone]);
 
-  React.useEffect(() => {
-    const preferred = aiProviderSettings?.preference?.preferredProvider;
-    if (preferred) {
-      setSelectedAiProvider(preferred);
-    }
-  }, [aiProviderSettings?.preference?.preferredProvider]);
-
-  React.useEffect(() => {
-    const selectedConfig = aiProviderSettings?.providers?.find(
-      (provider: any) => provider.provider === selectedAiProvider,
-    );
-    setAiBaseUrl(selectedConfig?.baseUrl ?? "");
-  }, [aiProviderSettings?.providers, selectedAiProvider]);
-
-  React.useEffect(() => {
-    const selectedConfig = aiProviderSettings?.providers?.find(
-      (provider: any) => provider.provider === selectedAiProvider,
-    );
-    setAiCapabilityModels({
-      ...(selectedConfig?.defaultModels ?? {}),
-      ...(selectedConfig?.savedModels ?? {}),
-    });
-  }, [
-    aiProviderSettings?.preference?.preferredProvider,
-    aiProviderSettings?.providers,
-    selectedAiProvider,
-  ]);
-
-  const totalMemories = memoryStats?.totalMemories ?? 0;
-
-  const handleExport = async () => {
-    if (Platform.OS === "web") {
-      setIsExportingData(true);
-      try {
-        const exportData = await exportDataOnce({});
-        const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-          type: "application/json",
-        });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "memora-export.json";
-        a.click();
-        URL.revokeObjectURL(url);
-      } catch (error) {
-        window.alert(error instanceof Error ? error.message : "Unable to export data.");
-      } finally {
-        setIsExportingData(false);
-      }
-    } else {
-      Alert.alert("Export", `${totalMemories} memories ready for export`);
-    }
-  };
-
-  const updatePreference = async (patch: {
-    dailyReview?: boolean;
-    dailyReviewTime?: string;
-    weeklyDigest?: boolean;
-    weeklyDigestDay?: string;
-    memoryNudges?: boolean;
-    capsuleAlerts?: boolean;
-    pushEnabled?: boolean;
-  }) => {
-    if (!token) return;
-    try {
-      await updateNotifications({ token, ...patch });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to update preferences.";
-      if (Platform.OS === "web") {
-        window.alert(message);
-      } else {
-        Alert.alert("Update failed", message);
-      }
-    }
-  };
-
-  const handleLogout = () => {
-    const doLogout = async () => {
-      await logout();
-      router.replace("/(public)/(auth)/login");
-    };
-    void (async () => {
-      const confirmed = await confirm({
-        title: "Logout",
-        message: "Are you sure?",
-        confirmLabel: "Logout",
-        tone: "default",
-        icon: "log-out",
-      });
-      if (confirmed) void doLogout();
-    })();
-  };
-
-  const handleDeleteAccount = () => {
-    const doDelete = async () => {
-      try {
-        await deleteAccount({});
-      } finally {
-        await AsyncStorage.clear();
-        await logout();
-        router.replace("/(public)/(auth)/login");
-      }
-    };
-    void (async () => {
-      const confirmed = await confirm({
-        title: "Delete Account",
-        message: "This will delete your app data and profile. This cannot be undone.",
-        confirmLabel: "Delete",
-        tone: "destructive",
-        icon: "trash-2",
-      });
-      if (confirmed) void doDelete();
-    })();
-  };
-
   const handleSaveProfile = async () => {
     if (!token) return;
     setIsSavingProfile(true);
@@ -705,339 +348,29 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleToggleByok = async (value: boolean) => {
-    setIsUpdatingByok(true);
-    try {
-      await setAiByokPreference({
-        preferredProvider: selectedAiProvider,
-        byokEnabled: value,
-        providerModels: {
-          [selectedAiProvider]: aiCapabilityModels,
-        },
-      });
-      showToast({
-        title: value ? "BYOK enabled" : "BYOK disabled",
-        message: value
-          ? "Supported AI requests will use your own provider key and selected models."
-          : "AI requests will use Memora's provider routing.",
-        tone: "success",
-      });
-    } catch (error) {
-      showToast({
-        title: "Update failed",
-        message: error instanceof Error ? error.message : "Unable to update BYOK settings.",
-        tone: "error",
-      });
-    } finally {
-      setIsUpdatingByok(false);
-    }
-  };
-
-  const handleSaveAiKey = async () => {
-    if (!aiApiKey.trim()) {
-      showToast({
-        title: "API key required",
-        message: "Paste a provider API key before saving.",
-        tone: "error",
-      });
-      return;
-    }
-    setIsSavingAiKey(true);
-    try {
-      await upsertAiProviderKey({
-        provider: selectedAiProvider,
-        apiKey: aiApiKey.trim(),
-        baseUrl: aiBaseUrl.trim() || undefined,
-        validate: true,
-      });
-      await setAiByokPreference({
-        preferredProvider: selectedAiProvider,
-        byokEnabled: aiProviderSettings?.preference?.byokEnabled ?? false,
-        providerModels: {
-          [selectedAiProvider]: aiCapabilityModels,
-        },
-      });
-      setAiApiKey("");
-      showToast({
-        title: "Key saved",
-        message: "The API key was encrypted and stored successfully.",
-        tone: "success",
-      });
-    } catch (error) {
-      showToast({
-        title: "Save failed",
-        message: error instanceof Error ? error.message : "Unable to save API key.",
-        tone: "error",
-        closeMode: "manual",
-      });
-    } finally {
-      setIsSavingAiKey(false);
-    }
-  };
-
-  const handleDeleteAiKey = async () => {
-    const confirmed = await confirm({
-      title: "Delete API key",
-      message: `Remove your ${selectedAiProvider} API key from Memora?`,
-      confirmLabel: "Delete",
-      tone: "destructive",
-      icon: "trash-2",
-    });
-    if (!confirmed) return;
-    try {
-      await deleteAiProviderKey({ provider: selectedAiProvider });
-      setAiApiKey("");
-      showToast({
-        title: "Key removed",
-        message: "Stored provider credentials were deleted.",
-        tone: "success",
-      });
-    } catch (error) {
-      showToast({
-        title: "Delete failed",
-        message: error instanceof Error ? error.message : "Unable to delete API key.",
-        tone: "error",
-      });
-    }
-  };
-
-  const selectedAiConfig = aiProviderSettings?.providers?.find(
-    (provider: any) => provider.provider === selectedAiProvider,
-  );
-  const isByokEnabled = aiProviderSettings?.preference?.byokEnabled ?? false;
-  const embeddingRebuildActive =
-    aiProviderSettings?.preference?.embeddingRebuildStatus &&
-    aiProviderSettings.preference.embeddingRebuildStatus !== "idle" &&
-    aiProviderSettings.preference.embeddingRebuildStatus !== "failed";
-  const embeddingRebuildProcessed = aiProviderSettings?.preference?.embeddingRebuildProcessed ?? 0;
-  const embeddingRebuildTotal = aiProviderSettings?.preference?.embeddingRebuildTotal ?? 0;
-
-  const formatCapabilityLabel = (capability: string) =>
-    capability
-      .split("_")
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ");
-  const capabilityOrder: VisibleAiCapability[] = [
-    "chat",
-    "structured_text",
-    "embeddings",
-    "vision",
-    "transcription",
-  ];
-  const previewCapabilityMatrix = capabilityOrder.map((capability: VisibleAiCapability) => {
-    const selectedModel =
-      aiCapabilityModels[capability] ?? selectedAiConfig?.defaultModels?.[capability];
-    const supported = selectedAiConfig?.supportedCapabilities?.includes(capability);
-    if (!supported || !selectedModel) {
-      return {
-        capability,
-        available: false,
-        label: "Unavailable",
-      };
-    }
-    if (!selectedAiConfig?.configured) {
-      return {
-        capability,
-        available: false,
-        label: `${selectedAiProvider} · Needs key · ${selectedModel}`,
-      };
-    }
-    const byokActive =
-      aiProviderSettings?.preference?.byokEnabled &&
-      aiProviderSettings?.preference?.preferredProvider === selectedAiProvider;
-    return {
-      capability,
-      available: true,
-      label: `${selectedAiProvider} · ${byokActive ? "BYOK" : "Ready"} · ${selectedModel}`,
-    };
-  });
-
   return (
-    <AppScreen showBack title="Profile">
-      <YStack>
-        <SectionLabel>PROFILE</SectionLabel>
-        <Card style={styles.groupCard}>
-          <YStack gap={6} marginBottom={14}>
-            <Text
-              fontSize={12}
-              fontFamily="$heading"
-              fontWeight="600"
-              textTransform="uppercase"
-              letterSpacing={0.8}
-              marginLeft={4}
-              color={theme.colorMuted.val}
-            >
-              Display Name
-            </Text>
-            <TextInput
-              value={displayName}
-              onChangeText={setDisplayName}
-              placeholder="Your name"
-              placeholderTextColor={theme.colorMuted.val}
-              style={[
-                styles.input,
-                {
-                  backgroundColor: theme.secondary.val,
-                  color: theme.color.val,
-                  borderColor: theme.borderColor.val,
-                },
-              ]}
-            />
-          </YStack>
-          <YStack gap={6} marginBottom={14}>
-            <Text
-              fontSize={12}
-              fontFamily="$heading"
-              fontWeight="600"
-              textTransform="uppercase"
-              letterSpacing={0.8}
-              marginLeft={4}
-              color={theme.colorMuted.val}
-            >
-              Timezone
-            </Text>
-            <Dropdown
-              ref={timezoneDropdownRef}
-              data={timezoneDropdownOptions}
-              value={timezone}
-              labelField="label"
-              valueField="value"
-              searchField="searchText"
-              search
-              mode={Platform.OS === "web" ? "auto" : "modal"}
-              maxHeight={340}
-              placeholder="Select timezone"
-              style={[
-                styles.input,
-                styles.dropdown,
-                {
-                  backgroundColor: theme.secondary.val,
-                  borderColor: theme.borderColor.val,
-                },
-              ]}
-              containerStyle={[
-                styles.dropdownContainer,
-                Platform.OS !== "web" && styles.dropdownContainerModal,
-                {
-                  backgroundColor: theme.card.val,
-                  borderColor: theme.borderColor.val,
-                },
-              ]}
-              placeholderStyle={[
-                styles.dropdownPlaceholderText,
-                {
-                  color: theme.colorMuted.val,
-                  fontFamily: FontFamily.regular,
-                },
-              ]}
-              selectedTextStyle={[
-                styles.dropdownSelectedText,
-                {
-                  color: theme.color.val,
-                  fontFamily: FontFamily.regular,
-                },
-              ]}
-              itemContainerStyle={styles.dropdownItemContainer}
-              itemTextStyle={[
-                styles.dropdownItemText,
-                {
-                  color: theme.color.val,
-                  fontFamily: FontFamily.regular,
-                },
-              ]}
-              activeColor={`${theme.primary.val}1A`}
-              iconColor={theme.colorMuted.val}
-              onChange={(item) => {
-                setTimezone(item.value);
-                setTimezoneSearchText("");
-              }}
-              onBlur={() => setTimezoneSearchText("")}
-              renderInputSearch={(onSearch) => (
-                <XStack
-                  gap={8}
-                  alignItems="center"
-                  paddingHorizontal={8}
-                  paddingTop={8}
-                  paddingBottom={6}
-                >
-                  <TextInput
-                    value={timezoneSearchText}
-                    onChangeText={(text) => {
-                      setTimezoneSearchText(text);
-                      onSearch(text);
-                    }}
-                    placeholder="Search timezone..."
-                    placeholderTextColor={theme.colorMuted.val}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    returnKeyType="search"
-                    style={[
-                      styles.dropdownSearchInput,
-                      {
-                        backgroundColor: theme.background.val,
-                        borderColor: theme.borderColor.val,
-                        color: theme.color.val,
-                        fontFamily: FontFamily.regular,
-                      },
-                    ]}
-                  />
-                  <Pressable
-                    onPress={closeTimezoneDropdown}
-                    accessibilityRole="button"
-                    accessibilityLabel="Close timezone selector"
-                    hitSlop={8}
-                    style={({ pressed }) => [
-                      styles.dropdownCloseButton,
-                      {
-                        backgroundColor: pressed ? `${theme.primary.val}24` : theme.secondary.val,
-                        borderColor: theme.borderColor.val,
-                      },
-                    ]}
-                  >
-                    <Feather name="x" size={18} color={theme.color.val} />
-                  </Pressable>
-                </XStack>
-              )}
-            />
-          </YStack>
-          <GradientButton
-            title="Save Profile"
-            onPress={handleSaveProfile}
-            icon="save"
-            loading={isSavingProfile}
-            style={{ marginTop: 8 }}
-          />
-        </Card>
-      </YStack>
-
-      <YStack>
-        <SectionLabel>NOTIFICATIONS</SectionLabel>
-        <Card style={styles.groupCard}>
-          <SettingsToggleRow
-            theme={theme}
-            icon="sun"
-            title="Daily Review"
-            description={`Review memories every day at ${notificationPrefs?.dailyReviewTime ?? "09:00"}.`}
-            value={notificationPrefs?.dailyReview ?? true}
-            onValueChange={(value) => updatePreference({ dailyReview: value })}
-          >
-            <TimePreferenceField
-              label="Daily Review Time"
-              value={notificationPrefs?.dailyReviewTime ?? "09:00"}
-              placeholder="09:00"
-              theme={theme}
-              onChange={(value) => updatePreference({ dailyReviewTime: value })}
-            />
-          </SettingsToggleRow>
-          <SettingsToggleRow
-            theme={theme}
-            icon="calendar"
-            title="Weekly Digest"
-            description={`Summarize your week every ${notificationPrefs?.weeklyDigestDay ?? "Sunday"}.`}
-            value={notificationPrefs?.weeklyDigest ?? true}
-            onValueChange={(value) => updatePreference({ weeklyDigest: value })}
-          >
-            <YStack gap={6}>
+    <AppScreen
+      showBack
+      title="Profile"
+      subtitle="Manage your personal details and connected services."
+      contentWidth="workspace"
+    >
+      <SectionGrid minimumColumnWidth={360} maximumColumns={2} gap={16}>
+        <YStack width="100%">
+          <SectionLabel>IDENTITY</SectionLabel>
+          <Card style={styles.groupCard}>
+            <XStack alignItems="center" gap={12} marginBottom={18}>
+              <SettingsRowIcon theme={theme} icon="user" />
+              <YStack flex={1} gap={2}>
+                <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
+                  Personal details
+                </Text>
+                <Text fontSize={12} lineHeight={17} color={theme.colorMuted.val}>
+                  Used to personalize your workspace and time-based features.
+                </Text>
+              </YStack>
+            </XStack>
+            <YStack gap={6} marginBottom={14}>
               <Text
                 fontSize={12}
                 fontFamily="$heading"
@@ -1047,14 +380,13 @@ export default function ProfileScreen() {
                 marginLeft={4}
                 color={theme.colorMuted.val}
               >
-                Weekly Digest Day
+                Display Name
               </Text>
               <TextInput
-                value={notificationPrefs?.weeklyDigestDay ?? "sunday"}
-                onChangeText={(value) => updatePreference({ weeklyDigestDay: value })}
-                placeholder="sunday"
+                value={displayName}
+                onChangeText={setDisplayName}
+                placeholder="Your name"
                 placeholderTextColor={theme.colorMuted.val}
-                autoCapitalize="none"
                 style={[
                   styles.input,
                   {
@@ -1065,535 +397,251 @@ export default function ProfileScreen() {
                 ]}
               />
             </YStack>
-          </SettingsToggleRow>
-          <SettingsToggleRow
-            theme={theme}
-            icon="zap"
-            title="AI Nudges"
-            description="Smart suggestions based on your patterns."
-            value={notificationPrefs?.memoryNudges ?? true}
-            onValueChange={(value) => updatePreference({ memoryNudges: value })}
-          />
-          <SettingsToggleRow
-            theme={theme}
-            icon="bell"
-            title="Push Notifications"
-            description="Enable reminder and review alerts on supported devices."
-            value={notificationPrefs?.pushEnabled ?? false}
-            onValueChange={(value) => updatePreference({ pushEnabled: value })}
-          />
-          <SettingsToggleRow
-            theme={theme}
-            icon="package"
-            title="Capsule Alerts"
-            description="Get notified when future memories unlock."
-            value={notificationPrefs?.capsuleAlerts ?? true}
-            onValueChange={(value) => updatePreference({ capsuleAlerts: value })}
-            isLast
-          />
-        </Card>
-      </YStack>
-
-      <YStack>
-        <SectionLabel>INTEGRATIONS</SectionLabel>
-        <Card style={styles.groupCard}>
-          <XStack alignItems="center" gap={12} paddingVertical={4}>
-            <SettingsRowIcon theme={theme} icon="cloud" />
-            <YStack flex={1}>
-              <XStack alignItems="center" gap={8}>
-                <Text fontSize={15} fontFamily="$body" fontWeight="600" color={theme.color.val}>
-                  Google
-                </Text>
-                {googleIntegration?.connected && (
-                  <Badge label="Connected" color={theme.primary.val} small />
-                )}
-              </XStack>
+            <YStack gap={6} marginBottom={14}>
               <Text
                 fontSize={12}
-                fontFamily="$body"
-                marginTop={3}
-                lineHeight={18}
+                fontFamily="$heading"
+                fontWeight="600"
+                textTransform="uppercase"
+                letterSpacing={0.8}
+                marginLeft={4}
                 color={theme.colorMuted.val}
               >
-                Sync reminders to Google Calendar and enable file attachments via Google Drive.
+                Timezone
               </Text>
-            </YStack>
-            <Switch
-              value={googleIntegration?.connected ?? false}
-              onValueChange={handleToggleGoogleSync}
-              disabled={!isGoogleAuthConfigured || !request || isConnectingGoogle}
-              trackColor={{
-                true: theme.primary.val,
-                false: theme.borderColor.val,
-              }}
-              thumbColor={theme.textInverse.val}
-            />
-          </XStack>
-          {showGoogleFeatureControls ? (
-            <YStack
-              marginTop={14}
-              marginLeft={4}
-              borderRadius={18}
-              borderWidth={1}
-              borderColor={theme.borderColor.val}
-              backgroundColor={theme.background.val}
-              overflow="hidden"
-            >
-              <XStack
-                alignItems="center"
-                justifyContent="space-between"
-                paddingHorizontal={14}
-                paddingTop={12}
-                paddingBottom={10}
-              >
-                <Text
-                  fontSize={11}
-                  fontFamily="$heading"
-                  fontWeight="600"
-                  letterSpacing={0.8}
-                  textTransform="uppercase"
-                  color={theme.colorMuted.val}
-                >
-                  Google Capabilities
-                </Text>
-                <YStack
-                  width={8}
-                  height={8}
-                  borderRadius={4}
-                  backgroundColor={theme.primary.val}
-                  opacity={0.85}
-                />
-              </XStack>
-
-              <YStack height={StyleSheet.hairlineWidth} backgroundColor={theme.borderColor.val} />
-
-              <YStack padding={14} gap={12}>
-                {googleIntegration.hasCalendarScope ? (
-                  <IntegrationFeatureRow
-                    theme={theme}
-                    icon="calendar"
-                    title="Calendar"
-                    description={
-                      canUseCalendar
-                        ? "AI and reminder edits can sync to Google Calendar."
-                        : "Future reminder sync is paused. Existing events stay as-is."
-                    }
-                    value={googleIntegration.calendarEnabled}
-                    onValueChange={(value) => void handleToggleGoogleFeature("calendar", value)}
-                    disabled={updatingGoogleFeature !== null || isConnectingGoogle}
-                    isLast={!googleIntegration.hasDriveScope}
-                  />
-                ) : null}
-
-                {googleIntegration.hasDriveScope ? (
-                  <IntegrationFeatureRow
-                    theme={theme}
-                    icon="paperclip"
-                    title="Drive"
-                    description={
-                      canUseDrive
-                        ? "Attach new files from chat and memory screens."
-                        : "New uploads are paused. Existing files remain viewable."
-                    }
-                    value={googleIntegration.driveEnabled}
-                    onValueChange={(value) => void handleToggleGoogleFeature("drive", value)}
-                    disabled={updatingGoogleFeature !== null || isConnectingGoogle}
-                    isLast
-                  />
-                ) : null}
-              </YStack>
-            </YStack>
-          ) : null}
-        </Card>
-      </YStack>
-
-      <YStack>
-        <SectionLabel>AI PROVIDERS</SectionLabel>
-        <Card style={styles.groupCard}>
-          <XStack alignItems="center" gap={12} paddingVertical={4}>
-            <SettingsRowIcon theme={theme} icon="key" />
-            <YStack flex={1}>
-              <Text fontSize={15} fontFamily="$body" fontWeight="600" color={theme.color.val}>
-                Bring Your Own Key
-              </Text>
-              <Text
-                fontSize={12}
-                fontFamily="$body"
-                marginTop={3}
-                lineHeight={18}
-                color={theme.colorMuted.val}
-              >
-                Use one provider for supported AI capabilities and skip Memora pricing on those
-                requests.
-              </Text>
-              {embeddingRebuildActive ? (
-                <Text
-                  fontSize={12}
-                  fontFamily="$body"
-                  marginTop={4}
-                  lineHeight={18}
-                  color={theme.colorMuted.val}
-                >
-                  Rebuilding embeddings in the background: {embeddingRebuildProcessed} /{" "}
-                  {embeddingRebuildTotal || "?"}. Search falls back to keyword matching until this
-                  finishes, and embedding provider changes are locked meanwhile.
-                </Text>
-              ) : null}
-            </YStack>
-            <Switch
-              value={isByokEnabled}
-              onValueChange={(value) => void handleToggleByok(value)}
-              disabled={isUpdatingByok}
-              trackColor={{
-                true: theme.primary.val,
-                false: theme.borderColor.val,
-              }}
-              thumbColor={theme.textInverse.val}
-            />
-          </XStack>
-
-          {isByokEnabled ? (
-            <>
-              <YStack
-                height={StyleSheet.hairlineWidth}
-                backgroundColor={theme.borderColor.val}
-                marginTop={14}
-              />
-
-              <XStack gap={10} marginTop={14}>
-                {(["openai", "google"] as const).map((provider) => {
-                  const isActive = selectedAiProvider === provider;
-                  return (
-                    <PressableScale
-                      key={provider}
-                      onPress={() => setSelectedAiProvider(provider)}
+              <Dropdown
+                ref={timezoneDropdownRef}
+                data={timezoneDropdownOptions}
+                value={timezone}
+                labelField="label"
+                valueField="value"
+                searchField="searchText"
+                search
+                mode={Platform.OS === "web" ? "auto" : "modal"}
+                maxHeight={340}
+                placeholder="Select timezone"
+                style={[
+                  styles.input,
+                  styles.dropdown,
+                  {
+                    backgroundColor: theme.secondary.val,
+                    borderColor: theme.borderColor.val,
+                  },
+                ]}
+                containerStyle={[
+                  styles.dropdownContainer,
+                  Platform.OS !== "web" && styles.dropdownContainerModal,
+                  {
+                    backgroundColor: theme.card.val,
+                    borderColor: theme.borderColor.val,
+                  },
+                ]}
+                placeholderStyle={[
+                  styles.dropdownPlaceholderText,
+                  {
+                    color: theme.colorMuted.val,
+                    fontFamily: FontFamily.regular,
+                  },
+                ]}
+                selectedTextStyle={[
+                  styles.dropdownSelectedText,
+                  {
+                    color: theme.color.val,
+                    fontFamily: FontFamily.regular,
+                  },
+                ]}
+                itemContainerStyle={styles.dropdownItemContainer}
+                itemTextStyle={[
+                  styles.dropdownItemText,
+                  {
+                    color: theme.color.val,
+                    fontFamily: FontFamily.regular,
+                  },
+                ]}
+                activeColor={`${theme.primary.val}1A`}
+                iconColor={theme.colorMuted.val}
+                onChange={(item) => {
+                  setTimezone(item.value);
+                  setTimezoneSearchText("");
+                }}
+                onBlur={() => setTimezoneSearchText("")}
+                renderInputSearch={(onSearch) => (
+                  <XStack
+                    gap={8}
+                    alignItems="center"
+                    paddingHorizontal={8}
+                    paddingTop={8}
+                    paddingBottom={6}
+                  >
+                    <TextInput
+                      value={timezoneSearchText}
+                      onChangeText={(text) => {
+                        setTimezoneSearchText(text);
+                        onSearch(text);
+                      }}
+                      placeholder="Search timezone..."
+                      placeholderTextColor={theme.colorMuted.val}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      returnKeyType="search"
                       style={[
-                        styles.providerChip,
+                        styles.dropdownSearchInput,
                         {
-                          borderColor: isActive ? theme.primary.val : theme.borderColor.val,
-                          backgroundColor: isActive
-                            ? theme.primary.val + "14"
-                            : theme.background.val,
+                          backgroundColor: theme.background.val,
+                          borderColor: theme.borderColor.val,
+                          color: theme.color.val,
+                          fontFamily: FontFamily.regular,
+                        },
+                      ]}
+                    />
+                    <Pressable
+                      onPress={closeTimezoneDropdown}
+                      accessibilityRole="button"
+                      accessibilityLabel="Close timezone selector"
+                      hitSlop={8}
+                      style={({ pressed }) => [
+                        styles.dropdownCloseButton,
+                        {
+                          backgroundColor: pressed ? `${theme.primary.val}24` : theme.secondary.val,
+                          borderColor: theme.borderColor.val,
                         },
                       ]}
                     >
-                      <Text
-                        fontSize={13}
-                        fontFamily="$body"
-                        fontWeight="600"
-                        color={isActive ? theme.primary.val : theme.color.val}
-                      >
-                        {provider === "openai" ? "OpenAI" : "Google"}
-                      </Text>
-                    </PressableScale>
-                  );
-                })}
-              </XStack>
+                      <Feather name="x" size={18} color={theme.color.val} />
+                    </Pressable>
+                  </XStack>
+                )}
+              />
+            </YStack>
+            <GradientButton
+              title="Save Profile"
+              onPress={handleSaveProfile}
+              icon="save"
+              loading={isSavingProfile}
+              style={{ marginTop: 8 }}
+            />
+          </Card>
+        </YStack>
 
-              <YStack gap={6} marginTop={16}>
-                <Text
-                  fontSize={12}
-                  fontFamily="$heading"
-                  fontWeight="600"
-                  textTransform="uppercase"
-                  letterSpacing={0.8}
-                  marginLeft={4}
-                  color={theme.colorMuted.val}
-                >
-                  API Key
-                </Text>
-                <TextInput
-                  value={aiApiKey}
-                  onChangeText={setAiApiKey}
-                  placeholder={`Paste your ${selectedAiProvider === "openai" ? "OpenAI" : "Google"} API key`}
-                  placeholderTextColor={theme.colorMuted.val}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  secureTextEntry
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: theme.secondary.val,
-                      color: theme.color.val,
-                      borderColor: theme.borderColor.val,
-                    },
-                  ]}
-                />
-              </YStack>
-
-              {selectedAiProvider === "openai" ? (
-                <YStack gap={6} marginTop={12}>
-                  <Text
-                    fontSize={12}
-                    fontFamily="$heading"
-                    fontWeight="600"
-                    textTransform="uppercase"
-                    letterSpacing={0.8}
-                    marginLeft={4}
-                    color={theme.colorMuted.val}
-                  >
-                    Base URL
+        <YStack>
+          <SectionLabel>CONNECTED SERVICES</SectionLabel>
+          <Card style={styles.groupCard}>
+            <XStack alignItems="center" gap={12} paddingVertical={4}>
+              <SettingsRowIcon theme={theme} icon="cloud" />
+              <YStack flex={1}>
+                <XStack alignItems="center" gap={8}>
+                  <Text fontSize={15} fontFamily="$body" fontWeight="600" color={theme.color.val}>
+                    Google
                   </Text>
-                  <TextInput
-                    value={aiBaseUrl}
-                    onChangeText={setAiBaseUrl}
-                    placeholder="Optional custom OpenAI-compatible base URL"
-                    placeholderTextColor={theme.colorMuted.val}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    style={[
-                      styles.input,
-                      {
-                        backgroundColor: theme.secondary.val,
-                        color: theme.color.val,
-                        borderColor: theme.borderColor.val,
-                      },
-                    ]}
-                  />
-                </YStack>
-              ) : null}
-
-              <YStack gap={10} marginTop={16}>
+                  {googleIntegration?.connected && (
+                    <Badge label="Connected" color={theme.primary.val} small />
+                  )}
+                </XStack>
                 <Text
                   fontSize={12}
-                  fontFamily="$heading"
-                  fontWeight="600"
-                  textTransform="uppercase"
-                  letterSpacing={0.8}
-                  marginLeft={4}
+                  fontFamily="$body"
+                  marginTop={3}
+                  lineHeight={18}
                   color={theme.colorMuted.val}
                 >
-                  Models
+                  Sync reminders to Google Calendar and enable file attachments via Google Drive.
                 </Text>
-                {selectedAiConfig?.supportedCapabilities?.map((capability: string) => {
-                  const matchingModels =
-                    selectedAiConfig?.availableModels?.filter((model: any) =>
-                      model.capabilities.includes(capability),
-                    ) ?? [];
-                  return (
-                    <YStack key={capability} gap={8}>
-                      <Text fontSize={13} fontFamily="$body" color={theme.color.val}>
-                        {formatCapabilityLabel(capability)}
-                      </Text>
-                      <XStack flexWrap="wrap" gap={8}>
-                        {matchingModels.map((model: any) => {
-                          const isSelected = aiCapabilityModels[capability] === model.id;
-                          const isLocked = capability === "embeddings" && embeddingRebuildActive;
-                          return (
-                            <PressableScale
-                              key={`${capability}-${model.id}`}
-                              onPress={
-                                isLocked
-                                  ? undefined
-                                  : () =>
-                                      setAiCapabilityModels((current) => ({
-                                        ...current,
-                                        [capability]: model.id,
-                                      }))
-                              }
-                              style={[
-                                styles.modelChip,
-                                {
-                                  borderColor: isSelected
-                                    ? theme.primary.val
-                                    : theme.borderColor.val,
-                                  backgroundColor: isSelected
-                                    ? theme.primary.val + "14"
-                                    : theme.background.val,
-                                  opacity: isLocked ? 0.55 : 1,
-                                },
-                              ]}
-                            >
-                              <Text
-                                fontSize={12}
-                                fontFamily="$body"
-                                fontWeight="600"
-                                color={isSelected ? theme.primary.val : theme.color.val}
-                              >
-                                {model.id}
-                              </Text>
-                            </PressableScale>
-                          );
-                        })}
-                      </XStack>
-                    </YStack>
-                  );
-                })}
               </YStack>
-
-              <XStack gap={10} marginTop={16}>
-                <GradientButton
-                  title={isSavingAiKey ? "Saving..." : "Save Key"}
-                  onPress={() => void handleSaveAiKey()}
-                  icon="key"
-                  style={{ flex: 1 }}
-                />
-                <GradientButton
-                  title="Delete"
-                  onPress={() => void handleDeleteAiKey()}
-                  icon="trash-2"
-                  style={{ flex: 1 }}
-                />
-              </XStack>
-
+              <Switch
+                value={googleIntegration?.connected ?? false}
+                onValueChange={handleToggleGoogleSync}
+                disabled={!isGoogleAuthConfigured || !request || isConnectingGoogle}
+                trackColor={{
+                  true: theme.primary.val,
+                  false: theme.borderColor.val,
+                }}
+                thumbColor={theme.textInverse.val}
+              />
+            </XStack>
+            {showGoogleFeatureControls ? (
               <YStack
-                marginTop={16}
-                padding={14}
+                marginTop={14}
+                marginLeft={4}
                 borderRadius={18}
                 borderWidth={1}
                 borderColor={theme.borderColor.val}
                 backgroundColor={theme.background.val}
-                gap={8}
+                overflow="hidden"
               >
-                <XStack alignItems="center" justifyContent="space-between">
-                  <Text fontSize={14} fontFamily="$body" fontWeight="600" color={theme.color.val}>
-                    {selectedAiProvider === "openai" ? "OpenAI" : "Google"} status
-                  </Text>
-                  {selectedAiConfig?.configured ? (
-                    <Badge
-                      label={`••••${selectedAiConfig.maskedKeySuffix ?? ""}`}
-                      color={theme.primary.val}
-                      small
-                    />
-                  ) : (
-                    <Badge label="No key" color={theme.borderColor.val} small />
-                  )}
-                </XStack>
-                <Text fontSize={12} fontFamily="$body" lineHeight={18} color={theme.colorMuted.val}>
-                  {selectedAiConfig?.lastValidationStatus === "valid"
-                    ? (selectedAiConfig.lastValidationMessage ?? "Last validation succeeded.")
-                    : (selectedAiConfig?.lastValidationMessage ??
-                      "Your key is encrypted server-side and only used to execute your AI requests.")}
-                </Text>
-                {aiProviderSettings?.preference?.embeddingRebuildStatus === "failed" ? (
+                <XStack
+                  alignItems="center"
+                  justifyContent="space-between"
+                  paddingHorizontal={14}
+                  paddingTop={12}
+                  paddingBottom={10}
+                >
                   <Text
-                    fontSize={12}
-                    fontFamily="$body"
-                    lineHeight={18}
-                    color={theme.destructive.val}
+                    fontSize={11}
+                    fontFamily="$heading"
+                    fontWeight="600"
+                    letterSpacing={0.8}
+                    textTransform="uppercase"
+                    color={theme.colorMuted.val}
                   >
-                    {aiProviderSettings?.preference?.embeddingRebuildError ||
-                      "Embedding rebuild failed. Search will keep using the last ready vectors."}
+                    Google Capabilities
                   </Text>
-                ) : null}
-                <Text fontSize={12} fontFamily="$body" lineHeight={18} color={theme.colorMuted.val}>
-                  Last 30 days: Memora{" "}
-                  {formatUsdMicros(aiUsageOverview?.totals?.totalAiMemoraCostUsdMicros ?? 0)} /{" "}
-                  {aiUsageOverview?.totals?.totalAiMemoraRequests ?? 0} ops, your key{" "}
-                  {formatUsdMicros(aiUsageOverview?.totals?.totalAiByokCostUsdMicros ?? 0)} /{" "}
-                  {aiUsageOverview?.totals?.totalAiByokRequests ?? 0} ops.
-                </Text>
-                <PressableScale onPress={() => router.push("/(protected)/statistics")}>
-                  <XStack
-                    alignItems="center"
-                    gap={8}
-                    paddingHorizontal={12}
-                    paddingVertical={10}
-                    borderRadius={14}
-                    borderWidth={1}
-                    borderColor={theme.borderColor.val}
-                    backgroundColor={theme.card.val}
-                    alignSelf="flex-start"
-                  >
-                    <Feather name="bar-chart-2" size={14} color={theme.primary.val} />
-                    <Text fontSize={12} fontFamily="$body" fontWeight="600" color={theme.color.val}>
-                      View AI usage
-                    </Text>
-                  </XStack>
-                </PressableScale>
+                  <YStack
+                    width={8}
+                    height={8}
+                    borderRadius={4}
+                    backgroundColor={theme.primary.val}
+                    opacity={0.85}
+                  />
+                </XStack>
+
+                <YStack height={StyleSheet.hairlineWidth} backgroundColor={theme.borderColor.val} />
+
+                <YStack padding={14} gap={12}>
+                  {googleIntegration.hasCalendarScope ? (
+                    <IntegrationFeatureRow
+                      theme={theme}
+                      icon="calendar"
+                      title="Calendar"
+                      description={
+                        canUseCalendar
+                          ? "AI and reminder edits can sync to Google Calendar."
+                          : "Future reminder sync is paused. Existing events stay as-is."
+                      }
+                      value={googleIntegration.calendarEnabled}
+                      onValueChange={(value) => void handleToggleGoogleFeature("calendar", value)}
+                      disabled={updatingGoogleFeature !== null || isConnectingGoogle}
+                      isLast={!googleIntegration.hasDriveScope}
+                    />
+                  ) : null}
+
+                  {googleIntegration.hasDriveScope ? (
+                    <IntegrationFeatureRow
+                      theme={theme}
+                      icon="paperclip"
+                      title="Drive"
+                      description={
+                        canUseDrive
+                          ? "Attach new files from chat and memory screens."
+                          : "New uploads are paused. Existing files remain viewable."
+                      }
+                      value={googleIntegration.driveEnabled}
+                      onValueChange={(value) => void handleToggleGoogleFeature("drive", value)}
+                      disabled={updatingGoogleFeature !== null || isConnectingGoogle}
+                      isLast
+                    />
+                  ) : null}
+                </YStack>
               </YStack>
-
-              <YStack marginTop={16} gap={8}>
-                {previewCapabilityMatrix.map((item: any) => (
-                  <XStack
-                    key={item.capability}
-                    alignItems="center"
-                    justifyContent="space-between"
-                    paddingVertical={6}
-                  >
-                    <Text fontSize={13} fontFamily="$body" color={theme.color.val}>
-                      {item.capability.replace(/_/g, " ")}
-                    </Text>
-                    <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val}>
-                      {item.label}
-                    </Text>
-                  </XStack>
-                ))}
-              </YStack>
-            </>
-          ) : null}
-        </Card>
-      </YStack>
-
-      <YStack>
-        <SectionLabel>DATA</SectionLabel>
-        <Card style={styles.groupCard}>
-          <XStack alignItems="center" gap={12}>
-            <SettingsRowIcon theme={theme} icon="download" />
-            <YStack flex={1}>
-              <Text fontSize={15} fontFamily="$body" fontWeight="600" color={theme.color.val}>
-                Export Your Data
-              </Text>
-              <Text
-                fontSize={12}
-                fontFamily="$body"
-                marginTop={3}
-                lineHeight={18}
-                color={theme.colorMuted.val}
-              >
-                Download memories, diary entries, and your current profile snapshot.
-              </Text>
-            </YStack>
-          </XStack>
-          <GradientButton
-            title={isExportingData ? "Exporting..." : "Export JSON"}
-            onPress={handleExport}
-            icon="download"
-            loading={isExportingData}
-            disabled={isExportingData}
-            style={{ marginTop: 16 }}
-          />
-        </Card>
-      </YStack>
-
-      <YStack>
-        <SectionLabel>ACCOUNT</SectionLabel>
-        <Card style={styles.groupCard}>
-          <SettingsActionRow theme={theme} icon="log-out" label="Log Out" onPress={handleLogout} />
-        </Card>
-      </YStack>
-
-      <YStack>
-        <SectionLabel>DANGER ZONE</SectionLabel>
-        <Card style={styles.groupCard}>
-          <SettingsActionRow
-            theme={theme}
-            icon="trash-2"
-            label="Delete Account"
-            tone="destructive"
-            onPress={handleDeleteAccount}
-          />
-        </Card>
-      </YStack>
-
-      <YStack height={40} />
+            ) : null}
+          </Card>
+        </YStack>
+      </SectionGrid>
+      <YStack height={24} />
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  providerChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  modelChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
   groupCard: { gap: 0, borderRadius: radius.md },
   input: {
     borderRadius: 14,

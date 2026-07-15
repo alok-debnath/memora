@@ -10,10 +10,18 @@
  * Tamagui <Text> components should use $body / $heading tokens instead.
  */
 export const FontFamily = {
-  regular: "SpaceGrotesk_400Regular",
-  medium: "SpaceGrotesk_500Medium",
-  semiBold: "SpaceGrotesk_600SemiBold",
-  bold: "SpaceGrotesk_700Bold",
+  regular: "DMSans_400Regular",
+  medium: "DMSans_500Medium",
+  semiBold: "DMSans_600SemiBold",
+  bold: "DMSans_700Bold",
+  displayRegular: "SpaceGrotesk_400Regular",
+  displayMedium: "SpaceGrotesk_500Medium",
+  displaySemiBold: "SpaceGrotesk_600SemiBold",
+  displayBold: "SpaceGrotesk_700Bold",
+  utilityRegular: "DMSans_400Regular",
+  utilityMedium: "DMSans_500Medium",
+  utilitySemiBold: "DMSans_600SemiBold",
+  utilityBold: "DMSans_700Bold",
 } as const;
 
 /** Convenience array for useFonts() — import the expo asset objects separately. */

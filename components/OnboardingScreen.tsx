@@ -22,7 +22,7 @@ import { withAlpha } from "@/components/ui/themeHelpers";
 import { spacing, radius } from "@/constants/uiTokens";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 
 type IntroSlide = {
   id: string;
@@ -218,7 +218,7 @@ function SlideCard({
   scrollX: SharedValue<number>;
 }) {
   const theme = useAppTheme();
-  const isLargeScreen = useIsLargeScreen();
+  const { isExpanded: isLargeScreen } = useResponsiveLayout();
 
   const cardStyle = useAnimatedStyle(() => {
     const input = [(index - 1) * width, index * width, (index + 1) * width];
@@ -301,7 +301,7 @@ function ProgressDots({ currentIndex }: { currentIndex: number }) {
 
 export function OnboardingScreen() {
   const theme = useAppTheme();
-  const isLargeScreen = useIsLargeScreen();
+  const { isExpanded: isLargeScreen } = useResponsiveLayout();
   const { width } = useWindowDimensions();
   const listRef = useRef<Animated.FlatList<IntroSlide>>(null);
   const [currentIndex, setCurrentIndex] = useState(0);

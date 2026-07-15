@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, useWindowDimensions } from "react-native";
+import { View } from "react-native";
 import { BottomSheetBackdrop, BottomSheetModal, BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { FlatList } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,7 +18,8 @@ import Svg, {
 import { Text, XStack, YStack } from "tamagui";
 
 import { api } from "@/convex/_generated/api";
-import { AppScreen } from "@/components/ui/AppScreen";
+import { AppScreen, SectionCard } from "@/components/ui/AppScreen";
+import { SectionGrid } from "@/components/ui/Responsive";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { SectionLabel } from "@/components/ui/SectionLabel";
@@ -27,6 +28,8 @@ import { PressableScale } from "@/components/ui/PressableScale";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import { layout, spacing } from "@/constants/uiTokens";
 import { useSemanticColors } from "@/hooks/useSemanticColors";
 import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 
@@ -108,18 +111,16 @@ function KPI({
   value,
   tone,
   hint,
-  width,
 }: {
   icon: React.ComponentProps<typeof Feather>["name"];
   label: string;
   value: string;
   tone: string;
   hint: string;
-  width: number;
 }) {
   const theme = useAppTheme();
   return (
-    <Card style={{ width, borderRadius: 16 }}>
+    <Card style={{ width: "100%", height: "100%", borderRadius: 16 }}>
       <XStack alignItems="flex-start" justifyContent="space-between">
         <YStack
           width={42}
@@ -363,18 +364,18 @@ export default function AnalyticsScreen() {
   const semantic = useSemanticColors();
   const insets = useSafeAreaInsets();
   const isLargeScreen = useIsLargeScreen();
+  const responsive = useResponsiveLayout();
   const modalRef = useRef<BottomSheetModal>(null);
   const presentedRef = useRef(false);
   const { token } = useAuth();
-  const { width: windowWidth } = useWindowDimensions();
   const [range, setRange] = useState<RangeKey>("7d");
   const [spendSource, setSpendSource] = useState<SpendSource>("combined");
   const [detailPanel, setDetailPanel] = useState<"none" | "models" | "events" | "features">("none");
-  const isCompact = windowWidth < 720;
-  const contentWidth = Math.min(windowWidth - 32, 1040);
-  const kpiWidth = isCompact
-    ? Math.max(150, Math.floor((contentWidth - 10) / 2))
-    : Math.max(200, Math.floor((contentWidth - 30) / 4));
+  const contentWidth = Math.min(
+    Math.max(0, responsive.contentWidth - 48),
+    layout.standardMaxWidth - spacing.lg * 2,
+  );
+  const isCompact = contentWidth < 720;
 
   const overview = useQuery(api.analytics.overview, token ? { token, range, spendSource } : "skip");
   const aiBreakdown =
@@ -465,431 +466,461 @@ export default function AnalyticsScreen() {
   }, [overview]);
 
   return (
-    <AppScreen showBack title="Analytics">
-      <XStack gap={10} flexWrap="wrap">
-        <Badge
-          label={`${Math.round((overview?.rangeTotals.searchCacheHitRate ?? 0) * 100)}% search cache hit`}
-          color={semantic.status.info}
+    <AppScreen
+      showBack
+      title="Analytics"
+      subtitle="Understand memory activity, retrieval quality, and AI usage across the selected range."
+      contentWidth="workspace"
+    >
+      <SectionCard
+        title="Reporting view"
+        eyebrow="Analytics controls"
+        density="compact"
+        emphasis="quiet"
+      >
+        <SectionGrid minimumColumnWidth={240} maximumColumns={3} gap={12}>
+          <YStack gap={6}>
+            <Text fontSize={11} fontWeight="700" color={theme.colorMuted.val}>
+              Date range
+            </Text>
+            <SegmentedControl options={RANGE_OPTIONS} value={range} onChange={setRange} />
+          </YStack>
+          <YStack gap={6}>
+            <Text fontSize={11} fontWeight="700" color={theme.colorMuted.val}>
+              Spend source
+            </Text>
+            <SegmentedControl
+              options={SPEND_SOURCE_OPTIONS}
+              value={spendSource}
+              onChange={(value) => setSpendSource(value as SpendSource)}
+            />
+          </YStack>
+          <YStack gap={8} justifyContent="flex-end">
+            <Text fontSize={11} fontWeight="700" color={theme.colorMuted.val}>
+              Current signals
+            </Text>
+            <XStack gap={8} flexWrap="wrap" minHeight={38} alignItems="center">
+              <Badge
+                label={`${Math.round((overview?.rangeTotals.searchCacheHitRate ?? 0) * 100)}% search cache hit`}
+                color={semantic.status.info}
+              />
+              <Badge
+                label={`${formatBilledToLabel(spendSource)} spend view`}
+                color={semantic.integration.openai}
+              />
+            </XStack>
+          </YStack>
+        </SectionGrid>
+      </SectionCard>
+
+      <SectionGrid minimumColumnWidth={190} maximumColumns={4} gap={10}>
+        <KPI
+          icon="cpu"
+          label="AI spend"
+          value={formatUsdMicros(overview?.rangeTotals.aiCostUsdMicros ?? 0)}
+          hint={`${formatCompactNumber(overview?.rangeTotals.aiRequests ?? 0)} requests`}
+          tone={semantic.integration.openai}
         />
-        <Badge
-          label={`${formatBilledToLabel(spendSource)} spend view`}
-          color={semantic.integration.openai}
+        <KPI
+          icon="search"
+          label="Searches"
+          value={formatCompactNumber(overview?.rangeTotals.searches ?? 0)}
+          hint={`${formatCompactNumber(overview?.rangeTotals.deepSearches ?? 0)} deep scans`}
+          tone={semantic.stat.diary}
         />
-      </XStack>
+        <KPI
+          icon="activity"
+          label="AI actions"
+          value={formatCompactNumber(overview?.rangeTotals.aiActions ?? 0)}
+          hint={`${formatCompactNumber(overview?.rangeTotals.backgroundAiOperations ?? 0)} background ops`}
+          tone={theme.primary.val}
+        />
+        <KPI
+          icon="layers"
+          label="AI backend ops"
+          value={formatCompactNumber(overview?.rangeTotals.aiRequests ?? 0)}
+          hint={`${formatCompactNumber(overview?.rangeTotals.backgroundAiOperations ?? 0)} background`}
+          tone={semantic.status.warning}
+        />
+      </SectionGrid>
 
-      <YStack>
-        <YStack gap={10}>
-          <SegmentedControl options={RANGE_OPTIONS} value={range} onChange={setRange} />
-          <SegmentedControl
-            options={SPEND_SOURCE_OPTIONS}
-            value={spendSource}
-            onChange={(value) => setSpendSource(value as SpendSource)}
-          />
-        </YStack>
-      </YStack>
-
-      <XStack flexWrap="wrap" gap={10} alignItems="flex-start">
-        <YStack style={{ width: kpiWidth }}>
-          <KPI
-            icon="cpu"
-            label="AI spend"
-            value={formatUsdMicros(overview?.rangeTotals.aiCostUsdMicros ?? 0)}
-            hint={`${formatCompactNumber(overview?.rangeTotals.aiRequests ?? 0)} requests`}
-            tone={semantic.integration.openai}
-            width={kpiWidth}
-          />
-        </YStack>
-        <YStack style={{ width: kpiWidth }}>
-          <KPI
-            icon="search"
-            label="Searches"
-            value={formatCompactNumber(overview?.rangeTotals.searches ?? 0)}
-            hint={`${formatCompactNumber(overview?.rangeTotals.deepSearches ?? 0)} deep scans`}
-            tone={semantic.stat.diary}
-            width={kpiWidth}
-          />
-        </YStack>
-        <YStack style={{ width: kpiWidth }}>
-          <KPI
-            icon="activity"
-            label="AI actions"
-            value={formatCompactNumber(overview?.rangeTotals.aiActions ?? 0)}
-            hint={`${formatCompactNumber(overview?.rangeTotals.backgroundAiOperations ?? 0)} background ops`}
-            tone={theme.primary.val}
-            width={kpiWidth}
-          />
-        </YStack>
-        <YStack style={{ width: kpiWidth }}>
-          <KPI
-            icon="layers"
-            label="AI backend ops"
-            value={formatCompactNumber(overview?.rangeTotals.aiRequests ?? 0)}
-            hint={`${formatCompactNumber(overview?.rangeTotals.backgroundAiOperations ?? 0)} background`}
-            tone={semantic.status.warning}
-            width={kpiWidth}
-          />
-        </YStack>
-      </XStack>
-
-      <YStack>
-        <SectionLabel>Usage Flow</SectionLabel>
-        <Card
-          style={{
-            borderRadius: 16,
-            overflow: "hidden",
-          }}
-        >
-          <YStack gap={0}>
-            <XStack
-              alignItems={isCompact ? "flex-start" : "center"}
-              justifyContent="space-between"
-              flexWrap="wrap"
-              gap={10}
-              marginBottom={12}
-            >
-              <YStack gap={2} flex={1} minWidth={isCompact ? "100%" : 0}>
-                <Text fontSize={18} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-                  Search vs AI load
-                </Text>
-                <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val}>
-                  Search demand and AI backend pressure plotted together across the selected window.
-                </Text>
-              </YStack>
-              <XStack gap={10} flexWrap="wrap">
-                <XStack alignItems="center" gap={6}>
-                  <View
-                    style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: 5,
-                      backgroundColor: theme.primary.val,
-                    }}
-                  />
-                  <Text fontSize={12} color={theme.colorMuted.val}>
-                    Searches
+      <SectionGrid minimumColumnWidth={430} maximumColumns={2} gap={16} featuredFirst>
+        <YStack>
+          <SectionLabel>Usage Flow</SectionLabel>
+          <Card
+            style={{
+              borderRadius: 16,
+              overflow: "hidden",
+            }}
+          >
+            <YStack gap={0}>
+              <XStack
+                alignItems={isCompact ? "flex-start" : "center"}
+                justifyContent="space-between"
+                flexWrap="wrap"
+                gap={10}
+                marginBottom={12}
+              >
+                <YStack gap={2} flex={1} minWidth={isCompact ? "100%" : 0}>
+                  <Text
+                    fontSize={18}
+                    fontFamily="$heading"
+                    fontWeight="700"
+                    color={theme.color.val}
+                  >
+                    Search vs AI load
                   </Text>
-                </XStack>
-                <XStack alignItems="center" gap={6}>
-                  <View
-                    style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: 5,
-                      backgroundColor: semantic.integration.openai,
-                    }}
-                  />
-                  <Text fontSize={12} color={theme.colorMuted.val}>
-                    AI calls
+                  <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val}>
+                    Search demand and AI backend pressure plotted together across the selected
+                    window.
                   </Text>
+                </YStack>
+                <XStack gap={10} flexWrap="wrap">
+                  <XStack alignItems="center" gap={6}>
+                    <View
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 5,
+                        backgroundColor: theme.primary.val,
+                      }}
+                    />
+                    <Text fontSize={12} color={theme.colorMuted.val}>
+                      Searches
+                    </Text>
+                  </XStack>
+                  <XStack alignItems="center" gap={6}>
+                    <View
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 5,
+                        backgroundColor: semantic.integration.openai,
+                      }}
+                    />
+                    <Text fontSize={12} color={theme.colorMuted.val}>
+                      AI calls
+                    </Text>
+                  </XStack>
                 </XStack>
               </XStack>
-            </XStack>
-            <XStack gap={10} flexWrap="wrap" marginBottom={10}>
-              <YStack
-                minWidth={isCompact ? 132 : 148}
-                paddingHorizontal={12}
-                paddingVertical={10}
-                borderRadius={14}
-                backgroundColor={withAlpha(theme.primary.val, "10")}
-              >
-                <Text fontSize={11} color={theme.colorMuted.val}>
-                  Searches in range
-                </Text>
+              <XStack gap={10} flexWrap="wrap" marginBottom={10}>
+                <YStack
+                  minWidth={isCompact ? 132 : 148}
+                  paddingHorizontal={12}
+                  paddingVertical={10}
+                  borderRadius={14}
+                  backgroundColor={withAlpha(theme.primary.val, "10")}
+                >
+                  <Text fontSize={11} color={theme.colorMuted.val}>
+                    Searches in range
+                  </Text>
+                  <Text
+                    fontSize={18}
+                    fontFamily="$heading"
+                    fontWeight="700"
+                    color={theme.color.val}
+                  >
+                    {formatCompactNumber(usageFlowStats.searches)}
+                  </Text>
+                </YStack>
+                <YStack
+                  minWidth={isCompact ? 132 : 148}
+                  paddingHorizontal={12}
+                  paddingVertical={10}
+                  borderRadius={14}
+                  backgroundColor={withAlpha(semantic.integration.openai, "10")}
+                >
+                  <Text fontSize={11} color={theme.colorMuted.val}>
+                    AI calls in range
+                  </Text>
+                  <Text
+                    fontSize={18}
+                    fontFamily="$heading"
+                    fontWeight="700"
+                    color={theme.color.val}
+                  >
+                    {formatCompactNumber(usageFlowStats.aiRequests)}
+                  </Text>
+                </YStack>
+                <YStack
+                  flex={1}
+                  minWidth={isCompact ? "100%" : 220}
+                  paddingHorizontal={12}
+                  paddingVertical={10}
+                  borderRadius={14}
+                  backgroundColor={theme.backgroundStrong.val}
+                >
+                  <Text fontSize={11} color={theme.colorMuted.val}>
+                    Peak days
+                  </Text>
+                  <Text fontSize={13} fontFamily="$body" fontWeight="600" color={theme.color.val}>
+                    Search peak:{" "}
+                    {usageFlowStats.peakSearchDay
+                      ? `${formatDateLabel(usageFlowStats.peakSearchDay.dayKey)}`
+                      : "No data"}
+                  </Text>
+                  <Text fontSize={12} color={theme.colorMuted.val}>
+                    AI peak:{" "}
+                    {usageFlowStats.peakAiDay
+                      ? formatDateLabel(usageFlowStats.peakAiDay.dayKey)
+                      : "No data"}
+                  </Text>
+                </YStack>
+              </XStack>
+              <FlatList
+                horizontal
+                data={[0]}
+                keyExtractor={() => "timeline"}
+                renderItem={() => (
+                  <YStack>
+                    <XStack justifyContent="space-between" alignItems="center" marginBottom={8}>
+                      <Text fontSize={10} color={theme.colorMuted.val}>
+                        {formatCompactNumber(usageFlowScale.maxSearches)} searches
+                      </Text>
+                      <Text fontSize={10} color={theme.colorMuted.val}>
+                        {formatCompactNumber(usageFlowScale.maxAiCalls)} AI calls
+                      </Text>
+                    </XStack>
+                    <TimelineChart
+                      data={(overview?.timeline ?? []).map((item) => ({
+                        dayKey: item.dayKey,
+                        primaryValue: item.searches ?? 0,
+                        secondaryValue: item.aiRequests,
+                      }))}
+                      barColor={theme.primary.val}
+                      lineColor={semantic.integration.openai}
+                    />
+                  </YStack>
+                )}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ paddingRight: 8, paddingBottom: 2 }}
+                nestedScrollEnabled
+              />
+            </YStack>
+          </Card>
+        </YStack>
+
+        <YStack>
+          <SectionLabel>AI Usage</SectionLabel>
+          <Card style={{ borderRadius: 16 }}>
+            <YStack gap={10} marginBottom={16}>
+              <XStack alignItems="center" justifyContent="space-between" gap={12} flexWrap="wrap">
                 <Text fontSize={18} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-                  {formatCompactNumber(usageFlowStats.searches)}
+                  AI detail views
                 </Text>
+                {detailPanel !== "none" ? (
+                  <Badge
+                    label={
+                      detailPanel === "features"
+                        ? "Feature breakdown open"
+                        : detailPanel === "models"
+                          ? "Model costs open"
+                          : "Recent events open"
+                    }
+                    color={theme.primary.val}
+                  />
+                ) : null}
+              </XStack>
+              <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val}>
+                Choose a detailed view here. Costs and usage below are filtered to{" "}
+                {formatBilledToLabel(spendSource).toLowerCase()} traffic.
+              </Text>
+              <XStack gap={8} flexWrap="wrap">
+                <DetailToggle
+                  icon="layers"
+                  label="Feature breakdown"
+                  active={detailPanel === "features"}
+                  onPress={() =>
+                    setDetailPanel((current) => (current === "features" ? "none" : "features"))
+                  }
+                  tone={theme.primary.val}
+                />
+                <DetailToggle
+                  icon="cpu"
+                  label="Model costs"
+                  active={detailPanel === "models"}
+                  onPress={() =>
+                    setDetailPanel((current) => (current === "models" ? "none" : "models"))
+                  }
+                  tone={semantic.integration.openai}
+                />
+                <DetailToggle
+                  icon="clock"
+                  label="Recent events"
+                  active={detailPanel === "events"}
+                  onPress={() =>
+                    setDetailPanel((current) => (current === "events" ? "none" : "events"))
+                  }
+                  tone={semantic.status.info}
+                />
+              </XStack>
+            </YStack>
+
+            <XStack justifyContent="space-between" gap={16} flexWrap="wrap">
+              <YStack flex={1} gap={10}>
+                <Text fontSize={17} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
+                  Model spend and token load
+                </Text>
+                <Text fontSize={13} color={theme.colorMuted.val} lineHeight={18}>
+                  User-visible actions stay compact here. Detailed pipeline work, fallback chains,
+                  and recent operations live in the drilldowns.
+                </Text>
+                <XStack gap={10} flexWrap="wrap">
+                  <Badge
+                    label={`${formatCompactNumber(overview?.rangeTotals.aiInputTokens ?? 0)} input tokens`}
+                    color={semantic.integration.openai}
+                  />
+                  <Badge
+                    label={`${formatCompactNumber(overview?.rangeTotals.aiOutputTokens ?? 0)} output tokens`}
+                  />
+                  <Badge
+                    label={`${formatCompactNumber(overview?.rangeTotals.aiRequests ?? 0)} backend ops`}
+                    color={semantic.status.info}
+                  />
+                  <Badge
+                    label={`${Math.round((overview?.rangeTotals.failureRate ?? 0) * 100)}% failure rate`}
+                    color={
+                      (overview?.rangeTotals.failureRate ?? 0) > 0.08
+                        ? semantic.status.error
+                        : semantic.status.success
+                    }
+                  />
+                  {actionToOpRatio ? (
+                    <Badge
+                      label={`${actionToOpRatio.toFixed(1)} ops / action`}
+                      color={semantic.status.warning}
+                    />
+                  ) : null}
+                </XStack>
               </YStack>
               <YStack
-                minWidth={isCompact ? 132 : 148}
-                paddingHorizontal={12}
-                paddingVertical={10}
-                borderRadius={14}
-                backgroundColor={withAlpha(semantic.integration.openai, "10")}
+                minWidth={isCompact ? "100%" : 120}
+                paddingHorizontal={14}
+                paddingVertical={12}
+                borderRadius={18}
+                backgroundColor={withAlpha(semantic.integration.openai, "12")}
+                gap={4}
               >
-                <Text fontSize={11} color={theme.colorMuted.val}>
-                  AI calls in range
+                <Text fontSize={12} color={theme.colorMuted.val}>
+                  Top model
                 </Text>
-                <Text fontSize={18} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-                  {formatCompactNumber(usageFlowStats.aiRequests)}
+                <Text fontSize={15} fontFamily="$body" fontWeight="700" color={theme.color.val}>
+                  {overview?.topModel?.model ?? "No data"}
+                </Text>
+                <Text fontSize={12} color={theme.colorMuted.val}>
+                  {overview?.topModel?.feature
+                    ? formatFeatureLabel(overview.topModel.feature)
+                    : "Waiting for tracked usage"}
+                </Text>
+                {topBackgroundFeature ? (
+                  <Text fontSize={12} color={theme.colorMuted.val}>
+                    Top background: {formatFeatureLabel(topBackgroundFeature.feature)}
+                  </Text>
+                ) : null}
+              </YStack>
+            </XStack>
+
+            {topModels.length > 0 ? (
+              <YStack marginTop={16} gap={10}>
+                {topModels.slice(0, 3).map((item, index) => (
+                  <XStack
+                    key={`${item.provider}-${item.model}-${item.operation}-${item.feature}-${index}`}
+                    alignItems="center"
+                    gap={10}
+                  >
+                    <YStack
+                      width={10}
+                      height={10}
+                      borderRadius={5}
+                      backgroundColor={semantic.integration.openai}
+                    />
+                    <YStack flex={1}>
+                      <Text fontSize={13} fontWeight="600" color={theme.color.val}>
+                        {item.model}
+                      </Text>
+                      <Text fontSize={12} color={theme.colorMuted.val}>
+                        {formatFeatureLabel(item.feature)} · {formatStageLabel(item.stage)} ·{" "}
+                        {formatBilledToLabel(item.billedTo)} · {formatCompactNumber(item.requests)}{" "}
+                        calls
+                      </Text>
+                    </YStack>
+                    <Text fontSize={13} fontWeight="700" color={theme.color.val}>
+                      {formatUsdMicros(item.costUsdMicros)}
+                    </Text>
+                  </XStack>
+                ))}
+              </YStack>
+            ) : (
+              <Text marginTop={16} fontSize={13} color={theme.colorMuted.val}>
+                AI tracking starts from the rollout of this analytics update.
+              </Text>
+            )}
+          </Card>
+        </YStack>
+
+        <YStack>
+          <SectionLabel>Search & Retrieval</SectionLabel>
+          <Card style={{ borderRadius: 16 }}>
+            <XStack flexWrap="wrap" gap={10}>
+              <YStack
+                flex={1}
+                minWidth={110}
+                padding={14}
+                borderRadius={18}
+                backgroundColor={withAlpha(theme.primary.val, "10")}
+              >
+                <Text fontSize={12} color={theme.colorMuted.val}>
+                  Cache hit rate
+                </Text>
+                <Text fontSize={24} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
+                  {Math.round((overview?.rangeTotals.searchCacheHitRate ?? 0) * 100)}%
                 </Text>
               </YStack>
               <YStack
                 flex={1}
-                minWidth={isCompact ? "100%" : 220}
-                paddingHorizontal={12}
-                paddingVertical={10}
-                borderRadius={14}
-                backgroundColor={theme.backgroundStrong.val}
+                minWidth={110}
+                padding={14}
+                borderRadius={18}
+                backgroundColor={withAlpha(semantic.status.success, "10")}
               >
-                <Text fontSize={11} color={theme.colorMuted.val}>
-                  Peak days
-                </Text>
-                <Text fontSize={13} fontFamily="$body" fontWeight="600" color={theme.color.val}>
-                  Search peak:{" "}
-                  {usageFlowStats.peakSearchDay
-                    ? `${formatDateLabel(usageFlowStats.peakSearchDay.dayKey)}`
-                    : "No data"}
-                </Text>
                 <Text fontSize={12} color={theme.colorMuted.val}>
-                  AI peak:{" "}
-                  {usageFlowStats.peakAiDay
-                    ? formatDateLabel(usageFlowStats.peakAiDay.dayKey)
-                    : "No data"}
+                  Avg latency
+                </Text>
+                <Text fontSize={24} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
+                  {Math.round(overview?.rangeTotals.avgSearchLatencyMs ?? 0)} ms
+                </Text>
+              </YStack>
+              <YStack
+                flex={1}
+                minWidth={110}
+                padding={14}
+                borderRadius={18}
+                backgroundColor={withAlpha(semantic.status.warning, "10")}
+              >
+                <Text fontSize={12} color={theme.colorMuted.val}>
+                  Vector / full-text
+                </Text>
+                <Text fontSize={24} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
+                  {formatCompactNumber(overview?.rangeTotals.vectorSearches ?? 0)}/
+                  {formatCompactNumber(overview?.rangeTotals.fullTextSearches ?? 0)}
                 </Text>
               </YStack>
             </XStack>
-            <FlatList
-              horizontal
-              data={[0]}
-              keyExtractor={() => "timeline"}
-              renderItem={() => (
-                <YStack>
-                  <XStack justifyContent="space-between" alignItems="center" marginBottom={8}>
-                    <Text fontSize={10} color={theme.colorMuted.val}>
-                      {formatCompactNumber(usageFlowScale.maxSearches)} searches
-                    </Text>
-                    <Text fontSize={10} color={theme.colorMuted.val}>
-                      {formatCompactNumber(usageFlowScale.maxAiCalls)} AI calls
-                    </Text>
-                  </XStack>
-                  <TimelineChart
-                    data={(overview?.timeline ?? []).map((item) => ({
-                      dayKey: item.dayKey,
-                      primaryValue: item.searches ?? 0,
-                      secondaryValue: item.aiRequests,
-                    }))}
-                    barColor={theme.primary.val}
-                    lineColor={semantic.integration.openai}
-                  />
-                </YStack>
-              )}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingRight: 8, paddingBottom: 2 }}
-              nestedScrollEnabled
-            />
-          </YStack>
-        </Card>
-      </YStack>
-
-      <YStack>
-        <SectionLabel>AI Usage</SectionLabel>
-        <Card style={{ borderRadius: 16 }}>
-          <YStack gap={10} marginBottom={16}>
-            <XStack alignItems="center" justifyContent="space-between" gap={12} flexWrap="wrap">
-              <Text fontSize={18} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-                AI detail views
-              </Text>
-              {detailPanel !== "none" ? (
-                <Badge
-                  label={
-                    detailPanel === "features"
-                      ? "Feature breakdown open"
-                      : detailPanel === "models"
-                        ? "Model costs open"
-                        : "Recent events open"
-                  }
-                  color={theme.primary.val}
-                />
-              ) : null}
-            </XStack>
-            <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val}>
-              Choose a detailed view here. Costs and usage below are filtered to{" "}
-              {formatBilledToLabel(spendSource).toLowerCase()} traffic.
-            </Text>
-            <XStack gap={8} flexWrap="wrap">
-              <DetailToggle
-                icon="layers"
-                label="Feature breakdown"
-                active={detailPanel === "features"}
-                onPress={() =>
-                  setDetailPanel((current) => (current === "features" ? "none" : "features"))
-                }
-                tone={theme.primary.val}
+            <XStack marginTop={14} gap={10} flexWrap="wrap">
+              <Badge
+                label={`${formatCompactNumber(overview?.rangeTotals.keywordSearches ?? 0)} keyword assists`}
               />
-              <DetailToggle
-                icon="cpu"
-                label="Model costs"
-                active={detailPanel === "models"}
-                onPress={() =>
-                  setDetailPanel((current) => (current === "models" ? "none" : "models"))
-                }
-                tone={semantic.integration.openai}
+              <Badge
+                label={`${Math.round(overview?.rangeTotals.avgSearchResults ?? 0)} avg results`}
               />
-              <DetailToggle
-                icon="clock"
-                label="Recent events"
-                active={detailPanel === "events"}
-                onPress={() =>
-                  setDetailPanel((current) => (current === "events" ? "none" : "events"))
-                }
-                tone={semantic.status.info}
+              <Badge
+                label={`${formatCompactNumber(overview?.totals.totalSearches ?? 0)} tracked searches`}
               />
             </XStack>
-          </YStack>
-
-          <XStack justifyContent="space-between" gap={16} flexWrap="wrap">
-            <YStack flex={1} gap={10}>
-              <Text fontSize={17} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-                Model spend and token load
-              </Text>
-              <Text fontSize={13} color={theme.colorMuted.val} lineHeight={18}>
-                User-visible actions stay compact here. Detailed pipeline work, fallback chains, and
-                recent operations live in the drilldowns.
-              </Text>
-              <XStack gap={10} flexWrap="wrap">
-                <Badge
-                  label={`${formatCompactNumber(overview?.rangeTotals.aiInputTokens ?? 0)} input tokens`}
-                  color={semantic.integration.openai}
-                />
-                <Badge
-                  label={`${formatCompactNumber(overview?.rangeTotals.aiOutputTokens ?? 0)} output tokens`}
-                />
-                <Badge
-                  label={`${formatCompactNumber(overview?.rangeTotals.aiRequests ?? 0)} backend ops`}
-                  color={semantic.status.info}
-                />
-                <Badge
-                  label={`${Math.round((overview?.rangeTotals.failureRate ?? 0) * 100)}% failure rate`}
-                  color={
-                    (overview?.rangeTotals.failureRate ?? 0) > 0.08
-                      ? semantic.status.error
-                      : semantic.status.success
-                  }
-                />
-                {actionToOpRatio ? (
-                  <Badge
-                    label={`${actionToOpRatio.toFixed(1)} ops / action`}
-                    color={semantic.status.warning}
-                  />
-                ) : null}
-              </XStack>
-            </YStack>
-            <YStack
-              minWidth={isCompact ? "100%" : 120}
-              paddingHorizontal={14}
-              paddingVertical={12}
-              borderRadius={18}
-              backgroundColor={withAlpha(semantic.integration.openai, "12")}
-              gap={4}
-            >
-              <Text fontSize={12} color={theme.colorMuted.val}>
-                Top model
-              </Text>
-              <Text fontSize={15} fontFamily="$body" fontWeight="700" color={theme.color.val}>
-                {overview?.topModel?.model ?? "No data"}
-              </Text>
-              <Text fontSize={12} color={theme.colorMuted.val}>
-                {overview?.topModel?.feature
-                  ? formatFeatureLabel(overview.topModel.feature)
-                  : "Waiting for tracked usage"}
-              </Text>
-              {topBackgroundFeature ? (
-                <Text fontSize={12} color={theme.colorMuted.val}>
-                  Top background: {formatFeatureLabel(topBackgroundFeature.feature)}
-                </Text>
-              ) : null}
-            </YStack>
-          </XStack>
-
-          {topModels.length > 0 ? (
-            <YStack marginTop={16} gap={10}>
-              {topModels.slice(0, 3).map((item, index) => (
-                <XStack
-                  key={`${item.provider}-${item.model}-${item.operation}-${item.feature}-${index}`}
-                  alignItems="center"
-                  gap={10}
-                >
-                  <YStack
-                    width={10}
-                    height={10}
-                    borderRadius={5}
-                    backgroundColor={semantic.integration.openai}
-                  />
-                  <YStack flex={1}>
-                    <Text fontSize={13} fontWeight="600" color={theme.color.val}>
-                      {item.model}
-                    </Text>
-                    <Text fontSize={12} color={theme.colorMuted.val}>
-                      {formatFeatureLabel(item.feature)} · {formatStageLabel(item.stage)} ·{" "}
-                      {formatBilledToLabel(item.billedTo)} · {formatCompactNumber(item.requests)}{" "}
-                      calls
-                    </Text>
-                  </YStack>
-                  <Text fontSize={13} fontWeight="700" color={theme.color.val}>
-                    {formatUsdMicros(item.costUsdMicros)}
-                  </Text>
-                </XStack>
-              ))}
-            </YStack>
-          ) : (
-            <Text marginTop={16} fontSize={13} color={theme.colorMuted.val}>
-              AI tracking starts from the rollout of this analytics update.
-            </Text>
-          )}
-        </Card>
-      </YStack>
-
-      <YStack>
-        <SectionLabel>Search & Retrieval</SectionLabel>
-        <Card style={{ borderRadius: 16 }}>
-          <XStack flexWrap="wrap" gap={10}>
-            <YStack
-              flex={1}
-              minWidth={110}
-              padding={14}
-              borderRadius={18}
-              backgroundColor={withAlpha(theme.primary.val, "10")}
-            >
-              <Text fontSize={12} color={theme.colorMuted.val}>
-                Cache hit rate
-              </Text>
-              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-                {Math.round((overview?.rangeTotals.searchCacheHitRate ?? 0) * 100)}%
-              </Text>
-            </YStack>
-            <YStack
-              flex={1}
-              minWidth={110}
-              padding={14}
-              borderRadius={18}
-              backgroundColor={withAlpha(semantic.status.success, "10")}
-            >
-              <Text fontSize={12} color={theme.colorMuted.val}>
-                Avg latency
-              </Text>
-              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-                {Math.round(overview?.rangeTotals.avgSearchLatencyMs ?? 0)} ms
-              </Text>
-            </YStack>
-            <YStack
-              flex={1}
-              minWidth={110}
-              padding={14}
-              borderRadius={18}
-              backgroundColor={withAlpha(semantic.status.warning, "10")}
-            >
-              <Text fontSize={12} color={theme.colorMuted.val}>
-                Vector / full-text
-              </Text>
-              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-                {formatCompactNumber(overview?.rangeTotals.vectorSearches ?? 0)}/
-                {formatCompactNumber(overview?.rangeTotals.fullTextSearches ?? 0)}
-              </Text>
-            </YStack>
-          </XStack>
-          <XStack marginTop={14} gap={10} flexWrap="wrap">
-            <Badge
-              label={`${formatCompactNumber(overview?.rangeTotals.keywordSearches ?? 0)} keyword assists`}
-            />
-            <Badge
-              label={`${Math.round(overview?.rangeTotals.avgSearchResults ?? 0)} avg results`}
-            />
-            <Badge
-              label={`${formatCompactNumber(overview?.totals.totalSearches ?? 0)} tracked searches`}
-            />
-          </XStack>
-        </Card>
-      </YStack>
+          </Card>
+        </YStack>
+      </SectionGrid>
 
       <BottomSheetModal
         ref={modalRef}

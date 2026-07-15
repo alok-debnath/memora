@@ -1,5 +1,6 @@
 import { Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 
 /**
  * Returns the bottom padding needed for content to clear the
@@ -11,8 +12,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
  */
 export function useTabBarBottomPadding(): number {
   const insets = useSafeAreaInsets();
+  const { isCompact } = useResponsiveLayout();
   // On Android raw insets can be 0 even with gesture bar – add a 8px floor
   const safeBottom = Platform.OS === "android" ? Math.max(insets.bottom, 8) : insets.bottom;
   // 60 (bar) + 14 (float margin) + 80 (fade) + safeBottom
-  return 60 + 14 + 80 + safeBottom;
+  return isCompact ? 60 + 14 + 80 + safeBottom : 32 + safeBottom;
 }

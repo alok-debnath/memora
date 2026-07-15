@@ -11,6 +11,7 @@ import { AppScreen } from "@/components/ui/AppScreen";
 import { PageHero } from "@/components/ui/PageHero";
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { withAlpha } from "@/components/ui/themeHelpers";
+import { AdaptiveGrid } from "@/components/ui/Responsive";
 
 interface MenuItem {
   icon: FeatherIconName;
@@ -52,7 +53,7 @@ const menuItems: MenuItem[] = [
   },
   {
     icon: "settings",
-    label: "App Settings",
+    label: "Settings",
     description: "Appearance and app preferences",
     route: "/settings",
   },
@@ -100,97 +101,92 @@ export default function MoreScreen() {
         />
       }
     >
-      <YStack gap={16}>
+      <AdaptiveGrid minimumColumnWidth={300} maximumColumns={3} gap={16}>
         {groupedItems.map((group) => (
-          <React.Fragment key={group.label}>
-            <YStack gap={6}>
-              <Text
-                fontSize={11}
-                fontFamily="$body"
-                fontWeight="700"
-                color={theme.colorMuted.val}
-                textTransform="uppercase"
-                marginLeft={4}
-              >
-                {group.label}
-              </Text>
-              <SurfaceCard variant="frosted" padding={0} radius={18} style={{ overflow: "hidden" }}>
-                {group.items.map((item, i) => {
-                  const isLast = i === group.items.length - 1;
-                  const itemColor =
-                    item.route === "/admin" ? theme.destructive.val : theme.primary.val;
-                  return (
-                    <PressableScale
-                      key={item.route}
-                      onPress={() => router.push(item.route as never)}
+          <YStack key={group.label} gap={6}>
+            <Text
+              fontSize={11}
+              fontFamily="$body"
+              fontWeight="700"
+              color={theme.colorMuted.val}
+              textTransform="uppercase"
+              marginLeft={4}
+            >
+              {group.label}
+            </Text>
+            <SurfaceCard variant="frosted" padding={0} radius={18} style={{ overflow: "hidden" }}>
+              {group.items.map((item, i) => {
+                const isLast = i === group.items.length - 1;
+                const itemColor =
+                  item.route === "/admin" ? theme.destructive.val : theme.primary.val;
+                return (
+                  <PressableScale key={item.route} onPress={() => router.push(item.route as never)}>
+                    <XStack
+                      alignItems="center"
+                      gap={12}
+                      paddingHorizontal={14}
+                      paddingVertical={12}
+                      borderBottomWidth={isLast ? 0 : 1}
+                      borderBottomColor={theme.borderSubtle.val}
                     >
-                      <XStack
+                      <YStack
+                        width={32}
+                        height={32}
+                        borderRadius={9}
+                        backgroundColor={itemColor}
                         alignItems="center"
-                        gap={12}
-                        paddingHorizontal={14}
-                        paddingVertical={12}
-                        borderBottomWidth={isLast ? 0 : 1}
-                        borderBottomColor={theme.borderSubtle.val}
+                        justifyContent="center"
                       >
-                        <YStack
-                          width={32}
-                          height={32}
-                          borderRadius={9}
-                          backgroundColor={itemColor}
-                          alignItems="center"
-                          justifyContent="center"
-                        >
-                          <Feather name={item.icon} size={16} color={theme.textInverse.val} />
-                        </YStack>
-                        <YStack flex={1} minWidth={0} gap={1}>
-                          <XStack alignItems="center" gap={8}>
-                            <Text
-                              fontSize={15}
-                              fontFamily="$body"
-                              fontWeight="600"
-                              color={theme.color.val}
-                            >
-                              {item.label}
-                            </Text>
-                            {item.route === "/admin" && (
-                              <YStack
-                                backgroundColor={withAlpha(theme.destructive.val, "18")}
-                                borderRadius={7}
-                                paddingHorizontal={7}
-                                paddingVertical={2}
-                              >
-                                <Text
-                                  fontSize={9}
-                                  fontFamily="$body"
-                                  fontWeight="700"
-                                  color={theme.destructive.val}
-                                  textTransform="uppercase"
-                                  letterSpacing={0.8}
-                                >
-                                  Admin
-                                </Text>
-                              </YStack>
-                            )}
-                          </XStack>
+                        <Feather name={item.icon} size={16} color={theme.textInverse.val} />
+                      </YStack>
+                      <YStack flex={1} minWidth={0} gap={1}>
+                        <XStack alignItems="center" gap={8}>
                           <Text
-                            fontSize={12}
+                            fontSize={15}
                             fontFamily="$body"
-                            color={theme.colorMuted.val}
-                            numberOfLines={1}
+                            fontWeight="600"
+                            color={theme.color.val}
                           >
-                            {item.description}
+                            {item.label}
                           </Text>
-                        </YStack>
-                        <Feather name="chevron-right" size={16} color={theme.colorMuted.val} />
-                      </XStack>
-                    </PressableScale>
-                  );
-                })}
-              </SurfaceCard>
-            </YStack>
-          </React.Fragment>
+                          {item.route === "/admin" && (
+                            <YStack
+                              backgroundColor={withAlpha(theme.destructive.val, "18")}
+                              borderRadius={7}
+                              paddingHorizontal={7}
+                              paddingVertical={2}
+                            >
+                              <Text
+                                fontSize={9}
+                                fontFamily="$body"
+                                fontWeight="700"
+                                color={theme.destructive.val}
+                                textTransform="uppercase"
+                                letterSpacing={0.8}
+                              >
+                                Admin
+                              </Text>
+                            </YStack>
+                          )}
+                        </XStack>
+                        <Text
+                          fontSize={12}
+                          fontFamily="$body"
+                          color={theme.colorMuted.val}
+                          numberOfLines={1}
+                        >
+                          {item.description}
+                        </Text>
+                      </YStack>
+                      <Feather name="chevron-right" size={16} color={theme.colorMuted.val} />
+                    </XStack>
+                  </PressableScale>
+                );
+              })}
+            </SurfaceCard>
+          </YStack>
         ))}
-      </YStack>
+      </AdaptiveGrid>
     </AppScreen>
   );
 }

@@ -41,7 +41,7 @@ export function PickerField({
   };
 
   return (
-    <YStack flex={1} flexBasis={stacked ? "100%" : undefined} gap={4}>
+    <YStack flex={stacked ? undefined : 1} width={stacked ? "100%" : undefined} gap={4}>
       <Text
         color={theme.colorMuted.val}
         fontSize={11}

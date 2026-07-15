@@ -2,25 +2,53 @@ import React, { useMemo, useState } from "react";
 import { ScrollView, Pressable } from "react-native";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { Feather } from "@/lib/icons";
+import { Feather, type FeatherIconName } from "@/lib/icons";
 import Svg, { Circle, Line, G, Text as SvgText } from "react-native-svg";
 import { useWindowDimensions } from "react-native";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/useAuth";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { getReminderDate } from "@/types/memoryKind";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { Card } from "@/components/ui/Card";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { AppScreen } from "@/components/ui/AppScreen";
+import { PressableScale } from "@/components/ui/PressableScale";
 import { withAlpha } from "@/components/ui/themeHelpers";
 import { spacing } from "@/constants/uiTokens";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type GraphMode = "memories" | "topics";
+
+function GraphControl({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: FeatherIconName;
+  label: string;
+  onPress: () => void;
+}) {
+  const theme = useAppTheme();
+  return (
+    <PressableScale onPress={onPress} accessibilityLabel={label}>
+      <YStack
+        width={32}
+        height={30}
+        borderRadius={9}
+        alignItems="center"
+        justifyContent="center"
+        backgroundColor={theme.secondary.val}
+      >
+        <Feather name={icon} size={14} color={theme.colorMuted.val} />
+      </YStack>
+    </PressableScale>
+  );
+}
 
 type TopicDoc = {
   _id: string;
@@ -235,13 +263,17 @@ function simulate<N extends { x: number; y: number; vx: number; vy: number }>(
 
 export default function KnowledgeGraphScreen() {
   const theme = useAppTheme();
-  const { width, height } = useWindowDimensions();
+  const { height } = useWindowDimensions();
+  const responsive = useResponsiveLayout();
   const { token } = useAuth();
 
   const [mode, setMode] = useState<GraphMode>("memories");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filterTopicId, setFilterTopicId] = useState<string | null>(null);
+  const [canvasWidth, setCanvasWidth] = useState(0);
+  const [zoom, setZoom] = useState(1.2);
+  const [showLabels, setShowLabels] = useState(true);
 
   const memoryResult = useQuery(api.memories.list, token ? { token, limit: 100 } : "skip");
   const rawMemories = (memoryResult?.memories ?? []) as Array<{
@@ -281,7 +313,7 @@ export default function KnowledgeGraphScreen() {
     );
   }, [rawMemories, query]);
 
-  const svgWidth = Math.max(width - 32, 320);
+  const svgWidth = Math.max(canvasWidth || responsive.contentWidth - 64, 240);
   const svgHeight = Math.max(height * 0.52, 300);
   const cx = svgWidth / 2;
   const cy = svgHeight / 2;
@@ -328,6 +360,18 @@ export default function KnowledgeGraphScreen() {
     mode === "memories" && selectedId ? rawMemories.find((m) => m._id === selectedId) : null;
   const selectedTopic =
     mode === "topics" && selectedId ? topics.find((t) => t._id === selectedId) : null;
+
+  const selectedConnections = useMemo(() => {
+    if (!selectedId || !memoryGraph) return [];
+    const ids = memoryGraph.edges.flatMap((edge) => {
+      if (edge.source === selectedId) return [edge.target];
+      if (edge.target === selectedId) return [edge.source];
+      return [];
+    });
+    return Array.from(new Set(ids))
+      .map((id) => rawMemories.find((memory) => memory._id === id))
+      .filter((memory): memory is (typeof rawMemories)[number] => Boolean(memory));
+  }, [memoryGraph, rawMemories, selectedId]);
 
   const activeGraph = mode === "memories" ? memoryGraph : topicGraph;
 
@@ -382,7 +426,7 @@ export default function KnowledgeGraphScreen() {
 
       {/* ── Topic filter chips (memory mode) ── */}
       {mode === "memories" && topics.length > 0 && (
-        <YStack>
+        <YStack onLayout={(event) => setCanvasWidth(event.nativeEvent.layout.width - 16)}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -491,366 +535,269 @@ export default function KnowledgeGraphScreen() {
           }
         />
       ) : (
-        <YStack>
-          <Card style={{ padding: 8, overflow: "hidden", borderRadius: 16 }}>
-            <Svg width={svgWidth} height={svgHeight} style={{ alignSelf: "center" }}>
-              {/* Memory Network edges */}
-              {mode === "memories" &&
-                memoryGraph?.edges.map((e, i) => {
-                  const s = memoryGraph.nodes.find((n) => n.id === e.source);
-                  const t = memoryGraph.nodes.find((n) => n.id === e.target);
-                  if (!s || !t) return null;
-                  const color = e.type === "topic" ? s.topicColor : theme.colorMuted.val;
-                  return (
-                    <Line
-                      key={i}
-                      x1={s.x}
-                      y1={s.y}
-                      x2={t.x}
-                      y2={t.y}
-                      stroke={color}
-                      strokeWidth={e.type === "topic" ? 1.2 : 0.8}
-                      opacity={e.type === "topic" ? 0.35 : 0.2}
-                    />
-                  );
-                })}
-
-              {/* Topic Cluster edges */}
-              {mode === "topics" &&
-                topicGraph?.edges.map((e, i) => {
-                  const s = topicGraph.nodes.find((n) => n.id === e.source);
-                  const t = topicGraph.nodes.find((n) => n.id === e.target);
-                  if (!s || !t) return null;
-                  return (
-                    <Line
-                      key={i}
-                      x1={s.x}
-                      y1={s.y}
-                      x2={t.x}
-                      y2={t.y}
-                      stroke={s.color}
-                      strokeWidth={1 + e.similarity * 2.5}
-                      opacity={0.25 + e.similarity * 0.45}
-                      strokeDasharray={e.similarity < 0.75 ? "4 3" : undefined}
-                    />
-                  );
-                })}
-
-              {/* Memory nodes */}
-              {mode === "memories" &&
-                memoryGraph?.nodes.map((n) => {
-                  const isSelected = selectedId === n.id;
-                  const dimmed =
-                    filterTopicId !== null &&
-                    n.primaryTopicId !== filterTopicId &&
-                    !(rawMemories.find((m) => m._id === n.id)?.topicIds ?? []).includes(
-                      filterTopicId,
-                    );
-                  const r = isSelected ? 17 : 12 + Math.min(n.connectionCount, 5);
-                  return (
-                    <G key={n.id} onPress={() => handleNodePress(n.id)}>
-                      <Circle
-                        cx={n.x}
-                        cy={n.y}
-                        r={r + 3}
-                        fill={n.topicColor}
-                        opacity={dimmed ? 0.06 : 0.12}
-                      />
-                      <Circle
-                        cx={n.x}
-                        cy={n.y}
-                        r={r}
-                        fill={n.topicColor}
-                        opacity={dimmed ? 0.18 : isSelected ? 1 : 0.82}
-                        stroke={isSelected ? theme.textInverse.val : "transparent"}
-                        strokeWidth={isSelected ? 2 : 0}
-                      />
-                      {!dimmed && (
-                        <SvgText
-                          x={n.x}
-                          y={n.y + r + 11}
-                          fontSize={8}
-                          fill={theme.colorMuted.val}
-                          textAnchor="middle"
-                          fontWeight="500"
-                        >
-                          {n.label}
-                        </SvgText>
-                      )}
-                    </G>
-                  );
-                })}
-
-              {/* Topic nodes */}
-              {mode === "topics" &&
-                topicGraph?.nodes.map((n) => {
-                  const isSelected = selectedId === n.id;
-                  return (
-                    <G key={n.id} onPress={() => handleNodePress(n.id)}>
-                      <Circle cx={n.x} cy={n.y} r={n.radius + 5} fill={n.color} opacity={0.1} />
-                      <Circle
-                        cx={n.x}
-                        cy={n.y}
-                        r={n.radius}
-                        fill={n.color}
-                        opacity={isSelected ? 0.95 : 0.75}
-                        stroke={isSelected ? theme.textInverse.val : n.color}
-                        strokeWidth={isSelected ? 2.5 : 0.5}
-                        strokeOpacity={0.4}
-                      />
-                      <SvgText
-                        x={n.x}
-                        y={n.y + 1}
-                        fontSize={Math.max(8, Math.min(n.radius * 0.45, 12))}
-                        fill={theme.textInverse.val}
-                        textAnchor="middle"
-                        fontWeight="700"
-                        opacity={0.9}
-                      >
-                        {n.memoryCount}
-                      </SvgText>
-                      <SvgText
-                        x={n.x}
-                        y={n.y + n.radius + 13}
-                        fontSize={9}
-                        fill={theme.color.val}
-                        textAnchor="middle"
-                        fontWeight="600"
-                      >
-                        {n.label.slice(0, 14)}
-                      </SvgText>
-                    </G>
-                  );
-                })}
-            </Svg>
-          </Card>
-
-          {/* ── Legend (memory mode) ── */}
-          {mode === "memories" && topics.length > 0 && (
-            <YStack>
-              <XStack gap={12} paddingTop={4} flexWrap="wrap">
-                <XStack alignItems="center" gap={4}>
-                  <YStack width={16} height={2} backgroundColor={theme.primary.val} opacity={0.5} />
-                  <Text fontSize={10} fontFamily="$body" color={theme.colorMuted.val}>
-                    shared topic
+        <XStack
+          flexDirection={responsive.isExpanded ? "row" : "column"}
+          alignItems="flex-start"
+          gap={16}
+          width="100%"
+        >
+          <YStack
+            flex={1}
+            minWidth={0}
+            width={responsive.isExpanded ? undefined : "100%"}
+            onLayout={(event) => setCanvasWidth(event.nativeEvent.layout.width - 16)}
+          >
+            <Card style={{ padding: 8, overflow: "hidden", borderRadius: 16 }}>
+              <XStack
+                alignItems="center"
+                justifyContent="space-between"
+                gap={10}
+                paddingHorizontal={6}
+                paddingBottom={8}
+              >
+                <XStack alignItems="center" gap={8}>
+                  <Text fontSize={11} fontWeight="700" color={theme.color.val}>
+                    {activeGraph?.nodes.length ?? 0} nodes
+                  </Text>
+                  <Text fontSize={11} color={theme.colorMuted.val}>
+                    {activeGraph?.edges.length ?? 0} connections
                   </Text>
                 </XStack>
-                <XStack alignItems="center" gap={4}>
-                  <XStack
-                    style={{
-                      width: 16,
-                      borderBottomWidth: 1,
-                      borderStyle: "dashed",
-                      borderColor: theme.colorMuted.val,
-                      opacity: 0.5,
-                    }}
+                <XStack gap={4}>
+                  <GraphControl
+                    icon={showLabels ? "eye" : "eye-off"}
+                    label="Toggle labels"
+                    onPress={() => setShowLabels((value) => !value)}
                   />
-                  <Text fontSize={10} fontFamily="$body" color={theme.colorMuted.val}>
-                    shared person
-                  </Text>
+                  <GraphControl
+                    icon="minus"
+                    label="Zoom out"
+                    onPress={() => setZoom((value) => Math.max(0.8, value - 0.2))}
+                  />
+                  <GraphControl icon="maximize" label="Fit graph" onPress={() => setZoom(1.2)} />
+                  <GraphControl
+                    icon="plus"
+                    label="Zoom in"
+                    onPress={() => setZoom((value) => Math.min(2.2, value + 0.2))}
+                  />
                 </XStack>
               </XStack>
-            </YStack>
-          )}
+              <Svg
+                width={svgWidth}
+                height={svgHeight}
+                viewBox={`${cx - svgWidth / zoom / 2} ${cy - svgHeight / zoom / 2} ${svgWidth / zoom} ${svgHeight / zoom}`}
+                preserveAspectRatio="xMidYMid meet"
+                style={{ alignSelf: "center" }}
+              >
+                {/* Memory Network edges */}
+                {mode === "memories" &&
+                  memoryGraph?.edges.map((e, i) => {
+                    const s = memoryGraph.nodes.find((n) => n.id === e.source);
+                    const t = memoryGraph.nodes.find((n) => n.id === e.target);
+                    if (!s || !t) return null;
+                    const color = e.type === "topic" ? s.topicColor : theme.colorMuted.val;
+                    return (
+                      <Line
+                        key={i}
+                        x1={s.x}
+                        y1={s.y}
+                        x2={t.x}
+                        y2={t.y}
+                        stroke={color}
+                        strokeWidth={e.type === "topic" ? 1.2 : 0.8}
+                        opacity={e.type === "topic" ? 0.35 : 0.2}
+                      />
+                    );
+                  })}
 
-          {/* ── Selected Memory Panel ── */}
-          {selectedMemory && mode === "memories" && (
-            <YStack>
-              <Card style={{ marginTop: 4, borderRadius: 16, gap: 12 }}>
-                {/* Topic badges */}
-                {(selectedMemory.primaryTopicId || (selectedMemory.topicIds?.length ?? 0) > 0) && (
-                  <XStack gap={6} flexWrap="wrap">
-                    {[
-                      selectedMemory.primaryTopicId,
-                      ...(selectedMemory.topicIds ?? []).filter(
-                        (id) => id !== selectedMemory.primaryTopicId,
-                      ),
-                    ]
-                      .filter(Boolean)
-                      .slice(0, 4)
-                      .map((tid) => {
-                        const t = topicById[tid!];
-                        if (!t) return null;
-                        return (
-                          <XStack
-                            key={tid}
-                            alignItems="center"
-                            gap={4}
-                            paddingHorizontal={9}
-                            paddingVertical={4}
-                            borderRadius={20}
-                            backgroundColor={(t.color ?? theme.primary.val) + "18"}
-                            borderWidth={0.5}
-                            borderColor={(t.color ?? theme.primary.val) + "40"}
+                {/* Topic Cluster edges */}
+                {mode === "topics" &&
+                  topicGraph?.edges.map((e, i) => {
+                    const s = topicGraph.nodes.find((n) => n.id === e.source);
+                    const t = topicGraph.nodes.find((n) => n.id === e.target);
+                    if (!s || !t) return null;
+                    return (
+                      <Line
+                        key={i}
+                        x1={s.x}
+                        y1={s.y}
+                        x2={t.x}
+                        y2={t.y}
+                        stroke={s.color}
+                        strokeWidth={1 + e.similarity * 2.5}
+                        opacity={0.25 + e.similarity * 0.45}
+                        strokeDasharray={e.similarity < 0.75 ? "4 3" : undefined}
+                      />
+                    );
+                  })}
+
+                {/* Memory nodes */}
+                {mode === "memories" &&
+                  memoryGraph?.nodes.map((n) => {
+                    const isSelected = selectedId === n.id;
+                    const dimmed =
+                      filterTopicId !== null &&
+                      n.primaryTopicId !== filterTopicId &&
+                      !(rawMemories.find((m) => m._id === n.id)?.topicIds ?? []).includes(
+                        filterTopicId,
+                      );
+                    const r = isSelected ? 17 : 12 + Math.min(n.connectionCount, 5);
+                    return (
+                      <G key={n.id} onPress={() => handleNodePress(n.id)}>
+                        <Circle
+                          cx={n.x}
+                          cy={n.y}
+                          r={r + 3}
+                          fill={n.topicColor}
+                          opacity={dimmed ? 0.06 : 0.12}
+                        />
+                        <Circle
+                          cx={n.x}
+                          cy={n.y}
+                          r={r}
+                          fill={n.topicColor}
+                          opacity={dimmed ? 0.18 : isSelected ? 1 : 0.82}
+                          stroke={isSelected ? theme.textInverse.val : "transparent"}
+                          strokeWidth={isSelected ? 2 : 0}
+                        />
+                        {!dimmed && showLabels && (
+                          <SvgText
+                            x={n.x}
+                            y={n.y + r + 11}
+                            fontSize={10}
+                            fill={theme.colorMuted.val}
+                            textAnchor="middle"
+                            fontWeight="500"
                           >
-                            <YStack
-                              width={6}
-                              height={6}
-                              borderRadius={3}
-                              backgroundColor={t.color ?? theme.primary.val}
-                            />
-                            <Text
-                              fontSize={11}
-                              fontFamily="$body"
-                              fontWeight="600"
-                              color={t.color ?? theme.primary.val}
-                            >
-                              {t.name}
-                            </Text>
-                          </XStack>
-                        );
-                      })}
-                  </XStack>
-                )}
-                <YStack gap={6}>
-                  <Text
-                    fontSize={16}
-                    fontFamily="$heading"
-                    fontWeight="700"
-                    color={theme.color.val}
-                  >
-                    {selectedMemory.title}
-                  </Text>
-                  <Text
-                    fontSize={13}
-                    fontFamily="$body"
-                    lineHeight={20}
-                    color={theme.colorMuted.val}
-                    numberOfLines={4}
-                  >
-                    {selectedMemory.content}
-                  </Text>
-                </YStack>
-                <XStack gap={10} flexWrap="wrap">
-                  {getReminderDate(selectedMemory) && (
-                    <XStack alignItems="center" gap={4}>
-                      <Feather name="bell" size={11} color={theme.primary.val} />
-                      <Text fontSize={11} fontFamily="$body" color={theme.primary.val}>
-                        {new Date(getReminderDate(selectedMemory)!).toLocaleDateString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                        })}
-                      </Text>
-                    </XStack>
-                  )}
-                  {(selectedMemory.people?.length ?? 0) > 0 && (
-                    <XStack alignItems="center" gap={4}>
-                      <Feather name="users" size={11} color={theme.colorMuted.val} />
-                      <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val}>
-                        {selectedMemory.people!.slice(0, 2).join(", ")}
-                      </Text>
-                    </XStack>
-                  )}
-                  <XStack alignItems="center" gap={4}>
-                    <Feather name="link-2" size={11} color={theme.colorMuted.val} />
-                    <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val}>
-                      {memoryGraph?.edges.filter(
-                        (e) => e.source === selectedMemory._id || e.target === selectedMemory._id,
-                      ).length ?? 0}{" "}
-                      connections
-                    </Text>
-                  </XStack>
-                </XStack>
-              </Card>
-            </YStack>
-          )}
+                            {n.label}
+                          </SvgText>
+                        )}
+                      </G>
+                    );
+                  })}
 
-          {/* ── Selected Topic Panel ── */}
-          {selectedTopic && mode === "topics" && (
-            <YStack>
-              <Card style={{ marginTop: 4, borderRadius: 16, gap: 12 }}>
-                <XStack alignItems="center" gap={10}>
-                  <YStack
-                    width={44}
-                    height={44}
-                    borderRadius={14}
-                    alignItems="center"
-                    justifyContent="center"
-                    backgroundColor={(selectedTopic.color ?? theme.primary.val) + "20"}
-                  >
-                    <Feather
-                      name={(selectedTopic.icon as any) ?? "tag"}
-                      size={20}
-                      color={selectedTopic.color ?? theme.primary.val}
+                {/* Topic nodes */}
+                {mode === "topics" &&
+                  topicGraph?.nodes.map((n) => {
+                    const isSelected = selectedId === n.id;
+                    return (
+                      <G key={n.id} onPress={() => handleNodePress(n.id)}>
+                        <Circle cx={n.x} cy={n.y} r={n.radius + 5} fill={n.color} opacity={0.1} />
+                        <Circle
+                          cx={n.x}
+                          cy={n.y}
+                          r={n.radius}
+                          fill={n.color}
+                          opacity={isSelected ? 0.95 : 0.75}
+                          stroke={isSelected ? theme.textInverse.val : n.color}
+                          strokeWidth={isSelected ? 2.5 : 0.5}
+                          strokeOpacity={0.4}
+                        />
+                        <SvgText
+                          x={n.x}
+                          y={n.y + 1}
+                          fontSize={Math.max(8, Math.min(n.radius * 0.45, 12))}
+                          fill={theme.textInverse.val}
+                          textAnchor="middle"
+                          fontWeight="700"
+                          opacity={0.9}
+                        >
+                          {n.memoryCount}
+                        </SvgText>
+                        {showLabels ? (
+                          <SvgText
+                            x={n.x}
+                            y={n.y + n.radius + 13}
+                            fontSize={10}
+                            fill={theme.color.val}
+                            textAnchor="middle"
+                            fontWeight="600"
+                          >
+                            {n.label.slice(0, 14)}
+                          </SvgText>
+                        ) : null}
+                      </G>
+                    );
+                  })}
+              </Svg>
+            </Card>
+
+            {/* ── Legend (memory mode) ── */}
+            {mode === "memories" && topics.length > 0 && (
+              <YStack>
+                <XStack gap={12} paddingTop={4} flexWrap="wrap">
+                  <XStack alignItems="center" gap={4}>
+                    <YStack
+                      width={16}
+                      height={2}
+                      backgroundColor={theme.primary.val}
+                      opacity={0.5}
                     />
-                  </YStack>
-                  <YStack flex={1} gap={2}>
-                    <Text
-                      fontSize={17}
-                      fontFamily="$heading"
-                      fontWeight="700"
-                      color={theme.color.val}
-                    >
-                      {selectedTopic.name}
+                    <Text fontSize={10} fontFamily="$body" color={theme.colorMuted.val}>
+                      shared topic
                     </Text>
-                    <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val}>
-                      {selectedTopic.memoryCount}{" "}
-                      {selectedTopic.memoryCount === 1 ? "memory" : "memories"}
+                  </XStack>
+                  <XStack alignItems="center" gap={4}>
+                    <XStack
+                      style={{
+                        width: 16,
+                        borderBottomWidth: 1,
+                        borderStyle: "dashed",
+                        borderColor: theme.colorMuted.val,
+                        opacity: 0.5,
+                      }}
+                    />
+                    <Text fontSize={10} fontFamily="$body" color={theme.colorMuted.val}>
+                      shared person
                     </Text>
-                  </YStack>
-                  <YStack
-                    paddingHorizontal={12}
-                    paddingVertical={6}
-                    borderRadius={20}
-                    backgroundColor={(selectedTopic.color ?? theme.primary.val) + "18"}
-                  >
-                    <Text
-                      fontSize={12}
-                      fontFamily="$body"
-                      fontWeight="600"
-                      color={selectedTopic.color ?? theme.primary.val}
-                    >
-                      {Math.round(
-                        (selectedTopic.memoryCount / Math.max(rawMemories.length, 1)) * 100,
-                      )}
-                      %
-                    </Text>
-                  </YStack>
+                  </XStack>
                 </XStack>
-                {selectedTopic.description ? (
-                  <Text
-                    fontSize={13}
-                    fontFamily="$body"
-                    lineHeight={19}
-                    color={theme.colorMuted.val}
-                  >
-                    {selectedTopic.description}
-                  </Text>
-                ) : null}
-                {(selectedTopic.relatedTopics?.length ?? 0) > 0 && (
-                  <YStack gap={6}>
-                    <Text
-                      fontSize={11}
-                      fontFamily="$body"
-                      fontWeight="600"
-                      textTransform="uppercase"
-                      letterSpacing={0.8}
-                      color={theme.colorMuted.val}
-                    >
-                      Related topics
-                    </Text>
+              </YStack>
+            )}
+          </YStack>
+
+          <YStack width={responsive.isExpanded ? 320 : "100%"} flexShrink={0} gap={12}>
+            {mode === "memories" && !selectedMemory ? (
+              <Card style={{ borderRadius: 16, gap: 8 }}>
+                <Text fontSize={15} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
+                  Memory inspector
+                </Text>
+                <Text fontSize={12} lineHeight={18} fontFamily="$body" color={theme.colorMuted.val}>
+                  Select a node to inspect its topics, reminder status, people, and connections.
+                </Text>
+              </Card>
+            ) : null}
+
+            {/* ── Selected Memory Panel ── */}
+            {selectedMemory && mode === "memories" && (
+              <YStack>
+                <Card style={{ marginTop: 4, borderRadius: 16, gap: 12 }}>
+                  {/* Topic badges */}
+                  {(selectedMemory.primaryTopicId ||
+                    (selectedMemory.topicIds?.length ?? 0) > 0) && (
                     <XStack gap={6} flexWrap="wrap">
-                      {(selectedTopic.relatedTopics ?? [])
-                        .sort((a, b) => b.similarity - a.similarity)
+                      {[
+                        selectedMemory.primaryTopicId,
+                        ...(selectedMemory.topicIds ?? []).filter(
+                          (id) => id !== selectedMemory.primaryTopicId,
+                        ),
+                      ]
+                        .filter(Boolean)
                         .slice(0, 4)
-                        .map((rel) => {
-                          const t = topicById[rel.topicId];
+                        .map((tid) => {
+                          const t = topicById[tid!];
                           if (!t) return null;
                           return (
-                            <Pressable
-                              key={rel.topicId}
-                              onPress={() => handleNodePress(rel.topicId)}
-                              style={{
-                                flexDirection: "row",
-                                alignItems: "center",
-                                gap: 5,
-                                paddingHorizontal: 10,
-                                paddingVertical: 5,
-                                borderRadius: 20,
-                                backgroundColor: (t.color ?? theme.primary.val) + "15",
-                                borderWidth: 0.5,
-                                borderColor: (t.color ?? theme.primary.val) + "40",
-                              }}
+                            <XStack
+                              key={tid}
+                              alignItems="center"
+                              gap={4}
+                              paddingHorizontal={9}
+                              paddingVertical={4}
+                              borderRadius={20}
+                              backgroundColor={(t.color ?? theme.primary.val) + "18"}
+                              borderWidth={0.5}
+                              borderColor={(t.color ?? theme.primary.val) + "40"}
                             >
                               <YStack
                                 width={6}
@@ -859,69 +806,276 @@ export default function KnowledgeGraphScreen() {
                                 backgroundColor={t.color ?? theme.primary.val}
                               />
                               <Text
-                                fontSize={12}
+                                fontSize={11}
                                 fontFamily="$body"
-                                fontWeight="500"
+                                fontWeight="600"
                                 color={t.color ?? theme.primary.val}
                               >
                                 {t.name}
                               </Text>
-                            </Pressable>
+                            </XStack>
                           );
                         })}
                     </XStack>
+                  )}
+                  <YStack gap={6}>
+                    <Text
+                      fontSize={16}
+                      fontFamily="$heading"
+                      fontWeight="700"
+                      color={theme.color.val}
+                    >
+                      {selectedMemory.title}
+                    </Text>
+                    <Text
+                      fontSize={13}
+                      fontFamily="$body"
+                      lineHeight={20}
+                      color={theme.colorMuted.val}
+                      numberOfLines={4}
+                    >
+                      {selectedMemory.content}
+                    </Text>
                   </YStack>
-                )}
-              </Card>
-            </YStack>
-          )}
-
-          {/* ── Topic Index (topic mode, no selection) ── */}
-          {mode === "topics" && !selectedTopic && (topicGraph?.nodes.length ?? 0) > 0 && (
-            <YStack>
-              <YStack gap={8}>
-                <Text
-                  fontSize={13}
-                  fontFamily="$body"
-                  fontWeight="600"
-                  color={theme.colorMuted.val}
-                >
-                  Tap any node to explore · {topicGraph!.nodes.length} topics
-                </Text>
-                <XStack flexWrap="wrap" gap={6}>
-                  {topicGraph!.nodes
-                    .slice()
-                    .sort((a, b) => b.memoryCount - a.memoryCount)
-                    .map((n) => (
-                      <Pressable
-                        key={n.id}
-                        onPress={() => handleNodePress(n.id)}
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 5,
-                          paddingHorizontal: 10,
-                          paddingVertical: 6,
-                          borderRadius: 20,
-                          backgroundColor: n.color + "15",
-                          borderWidth: 0.5,
-                          borderColor: n.color + "35",
-                        }}
+                  <XStack gap={10} flexWrap="wrap">
+                    {getReminderDate(selectedMemory) && (
+                      <XStack alignItems="center" gap={4}>
+                        <Feather name="bell" size={11} color={theme.primary.val} />
+                        <Text fontSize={11} fontFamily="$body" color={theme.primary.val}>
+                          {new Date(getReminderDate(selectedMemory)!).toLocaleDateString(
+                            undefined,
+                            {
+                              month: "short",
+                              day: "numeric",
+                            },
+                          )}
+                        </Text>
+                      </XStack>
+                    )}
+                    {(selectedMemory.people?.length ?? 0) > 0 && (
+                      <XStack alignItems="center" gap={4}>
+                        <Feather name="users" size={11} color={theme.colorMuted.val} />
+                        <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val}>
+                          {selectedMemory.people!.slice(0, 2).join(", ")}
+                        </Text>
+                      </XStack>
+                    )}
+                    <XStack alignItems="center" gap={4}>
+                      <Feather name="link-2" size={11} color={theme.colorMuted.val} />
+                      <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val}>
+                        {memoryGraph?.edges.filter(
+                          (e) => e.source === selectedMemory._id || e.target === selectedMemory._id,
+                        ).length ?? 0}{" "}
+                        connections
+                      </Text>
+                    </XStack>
+                  </XStack>
+                  {selectedConnections.length > 0 ? (
+                    <YStack gap={6} paddingTop={4}>
+                      <Text
+                        fontSize={10}
+                        fontWeight="700"
+                        textTransform="uppercase"
+                        letterSpacing={0.8}
+                        color={theme.colorMuted.val}
                       >
-                        <YStack width={7} height={7} borderRadius={4} backgroundColor={n.color} />
-                        <Text fontSize={12} fontFamily="$body" fontWeight="500" color={n.color}>
-                          {n.label}
-                        </Text>
-                        <Text fontSize={10} fontFamily="$body" color={n.color + "AA"}>
-                          {n.memoryCount}
-                        </Text>
-                      </Pressable>
-                    ))}
-                </XStack>
+                        Connected memories
+                      </Text>
+                      {selectedConnections.slice(0, 5).map((memory) => (
+                        <PressableScale key={memory._id} onPress={() => setSelectedId(memory._id)}>
+                          <XStack
+                            alignItems="center"
+                            justifyContent="space-between"
+                            gap={8}
+                            paddingVertical={6}
+                          >
+                            <Text
+                              flex={1}
+                              fontSize={12}
+                              fontWeight="600"
+                              color={theme.color.val}
+                              numberOfLines={1}
+                            >
+                              {memory.title || "Untitled memory"}
+                            </Text>
+                            <Feather name="arrow-right" size={13} color={theme.primary.val} />
+                          </XStack>
+                        </PressableScale>
+                      ))}
+                    </YStack>
+                  ) : null}
+                </Card>
               </YStack>
-            </YStack>
-          )}
-        </YStack>
+            )}
+
+            {/* ── Selected Topic Panel ── */}
+            {selectedTopic && mode === "topics" && (
+              <YStack>
+                <Card style={{ marginTop: 4, borderRadius: 16, gap: 12 }}>
+                  <XStack alignItems="center" gap={10}>
+                    <YStack
+                      width={44}
+                      height={44}
+                      borderRadius={14}
+                      alignItems="center"
+                      justifyContent="center"
+                      backgroundColor={(selectedTopic.color ?? theme.primary.val) + "20"}
+                    >
+                      <Feather
+                        name={(selectedTopic.icon as any) ?? "tag"}
+                        size={20}
+                        color={selectedTopic.color ?? theme.primary.val}
+                      />
+                    </YStack>
+                    <YStack flex={1} gap={2}>
+                      <Text
+                        fontSize={17}
+                        fontFamily="$heading"
+                        fontWeight="700"
+                        color={theme.color.val}
+                      >
+                        {selectedTopic.name}
+                      </Text>
+                      <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val}>
+                        {selectedTopic.memoryCount}{" "}
+                        {selectedTopic.memoryCount === 1 ? "memory" : "memories"}
+                      </Text>
+                    </YStack>
+                    <YStack
+                      paddingHorizontal={12}
+                      paddingVertical={6}
+                      borderRadius={20}
+                      backgroundColor={(selectedTopic.color ?? theme.primary.val) + "18"}
+                    >
+                      <Text
+                        fontSize={12}
+                        fontFamily="$body"
+                        fontWeight="600"
+                        color={selectedTopic.color ?? theme.primary.val}
+                      >
+                        {Math.round(
+                          (selectedTopic.memoryCount / Math.max(rawMemories.length, 1)) * 100,
+                        )}
+                        %
+                      </Text>
+                    </YStack>
+                  </XStack>
+                  {selectedTopic.description ? (
+                    <Text
+                      fontSize={13}
+                      fontFamily="$body"
+                      lineHeight={19}
+                      color={theme.colorMuted.val}
+                    >
+                      {selectedTopic.description}
+                    </Text>
+                  ) : null}
+                  {(selectedTopic.relatedTopics?.length ?? 0) > 0 && (
+                    <YStack gap={6}>
+                      <Text
+                        fontSize={11}
+                        fontFamily="$body"
+                        fontWeight="600"
+                        textTransform="uppercase"
+                        letterSpacing={0.8}
+                        color={theme.colorMuted.val}
+                      >
+                        Related topics
+                      </Text>
+                      <XStack gap={6} flexWrap="wrap">
+                        {(selectedTopic.relatedTopics ?? [])
+                          .sort((a, b) => b.similarity - a.similarity)
+                          .slice(0, 4)
+                          .map((rel) => {
+                            const t = topicById[rel.topicId];
+                            if (!t) return null;
+                            return (
+                              <Pressable
+                                key={rel.topicId}
+                                onPress={() => handleNodePress(rel.topicId)}
+                                style={{
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: 5,
+                                  paddingHorizontal: 10,
+                                  paddingVertical: 5,
+                                  borderRadius: 20,
+                                  backgroundColor: (t.color ?? theme.primary.val) + "15",
+                                  borderWidth: 0.5,
+                                  borderColor: (t.color ?? theme.primary.val) + "40",
+                                }}
+                              >
+                                <YStack
+                                  width={6}
+                                  height={6}
+                                  borderRadius={3}
+                                  backgroundColor={t.color ?? theme.primary.val}
+                                />
+                                <Text
+                                  fontSize={12}
+                                  fontFamily="$body"
+                                  fontWeight="500"
+                                  color={t.color ?? theme.primary.val}
+                                >
+                                  {t.name}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                      </XStack>
+                    </YStack>
+                  )}
+                </Card>
+              </YStack>
+            )}
+
+            {/* ── Topic Index (topic mode, no selection) ── */}
+            {mode === "topics" && !selectedTopic && (topicGraph?.nodes.length ?? 0) > 0 && (
+              <YStack>
+                <YStack gap={8}>
+                  <Text
+                    fontSize={13}
+                    fontFamily="$body"
+                    fontWeight="600"
+                    color={theme.colorMuted.val}
+                  >
+                    Tap any node to explore · {topicGraph!.nodes.length} topics
+                  </Text>
+                  <XStack flexWrap="wrap" gap={6}>
+                    {topicGraph!.nodes
+                      .slice()
+                      .sort((a, b) => b.memoryCount - a.memoryCount)
+                      .map((n) => (
+                        <Pressable
+                          key={n.id}
+                          onPress={() => handleNodePress(n.id)}
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 5,
+                            paddingHorizontal: 10,
+                            paddingVertical: 6,
+                            borderRadius: 20,
+                            backgroundColor: n.color + "15",
+                            borderWidth: 0.5,
+                            borderColor: n.color + "35",
+                          }}
+                        >
+                          <YStack width={7} height={7} borderRadius={4} backgroundColor={n.color} />
+                          <Text fontSize={12} fontFamily="$body" fontWeight="500" color={n.color}>
+                            {n.label}
+                          </Text>
+                          <Text fontSize={10} fontFamily="$body" color={n.color + "AA"}>
+                            {n.memoryCount}
+                          </Text>
+                        </Pressable>
+                      ))}
+                  </XStack>
+                </YStack>
+              </YStack>
+            )}
+          </YStack>
+        </XStack>
       )}
     </AppScreen>
   );

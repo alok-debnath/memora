@@ -20,3 +20,22 @@ export const radius: Record<AppRadius, number> = {
   lg: 20,
   pill: 999,
 };
+
+export const breakpoints = {
+  compact: 0,
+  medium: 600,
+  expanded: 1024,
+  wide: 1280,
+} as const;
+
+export const layout = {
+  readableMaxWidth: 760,
+  standardMaxWidth: 1120,
+  workspaceMaxWidth: 1440,
+  mediumRailWidth: 72,
+  expandedSidebarWidth: 248,
+  wideSidebarWidth: 272,
+  dockedChatDefaultWidth: 420,
+  dockedChatMinWidth: 340,
+  dockedChatMaxWidth: 520,
+} as const;

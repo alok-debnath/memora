@@ -15,6 +15,8 @@ import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
 import { useAppRouter as useRouter } from "@/hooks/useAppRouter";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { PageHero } from "@/components/ui/PageHero";
+import { SectionCard } from "@/components/ui/AppScreen";
+import { ResponsiveStatGrid, WorkspaceSplit } from "@/components/ui/Responsive";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -25,7 +27,7 @@ import { DiaryCalendar } from "@/components/diary/DiaryCalendar";
 import { DiaryInsights } from "@/components/diary/DiaryInsights";
 import type { DiaryListItem } from "@/components/diary/types";
 import { moodIcons, moodLabels, type Mood } from "@/constants/categories";
-import { CONTENT_GAP, spacing } from "@/constants/uiTokens";
+import { CONTENT_GAP, layout, spacing } from "@/constants/uiTokens";
 
 type DiaryMode = "entries" | "calendar" | "insights";
 type InsightsRange = "7d" | "30d" | "90d";
@@ -247,11 +249,9 @@ export default function DiaryScreen() {
       <PageHero
         eyebrow="Daily capture"
         title="AI Diary"
-        description="Capture voice or typed reflections. Memora turns them into structured entries and insights."
+        description="Write, revisit, and understand the patterns running through your days."
         icon="book-open"
       />
-
-      <DiaryComposer onSubmit={handleSubmit} isSaving={isSaving} />
 
       <SegmentedControl<DiaryMode>
         options={[
@@ -264,19 +264,86 @@ export default function DiaryScreen() {
       />
 
       {mode === "entries" ? (
-        <YStack gap={10}>
-          <SearchBar
-            value={searchText}
-            onChangeText={setSearchText}
-            placeholder="Search your diary..."
-            isSearching={searchActive && searchResults === undefined}
-          />
-          <MoodFilterRow selected={moodFilter} onSelect={setMoodFilter} />
-        </YStack>
+        <WorkspaceSplit
+          splitAt={820}
+          asideWidth={330}
+          aside={
+            <SectionCard
+              title="Browse entries"
+              eyebrow="Diary context"
+              density="compact"
+              emphasis="quiet"
+            >
+              <SearchBar
+                value={searchText}
+                onChangeText={setSearchText}
+                placeholder="Search your diary..."
+                isSearching={searchActive && searchResults === undefined}
+              />
+              <MoodFilterRow selected={moodFilter} onSelect={setMoodFilter} />
+              <ResponsiveStatGrid
+                maximumColumns={2}
+                minimumColumnWidth={112}
+                items={[
+                  { label: searchActive ? "Matches" : "Loaded", value: entries.length },
+                  { label: "Mood", value: moodFilter ? moodLabels[moodFilter] : "All" },
+                ]}
+              />
+            </SectionCard>
+          }
+        >
+          <SectionCard
+            title="New reflection"
+            eyebrow="Daily capture"
+            density="compact"
+            emphasis="quiet"
+          >
+            <Text fontSize={12} lineHeight={17} color={theme.colorMuted.val}>
+              Speak naturally or type a thought. Analysis happens after you save.
+            </Text>
+            <DiaryComposer onSubmit={handleSubmit} isSaving={isSaving} />
+          </SectionCard>
+        </WorkspaceSplit>
       ) : null}
 
       {mode === "calendar" ? (
-        <YStack gap={CONTENT_GAP}>
+        <WorkspaceSplit
+          splitAt={760}
+          asideWidth={300}
+          aside={
+            <SectionCard
+              title={selectedDayKey ? "Selected day" : "Choose a day"}
+              eyebrow="Calendar context"
+              density="compact"
+              emphasis="quiet"
+            >
+              {selectedDayKey ? (
+                <YStack gap={10}>
+                  <Text fontSize={15} lineHeight={21} fontWeight="700" color={theme.color.val}>
+                    {new Date(`${selectedDayKey}T00:00:00`).toLocaleDateString(undefined, {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                    })}
+                  </Text>
+                  <ResponsiveStatGrid
+                    maximumColumns={1}
+                    items={[{ label: "Entries on this day", value: entries.length }]}
+                  />
+                  <Pressable onPress={() => setSelectedDayKey(null)} hitSlop={8}>
+                    <Text fontSize={12} fontWeight="700" color={theme.primary.val}>
+                      Clear selection
+                    </Text>
+                  </Pressable>
+                </YStack>
+              ) : (
+                <Text fontSize={12} lineHeight={18} color={theme.colorMuted.val}>
+                  Days with entries carry a mood marker. Select one to open its reflections below.
+                </Text>
+              )}
+            </SectionCard>
+          }
+        >
           <DiaryCalendar
             year={calendarYear}
             month={calendarMonth}
@@ -289,40 +356,27 @@ export default function DiaryScreen() {
               setSelectedDayKey(null);
             }}
           />
-          {selectedDayKey ? (
-            <XStack alignItems="center" justifyContent="space-between">
-              <Text fontSize={13} fontFamily="$body" fontWeight="700" color={theme.color.val}>
-                {new Date(`${selectedDayKey}T00:00:00`).toLocaleDateString(undefined, {
-                  weekday: "long",
-                  month: "long",
-                  day: "numeric",
-                })}
-              </Text>
-              <Pressable onPress={() => setSelectedDayKey(null)} hitSlop={8}>
-                <Text fontSize={12} fontFamily="$body" fontWeight="600" color={theme.primary.val}>
-                  Clear
-                </Text>
-              </Pressable>
-            </XStack>
-          ) : (
-            <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val} textAlign="center">
-              Tap a day to see its entries.
-            </Text>
-          )}
-        </YStack>
+        </WorkspaceSplit>
       ) : null}
 
       {mode === "insights" ? (
         <YStack gap={CONTENT_GAP}>
-          <SegmentedControl<InsightsRange>
-            options={[
-              { value: "7d", label: "Week" },
-              { value: "30d", label: "Month" },
-              { value: "90d", label: "3 Months" },
-            ]}
-            value={insightsRange}
-            onChange={setInsightsRange}
-          />
+          <SectionCard
+            title="Analysis window"
+            eyebrow="Patterns over time"
+            density="compact"
+            emphasis="quiet"
+          >
+            <SegmentedControl<InsightsRange>
+              options={[
+                { value: "7d", label: "Week" },
+                { value: "30d", label: "Month" },
+                { value: "90d", label: "3 Months" },
+              ]}
+              value={insightsRange}
+              onChange={setInsightsRange}
+            />
+          </SectionCard>
           {insightsData === undefined ? (
             <YStack gap={12}>
               <Skeleton height={56} borderRadius={14} />
@@ -344,7 +398,7 @@ export default function DiaryScreen() {
       flex={1}
       backgroundColor={theme.background.val}
       width="100%"
-      maxWidth={isLargeScreen ? 1100 : undefined}
+      maxWidth={layout.standardMaxWidth}
       alignSelf="center"
     >
       <AppList<DiaryListItem>

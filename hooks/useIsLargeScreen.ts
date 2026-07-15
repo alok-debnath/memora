@@ -1,6 +1,5 @@
-import { useWindowDimensions } from "react-native";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 
 export function useIsLargeScreen() {
-  const { width } = useWindowDimensions();
-  return width >= 768;
+  return !useResponsiveLayout().isCompact;
 }
