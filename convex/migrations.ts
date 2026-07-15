@@ -150,6 +150,22 @@ export const runAttachmentDeletionFlagBackfill = migrations.runner([
   internal.migrations.backfillAttachmentDeletionFlag,
 ]);
 
+/** Backfill the denormalized admin-search field (see users.searchText in schema.ts). */
+export const backfillUserSearchText = migrations.define({
+  table: "users",
+  batchSize: 100,
+  migrateOne: async (_ctx, user) => {
+    const searchText = `${user.name} ${user.email}`.toLowerCase();
+    if (user.searchText !== searchText) {
+      return { searchText };
+    }
+  },
+});
+
+export const runUserSearchTextBackfill = migrations.runner([
+  internal.migrations.backfillUserSearchText,
+]);
+
 async function repairTopicMetadataForUser(
   ctx: Pick<ActionCtx, "runQuery" | "runMutation">,
   userId: Id<"users">,

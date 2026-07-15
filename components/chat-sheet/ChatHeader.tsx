@@ -7,10 +7,16 @@ import { PressableScale } from "@/components/ui/PressableScale";
 
 export const ChatHeader = React.memo(function ChatHeader({
   messageCount,
+  title,
+  showingConversations,
+  onToggleConversations,
   onClear,
   onClose,
 }: {
   messageCount: number;
+  title?: string;
+  showingConversations?: boolean;
+  onToggleConversations?: () => void;
   onClear: () => void;
   onClose: () => void;
 }) {
@@ -46,16 +52,31 @@ export const ChatHeader = React.memo(function ChatHeader({
             color={theme.color.val}
             numberOfLines={1}
           >
-            Memora
+            {showingConversations ? "Chats" : (title ?? "Memora")}
           </Text>
           <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val} numberOfLines={1}>
-            {messageCount === 0 ? "Memory chat" : `${messageCount} messages`}
+            {showingConversations
+              ? "Pick or start a conversation"
+              : messageCount === 0
+                ? "Memory chat"
+                : `${messageCount} messages`}
           </Text>
         </YStack>
       </XStack>
 
       <XStack alignItems="center" gap={2}>
-        {messageCount > 0 ? (
+        {onToggleConversations ? (
+          <PressableScale onPress={onToggleConversations}>
+            <XStack alignItems="center" justifyContent="center" width={36} height={36}>
+              <Feather
+                name={showingConversations ? "message-circle" : "list"}
+                size={16}
+                color={showingConversations ? theme.primary.val : theme.colorMuted.val}
+              />
+            </XStack>
+          </PressableScale>
+        ) : null}
+        {messageCount > 0 && !showingConversations ? (
           <PressableScale onPress={onClear}>
             <XStack alignItems="center" justifyContent="center" width={36} height={36}>
               <Feather name="trash-2" size={15} color={theme.colorMuted.val} />

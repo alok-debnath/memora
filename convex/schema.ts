@@ -60,11 +60,14 @@ export default defineSchema({
         aiPersonality: v.optional(v.string()),
       }),
     ),
+    /** Denormalized lowercase "name email" for the admin user-directory search index. */
+    searchText: v.optional(v.string()),
   })
     .index("by_email", ["email"])
     .index("by_token_identifier", ["tokenIdentifier"])
     .index("by_user_type", ["userType"])
-    .index("by_analytics_subject_id", ["analyticsSubjectId"]),
+    .index("by_analytics_subject_id", ["analyticsSubjectId"])
+    .searchIndex("search_text", { searchField: "searchText" }),
 
   memories: defineTable({
     userId: v.id("users"),
@@ -514,6 +517,8 @@ export default defineSchema({
     encryptionVersion: v.optional(v.number()),
   })
     .index("by_user", ["userId"])
+    .index("by_user_mood", ["userId", "mood"])
+    .index("by_embeddingState", ["embeddingState"])
     .searchIndex("search_text", {
       searchField: "searchText",
       filterFields: ["userId"],
@@ -640,6 +645,8 @@ export default defineSchema({
         isCached: v.optional(v.boolean()),
         turns: v.optional(v.number()),
         flow: v.optional(v.any()),
+        /** Typed failure surface for the turn (spend_cap, rate_limited, cancelled, …). */
+        error: v.optional(v.object({ code: v.string(), detail: v.optional(v.string()) })),
       }),
     ),
     /** True while the assistant reply is still being streamed into content. */
@@ -649,6 +656,68 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_user_conversation", ["userId", "conversationId"]),
+
+  /**
+   * Platform-wide daily rollup for the admin dashboards, written once per day
+   * by the adminStatsRollup cron — admin queries read this instead of
+   * re-scanning users/preferences/summaries on every render.
+   */
+  adminDailyStats: defineTable({
+    dayKey: v.string(),
+    totalUsers: v.number(),
+    byokUsers: v.number(),
+    newUsers30d: v.number(),
+    powerUsers: v.number(),
+    casualUsers: v.number(),
+    /** All-time cross-user sums (from userMemoryStats / userAnalyticsSummary). */
+    totalMemories: v.optional(v.number()),
+    totalReminders: v.optional(v.number()),
+    totalDiaryEntries: v.optional(v.number()),
+    totalChatMessages: v.optional(v.number()),
+    totalAttachmentUploads: v.optional(v.number()),
+    allTimeAiRequests: v.optional(v.number()),
+    allTimeAiCostUsdMicros: v.optional(v.number()),
+    allTimeMemoraAiCostUsdMicros: v.optional(v.number()),
+    allTimeByokAiCostUsdMicros: v.optional(v.number()),
+    allTimeAiInputTokens: v.optional(v.number()),
+    allTimeAiOutputTokens: v.optional(v.number()),
+    allTimeSearches: v.optional(v.number()),
+    /** True when a source scan hit its cap and counts are lower bounds. */
+    truncated: v.optional(v.boolean()),
+    updatedAt: v.number(),
+  }).index("by_day", ["dayKey"]),
+
+  /**
+   * Operational health alerts raised by crons (stuck embeddings, …) and
+   * surfaced on the admin System screen. One row per alert key; resolved
+   * alerts keep the row with resolvedAt set.
+   */
+  systemAlerts: defineTable({
+    key: v.string(),
+    severity: v.union(v.literal("info"), v.literal("warning"), v.literal("critical")),
+    title: v.string(),
+    message: v.string(),
+    count: v.optional(v.number()),
+    updatedAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+  }).index("by_key", ["key"]),
+
+  /** Chat threads. chatMessages.conversationId holds String(_id) of a row here. */
+  chatConversations: defineTable({
+    userId: v.id("users"),
+    title: v.string(),
+    lastMessageAt: v.number(),
+    archived: v.optional(v.boolean()),
+  }).index("by_user_lastMessageAt", ["userId", "lastMessageAt"]),
+
+  /**
+   * Cooperative stop signal for an in-flight chat turn. The planner loop
+   * checks this between iterations; the row is cleared at turn start/end.
+   */
+  chatCancelRequests: defineTable({
+    userId: v.id("users"),
+    requestedAt: v.number(),
+  }).index("by_user", ["userId"]),
 
   sessions: defineTable({
     userId: v.id("users"),
@@ -776,6 +845,8 @@ export default defineSchema({
     userId: v.id("users"),
     byokEnabled: v.boolean(),
     preferredProvider: aiProviderValidator,
+    /** Admin-set per-user override of the platform daily spend cap (USD micros); undefined = platform default. */
+    dailySpendCapUsdMicros: v.optional(v.number()),
     capabilityModels: v.optional(v.record(v.string(), v.string())),
     providerModels: v.optional(v.record(v.string(), v.record(v.string(), v.string()))),
     targetEmbeddingFingerprint: v.optional(v.string()),
@@ -787,7 +858,9 @@ export default defineSchema({
     embeddingRebuildTotal: v.optional(v.number()),
     embeddingRebuildError: v.optional(v.string()),
     updatedAt: v.number(),
-  }).index("by_user", ["userId"]),
+  })
+    .index("by_user", ["userId"])
+    .index("by_rebuild_status", ["embeddingRebuildStatus"]),
 
   userAiProviderSecrets: defineTable({
     userId: v.id("users"),
@@ -836,7 +909,9 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_created_at", ["createdAt"])
-    .index("by_actor_and_created_at", ["actorUserId", "createdAt"]),
+    .index("by_actor_and_created_at", ["actorUserId", "createdAt"])
+    .index("by_action_and_created_at", ["action", "createdAt"])
+    .index("by_target_type_and_created_at", ["targetType", "createdAt"]),
 
   adminUserWatchlist: defineTable({
     userId: v.id("users"),

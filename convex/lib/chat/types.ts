@@ -106,7 +106,14 @@ export type ChatMessageMeta = {
   isCached?: boolean;
   turns?: number;
   flow?: unknown;
+  // `string` (not ChatErrorCode) because the Convex validator can't express
+  // the literal union — producers still use ChatErrorCode.
+  error?: { code: string; detail?: string };
 };
+
+/** Typed failure surface for a chat turn — keep in sync with schema/chat.ts/components. */
+export type ChatErrorCode =
+  "spend_cap" | "provider_auth" | "rate_limited" | "network" | "cancelled" | "unknown";
 
 export type KnowledgeDigest = {
   totalMemories: number;

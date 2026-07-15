@@ -5,7 +5,12 @@ import type OpenAI from "openai";
 import { api, internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { action } from "../_generated/server";
-import { extractTextContent, resolveAiRoute, trackedChatCompletionStream } from "../lib/aiDispatch";
+import {
+  extractTextContent,
+  isSpendCapError,
+  resolveAiRoute,
+  trackedChatCompletionStream,
+} from "../lib/aiDispatch";
 import { createReplyStreamer } from "../lib/chat/replyStreamer";
 import { extractChatAttachmentsForConversation, parseAttachments } from "../lib/chat/attachments";
 import {
@@ -43,6 +48,7 @@ import {
 import type {
   ChatAttachmentExtraction,
   ChatAttachmentRecord,
+  ChatErrorCode,
   ChatMessageMeta,
   CardSnapshot,
   KnowledgeDigest,
@@ -64,6 +70,43 @@ const driveAttachmentArg = v.object({
 const ACTION_INTENT_PATTERN =
   /\b(delete|remove|restore|undo|sync|resync|retry|unsync|disconnect|edit|update|change|modify|fix|rename|move|convert|turn|make|remember|save|note|add|capture|store|remind me)\b/i;
 
+const GENERIC_FAILURE_TEXT =
+  "I'm having trouble connecting right now. Please try again in a moment.";
+
+/** Maps a thrown turn error to a typed code + user-facing copy (see ChatErrorCode). */
+function classifyTurnError(error: unknown): { code: ChatErrorCode; message: string } {
+  if (isSpendCapError(error)) {
+    return {
+      code: "spend_cap",
+      message:
+        "You've reached today's AI usage limit. It resets at midnight UTC — or add your own API key in Profile → AI Providers to keep going.",
+    };
+  }
+  const status = (error as { status?: unknown } | null)?.status;
+  if (status === 401 || status === 403) {
+    return {
+      code: "provider_auth",
+      message:
+        "The AI provider rejected the configured credentials. If you use your own API key, check it in Profile → AI Providers.",
+    };
+  }
+  if (status === 429) {
+    return {
+      code: "rate_limited",
+      message:
+        "The AI provider is rate-limiting requests right now. Give it a few seconds and try again.",
+    };
+  }
+  const message = (error as { message?: unknown } | null)?.message;
+  if (
+    typeof message === "string" &&
+    /fetch failed|network|timeout|ECONNRESET|ETIMEDOUT/i.test(message)
+  ) {
+    return { code: "network", message: GENERIC_FAILURE_TEXT };
+  }
+  return { code: "unknown", message: GENERIC_FAILURE_TEXT };
+}
+
 type ChatActionResult = {
   reply: string;
   attachmentFailures: Array<{ name: string; reason: string }>;
@@ -80,6 +123,7 @@ export const chat = action({
   args: {
     token: v.string(),
     message: v.string(),
+    conversationId: v.optional(v.string()),
     currentTime: v.optional(v.string()),
     currentTimezone: v.optional(v.string()),
     attachments: v.optional(v.array(driveAttachmentArg)),
@@ -105,16 +149,29 @@ export const chat = action({
       ctx.runMutation(internal.chat.send, {
         userId: session._id,
         content: args.message,
+        conversationId: args.conversationId,
         role: "user",
       }),
     ]);
     const analyticsLink = {
       chatTurnId: chatMessageId,
       chatMessageId,
+      conversationId: args.conversationId,
     } as const;
-    await ctx.runMutation(internal.chat.clearSearchStatus, {
-      userId: session._id,
-    });
+    await Promise.all([
+      ctx.runMutation(internal.chat.clearSearchStatus, { userId: session._id }),
+      // Stale Stop presses from a previous turn must not cancel this one.
+      ctx.runMutation(internal.chat.clearCancelRequestInternal, { userId: session._id }),
+      ...(args.conversationId
+        ? [
+            ctx.runMutation(internal.chat.touchConversationInternal, {
+              userId: session._id,
+              conversationId: args.conversationId,
+              firstUserMessage: args.message,
+            }),
+          ]
+        : []),
+    ]);
 
     const setStreamingStatus = async (status: StreamingStatus) => {
       await ctx.runMutation(internal.chat.setSearchStatus, {
@@ -170,6 +227,7 @@ export const chat = action({
     const [chatHistory, knowledgeDigest, extractedChatAttachments] = await Promise.all([
       ctx.runQuery(api.chat.list, {
         token: args.token,
+        conversationId: args.conversationId,
         limit: HISTORY_CONTEXT_MESSAGES,
       }) as Promise<ChatHistoryItem[]>,
       ctx
@@ -218,9 +276,9 @@ export const chat = action({
     }));
     const chatToolDefinitions = getChatToolDefinitions(args.message);
 
-    let aiResponse = "I'm having trouble connecting right now. Please try again in a moment.";
+    let aiResponse = GENERIC_FAILURE_TEXT;
     let responseMeta: ChatMessageMeta | undefined;
-    const replyStreamer = createReplyStreamer(ctx, session._id);
+    const replyStreamer = createReplyStreamer(ctx, session._id, args.conversationId);
 
     // Hoisted so the catch block below can recover a partially completed
     // turn: writes (create/update memory, reminder sync) commit to the DB
@@ -246,7 +304,7 @@ export const chat = action({
     ): Promise<{ resolvedText: string; meta: ChatMessageMeta | undefined }> => {
       if (!state) {
         return {
-          resolvedText: "I'm having trouble connecting right now. Please try again in a moment.",
+          resolvedText: GENERIC_FAILURE_TEXT,
           meta: undefined,
         };
       }
@@ -522,8 +580,17 @@ export const chat = action({
       };
 
       let forceRespondNextIteration = false;
+      let cancelled = false;
       for (let iteration = 0; iteration < MAX_ITERATIONS; iteration += 1) {
         finalIteration = iteration;
+        // Cooperative stop: the Stop button sets a per-user flag; honor it
+        // between planner iterations (mid-completion tokens still bill).
+        if (iteration > 0) {
+          cancelled = await ctx.runQuery(internal.chat.getCancelRequestInternal, {
+            userId: session._id,
+          });
+          if (cancelled) break;
+        }
         await setStreamingStatus({
           phase: "thinking",
           toolName: "planner",
@@ -736,11 +803,25 @@ export const chat = action({
       }
 
       const outcome = await finalizeFromState(finalText);
-      aiResponse = outcome.resolvedText;
-      responseMeta = outcome.meta;
-      await ctx.runMutation(internal.chat.clearSearchStatus, {
-        userId: session._id,
-      });
+      if (cancelled && !turnState.respondCalled) {
+        // Stopped mid-turn. Committed writes still get their confirmation;
+        // a pure read/answer turn just acknowledges the stop.
+        aiResponse =
+          turnState.writeToolCalled || turnState.pendingCardIds.size > 0
+            ? outcome.resolvedText
+            : "Stopped. Send a new message whenever you're ready.";
+        responseMeta = {
+          ...(outcome.meta ?? {}),
+          error: { code: "cancelled" },
+        };
+      } else {
+        aiResponse = outcome.resolvedText;
+        responseMeta = outcome.meta;
+      }
+      await Promise.all([
+        ctx.runMutation(internal.chat.clearSearchStatus, { userId: session._id }),
+        ctx.runMutation(internal.chat.clearCancelRequestInternal, { userId: session._id }),
+      ]);
     } catch (error) {
       console.error("chat turn failed", {
         userId: session._id,
@@ -756,6 +837,7 @@ export const chat = action({
       // Reporting "trouble connecting" in that case is actively wrong: the
       // change happened, and a user retry would create a duplicate. Recover
       // the write confirmation + any surfaced cards from turn state instead.
+      const classified = classifyTurnError(error);
       if (state && (state.writeToolCalled || state.pendingCardIds.size > 0)) {
         try {
           const outcome = await finalizeFromState(state.finalMessage);
@@ -767,12 +849,12 @@ export const chat = action({
             chatMessageId,
             error: finalizeError,
           });
-          aiResponse = "I'm having trouble connecting right now. Please try again in a moment.";
-          responseMeta = undefined;
+          aiResponse = classified.message;
+          responseMeta = { error: { code: classified.code } };
         }
       } else {
-        aiResponse = "I'm having trouble connecting right now. Please try again in a moment.";
-        responseMeta = undefined;
+        aiResponse = classified.message;
+        responseMeta = { error: { code: classified.code } };
       }
     }
 

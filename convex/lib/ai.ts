@@ -120,13 +120,30 @@ export const PROVIDER_MODELS: Record<AiProvider, AiProviderModel[]> = {
       capabilities: ["chat", "structured_text", "vision"],
     },
     {
+      id: "gemini-2.5-flash",
+      label: "Gemini 2.5 Flash",
+      capabilities: ["chat", "structured_text", "vision"],
+    },
+    {
+      id: "gemini-2.5-flash-lite",
+      label: "Gemini 2.5 Flash-Lite",
+      capabilities: ["chat", "structured_text", "vision"],
+    },
+    {
+      id: "gemini-2.5-pro",
+      label: "Gemini 2.5 Pro",
+      capabilities: ["chat", "structured_text", "vision"],
+    },
+    // Deprecated preview ids kept so existing user selections keep resolving;
+    // hidden from nothing yet — prefer the GA ids above for new selections.
+    {
       id: "gemini-2.5-flash-preview-04-17",
-      label: "Gemini 2.5 Flash Preview",
+      label: "Gemini 2.5 Flash Preview (deprecated)",
       capabilities: ["chat", "structured_text", "vision"],
     },
     {
       id: "gemini-2.5-pro-preview-05-06",
-      label: "Gemini 2.5 Pro Preview",
+      label: "Gemini 2.5 Pro Preview (deprecated)",
       capabilities: ["chat", "structured_text", "vision"],
     },
     {
@@ -152,10 +169,10 @@ export const PROVIDER_DEFAULT_MODELS: Record<AiProvider, Partial<Record<AiCapabi
     image_generation: "gpt-image-1",
   },
   google: {
-    chat: "gemini-2.0-flash",
-    structured_text: "gemini-2.0-flash",
+    chat: "gemini-2.5-flash",
+    structured_text: "gemini-2.5-flash",
     embeddings: "gemini-embedding-001",
-    vision: "gemini-2.0-flash",
+    vision: "gemini-2.5-flash",
   },
 };
 
@@ -177,18 +194,18 @@ export type AiRoutingEntry = {
 export const DEFAULT_ROUTING: Record<AiCapability, AiRoutingEntry> = {
   chat: {
     provider: "openai",
-    model: "gpt-4o-mini",
+    model: "gpt-4.1-mini",
     enabled: true,
     fallbackProvider: "google",
-    fallbackModel: "gemini-2.0-flash",
+    fallbackModel: "gemini-2.5-flash",
     fallbackEnabled: true,
   },
   structured_text: {
     provider: "openai",
-    model: "gpt-4o-mini",
+    model: "gpt-4.1-mini",
     enabled: true,
     fallbackProvider: "google",
-    fallbackModel: "gemini-2.0-flash",
+    fallbackModel: "gemini-2.5-flash",
     fallbackEnabled: true,
   },
   embeddings: {
@@ -204,7 +221,7 @@ export const DEFAULT_ROUTING: Record<AiCapability, AiRoutingEntry> = {
     model: "gpt-4o",
     enabled: true,
     fallbackProvider: "google",
-    fallbackModel: "gemini-2.0-flash",
+    fallbackModel: "gemini-2.5-flash",
     fallbackEnabled: true,
   },
   transcription: {

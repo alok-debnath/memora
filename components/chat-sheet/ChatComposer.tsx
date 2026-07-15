@@ -1,7 +1,7 @@
 import React, { type ComponentRef, useCallback, useEffect, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 import * as Haptics from "expo-haptics";
-import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import { SheetTextInput as BottomSheetTextInput } from "@/components/ui/SheetTextInput";
 import { YStack, Text } from "tamagui";
 import { Feather } from "@/lib/icons";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -48,6 +48,9 @@ function GhostIconButton({
 export const ChatComposer = React.memo(function ChatComposer({
   isSending,
   onSend,
+  onStop,
+  prefillText,
+  onPrefillConsumed,
   attachments,
   onRemoveAttachment,
   onPickImages,
@@ -58,6 +61,9 @@ export const ChatComposer = React.memo(function ChatComposer({
 }: {
   isSending: boolean;
   onSend: (text: string) => Promise<void>;
+  onStop?: () => void;
+  prefillText?: string | null;
+  onPrefillConsumed?: () => void;
   attachments: PendingAttachment[];
   onRemoveAttachment: (id: string) => void;
   onPickImages: () => void;
@@ -71,6 +77,15 @@ export const ChatComposer = React.memo(function ChatComposer({
   const [mode, setMode] = useState<"keyboard" | "voice">("keyboard");
   const inputRef = useRef<ComponentRef<typeof BottomSheetTextInput>>(null);
   const recorderRef = useRef<VoiceRecorderHandle>(null);
+
+  // Edit-and-resend: one-shot prefill from a previous user message.
+  useEffect(() => {
+    if (prefillText == null) return;
+    setMode("keyboard");
+    setText(prefillText);
+    onPrefillConsumed?.();
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, [prefillText, onPrefillConsumed]);
 
   const hasAttachments = attachments.length > 0;
   const canSend = (text.trim().length > 0 || hasAttachments) && !isSending;
@@ -218,25 +233,45 @@ export const ChatComposer = React.memo(function ChatComposer({
 
               <GhostIconButton icon="mic" onPress={() => setMode("voice")} />
 
-              <Pressable onPress={submit} disabled={!canSend} hitSlop={6}>
-                {({ pressed }) => (
-                  <View
-                    style={[
-                      styles.sendButton,
-                      {
-                        backgroundColor: canSend ? theme.primary.val : theme.borderColor.val,
-                        opacity: pressed ? 0.8 : 1,
-                      },
-                    ]}
-                  >
-                    <Feather
-                      name="arrow-up"
-                      size={17}
-                      color={canSend ? theme.textInverse.val : theme.colorMuted.val}
-                    />
-                  </View>
-                )}
-              </Pressable>
+              {isSending && onStop ? (
+                // Cooperative stop for the in-flight turn (takes effect at the
+                // next planner checkpoint).
+                <Pressable onPress={onStop} hitSlop={6}>
+                  {({ pressed }) => (
+                    <View
+                      style={[
+                        styles.sendButton,
+                        {
+                          backgroundColor: theme.destructive.val,
+                          opacity: pressed ? 0.8 : 1,
+                        },
+                      ]}
+                    >
+                      <Feather name="square" size={15} color={theme.textInverse.val} />
+                    </View>
+                  )}
+                </Pressable>
+              ) : (
+                <Pressable onPress={submit} disabled={!canSend} hitSlop={6}>
+                  {({ pressed }) => (
+                    <View
+                      style={[
+                        styles.sendButton,
+                        {
+                          backgroundColor: canSend ? theme.primary.val : theme.borderColor.val,
+                          opacity: pressed ? 0.8 : 1,
+                        },
+                      ]}
+                    >
+                      <Feather
+                        name="arrow-up"
+                        size={17}
+                        color={canSend ? theme.textInverse.val : theme.colorMuted.val}
+                      />
+                    </View>
+                  )}
+                </Pressable>
+              )}
             </>
           )}
         </View>

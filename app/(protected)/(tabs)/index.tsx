@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, FlatList, type ListRenderItemInfo, Platform, Share } from "react-native";
+import { Alert, Platform, Share } from "react-native";
+import { AppList, type ListRenderItemInfo } from "@/components/ui/AppList";
 import * as Clipboard from "expo-clipboard";
 import { Feather } from "@/lib/icons";
 import * as Haptics from "expo-haptics";
@@ -859,7 +860,7 @@ export default function HomeScreen() {
 
   return (
     <YStack flex={1} backgroundColor={theme.background.val}>
-      <FlatList<FeedRow>
+      <AppList<FeedRow>
         data={isLoading ? [] : visibleFeed}
         keyExtractor={feedKeyExtractor}
         renderItem={renderFeedItem}

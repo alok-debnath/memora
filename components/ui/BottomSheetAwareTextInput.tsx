@@ -1,5 +1,5 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
-import { findNodeHandle, TextInput, type TextInputProps } from "react-native";
+import { findNodeHandle, Platform, TextInput, type TextInputProps } from "react-native";
 import { useBottomSheetInternal } from "@gorhom/bottom-sheet";
 
 /**
@@ -7,7 +7,7 @@ import { useBottomSheetInternal } from "@gorhom/bottom-sheet";
  * using Gesture Handler's TextInput wrapper. Keeping the native input allows
  * the surrounding BottomSheetScrollView to take over a vertical drag.
  */
-export const BottomSheetAwareTextInput = forwardRef<TextInput, TextInputProps>(
+const NativeBottomSheetAwareTextInput = forwardRef<TextInput, TextInputProps>(
   function BottomSheetAwareTextInput({ onBlur, onFocus, ...props }, forwardedRef) {
     const inputRef = useRef<TextInput>(null);
     const { animatedKeyboardState, textInputNodesRef } = useBottomSheetInternal();
@@ -66,3 +66,13 @@ export const BottomSheetAwareTextInput = forwardRef<TextInput, TextInputProps>(
     );
   },
 );
+
+// Keyboard coordination is a native-only concern, and the implementation above
+// relies on findNodeHandle and TextInput.State.currentlyFocusedInput, neither
+// of which react-native-web supports.
+export const BottomSheetAwareTextInput =
+  Platform.OS === "web"
+    ? forwardRef<TextInput, TextInputProps>(function BottomSheetAwareTextInputWeb(props, ref) {
+        return <TextInput ref={ref} {...props} />;
+      })
+    : NativeBottomSheetAwareTextInput;

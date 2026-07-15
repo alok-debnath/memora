@@ -5,32 +5,19 @@ import { Text, XStack, YStack } from "tamagui";
 
 import { api } from "@/convex/_generated/api";
 import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
 import { useAdminState } from "@/components/admin/AdminStateContext";
+import { AdminStatTile } from "@/components/admin/AdminStatTile";
+import { DonutChart } from "@/components/admin/charts/DonutChart";
+import { formatCompactNumber, formatUsdMicros } from "@/components/admin/charts/palette";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { InteractiveTimelineChart } from "@/components/admin/InteractiveTimelineChart";
 import { useSemanticColors } from "@/hooks/useSemanticColors";
 
-function formatCompact(value: number) {
-  return new Intl.NumberFormat(undefined, {
-    notation: "compact",
-    maximumFractionDigits: value >= 1000 ? 1 : 0,
-  }).format(value);
-}
-
-function formatUsdMicros(value: number) {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  }).format(value / 1_000_000);
-}
-
 export default function AdminAnalyticsLabScreen() {
   const theme = useAppTheme();
   const semantic = useSemanticColors();
-  const { range, segmentFamily, compareMode, refreshKey, setSelectedTimepoint } = useAdminState();
-  const data = useQuery(api.admin.analyticsLab, { range, segmentFamily, compareMode, refreshKey });
+  const { range, segmentFamily, compareMode, setSelectedTimepoint } = useAdminState();
+  const data = useQuery(api.admin.analyticsLab, { range, segmentFamily, compareMode });
 
   if (!data) {
     return (
@@ -73,53 +60,14 @@ export default function AdminAnalyticsLabScreen() {
 
       <YStack>
         <XStack gap={10} flexWrap="wrap">
-          <Card style={{ borderRadius: 16, flex: 1, minWidth: 180 }}>
-            <Text fontSize={12} color={theme.colorMuted.val}>
-              AI in range
-            </Text>
-            <Text
-              marginTop={4}
-              fontSize={24}
-              fontFamily="$heading"
-              fontWeight="700"
-              color={theme.color.val}
-            >
-              {formatCompact(totalAi)}
-            </Text>
-          </Card>
-          <Card style={{ borderRadius: 16, flex: 1, minWidth: 180 }}>
-            <Text fontSize={12} color={theme.colorMuted.val}>
-              Searches in range
-            </Text>
-            <Text
-              marginTop={4}
-              fontSize={24}
-              fontFamily="$heading"
-              fontWeight="700"
-              color={theme.color.val}
-            >
-              {formatCompact(totalSearches)}
-            </Text>
-          </Card>
-          <Card style={{ borderRadius: 16, flex: 1, minWidth: 180 }}>
-            <Text fontSize={12} color={theme.colorMuted.val}>
-              Estimated cost
-            </Text>
-            <Text
-              marginTop={4}
-              fontSize={24}
-              fontFamily="$heading"
-              fontWeight="700"
-              color={theme.color.val}
-            >
-              {formatUsdMicros(totalCost)}
-            </Text>
-          </Card>
+          <AdminStatTile label="AI in range" value={formatCompactNumber(totalAi)} />
+          <AdminStatTile label="Searches in range" value={formatCompactNumber(totalSearches)} />
+          <AdminStatTile label="Estimated cost" value={formatUsdMicros(totalCost)} />
         </XStack>
       </YStack>
 
       <Card style={{ borderRadius: 16 }}>
-        <YStack gap={10}>
+        <YStack gap={12}>
           <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
             Segment Distribution
           </Text>
@@ -128,19 +76,13 @@ export default function AdminAnalyticsLabScreen() {
               No segment data available.
             </Text>
           ) : (
-            data.segments.map((segment: any) => (
-              <XStack key={segment.key} justifyContent="space-between" alignItems="center">
-                <YStack>
-                  <Text fontSize={13} fontWeight="700" color={theme.color.val}>
-                    {segment.label}
-                  </Text>
-                  <Text fontSize={11} color={theme.colorMuted.val}>
-                    {segment.key}
-                  </Text>
-                </YStack>
-                <Badge label={formatCompact(segment.users)} color={semantic.status.info} />
-              </XStack>
-            ))
+            <DonutChart
+              slices={data.segments.map((segment: { label: string; users: number }) => ({
+                label: segment.label,
+                value: segment.users,
+              }))}
+              centerLabel={segmentFamily}
+            />
           )}
         </YStack>
       </Card>

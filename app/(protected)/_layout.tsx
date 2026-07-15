@@ -5,6 +5,8 @@ import { Text, XStack, YStack } from "tamagui";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AppButton } from "@/components/ui/AppButton";
+import { OfflineBanner } from "@/components/ui/OfflineBanner";
+import { ScreenErrorBoundary } from "@/components/ui/ScreenErrorBoundary";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
@@ -246,24 +248,30 @@ export default function ProtectedLayout() {
   if (isLargeScreen && !isTabPath(pathname)) {
     return (
       <>
-        <DesktopProtectedShell />
+        <ScreenErrorBoundary label="This page">
+          <DesktopProtectedShell />
+        </ScreenErrorBoundary>
         <DeferredProtectedSheetHost />
+        <OfflineBanner />
       </>
     );
   }
 
   return (
     <>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: theme.background.val },
-          animation: Platform.OS === "android" ? "ios_from_right" : "default",
-          gestureEnabled: true,
-          freezeOnBlur: true,
-        }}
-      />
+      <ScreenErrorBoundary label="This page">
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: theme.background.val },
+            animation: Platform.OS === "android" ? "ios_from_right" : "default",
+            gestureEnabled: true,
+            freezeOnBlur: true,
+          }}
+        />
+      </ScreenErrorBoundary>
       <DeferredProtectedSheetHost />
+      <OfflineBanner />
     </>
   );
 }

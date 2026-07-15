@@ -45,7 +45,13 @@ export type ChatMessageMeta = {
   isCached?: boolean;
   turns?: number;
   flow?: unknown;
+  // `string` to match the Convex validator; compare against ChatErrorCode values.
+  error?: { code: string; detail?: string };
 };
+
+/** Mirror of convex/lib/chat/types.ts ChatErrorCode. */
+export type ChatErrorCode =
+  "spend_cap" | "provider_auth" | "rate_limited" | "network" | "cancelled" | "unknown";
 
 export type ChatMsg = {
   _id: string;

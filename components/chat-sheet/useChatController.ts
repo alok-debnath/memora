@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
 import * as Haptics from "expo-haptics";
+import * as Speech from "expo-speech";
 import { useAction, useMutation, useQuery } from "convex/react";
 import type { BottomSheetFlatListMethods } from "@gorhom/bottom-sheet";
 import { api } from "@/convex/_generated/api";
@@ -68,7 +69,15 @@ export function useChatController(): ChatSheetController {
   const openEditMemory = useUIStore((state) => state.openEditMemory);
   const token = auth.token;
 
-  const messages = useQuery(api.chat.list, token ? { token, limit: 100 } : "skip") ?? NO_MESSAGES;
+  // null = the main thread (messages without a conversationId).
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+
+  const messages =
+    useQuery(
+      api.chat.list,
+      token ? { token, conversationId: activeConversationId ?? undefined, limit: 100 } : "skip",
+    ) ?? NO_MESSAGES;
+  const conversations = useQuery(api.chat.listConversations, token ? { token } : "skip");
   const searchStatus = useQuery(api.chat.getSearchStatus, token ? { token } : "skip");
   const googleIntegration = useQuery(
     api.integrations.getGoogleIntegration,
@@ -76,6 +85,10 @@ export function useChatController(): ChatSheetController {
   );
   const sendMessage = useAction(api.actions.memoryChat.chat);
   const clearChat = useMutation(api.chat.clear);
+  const requestCancel = useMutation(api.chat.requestCancel);
+  const createConversationMutation = useMutation(api.chat.createConversation);
+  const renameConversationMutation = useMutation(api.chat.renameConversation);
+  const archiveConversationMutation = useMutation(api.chat.archiveConversation);
 
   const driveConnected = canUseGoogleDrive(googleIntegration ?? null);
   const calendarSyncEnabled = canUseGoogleCalendar(googleIntegration ?? null);
@@ -94,6 +107,9 @@ export function useChatController(): ChatSheetController {
   const [isSending, setIsSending] = useState(false);
   const [editTargetId, setEditTargetId] = useState<Id<"memories"> | null>(null);
   const [optimisticMessage, setOptimisticMessage] = useState<ChatMsg | null>(null);
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+  // Composer prefill for edit-and-resend; consumed once by ChatComposer.
+  const [prefillText, setPrefillText] = useState<string | null>(null);
 
   const flatListRef = useRef<BottomSheetFlatListMethods | null>(null);
 
@@ -123,6 +139,71 @@ export function useChatController(): ChatSheetController {
       });
     },
     [showToast],
+  );
+
+  const speakMessage = useCallback(
+    (id: string, text: string) => {
+      void Speech.stop();
+      if (speakingId === id) {
+        setSpeakingId(null);
+        return;
+      }
+      if (!text.trim()) return;
+      setSpeakingId(id);
+      Speech.speak(text, {
+        language: "en",
+        onDone: () => setSpeakingId((current) => (current === id ? null : current)),
+        onStopped: () => setSpeakingId((current) => (current === id ? null : current)),
+        onError: () => setSpeakingId((current) => (current === id ? null : current)),
+      });
+    },
+    [speakingId],
+  );
+
+  // Stop any playback when the controller unmounts (sheet closes).
+  useEffect(() => () => void Speech.stop(), []);
+
+  const handleStop = useCallback(() => {
+    if (!token) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    requestCancel({ token }).catch(() => {});
+  }, [requestCancel, token]);
+
+  const selectConversation = useCallback((conversationId: string | null) => {
+    setActiveConversationId(conversationId);
+  }, []);
+
+  const createNewConversation = useCallback(async () => {
+    if (!token) return;
+    try {
+      const id = await createConversationMutation({ token });
+      setActiveConversationId(id);
+    } catch {
+      showToast({ title: "Couldn't create chat", tone: "error" });
+    }
+  }, [createConversationMutation, showToast, token]);
+
+  const renameConversation = useCallback(
+    (conversationId: string, title: string) => {
+      if (!token) return;
+      renameConversationMutation({ token, conversationId, title }).catch(() => {
+        showToast({ title: "Couldn't rename chat", tone: "error" });
+      });
+    },
+    [renameConversationMutation, showToast, token],
+  );
+
+  const archiveConversation = useCallback(
+    (conversationId: string) => {
+      if (!token) return;
+      if (activeConversationId === conversationId) {
+        setActiveConversationId(null);
+      }
+      archiveConversationMutation({ token, conversationId }).catch(() => {
+        showToast({ title: "Couldn't archive chat", tone: "error" });
+      });
+    },
+    [activeConversationId, archiveConversationMutation, showToast, token],
   );
 
   const handleSend = useCallback(
@@ -162,6 +243,7 @@ export function useChatController(): ChatSheetController {
         const response = await sendMessage({
           token,
           message: text.trim() || " ",
+          conversationId: activeConversationId ?? undefined,
           currentTime: new Date().toISOString(),
           currentTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
           attachments: uploadedAttachments.length > 0 ? uploadedAttachments : undefined,
@@ -188,8 +270,36 @@ export function useChatController(): ChatSheetController {
         setIsSending(false);
       }
     },
-    [attachments, clearAttachments, sendMessage, showToast, token, uploadAllAttachments],
+    [
+      activeConversationId,
+      attachments,
+      clearAttachments,
+      sendMessage,
+      showToast,
+      token,
+      uploadAllAttachments,
+    ],
   );
+
+  /** Re-ask the last user question (retry after an error, or a fresh take). */
+  const regenerateLastMessage = useCallback(() => {
+    if (isSending) return;
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const message = messages[i];
+      if (message.role === "user" && message.content?.trim()) {
+        void handleSend(message.content.trim());
+        return;
+      }
+    }
+  }, [handleSend, isSending, messages]);
+
+  /** Put a previous user message back into the composer for editing. */
+  const editAndResend = useCallback((text: string) => {
+    if (!text.trim()) return;
+    setPrefillText(text.trim());
+  }, []);
+
+  const consumePrefill = useCallback(() => setPrefillText(null), []);
 
   const handleRequestDriveAccess = useCallback(() => {
     showToast({
@@ -207,20 +317,23 @@ export function useChatController(): ChatSheetController {
 
   const handleClearChat = useCallback(() => {
     if (!token) return;
-    clearChat({ token })
+    clearChat({ token, conversationId: activeConversationId ?? undefined })
       .then(() => {
         showToast({ title: "Chat cleared", tone: "info", duration: 2500 });
       })
       .catch(() => {
         showToast({ title: "Failed to clear chat", tone: "error", duration: 3000 });
       });
-  }, [clearChat, showToast, token]);
+  }, [activeConversationId, clearChat, showToast, token]);
 
   const handleEditMemory = useCallback((id: Id<"memories">) => {
     setEditTargetId(id);
   }, []);
 
-  const displayMessages = useMemo<AIChatDisplayItem[]>(() => {
+  // Base list identity changes only when real messages / the optimistic send
+  // change — status ticks must not rebuild it, or every memoized bubble
+  // re-renders through the inverted list's reverse copy.
+  const baseMessages = useMemo<AIChatDisplayItem[]>(() => {
     const base: AIChatDisplayItem[] = [...messages];
 
     if (
@@ -239,46 +352,64 @@ export function useChatController(): ChatSheetController {
       base.push(optimisticMessage);
     }
 
+    return base;
+  }, [messages, optimisticMessage]);
+
+  // Transient tail rows keep stable object identity per status value so the
+  // list's keyed rows don't churn on unrelated re-renders.
+  const progressRow = useMemo<ToolProgressDisplayItem | null>(
+    () =>
+      searchStatus
+        ? {
+            _id: "__tool_progress__",
+            role: "tool_progress",
+            status: searchStatus,
+            _creationTime: Date.now(),
+          }
+        : null,
+    [searchStatus],
+  );
+
+  const thinkingRow = useMemo<ThinkingDisplayItem | null>(
+    () =>
+      isSending
+        ? {
+            _id: "__thinking__",
+            role: "thinking",
+            content: "",
+            _creationTime: Date.now(),
+          }
+        : null,
+    [isSending],
+  );
+
+  const displayMessages = useMemo<AIChatDisplayItem[]>(() => {
     // Once the assistant reply starts streaming into a message doc, the text
     // itself is the live feedback — drop the tool-progress/thinking rows.
-    const lastMessage = base[base.length - 1];
+    const lastMessage = baseMessages[baseMessages.length - 1];
     const isStreamingReply =
       !!lastMessage &&
       isChatMessage(lastMessage) &&
       lastMessage.role === "assistant" &&
       lastMessage.streaming === true;
     if (isStreamingReply) {
-      return base;
+      return baseMessages;
     }
 
-    if (searchStatus) {
-      const progressRow: ToolProgressDisplayItem = {
-        _id: "__tool_progress__",
-        role: "tool_progress",
-        status: searchStatus,
-        _creationTime: Date.now(),
-      };
-      return [...base, progressRow];
-    }
-
-    if (isSending) {
-      const thinkingRow: ThinkingDisplayItem = {
-        _id: "__thinking__",
-        role: "thinking",
-        content: "",
-        _creationTime: Date.now(),
-      };
-      return [...base, thinkingRow];
-    }
-
-    return base;
-  }, [isSending, messages, optimisticMessage, searchStatus]);
+    if (progressRow) return [...baseMessages, progressRow];
+    if (thinkingRow) return [...baseMessages, thinkingRow];
+    return baseMessages;
+  }, [baseMessages, progressRow, thinkingRow]);
 
   const renderMessage = useAIChatMessageRenderer({
     copyMessage,
+    speakingId,
+    speakMessage,
     token,
     calendarSyncEnabled,
     onEditMemory: handleEditMemory,
+    onRegenerate: regenerateLastMessage,
+    onEditResend: editAndResend,
   });
 
   // The list is inverted (offset 0 = newest message), so "scroll to bottom"
@@ -329,22 +460,40 @@ export function useChatController(): ChatSheetController {
       driveConnected,
       onRequestDriveAccess: handleRequestDriveAccess,
       handleSend,
+      handleStop,
+      prefillText,
+      consumePrefill,
+      conversations: conversations ?? [],
+      activeConversationId,
+      selectConversation,
+      createNewConversation,
+      renameConversation,
+      archiveConversation,
     }),
     [
+      activeConversationId,
+      archiveConversation,
       attachments,
+      consumePrefill,
+      conversations,
+      createNewConversation,
       displayMessages,
       driveConnected,
       handleClearChat,
       handleRequestDriveAccess,
       handleSend,
+      handleStop,
       isSending,
       keyExtractor,
       messages,
       pickCamera,
       pickDocument,
       pickImages,
+      prefillText,
       removeAttachment,
+      renameConversation,
       renderMessage,
+      selectConversation,
     ],
   );
 }

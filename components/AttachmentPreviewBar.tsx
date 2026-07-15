@@ -1,6 +1,6 @@
 import React from "react";
 import { View, ScrollView, Pressable, StyleSheet, Animated } from "react-native";
-import { Image } from "expo-image";
+import { AppImage } from "@/components/ui/AppImage";
 import { Feather } from "@/lib/icons";
 import { useColors } from "@/hooks/useColors";
 import { Text } from "tamagui";
@@ -74,7 +74,7 @@ function AttachmentSquare({ attachment, colors, onRemove, onPress }: AttachmentS
       ]}
     >
       {attachment.type === "image" ? (
-        <Image
+        <AppImage
           source={{ uri: attachment.uri }}
           style={styles.image}
           contentFit="cover"

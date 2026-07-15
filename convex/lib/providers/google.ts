@@ -1,6 +1,7 @@
 "use node";
 
 import type OpenAI from "openai";
+import { createJsonStringFieldExtractor } from "../streamJsonField";
 import type { AiProviderAdapter, ChatUsage, EmbeddingsResult, ResolvedRoute } from "./types";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -129,12 +130,16 @@ type OpenAIMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
 /**
  * Translates the OpenAI-shaped conversation into Gemini's contents array.
- * System messages fold into a single systemInstruction block (Gemini has no
- * scattered system-turn concept). Assistant tool_calls become `functionCall`
- * parts and tool-role results become `functionResponse` parts keyed by name
- * (matched via tool_call_id -> name, since Gemini has no call-id concept) —
- * without this translation Gemini never sees which tool ran or what it
- * returned, which silently breaks the multi-step tool loop.
+ * LEADING system messages fold into the systemInstruction block; system
+ * messages appearing after conversation turns (grounding block, memory
+ * reference hints, attachment context) keep their ORDER by becoming
+ * user-role "[Context note]" turns — folding those to the top detached the
+ * hints from the turns they annotate and degraded pronoun resolution on
+ * Google routes. Assistant tool_calls become `functionCall` parts and
+ * tool-role results become `functionResponse` parts keyed by name (matched
+ * via tool_call_id -> name, since Gemini has no call-id concept) — without
+ * this translation Gemini never sees which tool ran or what it returned,
+ * which silently breaks the multi-step tool loop.
  */
 function toGeminiContents(messages: OpenAIMessage[]): {
   systemInstruction?: { parts: Array<{ text: string }> };
@@ -146,7 +151,16 @@ function toGeminiContents(messages: OpenAIMessage[]): {
 
   for (const msg of messages) {
     if (msg.role === "system" || msg.role === "developer") {
-      if (typeof msg.content === "string" && msg.content) systemTexts.push(msg.content);
+      if (typeof msg.content === "string" && msg.content) {
+        if (contents.length === 0) {
+          systemTexts.push(msg.content);
+        } else {
+          contents.push({
+            role: "user",
+            parts: [{ text: `[Context note]\n${msg.content}` }],
+          });
+        }
+      }
       continue;
     }
 
@@ -290,6 +304,136 @@ async function generateContent(args: {
   };
 }
 
+type GeminiStreamChunk = {
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+  };
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{ text?: string; functionCall?: { name: string; args?: unknown } }>;
+    };
+    finishReason?: string;
+  }>;
+  promptFeedback?: { blockReason?: string };
+};
+
+/**
+ * Streaming variant of generateContent via `streamGenerateContent?alt=sse`.
+ * Text/functionCall parts accumulate across chunks; usage arrives on the
+ * final chunk (exact, same shape as non-streaming).
+ */
+async function generateContentStream(args: {
+  apiKey: string;
+  model: string;
+  request: Omit<OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming, "model">;
+  onChunk: (chunk: GeminiStreamChunk) => void;
+}): Promise<{
+  text: string;
+  toolCalls: Array<{ name: string; argumentsJson: string }>;
+  usage: ChatUsage;
+  finishReason?: string;
+}> {
+  const messages = args.request.messages as OpenAIMessage[];
+  const { systemInstruction, contents } = toGeminiContents(messages);
+  const tools = toGeminiTools(args.request.tools as OpenAI.Chat.Completions.ChatCompletionTool[]);
+  const toolConfig = tools ? toGeminiToolConfig(args.request.tool_choice) : undefined;
+  const maxOutputTokens =
+    args.request.max_completion_tokens ?? (args.request as { max_tokens?: number }).max_tokens;
+  const responseFormat = (args.request as { response_format?: { type?: string } }).response_format;
+
+  const response = await fetch(`${apiBase(args.model)}:streamGenerateContent?alt=sse`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-goog-api-key": args.apiKey },
+    body: JSON.stringify({
+      ...(systemInstruction ? { systemInstruction } : {}),
+      contents,
+      ...(tools ? { tools } : {}),
+      ...(toolConfig ? { toolConfig } : {}),
+      generationConfig: {
+        temperature: (args.request as { temperature?: number }).temperature ?? 0.3,
+        ...(typeof maxOutputTokens === "number" ? { maxOutputTokens } : {}),
+        ...(responseFormat?.type === "json_object" ? { responseMimeType: "application/json" } : {}),
+      },
+    }),
+    signal: AbortSignal.timeout(GOOGLE_FETCH_TIMEOUT_MS),
+  });
+  if (!response.ok || !response.body) {
+    const errorBody = await response.text().catch(() => "");
+    // .status attached so isRetryableAiError/withRetry treat this like the
+    // non-streaming path (see googleFetchJson).
+    throw Object.assign(
+      new Error(
+        `Google streaming request failed with status ${response.status}${errorBody ? `: ${errorBody.slice(0, 200)}` : ""}`,
+      ),
+      { status: response.status },
+    );
+  }
+
+  let text = "";
+  const toolCalls: Array<{ name: string; argumentsJson: string }> = [];
+  let usage: ChatUsage = {};
+  let finishReason: string | undefined;
+
+  const decoder = new TextDecoder();
+  const reader = response.body.getReader();
+  let sseBuffer = "";
+  const consumeEvent = (payload: string) => {
+    if (!payload || payload === "[DONE]") return;
+    let chunk: GeminiStreamChunk;
+    try {
+      chunk = JSON.parse(payload) as GeminiStreamChunk;
+    } catch {
+      return;
+    }
+    const candidate = chunk.candidates?.[0];
+    for (const part of candidate?.content?.parts ?? []) {
+      if (part.text) text += part.text;
+      if (part.functionCall) {
+        toolCalls.push({
+          name: part.functionCall.name,
+          argumentsJson: JSON.stringify(part.functionCall.args ?? {}),
+        });
+      }
+    }
+    if (chunk.usageMetadata) {
+      usage = {
+        prompt_tokens: chunk.usageMetadata.promptTokenCount,
+        completion_tokens: chunk.usageMetadata.candidatesTokenCount,
+        total_tokens: chunk.usageMetadata.totalTokenCount,
+      };
+    }
+    if (candidate?.finishReason) finishReason = candidate.finishReason;
+    if (chunk.promptFeedback?.blockReason && !finishReason) {
+      finishReason = chunk.promptFeedback.blockReason;
+    }
+    args.onChunk(chunk);
+  };
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    sseBuffer += decoder.decode(value, { stream: true });
+    // SSE events are separated by a blank line; each data line is `data: {...}`.
+    let separatorIndex = sseBuffer.indexOf("\n\n");
+    while (separatorIndex !== -1) {
+      const rawEvent = sseBuffer.slice(0, separatorIndex);
+      sseBuffer = sseBuffer.slice(separatorIndex + 2);
+      for (const line of rawEvent.split("\n")) {
+        if (line.startsWith("data:")) consumeEvent(line.slice(5).trim());
+      }
+      separatorIndex = sseBuffer.indexOf("\n\n");
+    }
+  }
+  // Trailing event without a final blank line.
+  for (const line of sseBuffer.split("\n")) {
+    if (line.startsWith("data:")) consumeEvent(line.slice(5).trim());
+  }
+
+  return { text, toolCalls, usage, finishReason };
+}
+
 async function generateEmbeddings(args: {
   apiKey: string;
   model: string;
@@ -399,6 +543,74 @@ export const googleAdapter: AiProviderAdapter = {
           // empty candidates as ordinary success — the caller (memoryChat.ts)
           // then ends the turn silently with an empty reply. Map the real
           // reason through so a future caller can branch on it.
+          finish_reason: toGoogleFinishReason(finishReason, toolCalls.length > 0),
+          logprobs: null,
+        },
+      ],
+      usage: {
+        prompt_tokens: usage.prompt_tokens ?? 0,
+        completion_tokens: usage.completion_tokens ?? 0,
+        total_tokens: usage.total_tokens ?? 0,
+      },
+    } satisfies OpenAI.Chat.Completions.ChatCompletion;
+  },
+
+  async chatCompletionStream({ route, request, onDelta, streamToolTextField }) {
+    const apiKey = route.apiKey ?? getPlatformApiKey();
+    if (!apiKey) throw new Error("Google API key is not available for this route.");
+
+    // Same visible-text policy as the OpenAI adapter: when the reply is a
+    // field inside a forced tool call's arguments, only that field streams
+    // to onDelta — free-text preambles never flush to the visible reply.
+    const extractor = streamToolTextField
+      ? createJsonStringFieldExtractor(streamToolTextField.argName)
+      : null;
+
+    const { text, toolCalls, usage, finishReason } = await generateContentStream({
+      apiKey,
+      model: route.model,
+      request,
+      onChunk: (chunk) => {
+        for (const part of chunk.candidates?.[0]?.content?.parts ?? []) {
+          if (!streamToolTextField && part.text) {
+            onDelta(part.text);
+          }
+          if (
+            extractor &&
+            part.functionCall &&
+            part.functionCall.name === streamToolTextField!.toolName
+          ) {
+            // Gemini delivers function args as complete JSON per part —
+            // run it through the extractor so the message field surfaces
+            // with identical semantics to the incremental OpenAI path.
+            const visible = extractor.push(JSON.stringify(part.functionCall.args ?? {}));
+            if (visible) onDelta(visible);
+          }
+        }
+      },
+    });
+
+    return {
+      id: "google-" + Date.now(),
+      object: "chat.completion" as const,
+      created: Math.floor(Date.now() / 1000),
+      model: route.model,
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: "assistant" as const,
+            content: toolCalls.length > 0 ? null : text,
+            tool_calls:
+              toolCalls.length > 0
+                ? toolCalls.map((call, index) => ({
+                    id: `call_google_${index}`,
+                    type: "function" as const,
+                    function: { name: call.name, arguments: call.argumentsJson },
+                  }))
+                : undefined,
+            refusal: null,
+          },
           finish_reason: toGoogleFinishReason(finishReason, toolCalls.length > 0),
           logprobs: null,
         },

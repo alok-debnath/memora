@@ -73,3 +73,12 @@ export const ATTACHMENT_EXCERPT_CHARS = 1200;
 
 /** Minimum interval between streamed reply content patches (mutation cost cap). */
 export const STREAM_PATCH_INTERVAL_MS = 400;
+
+/**
+ * Per-user daily cap on platform-billed AI spend (USD micros). Enforced in
+ * resolveAiRoute for platform-credential routes only — BYOK usage is the
+ * user's own key and is never capped. Admins can override per user via
+ * userAiProviderPreferences.dailySpendCapUsdMicros.
+ * $2.00/day default.
+ */
+export const DAILY_PLATFORM_SPEND_CAP_USD_MICROS = 2_000_000;

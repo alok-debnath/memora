@@ -39,7 +39,7 @@ export const DiaryResultRow = React.memo(function DiaryResultRow({
 }: {
   entry: DiaryCardDoc;
   index: number;
-  onOpenDiary: () => void;
+  onOpenDiary: (id: Id<"diaryEntries">) => void;
   onDelete: (id: Id<"diaryEntries">) => void;
 }) {
   const theme = useAppTheme();
@@ -50,7 +50,7 @@ export const DiaryResultRow = React.memo(function DiaryResultRow({
       label: "View in Diary",
       icon: "book-open",
       iconColor: theme.primary.val,
-      onPress: onOpenDiary,
+      onPress: () => onOpenDiary(entry._id),
     },
     {
       label: "Delete Entry",

@@ -12,7 +12,6 @@ import type { DiaryEntry } from "@/types/memory";
 interface DiaryEntryCardProps {
   entry: DiaryEntry;
   onDelete?: (id: DiaryEntry["id"]) => void;
-  index?: number;
 }
 
 export const DiaryEntryCard = React.memo(function DiaryEntryCard({

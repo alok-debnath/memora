@@ -18,19 +18,16 @@ export const list = query({
     // Take the NEWEST `limit` messages (desc), then reverse to ascending for
     // display. An asc take would return the oldest N and silently drop new
     // messages once history exceeds the limit.
-    const rows = args.conversationId
-      ? await ctx.db
-          .query("chatMessages")
-          .withIndex("by_user_conversation", (q) =>
-            q.eq("userId", userId).eq("conversationId", args.conversationId),
-          )
-          .order("desc")
-          .take(limit)
-      : await ctx.db
-          .query("chatMessages")
-          .withIndex("by_user", (q) => q.eq("userId", userId))
-          .order("desc")
-          .take(limit);
+    // No conversationId = the main thread: messages created before threads
+    // existed (field unset). eq(undefined) matches unset fields, so threads
+    // never bleed into the main view.
+    const rows = await ctx.db
+      .query("chatMessages")
+      .withIndex("by_user_conversation", (q) =>
+        q.eq("userId", userId).eq("conversationId", args.conversationId),
+      )
+      .order("desc")
+      .take(limit);
     return rows.reverse();
   },
 });
@@ -86,6 +83,7 @@ export const chatMessageMetaValidator = v.object({
   isCached: v.optional(v.boolean()),
   turns: v.optional(v.number()),
   flow: v.optional(v.any()),
+  error: v.optional(v.object({ code: v.string(), detail: v.optional(v.string()) })),
 });
 
 export const send = internalMutation({
@@ -111,6 +109,146 @@ export const send = internalMutation({
       event: "chat_message",
     });
     return messageId;
+  },
+});
+
+// ─── Conversations ────────────────────────────────────────────────────────────
+
+const CONVERSATION_TITLE_CHARS = 60;
+const CONVERSATION_LIST_MAX = 50;
+
+/** Active (non-archived) conversations, newest activity first. */
+export const listConversations = query({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const { userId } = await resolveUser(ctx, args.token);
+    const rows = await ctx.db
+      .query("chatConversations")
+      .withIndex("by_user_lastMessageAt", (q) => q.eq("userId", userId))
+      .order("desc")
+      .take(CONVERSATION_LIST_MAX);
+    return rows.filter((row) => !row.archived);
+  },
+});
+
+export const createConversation = mutation({
+  args: { token: v.string() },
+  returns: v.string(),
+  handler: async (ctx, args) => {
+    const { userId } = await resolveUser(ctx, args.token);
+    const id = await ctx.db.insert("chatConversations", {
+      userId,
+      title: "New chat",
+      lastMessageAt: Date.now(),
+    });
+    return String(id);
+  },
+});
+
+export const renameConversation = mutation({
+  args: { token: v.string(), conversationId: v.string(), title: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { userId } = await resolveUser(ctx, args.token);
+    const id = ctx.db.normalizeId("chatConversations", args.conversationId);
+    if (!id) throw new Error("Not found");
+    const conversation = await ctx.db.get(id);
+    if (!conversation || conversation.userId !== userId) throw new Error("Not found");
+    const title = args.title.trim().slice(0, CONVERSATION_TITLE_CHARS);
+    if (title) await ctx.db.patch(id, { title });
+    return null;
+  },
+});
+
+export const archiveConversation = mutation({
+  args: { token: v.string(), conversationId: v.string(), archived: v.optional(v.boolean()) },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { userId } = await resolveUser(ctx, args.token);
+    const id = ctx.db.normalizeId("chatConversations", args.conversationId);
+    if (!id) throw new Error("Not found");
+    const conversation = await ctx.db.get(id);
+    if (!conversation || conversation.userId !== userId) throw new Error("Not found");
+    await ctx.db.patch(id, { archived: args.archived ?? true });
+    return null;
+  },
+});
+
+/**
+ * Bump activity + auto-title from the first user message. Called from the
+ * chat action's send path; tolerant of legacy/unknown conversation IDs.
+ */
+export const touchConversationInternal = internalMutation({
+  args: {
+    userId: v.id("users"),
+    conversationId: v.string(),
+    firstUserMessage: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const id = ctx.db.normalizeId("chatConversations", args.conversationId);
+    if (!id) return null;
+    const conversation = await ctx.db.get(id);
+    if (!conversation || conversation.userId !== args.userId) return null;
+    const shouldTitle = conversation.title === "New chat" && !!args.firstUserMessage?.trim();
+    await ctx.db.patch(id, {
+      lastMessageAt: Date.now(),
+      ...(shouldTitle
+        ? {
+            title: args
+              .firstUserMessage!.trim()
+              .replace(/\s+/g, " ")
+              .slice(0, CONVERSATION_TITLE_CHARS),
+          }
+        : {}),
+    });
+    return null;
+  },
+});
+
+// ─── Turn cancellation ────────────────────────────────────────────────────────
+
+/** User pressed Stop — cooperative flag checked by the planner loop between iterations. */
+export const requestCancel = mutation({
+  args: { token: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { userId } = await resolveUser(ctx, args.token);
+    const existing = await ctx.db
+      .query("chatCancelRequests")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+    if (existing) {
+      await ctx.db.patch(existing._id, { requestedAt: Date.now() });
+    } else {
+      await ctx.db.insert("chatCancelRequests", { userId, requestedAt: Date.now() });
+    }
+    return null;
+  },
+});
+
+export const getCancelRequestInternal = internalQuery({
+  args: { userId: v.id("users") },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("chatCancelRequests")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .first();
+    return existing !== null;
+  },
+});
+
+export const clearCancelRequestInternal = internalMutation({
+  args: { userId: v.id("users") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("chatCancelRequests")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .first();
+    if (existing) await ctx.db.delete(existing._id);
+    return null;
   },
 });
 
@@ -396,17 +534,14 @@ export const clear = mutation({
   handler: async (ctx, args) => {
     const { userId } = await resolveUser(ctx, args.token);
 
-    const messages = args.conversationId
-      ? await ctx.db
-          .query("chatMessages")
-          .withIndex("by_user_conversation", (q) =>
-            q.eq("userId", userId).eq("conversationId", args.conversationId),
-          )
-          .take(500)
-      : await ctx.db
-          .query("chatMessages")
-          .withIndex("by_user", (q) => q.eq("userId", userId))
-          .take(500);
+    // Same main-thread scoping as chat.list: no conversationId clears only
+    // messages outside any thread.
+    const messages = await ctx.db
+      .query("chatMessages")
+      .withIndex("by_user_conversation", (q) =>
+        q.eq("userId", userId).eq("conversationId", args.conversationId),
+      )
+      .take(500);
 
     await Promise.all(messages.map((msg) => ctx.db.delete(msg._id)));
 

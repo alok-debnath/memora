@@ -42,9 +42,9 @@ export default function AdminAiOpsScreen() {
   const theme = useAppTheme();
   const semantic = useSemanticColors();
   const { showToast } = useAppToast();
-  const { range, refreshKey, setSelectedEntity } = useAdminState();
+  const { range, setSelectedEntity } = useAdminState();
 
-  const data = useQuery(api.admin.aiOpsOverview, { range, refreshKey });
+  const data = useQuery(api.admin.aiOpsOverview, { range });
   const setRouting = useMutation(api.aiProviders.setAdminRouting);
   const providerRows = data?.providers ?? [];
   const modelRows = data?.topModels ?? [];

@@ -1,256 +1,400 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { Platform, Pressable, ActivityIndicator } from "react-native";
-import { Feather } from "@/lib/icons";
-import * as Haptics from "expo-haptics";
-import { useQuery, useMutation } from "convex/react";
+import { ScrollView, Pressable } from "react-native";
+import { AppList, type ListRenderItemInfo } from "@/components/ui/AppList";
+import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { XStack, YStack, Text } from "tamagui";
+
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { Feather } from "@/lib/icons";
 import { useAuth } from "@/hooks/useAuth";
-import type { DiaryEntry } from "@/types/memory";
-import { DiaryEntryCard } from "@/components/DiaryEntryCard";
-import { MoodTrendStrip } from "@/components/MoodTrendStrip";
-import { VoiceRecorder } from "@/components/VoiceRecorder";
-import { GradientButton } from "@/components/ui/GradientButton";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { AppScreen, SectionCard } from "@/components/ui/AppScreen";
-import { PageHero } from "@/components/ui/PageHero";
-import { SurfaceCard } from "@/components/ui/SurfaceCard";
-import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { useSemanticColors } from "@/hooks/useSemanticColors";
+import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
+import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
+import { useAppRouter as useRouter } from "@/hooks/useAppRouter";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
-import { AppTextField } from "@/components/ui/AppTextField";
+import { PageHero } from "@/components/ui/PageHero";
+import { SearchBar } from "@/components/ui/SearchBar";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { DiaryComposer } from "@/components/diary/DiaryComposer";
+import { DiaryListCard } from "@/components/diary/DiaryListCard";
+import { DiaryCalendar } from "@/components/diary/DiaryCalendar";
+import { DiaryInsights } from "@/components/diary/DiaryInsights";
+import type { DiaryListItem } from "@/components/diary/types";
+import { moodIcons, moodLabels, type Mood } from "@/constants/categories";
+import { CONTENT_GAP, spacing } from "@/constants/uiTokens";
 
-type DiaryEntryItem = {
-  _id: Id<"diaryEntries">;
-  _creationTime: number;
-  rawText: string;
-  correctedText?: string;
-  mood?: string;
-  energyLevel?: string;
-  topics: string[];
-  summary?: string;
-  structuredInsights?: Array<{ insight: string; category: string }>;
-  habitsDetected?: Array<{
-    habit: string;
-    sentiment: "positive" | "negative" | "neutral";
-    frequencyHint?: string;
-  }>;
-  personalityTraits?: Array<{ trait: string; evidence: string }>;
-  likes?: string[];
-  dislikes?: string[];
-  actionItems?: string[];
-};
+type DiaryMode = "entries" | "calendar" | "insights";
+type InsightsRange = "7d" | "30d" | "90d";
+
+const ALL_MOODS = Object.keys(moodLabels) as Mood[];
+const DAY_MS = 24 * 60 * 60 * 1000;
+const PAGE_SIZE = 20;
+
+const INSIGHTS_RANGE_DAYS: Record<InsightsRange, number> = { "7d": 7, "30d": 30, "90d": 90 };
+
+function localDayRange(dayKey: string): { startMs: number; endMs: number } {
+  const startMs = new Date(`${dayKey}T00:00:00`).getTime();
+  return { startMs, endMs: startMs + DAY_MS };
+}
+
+function MoodFilterRow({
+  selected,
+  onSelect,
+}: {
+  selected: Mood | null;
+  onSelect: (mood: Mood | null) => void;
+}) {
+  const theme = useAppTheme();
+  const semantic = useSemanticColors();
+
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{ gap: 8 }}
+    >
+      <Pressable
+        onPress={() => onSelect(null)}
+        style={{
+          paddingHorizontal: 12,
+          paddingVertical: 6,
+          borderRadius: 999,
+          backgroundColor: selected === null ? theme.primary.val : theme.secondary.val,
+        }}
+      >
+        <Text
+          fontSize={12}
+          fontFamily="$body"
+          fontWeight="600"
+          color={selected === null ? theme.textInverse.val : theme.colorMuted.val}
+        >
+          All moods
+        </Text>
+      </Pressable>
+      {ALL_MOODS.map((mood) => {
+        const active = selected === mood;
+        const color = semantic.mood[mood];
+        return (
+          <Pressable
+            key={mood}
+            onPress={() => onSelect(active ? null : mood)}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 5,
+              paddingHorizontal: 11,
+              paddingVertical: 6,
+              borderRadius: 999,
+              backgroundColor: active ? color + "26" : theme.secondary.val,
+              borderWidth: 1,
+              borderColor: active ? color : "transparent",
+            }}
+          >
+            <Feather
+              name={moodIcons[mood]}
+              size={12}
+              color={active ? color : theme.colorMuted.val}
+            />
+            <Text
+              fontSize={12}
+              fontFamily="$body"
+              fontWeight="600"
+              color={active ? color : theme.colorMuted.val}
+            >
+              {moodLabels[mood]}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
 
 export default function DiaryScreen() {
   const theme = useAppTheme();
+  const router = useRouter();
   const { confirm } = useAppConfirm();
-  const { user, token } = useAuth();
+  const { token } = useAuth();
+  const tabBarPadding = useTabBarBottomPadding();
+  const isLargeScreen = useIsLargeScreen();
 
-  const entries = (useQuery(api.diary.list, token ? { token, limit: 100 } : "skip") ??
-    []) as DiaryEntryItem[];
+  const [mode, setMode] = useState<DiaryMode>("entries");
+  const [searchText, setSearchText] = useState("");
+  const [moodFilter, setMoodFilter] = useState<Mood | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [insightsRange, setInsightsRange] = useState<InsightsRange>("30d");
+
+  const now = new Date();
+  const [calendarYear, setCalendarYear] = useState(now.getFullYear());
+  const [calendarMonth, setCalendarMonth] = useState(now.getMonth());
+  const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
+
   const createEntry = useMutation(api.diary.create);
   const deleteEntry = useMutation(api.diary.remove);
 
-  const [diaryText, setDiaryText] = useState("");
-  const [mode, setMode] = useState<"voice" | "type">("voice");
-  const [isSaving, setIsSaving] = useState(false);
+  const tzOffsetMinutes = now.getTimezoneOffset();
+  const searchActive = mode === "entries" && searchText.trim().length > 0;
+  const dayRange = mode === "calendar" && selectedDayKey ? localDayRange(selectedDayKey) : null;
 
-  const handleSubmit = async () => {
-    if (!diaryText.trim() || !token) return;
-    if (Platform.OS !== "web") {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
-    setIsSaving(true);
-    try {
-      await createEntry({ token, rawText: diaryText.trim() });
-      setDiaryText("");
-    } finally {
-      setIsSaving(false);
-    }
-  };
+  const listArgs = token
+    ? {
+        token,
+        mood: moodFilter ?? undefined,
+        dateStartMs: dayRange?.startMs,
+        dateEndMs: dayRange?.endMs,
+      }
+    : "skip";
+  const {
+    results: pagedEntries,
+    status: pageStatus,
+    loadMore,
+  } = usePaginatedQuery(api.diary.listPaginated, searchActive ? "skip" : listArgs, {
+    initialNumItems: PAGE_SIZE,
+  });
 
-  const handleVoiceComplete = (text: string) => {
-    if (text.trim()) {
-      setDiaryText(text);
-      setMode("type");
-    }
-  };
+  const searchResults = useQuery(
+    api.diary.search,
+    token && searchActive ? { token, query: searchText.trim() } : "skip",
+  );
+
+  const calendarStartMs = new Date(calendarYear, calendarMonth, 1).getTime();
+  const calendarEndMs = new Date(calendarYear, calendarMonth + 1, 1).getTime();
+  const calendarData = useQuery(
+    api.diary.calendarSummary,
+    token && mode === "calendar"
+      ? { token, startMs: calendarStartMs, endMs: calendarEndMs, tzOffsetMinutes }
+      : "skip",
+  );
+
+  // Snapshot the range bounds per selection: inline Date.now() would change the
+  // query args every render, resubscribing in a setState loop.
+  const insightsWindow = useMemo(() => {
+    const endMs = Date.now();
+    return { startMs: endMs - INSIGHTS_RANGE_DAYS[insightsRange] * DAY_MS, endMs };
+  }, [insightsRange]);
+  const insightsData = useQuery(
+    api.diary.insights,
+    token && mode === "insights" ? { token, ...insightsWindow, tzOffsetMinutes } : "skip",
+  );
+
+  const handleSubmit = useCallback(
+    async (text: string) => {
+      if (!token) return;
+      setIsSaving(true);
+      try {
+        await createEntry({ token, rawText: text });
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [createEntry, token],
+  );
+
+  const handleOpenEntry = useCallback(
+    (id: Id<"diaryEntries">) => {
+      router.push(`/diary/${id}` as never);
+    },
+    [router],
+  );
 
   const handleDelete = useCallback(
     async (id: Id<"diaryEntries">) => {
       const confirmed = await confirm({
         title: "Delete Entry",
-        message: "Are you sure?",
+        message: "This diary entry will be permanently deleted.",
         confirmLabel: "Delete",
         tone: "destructive",
         icon: "trash-2",
       });
-      if (confirmed) {
-        deleteEntry({ token: token!, id });
+      if (confirmed && token) {
+        deleteEntry({ token, id });
       }
     },
     [confirm, deleteEntry, token],
   );
 
-  const handleDeleteEntry = useCallback(
-    (id: string) => handleDelete(id as Id<"diaryEntries">),
-    [handleDelete],
+  const entries: DiaryListItem[] = useMemo(() => {
+    if (searchActive) return (searchResults ?? []) as DiaryListItem[];
+    if (mode === "calendar" && !dayRange) return [];
+    return (pagedEntries ?? []) as DiaryListItem[];
+  }, [searchActive, searchResults, mode, dayRange, pagedEntries]);
+
+  const isInitialLoading = searchActive
+    ? searchResults === undefined
+    : pageStatus === "LoadingFirstPage";
+
+  const renderItem = useCallback(
+    ({ item }: ListRenderItemInfo<DiaryListItem>) => (
+      <DiaryListCard entry={item} onPress={handleOpenEntry} onDelete={handleDelete} />
+    ),
+    [handleOpenEntry, handleDelete],
   );
 
-  const diaryEntries = useMemo<DiaryEntry[]>(
-    () =>
-      entries.map(
-        (entry) =>
-          ({
-            ...entry,
-            id: entry._id,
-            userId: user?._id ?? ("" as never),
-            mood: entry.mood as DiaryEntry["mood"],
-            energyLevel: entry.energyLevel as DiaryEntry["energyLevel"],
-            createdAt: new Date(entry._creationTime).toISOString(),
-            updatedAt: new Date(entry._creationTime).toISOString(),
-            habitsDetected: entry.habitsDetected ?? [],
-            personalityTraits: entry.personalityTraits ?? [],
-            likes: entry.likes ?? [],
-            dislikes: entry.dislikes ?? [],
-            actionItems: entry.actionItems ?? [],
-          }) as DiaryEntry,
-      ),
-    [entries, user?._id],
-  );
+  const keyExtractor = useCallback((item: DiaryListItem) => item._id, []);
 
-  return (
-    <AppScreen
-      safeTop={false}
-      hero={
-        <PageHero
-          eyebrow="Daily capture"
-          title="AI Diary"
-          description="Capture voice or typed reflections. Memora turns them into structured entries and insights."
-          icon="book-open"
-        />
-      }
-    >
-      <SurfaceCard variant="solid" radius={16} padding={14}>
-        <YStack gap={12}>
-          <XStack gap={8}>
-            <Pressable
-              onPress={() => setMode("voice")}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 6,
-                paddingHorizontal: 12,
-                paddingVertical: 7,
-                borderRadius: 999,
-                backgroundColor: mode === "voice" ? theme.primary.val : theme.secondary.val,
-              }}
-            >
-              <Feather
-                name="mic"
-                size={14}
-                color={mode === "voice" ? theme.textInverse.val : theme.colorMuted.val}
-              />
-              <Text
-                fontSize={13}
-                fontFamily="$body"
-                fontWeight="600"
-                color={mode === "voice" ? theme.textInverse.val : theme.colorMuted.val}
-              >
-                Voice
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setMode("type")}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 6,
-                paddingHorizontal: 12,
-                paddingVertical: 7,
-                borderRadius: 999,
-                backgroundColor: mode === "type" ? theme.primary.val : theme.secondary.val,
-              }}
-            >
-              <Feather
-                name="edit-3"
-                size={14}
-                color={mode === "type" ? theme.textInverse.val : theme.colorMuted.val}
-              />
-              <Text
-                fontSize={13}
-                fontFamily="$body"
-                fontWeight="600"
-                color={mode === "type" ? theme.textInverse.val : theme.colorMuted.val}
-              >
-                Type
-              </Text>
-            </Pressable>
-          </XStack>
+  const handleEndReached = useCallback(() => {
+    if (!searchActive && pageStatus === "CanLoadMore") {
+      loadMore(PAGE_SIZE);
+    }
+  }, [searchActive, pageStatus, loadMore]);
 
-          {mode === "voice" ? (
-            isSaving ? (
-              <YStack alignItems="center" justifyContent="center" paddingVertical={28} gap={16}>
-                <ActivityIndicator size="large" color={theme.primary.val} />
-                <Text fontSize={14} fontFamily="$body" color={theme.colorMuted.val}>
-                  Saving entry...
+  const header = (
+    <YStack gap={CONTENT_GAP}>
+      <PageHero
+        eyebrow="Daily capture"
+        title="AI Diary"
+        description="Capture voice or typed reflections. Memora turns them into structured entries and insights."
+        icon="book-open"
+      />
+
+      <DiaryComposer onSubmit={handleSubmit} isSaving={isSaving} />
+
+      <SegmentedControl<DiaryMode>
+        options={[
+          { value: "entries", label: "Entries" },
+          { value: "calendar", label: "Calendar" },
+          { value: "insights", label: "Insights" },
+        ]}
+        value={mode}
+        onChange={setMode}
+      />
+
+      {mode === "entries" ? (
+        <YStack gap={10}>
+          <SearchBar
+            value={searchText}
+            onChangeText={setSearchText}
+            placeholder="Search your diary..."
+            isSearching={searchActive && searchResults === undefined}
+          />
+          <MoodFilterRow selected={moodFilter} onSelect={setMoodFilter} />
+        </YStack>
+      ) : null}
+
+      {mode === "calendar" ? (
+        <YStack gap={CONTENT_GAP}>
+          <DiaryCalendar
+            year={calendarYear}
+            month={calendarMonth}
+            summary={calendarData}
+            selectedDayKey={selectedDayKey}
+            onSelectDay={setSelectedDayKey}
+            onChangeMonth={(year, month) => {
+              setCalendarYear(year);
+              setCalendarMonth(month);
+              setSelectedDayKey(null);
+            }}
+          />
+          {selectedDayKey ? (
+            <XStack alignItems="center" justifyContent="space-between">
+              <Text fontSize={13} fontFamily="$body" fontWeight="700" color={theme.color.val}>
+                {new Date(`${selectedDayKey}T00:00:00`).toLocaleDateString(undefined, {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                })}
+              </Text>
+              <Pressable onPress={() => setSelectedDayKey(null)} hitSlop={8}>
+                <Text fontSize={12} fontFamily="$body" fontWeight="600" color={theme.primary.val}>
+                  Clear
                 </Text>
-              </YStack>
-            ) : (
-              <YStack gap={12} paddingVertical={12}>
-                <VoiceRecorder onTranscriptionComplete={handleVoiceComplete} inputMode="auto" />
-                {/* Hide while paused — VoiceRecorder shows the editable TextInput internally */}
-                <Text
-                  fontSize={13}
-                  fontFamily="$body"
-                  color={theme.colorMuted.val}
-                  textAlign="center"
-                >
-                  Your transcript opens for review before you save.
-                </Text>
-              </YStack>
-            )
+              </Pressable>
+            </XStack>
           ) : (
-            <>
-              <AppTextField
-                value={diaryText}
-                onChangeText={setDiaryText}
-                label="Journal entry"
-                placeholder="Write about your day, thoughts, feelings, or anything on your mind..."
-                multiline
-                helperText="Memora will structure this into a searchable diary entry."
-                containerStyle={{ marginBottom: 12 }}
-                style={{ minHeight: 156, fontSize: 15, lineHeight: 22 }}
-              />
-              <GradientButton
-                title="Save & Analyze"
-                onPress={handleSubmit}
-                icon="send"
-                loading={isSaving}
-                style={{ marginTop: 12 }}
-              />
-            </>
+            <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val} textAlign="center">
+              Tap a day to see its entries.
+            </Text>
           )}
         </YStack>
-      </SurfaceCard>
+      ) : null}
 
-      <MoodTrendStrip entries={entries} />
-
-      <SectionCard title="Recent entries">
-        {entries.length === 0 ? (
-          <EmptyState
-            icon="book"
-            title="No diary entries yet"
-            description="Start speaking or typing to create your first entry."
+      {mode === "insights" ? (
+        <YStack gap={CONTENT_GAP}>
+          <SegmentedControl<InsightsRange>
+            options={[
+              { value: "7d", label: "Week" },
+              { value: "30d", label: "Month" },
+              { value: "90d", label: "3 Months" },
+            ]}
+            value={insightsRange}
+            onChange={setInsightsRange}
           />
-        ) : (
-          <YStack gap={12}>
-            {diaryEntries.map((entry, i: number) => (
-              <DiaryEntryCard key={entry.id} entry={entry} onDelete={handleDeleteEntry} index={i} />
-            ))}
-          </YStack>
-        )}
-      </SectionCard>
-    </AppScreen>
+          {insightsData === undefined ? (
+            <YStack gap={12}>
+              <Skeleton height={56} borderRadius={14} />
+              <Skeleton height={120} borderRadius={16} />
+              <Skeleton height={120} borderRadius={16} />
+            </YStack>
+          ) : (
+            <DiaryInsights data={insightsData} />
+          )}
+        </YStack>
+      ) : null}
+    </YStack>
+  );
+
+  const showList = mode === "entries" || (mode === "calendar" && !!dayRange);
+
+  return (
+    <YStack
+      flex={1}
+      backgroundColor={theme.background.val}
+      width="100%"
+      maxWidth={isLargeScreen ? 1100 : undefined}
+      alignSelf="center"
+    >
+      <AppList<DiaryListItem>
+        data={showList && !isInitialLoading ? entries : []}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
+        ItemSeparatorComponent={() => <YStack height={12} />}
+        ListHeaderComponent={header}
+        ListHeaderComponentStyle={{ marginBottom: showList ? CONTENT_GAP : 0 }}
+        ListEmptyComponent={
+          !showList ? null : isInitialLoading ? (
+            <YStack gap={12}>
+              <Skeleton height={128} borderRadius={16} />
+              <Skeleton height={128} borderRadius={16} />
+              <Skeleton height={128} borderRadius={16} />
+            </YStack>
+          ) : (
+            <EmptyState
+              icon="book"
+              title={
+                searchActive
+                  ? "No matches"
+                  : moodFilter
+                    ? "No entries with this mood"
+                    : dayRange
+                      ? "No entries on this day"
+                      : "No diary entries yet"
+              }
+              description={
+                searchActive
+                  ? "Try a different phrase."
+                  : moodFilter || dayRange
+                    ? "Adjust the filters to see more entries."
+                    : "Start speaking or typing to create your first entry."
+              }
+            />
+          )
+        }
+        onEndReached={handleEndReached}
+        onEndReachedThreshold={0.4}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingTop: 10,
+          paddingBottom: tabBarPadding,
+          paddingHorizontal: spacing.lg,
+        }}
+      />
+    </YStack>
   );
 }

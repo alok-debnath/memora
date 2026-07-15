@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { FlatList, Pressable, StyleSheet, RefreshControl, View, Dimensions } from "react-native";
-import { Image } from "expo-image";
+import { AppImage } from "@/components/ui/AppImage";
 import { XStack, YStack, Text } from "tamagui";
 import { Feather } from "@/lib/icons";
 import { useQuery } from "convex/react";
@@ -108,11 +108,12 @@ export default function FilesScreen() {
           ]}
         >
           {item.type === "image" && previewUri ? (
-            <Image
+            <AppImage
               source={{ uri: previewUri }}
               style={styles.thumbnail}
               contentFit="cover"
               transition={300}
+              recyclingKey={String(item._id)}
               placeholder={{ blurhash: "L6PZfSi_.AyE_3t7t7R**0o#DgR4" }}
             />
           ) : (

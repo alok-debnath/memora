@@ -9,6 +9,7 @@ import { AppButton } from "@/components/ui/AppButton";
 import { Badge } from "@/components/ui/Badge";
 import { useAppToast } from "@/components/ui/toast";
 import { useAdminState } from "@/components/admin/AdminStateContext";
+import { AlertBanner } from "@/components/admin/AlertBanner";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useSemanticColors } from "@/hooks/useSemanticColors";
 
@@ -22,13 +23,12 @@ export default function AdminSystemScreen() {
   const theme = useAppTheme();
   const semantic = useSemanticColors();
   const { showToast } = useAppToast();
-  const { range, refreshKey, setSelectedEntity } = useAdminState();
+  const { range, setSelectedEntity } = useAdminState();
 
-  const health = useQuery(api.admin.systemHealth, { range, refreshKey });
+  const health = useQuery(api.admin.systemHealth, { range });
   const incidents = useQuery(api.admin.listAlertIncidents, {
     status: "open",
     paginationOpts: { numItems: 20, cursor: null },
-    refreshKey,
   });
   const rules = useQuery(api.admin.listAlertRules, {});
 
@@ -81,6 +81,28 @@ export default function AdminSystemScreen() {
           </Card>
         </XStack>
       </YStack>
+
+      {(health.systemAlerts ?? []).length > 0 ? (
+        <Card style={{ borderRadius: 16 }}>
+          <YStack gap={10}>
+            <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
+              Operational Alerts
+            </Text>
+            {health.systemAlerts.map((alert) => (
+              <AlertBanner
+                key={alert.key}
+                alert={{
+                  key: alert.key,
+                  severity: alert.severity,
+                  title: alert.title,
+                  message: alert.message,
+                  updatedAt: alert.updatedAt,
+                }}
+              />
+            ))}
+          </YStack>
+        </Card>
+      ) : null}
 
       <Card style={{ borderRadius: 16 }}>
         <YStack gap={10}>

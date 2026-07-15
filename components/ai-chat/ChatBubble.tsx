@@ -87,6 +87,8 @@ export const ChatBubble = React.memo(function ChatBubble({
   flow,
   calendarSyncEnabled,
   onEditMemory,
+  onRegenerate,
+  onEditResend,
 }: {
   msg: ChatMsg;
   isUser: boolean;
@@ -101,6 +103,8 @@ export const ChatBubble = React.memo(function ChatBubble({
   flow?: CardFlow;
   calendarSyncEnabled?: boolean;
   onEditMemory?: (id: Id<"memories">) => void;
+  onRegenerate?: () => void;
+  onEditResend?: (text: string) => void;
 }) {
   const theme = useAppTheme();
   const isSpeaking = speakingId === msg._id;
@@ -122,6 +126,22 @@ export const ChatBubble = React.memo(function ChatBubble({
   const scaleAnim = useSharedValue(1);
   const messageTime = useMemo(() => formatMessageTime(msg._creationTime), [msg._creationTime]);
   const actionBackground = isUser ? withAlpha(theme.primary.val, "18") : theme.backgroundStrong.val;
+  const turnError = !isUser ? msg.meta?.error : undefined;
+  const actionPillStyle = useCallback(
+    ({ pressed }: { pressed: boolean }) => ({
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      gap: 4,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 999,
+      backgroundColor: actionBackground,
+      borderWidth: 1,
+      borderColor: isUser ? withAlpha(theme.primary.val, "28") : theme.borderSubtle.val,
+      opacity: pressed ? 0.7 : 1,
+    }),
+    [actionBackground, isUser, theme.borderSubtle.val, theme.primary.val],
+  );
 
   const bubbleStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scaleAnim.value }],
@@ -248,34 +268,86 @@ export const ChatBubble = React.memo(function ChatBubble({
 
           {showActions ? (
             <Animated.View entering={ZoomIn.duration(200)}>
-              <XStack gap={6} alignSelf={isUser ? "flex-end" : "flex-start"} paddingHorizontal={4}>
+              <XStack
+                gap={6}
+                alignSelf={isUser ? "flex-end" : "flex-start"}
+                paddingHorizontal={4}
+                flexWrap="wrap"
+              >
                 <Pressable
                   onPress={() => {
                     onCopy(rawContent);
                     setShowActions(false);
                   }}
-                  style={({ pressed }) => ({
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 4,
-                    paddingHorizontal: 12,
-                    paddingVertical: 7,
-                    borderRadius: 999,
-                    backgroundColor: actionBackground,
-                    borderWidth: 1,
-                    borderColor: isUser
-                      ? withAlpha(theme.primary.val, "28")
-                      : theme.borderSubtle.val,
-                    opacity: pressed ? 0.7 : 1,
-                  })}
+                  style={actionPillStyle}
                 >
                   <Feather name="copy" size={12} color={theme.colorMuted.val} />
                   <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val}>
                     Copy
                   </Text>
                 </Pressable>
+                {isUser && onEditResend ? (
+                  <Pressable
+                    onPress={() => {
+                      onEditResend(rawContent);
+                      setShowActions(false);
+                    }}
+                    style={actionPillStyle}
+                  >
+                    <Feather name="edit-3" size={12} color={theme.colorMuted.val} />
+                    <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val}>
+                      Edit & resend
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {!isUser && !isStreamingAssistant && onRegenerate ? (
+                  <Pressable
+                    onPress={() => {
+                      onRegenerate();
+                      setShowActions(false);
+                    }}
+                    style={actionPillStyle}
+                  >
+                    <Feather name="refresh-cw" size={12} color={theme.colorMuted.val} />
+                    <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val}>
+                      Regenerate
+                    </Text>
+                  </Pressable>
+                ) : null}
               </XStack>
             </Animated.View>
+          ) : null}
+
+          {turnError && turnError.code !== "cancelled" ? (
+            <XStack
+              alignItems="center"
+              gap={6}
+              alignSelf="flex-start"
+              paddingHorizontal={10}
+              paddingVertical={6}
+              borderRadius={10}
+              backgroundColor={withAlpha(theme.destructive.val, "10")}
+              borderWidth={1}
+              borderColor={withAlpha(theme.destructive.val, "24")}
+            >
+              <Feather name="alert-circle" size={12} color={theme.destructive.val} />
+              <Text fontSize={11} fontFamily="$body" color={theme.destructive.val}>
+                {turnError.code === "spend_cap"
+                  ? "Daily limit reached"
+                  : turnError.code === "rate_limited"
+                    ? "Provider rate limit"
+                    : turnError.code === "provider_auth"
+                      ? "Provider credentials"
+                      : "Turn failed"}
+              </Text>
+              {onRegenerate && turnError.code !== "spend_cap" ? (
+                <Pressable onPress={onRegenerate} hitSlop={8}>
+                  <Text fontSize={11} fontFamily="$body" fontWeight="700" color={theme.primary.val}>
+                    Retry
+                  </Text>
+                </Pressable>
+              ) : null}
+            </XStack>
           ) : null}
         </YStack>
       </XStack>

@@ -2,7 +2,7 @@ import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAdmin } from "./lib/withAuth";
 
@@ -47,6 +47,10 @@ function getCutoffKey(days: number) {
   return getDayKey(Date.now() - (days - 1) * DAY_MS);
 }
 
+function shiftDayKey(dayKey: string, byDays: number) {
+  return getDayKey(Date.parse(`${dayKey}T00:00:00Z`) + byDays * DAY_MS);
+}
+
 async function logAdminAction(args: {
   ctx: MutationCtx;
   actorUserId: Id<"users">;
@@ -63,6 +67,118 @@ async function logAdminAction(args: {
     metadata: args.metadata,
     createdAt: Date.now(),
   });
+}
+
+const ROLLUP_SCAN_CAP = 8000;
+
+/**
+ * Daily cron: platform-wide counts the admin dashboards need. Scans run here
+ * once a day instead of inside every reactive admin query render. Counts are
+ * capped at ROLLUP_SCAN_CAP (truncated flag marks lower bounds).
+ */
+export const rollupAdminDailyStats = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const dayKey = getDayKey(Date.now());
+    const [users, preferences, summaries, memoryStats] = await Promise.all([
+      ctx.db.query("users").take(ROLLUP_SCAN_CAP),
+      ctx.db.query("userAiProviderPreferences").take(ROLLUP_SCAN_CAP),
+      ctx.db.query("userAnalyticsSummary").take(ROLLUP_SCAN_CAP),
+      ctx.db.query("userMemoryStats").take(ROLLUP_SCAN_CAP),
+    ]);
+
+    const cutoff30d = Date.now() - 30 * DAY_MS;
+    let totalUsers = 0;
+    let newUsers30d = 0;
+    for (const user of users as Doc<"users">[]) {
+      if (user.deletedAt || user.anonymizedAt) continue;
+      totalUsers += 1;
+      if (user._creationTime >= cutoff30d) newUsers30d += 1;
+    }
+    const byokUsers = (preferences as Doc<"userAiProviderPreferences">[]).filter(
+      (pref) => pref.byokEnabled,
+    ).length;
+
+    let powerUsers = 0;
+    let casualUsers = 0;
+    let totalDiaryEntries = 0;
+    let totalChatMessages = 0;
+    let totalAttachmentUploads = 0;
+    let allTimeAiRequests = 0;
+    let allTimeAiCostUsdMicros = 0;
+    let allTimeMemoraAiCostUsdMicros = 0;
+    let allTimeByokAiCostUsdMicros = 0;
+    let allTimeAiInputTokens = 0;
+    let allTimeAiOutputTokens = 0;
+    let allTimeSearches = 0;
+    for (const summary of summaries as Doc<"userAnalyticsSummary">[]) {
+      if ((summary.totalAiRequests ?? 0) >= 200 || (summary.totalSearches ?? 0) >= 300) {
+        powerUsers += 1;
+      } else {
+        casualUsers += 1;
+      }
+      totalDiaryEntries += summary.totalDiaryEntries;
+      totalChatMessages += summary.totalChatMessages;
+      totalAttachmentUploads += summary.totalAttachmentUploads;
+      allTimeAiRequests += summary.totalAiRequests;
+      allTimeAiCostUsdMicros += summary.totalAiCostUsdMicros;
+      allTimeMemoraAiCostUsdMicros += summary.totalAiMemoraCostUsdMicros ?? 0;
+      allTimeByokAiCostUsdMicros += summary.totalAiByokCostUsdMicros ?? 0;
+      allTimeAiInputTokens += summary.totalAiInputTokens;
+      allTimeAiOutputTokens += summary.totalAiOutputTokens;
+      allTimeSearches += summary.totalSearches ?? 0;
+    }
+
+    let totalMemories = 0;
+    let totalReminders = 0;
+    for (const stats of memoryStats as Doc<"userMemoryStats">[]) {
+      totalMemories += stats.totalMemories;
+      totalReminders += stats.totalReminders;
+    }
+
+    const row = {
+      dayKey,
+      totalUsers,
+      byokUsers,
+      newUsers30d,
+      powerUsers,
+      casualUsers,
+      totalMemories,
+      totalReminders,
+      totalDiaryEntries,
+      totalChatMessages,
+      totalAttachmentUploads,
+      allTimeAiRequests,
+      allTimeAiCostUsdMicros,
+      allTimeMemoraAiCostUsdMicros,
+      allTimeByokAiCostUsdMicros,
+      allTimeAiInputTokens,
+      allTimeAiOutputTokens,
+      allTimeSearches,
+      truncated:
+        users.length >= ROLLUP_SCAN_CAP ||
+        preferences.length >= ROLLUP_SCAN_CAP ||
+        summaries.length >= ROLLUP_SCAN_CAP ||
+        memoryStats.length >= ROLLUP_SCAN_CAP,
+      updatedAt: Date.now(),
+    };
+    const existing = await ctx.db
+      .query("adminDailyStats")
+      .withIndex("by_day", (q) => q.eq("dayKey", dayKey))
+      .unique();
+    if (existing) {
+      await ctx.db.patch(existing._id, row);
+    } else {
+      await ctx.db.insert("adminDailyStats", row);
+    }
+    return null;
+  },
+});
+
+/** Latest platform rollup (today or the most recent day the cron ran). */
+async function getLatestAdminDailyStats(ctx: QueryCtx): Promise<Doc<"adminDailyStats"> | null> {
+  return await ctx.db.query("adminDailyStats").withIndex("by_day").order("desc").first();
 }
 
 async function getSystemHealthSnapshot(ctx: QueryCtx, range: "7d" | "30d" | "90d" | "365d") {
@@ -92,11 +208,11 @@ async function getSystemHealthSnapshot(ctx: QueryCtx, range: "7d" | "30d" | "90d
     }
   }
 
-  const byokPrefs = await ctx.db.query("userAiProviderPreferences").take(6000);
-  const byokUsers = byokPrefs.filter((p: Doc<"userAiProviderPreferences">) => p.byokEnabled).length;
-
-  const users = await ctx.db.query("users").take(6000);
-  const totalUsers = users.filter((u: Doc<"users">) => !u.deletedAt && !u.anonymizedAt).length;
+  // Platform-wide counts come from the daily rollup (adminDailyStats), not a
+  // per-render full-table scan.
+  const rollup = await getLatestAdminDailyStats(ctx);
+  const byokUsers = rollup?.byokUsers ?? 0;
+  const totalUsers = rollup?.totalUsers ?? 0;
 
   return {
     range,
@@ -247,10 +363,6 @@ export const dashboardOverview = query({
     const timelineRows = Array.from(currentTimeline.values()).sort((a, b) =>
       a.dayKey.localeCompare(b.dayKey),
     );
-    const previousRows = Array.from(previousTimeline.values()).sort((a, b) =>
-      a.dayKey.localeCompare(b.dayKey),
-    );
-
     const anomalies: Array<{
       key: string;
       severity: "info" | "warning" | "critical";
@@ -301,10 +413,14 @@ export const dashboardOverview = query({
         provider: providerComparison,
         capability: capabilityComparison,
       },
-      timeline: timelineRows.map((row, index) => ({
+      timeline: timelineRows.map((row) => ({
         ...row,
+        // Compare against the same calendar position one period earlier,
+        // keyed by shifted dayKey — index alignment breaks on gap days.
         compareAiRequests:
-          compareMode === "previous" ? (previousRows[index]?.aiRequests ?? 0) : undefined,
+          compareMode === "previous"
+            ? (previousTimeline.get(shiftDayKey(row.dayKey, -prevWindow))?.aiRequests ?? 0)
+            : undefined,
       })),
       openIncidents: incidents.length,
       anomalies,
@@ -365,52 +481,33 @@ export const analyticsLab = query({
       previousTimeline.set(row.dayKey, current);
     }
 
-    const users = await ctx.db.query("users").take(6000);
-    const preferences = await ctx.db.query("userAiProviderPreferences").take(6000);
-
-    const prefByUserId = new Map<string, Doc<"userAiProviderPreferences">>();
-    for (const pref of preferences as Doc<"userAiProviderPreferences">[]) {
-      prefByUserId.set(String(pref.userId), pref);
-    }
+    // User-population segments come from the daily rollup — full-table scans
+    // per admin render both amplified reads and silently under-counted past
+    // the old 6000-row cap.
+    const rollup = await getLatestAdminDailyStats(ctx);
 
     const segmentRows: Array<{ key: string; users: number; label: string }> = [];
     if (segmentFamily === "billing") {
-      let byok = 0;
-      let platform = 0;
-      for (const user of users as Doc<"users">[]) {
-        if (user.deletedAt || user.anonymizedAt) continue;
-        const pref = prefByUserId.get(String(user._id));
-        if (pref?.byokEnabled) byok += 1;
-        else platform += 1;
-      }
+      const byok = rollup?.byokUsers ?? 0;
+      const platform = Math.max(0, (rollup?.totalUsers ?? 0) - byok);
       segmentRows.push(
         { key: "user_byok", users: byok, label: "BYOK users" },
         { key: "memora", users: platform, label: "Platform users" },
       );
     } else if (segmentFamily === "lifecycle") {
-      let newUsers = 0;
-      let returningUsers = 0;
-      const cutoffMs = Date.now() - days * DAY_MS;
-      for (const user of users as Doc<"users">[]) {
-        if (user.deletedAt || user.anonymizedAt) continue;
-        if (user._creationTime >= cutoffMs) newUsers += 1;
-        else returningUsers += 1;
-      }
+      const newUsers = rollup?.newUsers30d ?? 0;
       segmentRows.push(
-        { key: "new", users: newUsers, label: "New users" },
-        { key: "returning", users: returningUsers, label: "Returning users" },
+        { key: "new", users: newUsers, label: "New users (30d)" },
+        {
+          key: "returning",
+          users: Math.max(0, (rollup?.totalUsers ?? 0) - newUsers),
+          label: "Returning users",
+        },
       );
     } else if (segmentFamily === "behavior") {
-      const summary = await ctx.db.query("userAnalyticsSummary").take(6000);
-      let power = 0;
-      let casual = 0;
-      for (const s of summary as Doc<"userAnalyticsSummary">[]) {
-        if ((s.totalAiRequests ?? 0) >= 200 || (s.totalSearches ?? 0) >= 300) power += 1;
-        else casual += 1;
-      }
       segmentRows.push(
-        { key: "power", users: power, label: "Power users" },
-        { key: "casual", users: casual, label: "Casual users" },
+        { key: "power", users: rollup?.powerUsers ?? 0, label: "Power users" },
+        { key: "casual", users: rollup?.casualUsers ?? 0, label: "Casual users" },
       );
     } else if (segmentFamily === "provider") {
       const modelRows = (await ctx.db
@@ -451,12 +548,13 @@ export const analyticsLab = query({
     return {
       range,
       segmentFamily,
-      timeline: Array.from(timeline.entries()).map(([dayKey, value], index) => ({
+      timeline: Array.from(timeline.entries()).map(([dayKey, value]) => ({
         dayKey,
         ...value,
+        // Same-calendar-position compare via shifted dayKey (see dashboardOverview).
         compareAiRequests:
           compareMode === "previous"
-            ? (Array.from(previousTimeline.values())[index]?.aiRequests ?? 0)
+            ? (previousTimeline.get(shiftDayKey(dayKey, -days))?.aiRequests ?? 0)
             : undefined,
       })),
       segments: segmentRows.sort((a, b) => b.users - a.users),
@@ -473,14 +571,18 @@ export const userOpsList = query({
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
 
-    const result = await ctx.db.query("users").order("desc").paginate(args.paginationOpts);
     const search = args.search?.trim().toLowerCase();
+    // Search runs through the users search index BEFORE pagination — the old
+    // paginate-then-filter version only matched within the current 20-row
+    // page, which made search effectively broken.
+    const result = search
+      ? await ctx.db
+          .query("users")
+          .withSearchIndex("search_text", (q) => q.search("searchText", search))
+          .paginate(args.paginationOpts)
+      : await ctx.db.query("users").order("desc").paginate(args.paginationOpts);
 
-    const filtered = result.page.filter((user) => {
-      if (user.deletedAt || user.anonymizedAt) return false;
-      if (!search) return true;
-      return user.email.toLowerCase().includes(search) || user.name.toLowerCase().includes(search);
-    });
+    const filtered = result.page.filter((user) => !user.deletedAt && !user.anonymizedAt);
 
     const users = await Promise.all(
       filtered.map(async (user) => {
@@ -499,11 +601,6 @@ export const userOpsList = query({
             .unique(),
         ]);
 
-        const activeSessions = await ctx.db
-          .query("authSessions")
-          .withIndex("userId", (q) => q.eq("userId", String(user._id)))
-          .take(50);
-
         return {
           _id: user._id,
           name: user.name,
@@ -520,7 +617,6 @@ export const userOpsList = query({
           },
           watch: watch?.status === "watch",
           watchReason: watch?.reason,
-          sessionCount: activeSessions.length,
         };
       }),
     );
@@ -622,6 +718,51 @@ export const userOpsDetail = query({
         totalTokens: row.totalTokens ?? 0,
       })),
     };
+  },
+});
+
+/** Admin override of the platform daily AI spend cap for one user. null clears back to the platform default. */
+export const setUserSpendCap = mutation({
+  args: {
+    userId: v.id("users"),
+    dailySpendCapUsdMicros: v.union(v.number(), v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const capValue =
+      args.dailySpendCapUsdMicros === null
+        ? undefined
+        : Math.max(0, Math.floor(args.dailySpendCapUsdMicros));
+
+    const existing = await ctx.db
+      .query("userAiProviderPreferences")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .unique();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        dailySpendCapUsdMicros: capValue,
+        updatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("userAiProviderPreferences", {
+        userId: args.userId,
+        byokEnabled: false,
+        preferredProvider: "openai",
+        dailySpendCapUsdMicros: capValue,
+        updatedAt: Date.now(),
+      });
+    }
+
+    await logAdminAction({
+      ctx,
+      actorUserId: admin.userId,
+      action: "user.spend_cap",
+      targetType: "user",
+      targetId: String(args.userId),
+      metadata: { dailySpendCapUsdMicros: String(capValue ?? "default") },
+    });
+    return null;
   },
 });
 
@@ -741,16 +882,19 @@ export const aiOpsOverview = query({
     const range = args.range ?? "30d";
     const cutoff = getCutoffKey(getRangeDays(range));
 
-    const cutoffMs = Date.now() - (getRangeDays(range) - 1) * DAY_MS;
-    const rows = await ctx.db
-      .query("userAiUsageEvents")
-      .withIndex("by_occurred_at", (q) => q.gte("occurredAt", cutoffMs))
+    // Aggregate over the pre-rolled per-day/model table instead of raw usage
+    // events — the old newest-1200-events scan truncated stats on any busy
+    // range. Latency (not carried on the rollup) comes from a recent-events
+    // sample and is approximate by design.
+    const rows = (await ctx.db
+      .query("userAnalyticsModelDaily")
+      .withIndex("by_day", (q) => q.gte("dayKey", cutoff))
       .order("desc")
-      .take(1200);
+      .take(Math.min(getRangeDays(range) * 1200, 20000))) as Doc<"userAnalyticsModelDaily">[];
 
     const providerMap = new Map<
       string,
-      { requests: number; errors: number; latencyMs: number; costUsdMicros: number }
+      { requests: number; errors: number; costUsdMicros: number }
     >();
     const modelMap = new Map<
       string,
@@ -761,13 +905,11 @@ export const aiOpsOverview = query({
       const providerCurrent = providerMap.get(row.provider) ?? {
         requests: 0,
         errors: 0,
-        latencyMs: 0,
         costUsdMicros: 0,
       };
-      providerCurrent.requests += 1;
-      providerCurrent.errors += row.status === "error" ? 1 : 0;
-      providerCurrent.latencyMs += row.latencyMs ?? 0;
-      providerCurrent.costUsdMicros += row.costUsdMicros ?? 0;
+      providerCurrent.requests += row.requests;
+      providerCurrent.errors += row.errors;
+      providerCurrent.costUsdMicros += row.costUsdMicros;
       providerMap.set(row.provider, providerCurrent);
 
       const modelKey = `${row.provider}:${row.model}`;
@@ -778,21 +920,38 @@ export const aiOpsOverview = query({
         errors: 0,
         costUsdMicros: 0,
       };
-      modelCurrent.requests += 1;
-      modelCurrent.errors += row.status === "error" ? 1 : 0;
-      modelCurrent.costUsdMicros += row.costUsdMicros ?? 0;
+      modelCurrent.requests += row.requests;
+      modelCurrent.errors += row.errors;
+      modelCurrent.costUsdMicros += row.costUsdMicros;
       modelMap.set(modelKey, modelCurrent);
     }
 
+    const latencySample = await ctx.db
+      .query("userAiUsageEvents")
+      .withIndex("by_occurred_at")
+      .order("desc")
+      .take(300);
+    const latencyByProvider = new Map<string, { totalMs: number; count: number }>();
+    for (const event of latencySample) {
+      if (typeof event.latencyMs !== "number") continue;
+      const current = latencyByProvider.get(event.provider) ?? { totalMs: 0, count: 0 };
+      current.totalMs += event.latencyMs;
+      current.count += 1;
+      latencyByProvider.set(event.provider, current);
+    }
+
     const providers = Array.from(providerMap.entries())
-      .map(([key, value]) => ({
-        key,
-        requests: value.requests,
-        errors: value.errors,
-        failureRate: value.requests > 0 ? value.errors / value.requests : 0,
-        avgLatencyMs: value.requests > 0 ? value.latencyMs / value.requests : 0,
-        costUsdMicros: value.costUsdMicros,
-      }))
+      .map(([key, value]) => {
+        const latency = latencyByProvider.get(key);
+        return {
+          key,
+          requests: value.requests,
+          errors: value.errors,
+          failureRate: value.requests > 0 ? value.errors / value.requests : 0,
+          avgLatencyMs: latency && latency.count > 0 ? latency.totalMs / latency.count : 0,
+          costUsdMicros: value.costUsdMicros,
+        };
+      })
       .sort((a, b) => b.requests - a.requests);
 
     const models = Array.from(modelMap.values())
@@ -1077,15 +1236,34 @@ export const systemHealth = query({
       .order("desc")
       .take(20);
 
-    const rebuilds = await ctx.db
-      .query("userAiProviderPreferences")
-      .take(6000)
+    // One indexed point lookup per non-idle status instead of a full-table scan.
+    const nonIdleStatuses = [
+      "queued",
+      "reembedding_memories",
+      "rebuilding_topics",
+      "failed",
+    ] as const;
+    const rebuilds = (
+      await Promise.all(
+        nonIdleStatuses.map((status) =>
+          ctx.db
+            .query("userAiProviderPreferences")
+            .withIndex("by_rebuild_status", (q) => q.eq("embeddingRebuildStatus", status))
+            .take(100),
+        ),
+      )
+    ).flat();
+
+    const systemAlerts = await ctx.db
+      .query("systemAlerts")
+      .take(100)
       .then((rows) =>
-        rows.filter((row) => row.embeddingRebuildStatus && row.embeddingRebuildStatus !== "idle"),
+        rows.filter((row) => !row.resolvedAt).sort((a, b) => b.updatedAt - a.updatedAt),
       );
 
     return {
       snapshot,
+      systemAlerts,
       openIncidents: incidents,
       embeddingRebuilds: {
         active: rebuilds.length,
@@ -1120,25 +1298,62 @@ export const listAdminActions = query({
     const range = args.range ?? "30d";
     const rangeDays = getRangeDays(range);
     const cutoff = Date.now() - rangeDays * DAY_MS;
-    const actionContains = args.actionContains?.toLowerCase();
-    const targetType = args.targetType?.toLowerCase();
-    const actorContains = args.actorContains?.toLowerCase();
-    const result = await ctx.db
-      .query("adminActionLogs")
-      .withIndex("by_created_at")
-      .order("desc")
-      .paginate(args.paginationOpts);
+    const actionContains = args.actionContains?.trim().toLowerCase();
+    const targetType = args.targetType?.trim().toLowerCase();
+    const actorContains = args.actorContains?.trim().toLowerCase();
+
+    // Range filter lives in the index scan (createdAt >= cutoff) so pages
+    // aren't silently emptied by a post-fetch date filter. Exact action /
+    // targetType matches use their dedicated indexes; fuzzy "contains"
+    // filters still apply per page (they can't be index-backed).
+    const result =
+      actionContains && !actionContains.includes(" ")
+        ? await ctx.db
+            .query("adminActionLogs")
+            .withIndex("by_action_and_created_at", (q) =>
+              q.eq("action", actionContains).gte("createdAt", cutoff),
+            )
+            .order("desc")
+            .paginate(args.paginationOpts)
+        : targetType
+          ? await ctx.db
+              .query("adminActionLogs")
+              .withIndex("by_target_type_and_created_at", (q) =>
+                q.eq("targetType", targetType).gte("createdAt", cutoff),
+              )
+              .order("desc")
+              .paginate(args.paginationOpts)
+          : await ctx.db
+              .query("adminActionLogs")
+              .withIndex("by_created_at", (q) => q.gte("createdAt", cutoff))
+              .order("desc")
+              .paginate(args.paginationOpts);
+
+    const filteredPage = result.page.filter((entry) => {
+      if (actionContains && !entry.action.toLowerCase().includes(actionContains)) return false;
+      if (targetType && !entry.targetType.toLowerCase().includes(targetType)) return false;
+      if (actorContains && !String(entry.actorUserId).toLowerCase().includes(actorContains)) {
+        return false;
+      }
+      return true;
+    });
+
+    // Resolve actor display names server-side — the UI previously rendered
+    // raw user IDs.
+    const actorIds = Array.from(new Set(filteredPage.map((entry) => entry.actorUserId)));
+    const actors = await Promise.all(actorIds.map((id) => ctx.db.get(id)));
+    const actorById = new Map(
+      actors
+        .filter((actor): actor is Doc<"users"> => actor !== null)
+        .map((actor) => [String(actor._id), { name: actor.name, email: actor.email }] as const),
+    );
+
     return {
       ...result,
-      page: result.page.filter((entry) => {
-        if (entry.createdAt < cutoff) return false;
-        if (actionContains && !entry.action.toLowerCase().includes(actionContains)) return false;
-        if (targetType && !entry.targetType.toLowerCase().includes(targetType)) return false;
-        if (actorContains && !String(entry.actorUserId).toLowerCase().includes(actorContains)) {
-          return false;
-        }
-        return true;
-      }),
+      page: filteredPage.map((entry) => ({
+        ...entry,
+        actor: actorById.get(String(entry.actorUserId)) ?? null,
+      })),
     };
   },
 });

@@ -16,7 +16,7 @@ import { STREAM_PATCH_INTERVAL_MS } from "./budgets";
  * arguments (see providers/openai.ts) — never raw markup, so no stripping
  * is needed here.
  */
-export function createReplyStreamer(ctx: ActionCtx, userId: Id<"users">) {
+export function createReplyStreamer(ctx: ActionCtx, userId: Id<"users">, conversationId?: string) {
   let messageId: Id<"chatMessages"> | null = null;
   let buffer = "";
   let lastPatchAt = 0;
@@ -43,6 +43,7 @@ export function createReplyStreamer(ctx: ActionCtx, userId: Id<"users">) {
           userId,
           role: "assistant",
           content: text,
+          conversationId,
           streaming: true,
         });
       } else {
@@ -81,6 +82,7 @@ export function createReplyStreamer(ctx: ActionCtx, userId: Id<"users">) {
         userId,
         role: "assistant",
         content: args.content,
+        conversationId,
         ...(args.meta ? { meta: args.meta } : {}),
       });
     },

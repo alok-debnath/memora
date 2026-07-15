@@ -120,6 +120,7 @@ export const syncSessionUser = mutation({
         userType: "user",
         analyticsSubjectId: `subj_${Date.now().toString(36)}`,
         timezone: "UTC",
+        searchText: `${name} ${email}`.toLowerCase(),
       });
 
       await ctx.db.insert("notificationPreferences", {
@@ -169,6 +170,7 @@ export const syncSessionUser = mutation({
         analyticsSubjectId: user.analyticsSubjectId ?? `subj_${user._id}`,
         deletedAt: undefined,
         anonymizedAt: undefined,
+        searchText: `${name} ${email}`.toLowerCase(),
       });
       user = await ctx.db.get(user._id);
     }

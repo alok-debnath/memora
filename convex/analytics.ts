@@ -1,6 +1,6 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
@@ -34,6 +34,7 @@ const productEventValidator = v.union(
   v.literal("memory_updated"),
   v.literal("memory_deleted"),
   v.literal("diary_created"),
+  v.literal("diary_updated"),
   v.literal("diary_deleted"),
   v.literal("chat_message"),
   v.literal("attachment_uploaded"),
@@ -103,6 +104,8 @@ export const recordProductEvent = internalMutation({
     } else if (args.event === "diary_created") {
       summaryPatch.totalDiaryEntries = summary.totalDiaryEntries + quantity;
       dailyPatch.diaryEntries = daily.diaryEntries + quantity;
+    } else if (args.event === "diary_updated") {
+      // Edits don't change the entry count; touch activity timestamps only.
     } else if (args.event === "diary_deleted") {
       summaryPatch.totalDiaryEntries = Math.max(0, summary.totalDiaryEntries - quantity);
     } else if (args.event === "chat_message") {
@@ -223,6 +226,20 @@ export const recordSearchUsage = internalMutation({
       }),
     ]);
     return null;
+  },
+});
+
+/** Today's platform-billed AI spend for one user — spend-cap enforcement read (see resolveAiRoute). */
+export const getDailyPlatformSpendInternal = internalQuery({
+  args: { userId: v.id("users") },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    const dayKey = getDayKey(Date.now());
+    const daily = await ctx.db
+      .query("userAnalyticsDaily")
+      .withIndex("by_user_and_day", (q) => q.eq("userId", args.userId).eq("dayKey", dayKey))
+      .unique();
+    return daily?.aiMemoraCostUsdMicros ?? 0;
   },
 });
 
@@ -1136,40 +1153,24 @@ export const adminSystemOverview = query({
     await requireAdmin(ctx);
     const range = args.range ?? "30d";
 
-    // ── All-time cross-user sums from summary table ──────────────────────────
-    const summaries = await ctx.db.query("userAnalyticsSummary").take(2000);
-    const memoryStats = await ctx.db.query("userMemoryStats").take(2000);
+    // ── All-time cross-user sums from the daily platform rollup ──────────────
+    // (admin.rollupAdminDailyStats cron) — replaces per-render full scans of
+    // userAnalyticsSummary/userMemoryStats that silently under-counted past
+    // their 2000-row cap.
+    const rollup = await ctx.db.query("adminDailyStats").withIndex("by_day").order("desc").first();
 
-    let totalMemories = 0;
-    let totalReminders = 0;
-    for (const ms of memoryStats) {
-      totalMemories += ms.totalMemories;
-      totalReminders += ms.totalReminders;
-    }
-
-    let allTimeAiRequests = 0;
-    let allTimeAiCostUsdMicros = 0;
-    let allTimeMemoraAiCostUsdMicros = 0;
-    let allTimeByokAiCostUsdMicros = 0;
-    let allTimeAiInputTokens = 0;
-    let allTimeAiOutputTokens = 0;
-    let allTimeSearches = 0;
-    let totalDiaryEntries = 0;
-    let totalChatMessages = 0;
-    let totalAttachmentUploads = 0;
-
-    for (const s of summaries) {
-      allTimeAiRequests += s.totalAiRequests;
-      allTimeAiCostUsdMicros += s.totalAiCostUsdMicros;
-      allTimeMemoraAiCostUsdMicros += s.totalAiMemoraCostUsdMicros ?? 0;
-      allTimeByokAiCostUsdMicros += s.totalAiByokCostUsdMicros ?? 0;
-      allTimeAiInputTokens += s.totalAiInputTokens;
-      allTimeAiOutputTokens += s.totalAiOutputTokens;
-      allTimeSearches += s.totalSearches ?? 0;
-      totalDiaryEntries += s.totalDiaryEntries;
-      totalChatMessages += s.totalChatMessages;
-      totalAttachmentUploads += s.totalAttachmentUploads;
-    }
+    const totalMemories = rollup?.totalMemories ?? 0;
+    const totalReminders = rollup?.totalReminders ?? 0;
+    const allTimeAiRequests = rollup?.allTimeAiRequests ?? 0;
+    const allTimeAiCostUsdMicros = rollup?.allTimeAiCostUsdMicros ?? 0;
+    const allTimeMemoraAiCostUsdMicros = rollup?.allTimeMemoraAiCostUsdMicros ?? 0;
+    const allTimeByokAiCostUsdMicros = rollup?.allTimeByokAiCostUsdMicros ?? 0;
+    const allTimeAiInputTokens = rollup?.allTimeAiInputTokens ?? 0;
+    const allTimeAiOutputTokens = rollup?.allTimeAiOutputTokens ?? 0;
+    const allTimeSearches = rollup?.allTimeSearches ?? 0;
+    const totalDiaryEntries = rollup?.totalDiaryEntries ?? 0;
+    const totalChatMessages = rollup?.totalChatMessages ?? 0;
+    const totalAttachmentUploads = rollup?.totalAttachmentUploads ?? 0;
 
     // ── Range sums from daily table ──────────────────────────────────────────
     const dailyRows = await queryDailyRowsForRange(ctx, range, 5000);
@@ -1192,13 +1193,9 @@ export const adminSystemOverview = query({
       if (row.analyticsSubjectId) activeSubjectsInRange.add(row.analyticsSubjectId);
     }
 
-    // ── BYOK users: count userAiProviderPreferences with byokEnabled = true ──
-    const byokPrefs = await ctx.db.query("userAiProviderPreferences").take(2000);
-    const byokUserCount = byokPrefs.filter((p) => p.byokEnabled).length;
-
-    // ── Total users ──────────────────────────────────────────────────────────
-    const users = await ctx.db.query("users").take(2000);
-    const totalUsers = users.filter((u) => !u.deletedAt && !u.anonymizedAt).length;
+    // ── User counts from the rollup ──────────────────────────────────────────
+    const byokUserCount = rollup?.byokUsers ?? 0;
+    const totalUsers = rollup?.totalUsers ?? 0;
 
     return {
       totalUsers,

@@ -76,3 +76,6 @@ expo-env.d.ts
 !.env.example
 
 .codex
+
+# Convex local backend artifacts
+**/.convex/

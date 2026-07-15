@@ -2,19 +2,25 @@ import { useEffect, useRef, useState } from "react";
 import { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 
 const STREAM_REVEAL_INTERVAL_MS = 48;
+// Server patches land every ~400ms (STREAM_PATCH_INTERVAL_MS in
+// convex/lib/chat/budgets.ts); pace each backlog across that window so the
+// reveal drains right as the next patch arrives instead of using fixed steps.
+const STREAM_SERVER_PATCH_MS = 400;
+const STREAM_TICKS_PER_PATCH = Math.max(
+  1,
+  Math.round(STREAM_SERVER_PATCH_MS / STREAM_REVEAL_INTERVAL_MS),
+);
 const STREAM_MIN_CHARS_PER_TICK = 3;
-const STREAM_MAX_CHARS_PER_TICK = 36;
+// Past this backlog the typewriter is theater, not feedback \u2014 flush instantly
+// (finalize dumps and non-streaming providers hit this).
+const STREAM_FLUSH_THRESHOLD_CHARS = 1200;
 
 export const STREAM_CURSOR = "\u2060\u2502";
 
-function getStreamRevealStep(remaining: number) {
-  return Math.min(
-    remaining,
-    Math.max(
-      STREAM_MIN_CHARS_PER_TICK,
-      Math.min(STREAM_MAX_CHARS_PER_TICK, Math.ceil(remaining / 8)),
-    ),
-  );
+function getStreamRevealStep(remaining: number, catchUp: boolean) {
+  const paced = Math.ceil(remaining / STREAM_TICKS_PER_PATCH);
+  const step = catchUp ? Math.max(paced, Math.ceil(remaining / 3)) : paced;
+  return Math.min(remaining, Math.max(STREAM_MIN_CHARS_PER_TICK, step));
 }
 
 export function useStreamReveal(content: string, isStreaming: boolean) {
@@ -67,14 +73,19 @@ export function useStreamReveal(content: string, isStreaming: boolean) {
       }
 
       const remaining = target.length - current.length;
-      if (remaining <= 0 || !target.startsWith(current)) {
+      if (
+        remaining <= 0 ||
+        !target.startsWith(current) ||
+        remaining > STREAM_FLUSH_THRESHOLD_CHARS
+      ) {
         visibleRef.current = target;
         setVisibleText(target);
         setIsRevealing(false);
         return;
       }
 
-      const step = getStreamRevealStep(remaining);
+      // Stream ended: drain the leftover backlog fast instead of at trickle pace.
+      const step = getStreamRevealStep(remaining, !isStreaming);
       const next = target.slice(0, current.length + step);
       visibleRef.current = next;
       setVisibleText(next);

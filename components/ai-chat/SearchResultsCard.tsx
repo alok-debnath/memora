@@ -139,10 +139,17 @@ export function SearchResultsCard({
     [confirm, deleteMemory, showToast, token],
   );
 
-  const handleOpenDiary = useCallback(() => {
-    closeAllSheets();
-    router.push("/(protected)/(tabs)/diary");
-  }, [closeAllSheets, router]);
+  const handleOpenDiary = useCallback(
+    (id?: Id<"diaryEntries">) => {
+      closeAllSheets();
+      if (id) {
+        router.push(`/diary/${id}` as never);
+        return;
+      }
+      router.push("/(protected)/(tabs)/diary");
+    },
+    [closeAllSheets, router],
+  );
 
   const handleDeleteDiary = useCallback(
     async (id: Id<"diaryEntries">) => {

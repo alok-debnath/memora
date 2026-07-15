@@ -49,6 +49,17 @@ crons.interval(
   {},
 );
 
+// Platform-wide counts for the admin dashboards (see adminDailyStats).
+crons.interval("rollup admin daily stats", { hours: 6 }, internal.admin.rollupAdminDailyStats, {});
+
+// Alert when documents stay embedding-less past the backfill retry window.
+crons.interval(
+  "check embedding health",
+  { hours: 6 },
+  internal.systemAlerts.checkEmbeddingHealth,
+  {},
+);
+
 crons.interval(
   "cleanup abandoned transcription uploads",
   { hours: 1 },

@@ -24,6 +24,7 @@ import {
   resolveBilledTo,
   type AiPricingOperation,
 } from "./aiPricing";
+import { DAILY_PLATFORM_SPEND_CAP_USD_MICROS } from "./chat/budgets";
 import { decryptSecret } from "./aiSecrets";
 import { openAiAdapter } from "./providers/openai";
 import { googleAdapter } from "./providers/google";
@@ -56,10 +57,35 @@ type AnalyticsLink = {
   conversationId?: string;
 };
 
+/**
+ * Thrown when a platform-billed request would exceed the user's daily spend
+ * cap. Deliberately NOT retryable (no `.status`) so withRetry and the
+ * admin-fallback path never re-attempt it on another route.
+ */
+export class AiSpendCapError extends Error {
+  readonly code = "spend_cap_exceeded";
+  constructor(
+    readonly spentUsdMicros: number,
+    readonly capUsdMicros: number,
+  ) {
+    super("Daily AI spend limit reached.");
+    this.name = "AiSpendCapError";
+  }
+}
+
+export function isSpendCapError(error: unknown): error is AiSpendCapError {
+  return (
+    !!error &&
+    typeof error === "object" &&
+    (error as { code?: unknown }).code === "spend_cap_exceeded"
+  );
+}
+
 type ProviderState = {
   preference: {
     userId: Id<"users">;
     byokEnabled: boolean;
+    dailySpendCapUsdMicros?: number;
     preferredProvider: AiProvider;
     capabilityModels?: Partial<Record<AiCapability, string>>;
     providerModels?: AiProviderModelSelections;
@@ -172,6 +198,20 @@ export async function resolveAiRoute(
       billingOwner: "user",
       routingReason: "user_byok",
     };
+  }
+
+  // Platform-billed from here down — enforce the daily spend cap. BYOK routes
+  // returned above and are never capped (user's own key, user's own bill).
+  const capUsdMicros =
+    providerState.preference.dailySpendCapUsdMicros ?? DAILY_PLATFORM_SPEND_CAP_USD_MICROS;
+  if (capUsdMicros > 0) {
+    const spentUsdMicros: number = await ctx.runQuery(
+      internal.analytics.getDailyPlatformSpendInternal,
+      { userId: args.userId },
+    );
+    if (spentUsdMicros >= capUsdMicros) {
+      throw new AiSpendCapError(spentUsdMicros, capUsdMicros);
+    }
   }
 
   if (

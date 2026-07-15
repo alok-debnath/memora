@@ -79,6 +79,7 @@ import type * as lib_withAuth from "../lib/withAuth.js";
 import type * as memories from "../memories.js";
 import type * as migrations from "../migrations.js";
 import type * as model_analytics_aggregates from "../model/analytics/aggregates.js";
+import type * as model_diary_insights from "../model/diary/insights.js";
 import type * as model_memories_deletion from "../model/memories/deletion.js";
 import type * as model_memories_helpers from "../model/memories/helpers.js";
 import type * as model_memories_keywordSearch from "../model/memories/keywordSearch.js";
@@ -90,6 +91,7 @@ import type * as processMemoryMutations from "../processMemoryMutations.js";
 import type * as retrievalRebuildJobs from "../retrievalRebuildJobs.js";
 import type * as review from "../review.js";
 import type * as sharing from "../sharing.js";
+import type * as systemAlerts from "../systemAlerts.js";
 import type * as transcriptionJobs from "../transcriptionJobs.js";
 import type * as userTopics from "../userTopics.js";
 
@@ -171,6 +173,7 @@ declare const fullApi: ApiFromModules<{
   memories: typeof memories;
   migrations: typeof migrations;
   "model/analytics/aggregates": typeof model_analytics_aggregates;
+  "model/diary/insights": typeof model_diary_insights;
   "model/memories/deletion": typeof model_memories_deletion;
   "model/memories/helpers": typeof model_memories_helpers;
   "model/memories/keywordSearch": typeof model_memories_keywordSearch;
@@ -182,6 +185,7 @@ declare const fullApi: ApiFromModules<{
   retrievalRebuildJobs: typeof retrievalRebuildJobs;
   review: typeof review;
   sharing: typeof sharing;
+  systemAlerts: typeof systemAlerts;
   transcriptionJobs: typeof transcriptionJobs;
   userTopics: typeof userTopics;
 }>;
