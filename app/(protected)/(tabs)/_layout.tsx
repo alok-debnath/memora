@@ -24,37 +24,17 @@ import { useAppTheme } from "@/hooks/useAppTheme";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { useThemeStore } from "@/store/theme";
 import { useUIStore } from "@/store/ui";
+import { PRIMARY_NAVIGATION } from "@/constants/appNavigation";
 
 // ─── Navigation items ─────────────────────────────────────────────────────────
 
-const NAV_ITEMS = [
-  {
-    name: "index" as const,
-    title: "Home",
-    icon: "home" as const,
-    detail: "Today and reminders",
-  },
-  {
-    name: "diary" as const,
-    title: "Diary",
-    icon: "book-open" as const,
-    detail: "Daily reflection",
-  },
-  {
-    name: "review" as const,
-    title: "Review",
-    icon: "refresh-cw" as const,
-    detail: "Spaced review",
-  },
-  {
-    name: "more" as const,
-    title: "More",
-    icon: "more-horizontal" as const,
-    detail: "Tools and settings",
-  },
-] as const;
-
-type NavItemName = (typeof NAV_ITEMS)[number]["name"];
+type NavItemName = "index" | "timeline" | "diary" | "review";
+const NAV_ITEMS = PRIMARY_NAVIGATION.map((item) => ({
+  name: item.tabName as NavItemName,
+  title: item.label,
+  icon: item.icon,
+  detail: item.detail,
+}));
 
 // ─── Bar geometry ─────────────────────────────────────────────────────────────
 
@@ -76,26 +56,20 @@ const BAR_BOTTOM_MARGIN = 14; // How far the pill floats above the safe-area bot
 // The active capsule is centered on the slot.
 const IND_X = [0, 1, 3, 4].map((slot) => BAR_SIDE_PAD + slot * SLOT_W + SLOT_W / 2 - IND_W / 2);
 
-// ─── Animation config (tweak here) ───────────────────────────────────────────
-// Higher damping = less oscillation. overshootClamping: true = no bounce at all.
-
+// Navigation keeps its original spring language. These values are intentionally
+// local because they define the physical character of this one control.
 const ANIM = {
-  // Liquid active capsule sliding between tabs
   indicator: {
     damping: 30,
     stiffness: 270,
     mass: 0.8,
     overshootClamping: true,
   },
-  // Icon lift / label slide on focus change
   focus: { damping: 22, stiffness: 280, overshootClamping: true },
-  // Tab item scale on press-in / press-out
   tabPressIn: { damping: 18, stiffness: 500, overshootClamping: true },
   tabPressOut: { damping: 18, stiffness: 320, overshootClamping: true },
-  // Plus button press
   plusPressIn: { damping: 18, stiffness: 460, overshootClamping: true },
   plusPressOut: { damping: 20, stiffness: 340, overshootClamping: true },
-  // Bar entrance on mount
   entrance: { damping: 28, stiffness: 220, overshootClamping: true },
 } as const;
 
@@ -263,9 +237,9 @@ const PlusButton = React.memo(function PlusButton({
 // Maps route name → display index (0–3), ignoring hidden __fab route
 const ROUTE_DISPLAY_INDEX: Record<string, number> = {
   index: 0,
-  diary: 1,
-  review: 2,
-  more: 3,
+  timeline: 1,
+  diary: 2,
+  review: 3,
 };
 
 const TabBarSurface = React.memo(function TabBarSurface({
@@ -358,7 +332,6 @@ function FloatingTabBar({
 
   useEffect(() => {
     indicatorX.value = withSpring(IND_X[displayIndex] ?? IND_X[0], ANIM.indicator);
-    // Liquid stretch-and-settle response without changing layout.
     capsuleScaleX.value = withSequence(
       withTiming(1.2, { duration: 90 }),
       withSpring(1, { damping: 18, stiffness: 250, overshootClamping: false }),
@@ -532,9 +505,9 @@ function isTabRootPath(pathname: string) {
   return (
     pathname === "/" ||
     pathname === "/index" ||
+    pathname === "/timeline" ||
     pathname === "/diary" ||
-    pathname === "/review" ||
-    pathname === "/more"
+    pathname === "/review"
   );
 }
 
@@ -572,29 +545,29 @@ function MobileTabBarOverlay({ activeName, onSelectTab, onPressAdd }: MobileTabB
 
 function useNavController(): NavController {
   const index = useTabTrigger({ name: "index" });
+  const timeline = useTabTrigger({ name: "timeline" });
   const diary = useTabTrigger({ name: "diary" });
   const review = useTabTrigger({ name: "review" });
-  const more = useTabTrigger({ name: "more" });
   const switchTabRef = useRef<Record<NavItemName, () => void>>({
     index: () => undefined,
+    timeline: () => undefined,
     diary: () => undefined,
     review: () => undefined,
-    more: () => undefined,
   });
 
   switchTabRef.current = {
     index: () => index.switchTab("index", {}),
+    timeline: () => timeline.switchTab("timeline", {}),
     diary: () => diary.switchTab("diary", {}),
     review: () => review.switchTab("review", {}),
-    more: () => more.switchTab("more", {}),
   };
 
   const activeName = useMemo<NavItemName>(() => {
+    if (timeline.trigger?.isFocused) return "timeline";
     if (diary.trigger?.isFocused) return "diary";
     if (review.trigger?.isFocused) return "review";
-    if (more.trigger?.isFocused) return "more";
     return "index";
-  }, [diary.trigger?.isFocused, more.trigger?.isFocused, review.trigger?.isFocused]);
+  }, [diary.trigger?.isFocused, review.trigger?.isFocused, timeline.trigger?.isFocused]);
 
   const selectTab = useCallback((name: NavItemName) => {
     if (Platform.OS !== "web") {
@@ -612,6 +585,11 @@ function useNavController(): NavController {
         onPress: () => selectTab("index"),
       },
       {
+        name: "timeline" as const,
+        isFocused: timeline.trigger?.isFocused ?? false,
+        onPress: () => selectTab("timeline"),
+      },
+      {
         name: "diary" as const,
         isFocused: diary.trigger?.isFocused ?? false,
         onPress: () => selectTab("diary"),
@@ -621,18 +599,13 @@ function useNavController(): NavController {
         isFocused: review.trigger?.isFocused ?? false,
         onPress: () => selectTab("review"),
       },
-      {
-        name: "more" as const,
-        isFocused: more.trigger?.isFocused ?? false,
-        onPress: () => selectTab("more"),
-      },
     ],
     [
       diary.trigger?.isFocused,
       index.trigger?.isFocused,
-      more.trigger?.isFocused,
       review.trigger?.isFocused,
       selectTab,
+      timeline.trigger?.isFocused,
     ],
   );
 
@@ -690,7 +663,7 @@ export default function TabLayout() {
           <TabTrigger
             key={item.name}
             name={item.name}
-            href={item.name === "index" ? "/" : `/${item.name}`}
+            href={item.name === "index" ? "/" : item.name === "diary" ? "/diary" : `/${item.name}`}
           />
         ))}
         {/* __fab.tsx exists for file-system routing but is not a nav tab */}

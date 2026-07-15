@@ -4,7 +4,7 @@ import { Text, YStack } from "tamagui";
 import { useQuery } from "convex/react";
 
 import { api } from "@/convex/_generated/api";
-import { Card } from "@/components/ui/Card";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { useAppTheme } from "@/hooks/useAppTheme";
 
 export function AdminGuard({ children }: { children: React.ReactNode }) {
@@ -21,7 +21,7 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
 
   if (!adminStatus.isAdmin) {
     return (
-      <Card style={{ borderRadius: 24 }}>
+      <SurfaceCard style={{ borderRadius: 24 }}>
         <YStack gap={10} alignItems="center" paddingVertical={18}>
           <Text fontSize={18} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
             Admin access required
@@ -30,7 +30,7 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
             This section is restricted to admin accounts.
           </Text>
         </YStack>
-      </Card>
+      </SurfaceCard>
     );
   }
 

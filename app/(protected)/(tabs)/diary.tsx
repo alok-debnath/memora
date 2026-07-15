@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { ScrollView, Pressable } from "react-native";
+import { Pressable } from "react-native";
 import { AppList, type ListRenderItemInfo } from "@/components/ui/AppList";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { XStack, YStack, Text } from "tamagui";
@@ -11,14 +11,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useSemanticColors } from "@/hooks/useSemanticColors";
 import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
-import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
 import { useAppRouter as useRouter } from "@/hooks/useAppRouter";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
-import { PageHero } from "@/components/ui/PageHero";
 import { SectionCard } from "@/components/ui/AppScreen";
 import { ResponsiveStatGrid, WorkspaceSplit } from "@/components/ui/Responsive";
 import { SearchBar } from "@/components/ui/SearchBar";
-import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { SelectionTabs } from "@/components/ui/SelectionTabs";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { DiaryComposer } from "@/components/diary/DiaryComposer";
@@ -28,6 +26,9 @@ import { DiaryInsights } from "@/components/diary/DiaryInsights";
 import type { DiaryListItem } from "@/components/diary/types";
 import { moodIcons, moodLabels, type Mood } from "@/constants/categories";
 import { CONTENT_GAP, layout, spacing } from "@/constants/uiTokens";
+import { PrimaryPageHeader } from "@/components/navigation/PrimaryPageHeader";
+import { FilterChipGroup, type FilterChipOption } from "@/components/ui/FilterChipGroup";
+import { AppIconButton } from "@/components/ui/AppIconButton";
 
 type DiaryMode = "entries" | "calendar" | "insights";
 type InsightsRange = "7d" | "30d" | "90d";
@@ -52,67 +53,26 @@ function MoodFilterRow({
 }) {
   const theme = useAppTheme();
   const semantic = useSemanticColors();
+  type MoodFilterValue = Mood | "all";
+  const options: FilterChipOption<MoodFilterValue>[] = [
+    { value: "all", label: "All moods", icon: "circle", color: theme.primary.val },
+    ...ALL_MOODS.map((mood) => ({
+      value: mood,
+      label: moodLabels[mood],
+      icon: moodIcons[mood],
+      color: semantic.mood[mood],
+    })),
+  ];
 
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ gap: 8 }}
-    >
-      <Pressable
-        onPress={() => onSelect(null)}
-        style={{
-          paddingHorizontal: 12,
-          paddingVertical: 6,
-          borderRadius: 999,
-          backgroundColor: selected === null ? theme.primary.val : theme.secondary.val,
-        }}
-      >
-        <Text
-          fontSize={12}
-          fontFamily="$body"
-          fontWeight="600"
-          color={selected === null ? theme.textInverse.val : theme.colorMuted.val}
-        >
-          All moods
-        </Text>
-      </Pressable>
-      {ALL_MOODS.map((mood) => {
-        const active = selected === mood;
-        const color = semantic.mood[mood];
-        return (
-          <Pressable
-            key={mood}
-            onPress={() => onSelect(active ? null : mood)}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 5,
-              paddingHorizontal: 11,
-              paddingVertical: 6,
-              borderRadius: 999,
-              backgroundColor: active ? color + "26" : theme.secondary.val,
-              borderWidth: 1,
-              borderColor: active ? color : "transparent",
-            }}
-          >
-            <Feather
-              name={moodIcons[mood]}
-              size={12}
-              color={active ? color : theme.colorMuted.val}
-            />
-            <Text
-              fontSize={12}
-              fontFamily="$body"
-              fontWeight="600"
-              color={active ? color : theme.colorMuted.val}
-            >
-              {moodLabels[mood]}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </ScrollView>
+    <FilterChipGroup
+      options={options}
+      value={selected ?? "all"}
+      onChange={(next) => onSelect(next === "all" || next === null ? null : next)}
+      scrollable
+      size="compact"
+      accessibilityLabel="Filter journal by mood"
+    />
   );
 }
 
@@ -122,9 +82,9 @@ export default function DiaryScreen() {
   const { confirm } = useAppConfirm();
   const { token } = useAuth();
   const tabBarPadding = useTabBarBottomPadding();
-  const isLargeScreen = useIsLargeScreen();
 
   const [mode, setMode] = useState<DiaryMode>("entries");
+  const [showBrowseTools, setShowBrowseTools] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [moodFilter, setMoodFilter] = useState<Mood | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -246,34 +206,47 @@ export default function DiaryScreen() {
 
   const header = (
     <YStack gap={CONTENT_GAP}>
-      <PageHero
-        eyebrow="Daily capture"
-        title="AI Diary"
-        description="Write, revisit, and understand the patterns running through your days."
-        icon="book-open"
+      <PrimaryPageHeader
+        eyebrow="Daily reflection"
+        title="Journal"
+        description="A quiet place to write and revisit your days."
       />
 
-      <SegmentedControl<DiaryMode>
+      <SelectionTabs<DiaryMode>
         options={[
           { value: "entries", label: "Entries" },
           { value: "calendar", label: "Calendar" },
-          { value: "insights", label: "Insights" },
+          { value: "insights", label: "Patterns" },
         ]}
         value={mode}
         onChange={setMode}
       />
 
       {mode === "entries" ? (
-        <WorkspaceSplit
-          splitAt={820}
-          asideWidth={330}
-          aside={
-            <SectionCard
-              title="Browse entries"
-              eyebrow="Diary context"
-              density="compact"
-              emphasis="quiet"
-            >
+        <YStack gap={CONTENT_GAP}>
+          <SectionCard title="New reflection" density="compact" emphasis="primary">
+            <DiaryComposer onSubmit={handleSubmit} isSaving={isSaving} />
+          </SectionCard>
+
+          <XStack alignItems="center" justifyContent="space-between" gap={12}>
+            <YStack gap={2}>
+              <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
+                Recent reflections
+              </Text>
+              <Text fontSize={12} color={theme.colorMuted.val}>
+                Your newest entries, in one calm stream
+              </Text>
+            </YStack>
+            <AppIconButton
+              icon={showBrowseTools ? "x" : "filter"}
+              label={showBrowseTools ? "Hide journal filters" : "Filter journal entries"}
+              onPress={() => setShowBrowseTools((visible) => !visible)}
+              variant={showBrowseTools || moodFilter || searchActive ? "soft" : "ghost"}
+            />
+          </XStack>
+
+          {showBrowseTools ? (
+            <SectionCard title="Find an entry" density="compact" emphasis="quiet">
               <SearchBar
                 value={searchText}
                 onChangeText={setSearchText}
@@ -281,29 +254,9 @@ export default function DiaryScreen() {
                 isSearching={searchActive && searchResults === undefined}
               />
               <MoodFilterRow selected={moodFilter} onSelect={setMoodFilter} />
-              <ResponsiveStatGrid
-                maximumColumns={2}
-                minimumColumnWidth={112}
-                items={[
-                  { label: searchActive ? "Matches" : "Loaded", value: entries.length },
-                  { label: "Mood", value: moodFilter ? moodLabels[moodFilter] : "All" },
-                ]}
-              />
             </SectionCard>
-          }
-        >
-          <SectionCard
-            title="New reflection"
-            eyebrow="Daily capture"
-            density="compact"
-            emphasis="quiet"
-          >
-            <Text fontSize={12} lineHeight={17} color={theme.colorMuted.val}>
-              Speak naturally or type a thought. Analysis happens after you save.
-            </Text>
-            <DiaryComposer onSubmit={handleSubmit} isSaving={isSaving} />
-          </SectionCard>
-        </WorkspaceSplit>
+          ) : null}
+        </YStack>
       ) : null}
 
       {mode === "calendar" ? (
@@ -367,7 +320,7 @@ export default function DiaryScreen() {
             density="compact"
             emphasis="quiet"
           >
-            <SegmentedControl<InsightsRange>
+            <SelectionTabs<InsightsRange>
               options={[
                 { value: "7d", label: "Week" },
                 { value: "30d", label: "Month" },

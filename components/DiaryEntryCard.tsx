@@ -1,7 +1,7 @@
 import React from "react";
 import { Pressable } from "react-native";
 import { Feather } from "@/lib/icons";
-import { Card } from "./ui/Card";
+import { SurfaceCard } from "./ui/SurfaceCard";
 import { Badge } from "./ui/Badge";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -24,7 +24,7 @@ export const DiaryEntryCard = React.memo(function DiaryEntryCard({
   const moodColor = entry.mood ? semantic.mood[entry.mood] : undefined;
 
   return (
-    <Card
+    <SurfaceCard
       style={{
         borderRadius: 16,
         borderColor: theme.primary.val + "18",
@@ -129,6 +129,6 @@ export const DiaryEntryCard = React.memo(function DiaryEntryCard({
           </Text>
         </XStack>
       )}
-    </Card>
+    </SurfaceCard>
   );
 });

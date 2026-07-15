@@ -13,8 +13,8 @@ import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { getReminderDate } from "@/types/memoryKind";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SearchBar } from "@/components/ui/SearchBar";
-import { Card } from "@/components/ui/Card";
-import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
+import { SelectionTabs } from "@/components/ui/SelectionTabs";
 import { AppScreen } from "@/components/ui/AppScreen";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { withAlpha } from "@/components/ui/themeHelpers";
@@ -386,7 +386,7 @@ export default function KnowledgeGraphScreen() {
       scrollProps={{ contentContainerStyle: { gap: spacing.md, paddingBottom: 32 } }}
     >
       {/* ── Mode Selector ── */}
-      <SegmentedControl
+      <SelectionTabs
         options={[
           {
             value: "memories" as const,
@@ -547,7 +547,7 @@ export default function KnowledgeGraphScreen() {
             width={responsive.isExpanded ? undefined : "100%"}
             onLayout={(event) => setCanvasWidth(event.nativeEvent.layout.width - 16)}
           >
-            <Card style={{ padding: 8, overflow: "hidden", borderRadius: 16 }}>
+            <SurfaceCard style={{ padding: 8, overflow: "hidden", borderRadius: 16 }}>
               <XStack
                 alignItems="center"
                 justifyContent="space-between"
@@ -720,7 +720,7 @@ export default function KnowledgeGraphScreen() {
                     );
                   })}
               </Svg>
-            </Card>
+            </SurfaceCard>
 
             {/* ── Legend (memory mode) ── */}
             {mode === "memories" && topics.length > 0 && (
@@ -758,20 +758,20 @@ export default function KnowledgeGraphScreen() {
 
           <YStack width={responsive.isExpanded ? 320 : "100%"} flexShrink={0} gap={12}>
             {mode === "memories" && !selectedMemory ? (
-              <Card style={{ borderRadius: 16, gap: 8 }}>
+              <SurfaceCard style={{ borderRadius: 16, gap: 8 }}>
                 <Text fontSize={15} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                   Memory inspector
                 </Text>
                 <Text fontSize={12} lineHeight={18} fontFamily="$body" color={theme.colorMuted.val}>
                   Select a node to inspect its topics, reminder status, people, and connections.
                 </Text>
-              </Card>
+              </SurfaceCard>
             ) : null}
 
             {/* ── Selected Memory Panel ── */}
             {selectedMemory && mode === "memories" && (
               <YStack>
-                <Card style={{ marginTop: 4, borderRadius: 16, gap: 12 }}>
+                <SurfaceCard style={{ marginTop: 4, borderRadius: 16, gap: 12 }}>
                   {/* Topic badges */}
                   {(selectedMemory.primaryTopicId ||
                     (selectedMemory.topicIds?.length ?? 0) > 0) && (
@@ -904,14 +904,14 @@ export default function KnowledgeGraphScreen() {
                       ))}
                     </YStack>
                   ) : null}
-                </Card>
+                </SurfaceCard>
               </YStack>
             )}
 
             {/* ── Selected Topic Panel ── */}
             {selectedTopic && mode === "topics" && (
               <YStack>
-                <Card style={{ marginTop: 4, borderRadius: 16, gap: 12 }}>
+                <SurfaceCard style={{ marginTop: 4, borderRadius: 16, gap: 12 }}>
                   <XStack alignItems="center" gap={10}>
                     <YStack
                       width={44}
@@ -1025,7 +1025,7 @@ export default function KnowledgeGraphScreen() {
                       </XStack>
                     </YStack>
                   )}
-                </Card>
+                </SurfaceCard>
               </YStack>
             )}
 

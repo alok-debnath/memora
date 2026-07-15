@@ -1,5 +1,5 @@
 import React from "react";
-import { Alert, Platform, StyleSheet, Switch } from "react-native";
+import { Alert, Platform, StyleSheet } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Text, XStack, YStack } from "tamagui";
@@ -23,6 +23,8 @@ import { useAppTheme } from "@/hooks/useAppTheme";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppRouter } from "@/hooks/useAppRouter";
+import { AppListRow } from "@/components/ui/AppListRow";
+import { SettingsRow } from "@/components/ui/SettingsRow";
 import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
 import { api } from "@/convex/_generated/api";
 import { Feather, type FeatherIconName } from "@/lib/icons";
@@ -97,29 +99,15 @@ function SettingsSectionRow({
   active?: boolean;
   onPress: () => void;
 }) {
-  const theme = useAppTheme();
   return (
-    <PressableScale onPress={onPress} disabled={active}>
-      <XStack
-        alignItems="center"
-        gap={10}
-        paddingHorizontal={10}
-        paddingVertical={9}
-        borderRadius={12}
-        backgroundColor={active ? withAlpha(theme.primary.val, "16") : "transparent"}
-      >
-        <Feather name={icon} size={15} color={active ? theme.primary.val : theme.colorMuted.val} />
-        <YStack flex={1} gap={1}>
-          <Text fontSize={12} fontWeight="700" color={active ? theme.primary.val : theme.color.val}>
-            {label}
-          </Text>
-          <Text fontSize={10} color={theme.colorMuted.val}>
-            {description}
-          </Text>
-        </YStack>
-        {!active ? <Feather name="chevron-right" size={14} color={theme.colorMuted.val} /> : null}
-      </XStack>
-    </PressableScale>
+    <AppListRow
+      icon={icon}
+      title={label}
+      description={description}
+      selected={active}
+      showChevron={!active}
+      onPress={onPress}
+    />
   );
 }
 
@@ -136,34 +124,14 @@ function SettingToggleRow({
   value: boolean;
   onChange: (value: boolean) => void;
 }) {
-  const theme = useAppTheme();
   return (
-    <XStack alignItems="center" gap={12} paddingVertical={8}>
-      <YStack
-        width={36}
-        height={36}
-        borderRadius={11}
-        alignItems="center"
-        justifyContent="center"
-        backgroundColor={withAlpha(theme.primary.val, "12")}
-      >
-        <Feather name={icon} size={15} color={theme.primary.val} />
-      </YStack>
-      <YStack flex={1} gap={2}>
-        <Text fontSize={13} fontWeight="700" color={theme.color.val}>
-          {title}
-        </Text>
-        <Text fontSize={11} lineHeight={16} color={theme.colorMuted.val}>
-          {description}
-        </Text>
-      </YStack>
-      <Switch
-        value={value}
-        onValueChange={onChange}
-        trackColor={{ true: theme.primary.val, false: theme.borderColor.val }}
-        thumbColor={theme.textInverse.val}
-      />
-    </XStack>
+    <SettingsRow
+      icon={icon}
+      title={title}
+      description={description}
+      value={value}
+      onValueChange={onChange}
+    />
   );
 }
 

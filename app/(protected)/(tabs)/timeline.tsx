@@ -1,7 +1,7 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { SectionList } from "react-native";
 import { Text, XStack, YStack } from "tamagui";
-import { useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
 import { MemoryCard } from "@/components/MemoryCard";
@@ -15,6 +15,18 @@ import type { MemoryNote } from "@/types/memory";
 import { spacing } from "@/constants/uiTokens";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { PrimaryPageHeader } from "@/components/navigation/PrimaryPageHeader";
+import { getReminderDate, inferMemoryEntryKind } from "@/types/memoryKind";
+
+type TimelineMemory = {
+  _id: string;
+  _creationTime: number;
+  title?: string;
+  content?: string;
+  people?: string[];
+  locations?: string[];
+  [key: string]: unknown;
+};
 
 function TimelineWorkspace({
   children,
@@ -72,23 +84,64 @@ export default function TimelineScreen() {
   const theme = useAppTheme();
   const { token } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [semanticResults, setSemanticResults] = useState<TimelineMemory[] | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
   const listRef = useRef<SectionList<any>>(null);
+  const requestId = useRef(0);
+  const semanticSearch = useAction(api.actions.semanticSearch.search);
 
-  const memoryResult = useQuery(api.memories.list, token ? { token, limit: 100 } : "skip");
-  const allMemories = memoryResult?.memories ?? [];
+  const memoryResult = useQuery(api.memories.listAll, token ? { token, limit: 500 } : "skip");
+  const allMemories = (memoryResult ?? []) as TimelineMemory[];
+
+  useEffect(() => {
+    requestId.current += 1;
+    setSemanticResults(null);
+    const timer = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 350);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (!token || debouncedQuery.length < 3) {
+      setSemanticResults(null);
+      setIsSearching(false);
+      return;
+    }
+
+    const currentRequest = requestId.current + 1;
+    requestId.current = currentRequest;
+    setIsSearching(true);
+    semanticSearch({ token, query: debouncedQuery, limit: 16 })
+      .then((result) => {
+        if (requestId.current === currentRequest) {
+          setSemanticResults(result.results as TimelineMemory[]);
+        }
+      })
+      .catch(() => {
+        if (requestId.current === currentRequest) setSemanticResults(null);
+      })
+      .finally(() => {
+        if (requestId.current === currentRequest) setIsSearching(false);
+      });
+  }, [debouncedQuery, semanticSearch, token]);
 
   const sorted = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    const filtered = query
-      ? allMemories.filter(
-          (memory) =>
-            (memory.title ?? "").toLowerCase().includes(query) ||
-            (memory.content ?? "").toLowerCase().includes(query),
-        )
-      : allMemories;
+    if (!query) return [...allMemories].sort((a, b) => b._creationTime - a._creationTime);
 
-    return [...filtered].sort((a, b) => b._creationTime - a._creationTime);
-  }, [allMemories, searchQuery]);
+    const matches = new Map<string, TimelineMemory>();
+    allMemories.forEach((memory) => {
+      const exact =
+        (memory.title ?? "").toLowerCase().includes(query) ||
+        (memory.content ?? "").toLowerCase().includes(query) ||
+        (memory.people ?? []).some((person) => person.toLowerCase().includes(query)) ||
+        (memory.locations ?? []).some((location) => location.toLowerCase().includes(query));
+      if (exact) matches.set(memory._id, memory);
+    });
+    semanticResults?.forEach((memory) => matches.set(memory._id, memory));
+
+    return Array.from(matches.values()).sort((a, b) => b._creationTime - a._creationTime);
+  }, [allMemories, searchQuery, semanticResults]);
 
   const sections = useMemo(
     () => Object.entries(groupByDate(sorted as any)).map(([title, data]) => ({ title, data })),
@@ -97,11 +150,16 @@ export default function TimelineScreen() {
 
   return (
     <AppScreen
-      showBack
-      title="Timeline"
-      subtitle="Browse your archive chronologically and jump between meaningful time periods."
       contentWidth="workspace"
       noScroll
+      safeTop={false}
+      hero={
+        <PrimaryPageHeader
+          eyebrow="Memory archive"
+          title="Timeline"
+          description="Browse your archive chronologically and jump between meaningful time periods."
+        />
+      }
     >
       <TimelineWorkspace
         aside={
@@ -122,7 +180,9 @@ export default function TimelineScreen() {
               />
               {searchQuery.trim() ? (
                 <Text fontSize={12} lineHeight={18} color={theme.colorMuted.val}>
-                  Showing matches for “{searchQuery.trim()}”.
+                  {isSearching
+                    ? `Finding related memories for “${searchQuery.trim()}”…`
+                    : `Showing keyword and related matches for “${searchQuery.trim()}”.`}
                 </Text>
               ) : null}
             </SectionCard>
@@ -172,16 +232,16 @@ export default function TimelineScreen() {
                   ...item,
                   id: item._id,
                   userId: "" as never,
-                  people: [],
-                  locations: [],
-                  entryKind: "memory",
-                  schedule: undefined,
-                  reminderDate: undefined,
-                  isRecurring: false,
-                  recurrenceType: undefined,
-                  importance: "normal" as const,
-                  linkedUrls: [],
-                  extractedActions: [],
+                  people: item.people ?? [],
+                  locations: item.locations ?? [],
+                  entryKind: inferMemoryEntryKind(item),
+                  schedule: item.schedule,
+                  reminderDate: getReminderDate(item),
+                  isRecurring: item.schedule?.isRecurring ?? false,
+                  recurrenceType: item.schedule?.recurrenceType,
+                  importance: item.importance ?? "normal",
+                  linkedUrls: item.linkedUrls ?? [],
+                  extractedActions: item.extractedActions ?? [],
                   createdAt: new Date(item._creationTime).toISOString(),
                   updatedAt: new Date(item._creationTime).toISOString(),
                 } as MemoryNote
@@ -196,7 +256,8 @@ export default function TimelineScreen() {
             <SearchBar
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="Search your timeline..."
+              placeholder="Recall a memory, person, place, or idea..."
+              isSearching={isSearching}
             />
           }
           ListHeaderComponentStyle={{ marginBottom: spacing.md }}

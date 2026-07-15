@@ -18,6 +18,8 @@
     "prepare": "lefthook install",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "ui:check": "bun scripts/check-ui-consistency.ts",
+    "check": "bun run ui:check && bun run typecheck && bun test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "bun test"
   },

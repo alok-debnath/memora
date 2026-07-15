@@ -1,9 +1,8 @@
 import React, { type ComponentRef, useCallback, useEffect, useRef, useState } from "react";
-import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Platform, Pressable, TextInput, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { SheetTextInput as BottomSheetTextInput } from "@/components/ui/SheetTextInput";
 import { YStack, Text } from "tamagui";
-import { Feather } from "@/lib/icons";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { FontFamily } from "@/constants/fonts";
 import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
@@ -11,37 +10,7 @@ import { AttachmentPreviewBar } from "@/components/AttachmentPreviewBar";
 import { AttachmentPickerButton } from "@/components/AttachmentPickerButton";
 import { VoiceRecorder, type VoiceRecorderHandle } from "@/components/VoiceRecorder";
 import type { PendingAttachment } from "@/hooks/useFileAttachments";
-
-// Ghost icon button — no border, no background fill. Modern chat inputs
-// (iMessage/ChatGPT-style) keep side controls flat; only the input field and
-// the send action get any surface of their own.
-function GhostIconButton({
-  icon,
-  onPress,
-  size = 20,
-}: {
-  icon: React.ComponentProps<typeof Feather>["name"];
-  onPress: () => void;
-  size?: number;
-}) {
-  const theme = useAppTheme();
-
-  return (
-    <Pressable
-      onPress={onPress}
-      hitSlop={10}
-      style={({ pressed }) => ({
-        width: 34,
-        height: 34,
-        alignItems: "center",
-        justifyContent: "center",
-        opacity: pressed ? 0.5 : 1,
-      })}
-    >
-      <Feather name={icon} size={size} color={theme.colorMuted.val} />
-    </Pressable>
-  );
-}
+import { AppIconButton } from "@/components/ui/AppIconButton";
 
 // Memoized with narrow props so message-list updates don't re-render the
 // composer subtree (text input, pickers, voice recorder).
@@ -234,46 +203,32 @@ export const ChatComposer = React.memo(function ChatComposer({
                 }}
               />
 
-              <GhostIconButton icon="mic" onPress={() => setMode("voice")} />
+              <AppIconButton
+                icon="mic"
+                label="Record a voice message"
+                onPress={() => setMode("voice")}
+                size="compact"
+              />
 
               {isSending && onStop ? (
                 // Cooperative stop for the in-flight turn (takes effect at the
                 // next planner checkpoint).
-                <Pressable onPress={onStop} hitSlop={6}>
-                  {({ pressed }) => (
-                    <View
-                      style={[
-                        styles.sendButton,
-                        {
-                          backgroundColor: theme.destructive.val,
-                          opacity: pressed ? 0.8 : 1,
-                        },
-                      ]}
-                    >
-                      <Feather name="square" size={15} color={theme.textInverse.val} />
-                    </View>
-                  )}
-                </Pressable>
+                <AppIconButton
+                  icon="square"
+                  label="Stop response"
+                  onPress={onStop}
+                  variant="danger"
+                  size="compact"
+                />
               ) : (
-                <Pressable onPress={submit} disabled={!canSend} hitSlop={6}>
-                  {({ pressed }) => (
-                    <View
-                      style={[
-                        styles.sendButton,
-                        {
-                          backgroundColor: canSend ? theme.primary.val : theme.borderColor.val,
-                          opacity: pressed ? 0.8 : 1,
-                        },
-                      ]}
-                    >
-                      <Feather
-                        name="arrow-up"
-                        size={17}
-                        color={canSend ? theme.textInverse.val : theme.colorMuted.val}
-                      />
-                    </View>
-                  )}
-                </Pressable>
+                <AppIconButton
+                  icon="arrow-up"
+                  label="Send message"
+                  onPress={submit}
+                  disabled={!canSend}
+                  variant="primary"
+                  size="compact"
+                />
               )}
             </>
           )}
@@ -281,14 +236,4 @@ export const ChatComposer = React.memo(function ChatComposer({
       </YStack>
     </YStack>
   );
-});
-
-const styles = StyleSheet.create({
-  sendButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
 });

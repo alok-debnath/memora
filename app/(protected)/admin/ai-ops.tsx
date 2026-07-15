@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { Text, XStack, YStack } from "tamagui";
 
 import { api } from "@/convex/_generated/api";
-import { Card } from "@/components/ui/Card";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { AppButton } from "@/components/ui/AppButton";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { useAppToast } from "@/components/ui/toast";
@@ -113,7 +113,7 @@ export default function AdminAiOpsScreen() {
     <>
       <YStack>
         <XStack gap={10} flexWrap="wrap">
-          <Card style={{ borderRadius: 16, flex: 1, minWidth: 260 }}>
+          <SurfaceCard style={{ borderRadius: 16, flex: 1, minWidth: 260 }}>
             <YStack gap={10}>
               <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 Provider Reliability
@@ -198,9 +198,9 @@ export default function AdminAiOpsScreen() {
                 ))}
               </YStack>
             </YStack>
-          </Card>
+          </SurfaceCard>
 
-          <Card style={{ borderRadius: 16, flex: 1, minWidth: 260 }}>
+          <SurfaceCard style={{ borderRadius: 16, flex: 1, minWidth: 260 }}>
             <YStack gap={10}>
               <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 Top Models
@@ -281,11 +281,11 @@ export default function AdminAiOpsScreen() {
                 ))}
               </YStack>
             </YStack>
-          </Card>
+          </SurfaceCard>
         </XStack>
       </YStack>
 
-      <Card style={{ borderRadius: 16 }}>
+      <SurfaceCard style={{ borderRadius: 16 }}>
         <YStack gap={10}>
           <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
             Routing Controls
@@ -332,7 +332,7 @@ export default function AdminAiOpsScreen() {
             </XStack>
           ))}
         </YStack>
-      </Card>
+      </SurfaceCard>
     </>
   );
 }

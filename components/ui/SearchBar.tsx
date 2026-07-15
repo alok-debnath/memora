@@ -7,6 +7,7 @@ import Animated, {
   withTiming,
   withRepeat,
   withSequence,
+  useReducedMotion,
 } from "react-native-reanimated";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { FontFamily } from "@/constants/fonts";
@@ -27,10 +28,12 @@ export function SearchBar({
   isSearching,
 }: SearchBarProps) {
   const theme = useAppTheme();
+  const reduceMotion = useReducedMotion();
+  const [focused, setFocused] = React.useState(false);
   const sparkleOpacity = useSharedValue(1);
 
   useEffect(() => {
-    if (isSearching) {
+    if (isSearching && !reduceMotion) {
       sparkleOpacity.value = withRepeat(
         withSequence(withTiming(0.3, { duration: 400 }), withTiming(1, { duration: 400 })),
         -1,
@@ -39,7 +42,7 @@ export function SearchBar({
     } else {
       sparkleOpacity.value = withTiming(1);
     }
-  }, [isSearching, sparkleOpacity]);
+  }, [isSearching, reduceMotion, sparkleOpacity]);
 
   const sparkleStyle = useAnimatedStyle(() => ({
     opacity: sparkleOpacity.value,
@@ -48,7 +51,7 @@ export function SearchBar({
   return (
     <XStack
       backgroundColor={theme.surfaceElevated.val}
-      borderColor={theme.borderColor.val}
+      borderColor={focused ? theme.focusRing.val : theme.borderColor.val}
       borderWidth={1}
       borderRadius={18}
       paddingHorizontal={14}
@@ -72,6 +75,9 @@ export function SearchBar({
       <TextInput
         value={value}
         onChangeText={onChangeText}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        accessibilityLabel={placeholder}
         placeholder={placeholder}
         placeholderTextColor={theme.colorMuted.val}
         style={

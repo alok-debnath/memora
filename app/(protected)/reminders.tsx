@@ -1,14 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, type LayoutChangeEvent, Pressable } from "react-native";
-import Animated, {
-  Easing,
-  FadeInDown,
-  ReduceMotion,
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
+import React, { useMemo, useState } from "react";
+import { ActivityIndicator, FlatList } from "react-native";
+import Animated, { FadeInDown, ReduceMotion } from "react-native-reanimated";
 import { XStack, YStack, Text } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { Feather } from "@/lib/icons";
@@ -20,8 +12,8 @@ import { Badge } from "@/components/ui/Badge";
 import { AppScreen, SectionCard } from "@/components/ui/AppScreen";
 import { AppButton } from "@/components/ui/AppButton";
 import { ResponsiveStatGrid, WorkspaceSplit } from "@/components/ui/Responsive";
-import { PressableScale } from "@/components/ui/PressableScale";
-import { withAlpha } from "@/components/ui/themeHelpers";
+import { SelectionTabs, type SelectionTabOption } from "@/components/ui/SelectionTabs";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { radius, spacing } from "@/constants/uiTokens";
 import { getReminderDate, isReminder } from "@/types/memoryKind";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
@@ -67,12 +59,6 @@ const FILTERS: { key: FilterKey; label: string; compactLabel: string }[] = [
   { key: "year", label: "1 Year", compactLabel: "Year" },
   { key: "all", label: "All", compactLabel: "All" },
 ];
-
-const RANGE_PADDING = spacing.xs;
-const RANGE_GAP = 2;
-const DESKTOP_RANGE_HEIGHT = 38;
-const DESKTOP_RANGE_GAP = 6;
-const RANGE_TIMING = { duration: 190, easing: Easing.out(Easing.cubic) } as const;
 
 type EmptyStateCopy = {
   eyebrow: string;
@@ -122,271 +108,40 @@ function RemindersEmptyState({
   activeFilter: FilterKey;
   onAddReminder: () => void;
 }) {
-  const theme = useAppTheme();
   const copy = getEmptyStateCopy(activeFilter);
 
   return (
     <Animated.View
       key={activeFilter}
-      entering={FadeInDown.duration(280).reduceMotion(ReduceMotion.System)}
+      entering={FadeInDown.duration(180).reduceMotion(ReduceMotion.System)}
     >
-      <YStack
-        padding={spacing.xl}
-        borderRadius={radius.lg}
-        borderWidth={1}
-        borderColor={theme.borderSubtle.val}
-        backgroundColor={theme.surface.val}
-        gap={spacing.xl}
-      >
-        <XStack alignItems="flex-start" gap={spacing.md}>
-          <YStack
-            width={44}
-            height={44}
-            borderRadius={radius.sm}
-            alignItems="center"
-            justifyContent="center"
-            backgroundColor={theme.surfaceAccent.val}
-          >
-            <Feather name="bell" size={19} color={theme.primary.val} />
-          </YStack>
-          <YStack flex={1} minWidth={0} gap={spacing.xs}>
-            <Text
-              fontFamily="$utility"
-              fontSize={10}
-              fontWeight="700"
-              letterSpacing={0.9}
-              textTransform="uppercase"
-              color={theme.primary.val}
-            >
-              {copy.eyebrow}
-            </Text>
-            <Text fontFamily="$heading" fontSize={21} fontWeight="700" color={theme.color.val}>
-              {copy.title}
-            </Text>
-            <Text fontFamily="$body" fontSize={14} lineHeight={21} color={theme.colorMuted.val}>
-              {copy.description}
-            </Text>
-          </YStack>
-        </XStack>
-        <AppButton
-          title="Add a reminder"
-          icon="plus"
-          size="sm"
-          variant="secondary"
-          onPress={onAddReminder}
-        />
-      </YStack>
+      <EmptyState
+        icon="bell"
+        eyebrow={copy.eyebrow}
+        title={copy.title}
+        description={copy.description}
+        size="compact"
+        action={
+          <AppButton
+            title="Add a reminder"
+            icon="plus"
+            size="sm"
+            variant="secondary"
+            onPress={onAddReminder}
+          />
+        }
+      />
     </Animated.View>
   );
 }
 
-function CompactRangeSelector({
-  activeFilter,
-  reminders,
-  onChange,
-}: {
-  activeFilter: FilterKey;
-  reminders: ReminderItem[];
-  onChange: (filter: FilterKey) => void;
-}) {
-  const theme = useAppTheme();
-  const reduceMotion = useReducedMotion();
-  const [containerWidth, setContainerWidth] = useState(0);
-  const activeIndex = FILTERS.findIndex((filter) => filter.key === activeFilter);
-  const segmentWidth =
-    containerWidth > 0
-      ? (containerWidth - RANGE_PADDING * 2 - RANGE_GAP * (FILTERS.length - 1)) / FILTERS.length
-      : 0;
-  const indicatorX = useSharedValue(0);
-
-  useEffect(() => {
-    if (segmentWidth <= 0 || activeIndex < 0) return;
-    const targetX = activeIndex * (segmentWidth + RANGE_GAP);
-    if (reduceMotion) {
-      indicatorX.value = targetX;
-      return;
-    }
-    indicatorX.value = withTiming(targetX, RANGE_TIMING);
-  }, [activeIndex, indicatorX, reduceMotion, segmentWidth]);
-
-  const indicatorStyle = useAnimatedStyle(() => ({
-    opacity: segmentWidth > 0 ? 1 : 0,
-    transform: [{ translateX: indicatorX.value }],
+function getRangeOptions(reminders: ReminderItem[]): SelectionTabOption<FilterKey>[] {
+  return FILTERS.map((filter) => ({
+    value: filter.key,
+    label: filter.label,
+    compactLabel: filter.compactLabel,
+    count: getFilteredReminders(reminders, filter.key).length,
   }));
-
-  const handleLayout = (event: LayoutChangeEvent) => {
-    setContainerWidth(event.nativeEvent.layout.width);
-  };
-
-  return (
-    <XStack
-      onLayout={handleLayout}
-      position="relative"
-      padding={RANGE_PADDING}
-      gap={RANGE_GAP}
-      borderRadius={radius.md}
-      borderWidth={1}
-      borderColor={theme.borderSubtle.val}
-      backgroundColor={theme.backgroundStrong.val}
-    >
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          {
-            position: "absolute",
-            top: RANGE_PADDING,
-            bottom: RANGE_PADDING,
-            left: RANGE_PADDING,
-            width: segmentWidth,
-            borderRadius: radius.sm,
-            backgroundColor: theme.primary.val,
-          },
-          indicatorStyle,
-        ]}
-      />
-      {FILTERS.map((filter) => {
-        const active = activeFilter === filter.key;
-        const count = getFilteredReminders(reminders, filter.key).length;
-        return (
-          <Pressable
-            key={filter.key}
-            onPress={() => onChange(filter.key)}
-            accessibilityRole="tab"
-            accessibilityLabel={filter.label}
-            accessibilityState={{ selected: active }}
-            style={({ pressed }) => ({
-              flex: 1,
-              minHeight: 42,
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: radius.sm,
-              opacity: pressed ? 0.72 : 1,
-              backgroundColor: segmentWidth === 0 && active ? theme.primary.val : "transparent",
-            })}
-          >
-            <XStack alignItems="center" justifyContent="center" gap={5}>
-              <Text
-                fontFamily="$utility"
-                fontSize={12}
-                fontWeight="700"
-                color={active ? theme.textInverse.val : theme.colorMuted.val}
-              >
-                {filter.compactLabel}
-              </Text>
-              {count > 0 ? (
-                <YStack
-                  minWidth={16}
-                  height={16}
-                  paddingHorizontal={3}
-                  borderRadius={radius.pill}
-                  alignItems="center"
-                  justifyContent="center"
-                  backgroundColor={
-                    active ? withAlpha(theme.textInverse.val, "2E") : theme.surfaceAccent.val
-                  }
-                >
-                  <Text
-                    fontFamily="$utility"
-                    fontSize={9}
-                    fontWeight="700"
-                    color={active ? theme.textInverse.val : theme.primary.val}
-                  >
-                    {count > 99 ? "99+" : count}
-                  </Text>
-                </YStack>
-              ) : null}
-            </XStack>
-          </Pressable>
-        );
-      })}
-    </XStack>
-  );
-}
-
-function DesktopRangeSelector({
-  activeFilter,
-  reminders,
-  onChange,
-}: {
-  activeFilter: FilterKey;
-  reminders: ReminderItem[];
-  onChange: (filter: FilterKey) => void;
-}) {
-  const theme = useAppTheme();
-  const reduceMotion = useReducedMotion();
-  const activeIndex = FILTERS.findIndex((filter) => filter.key === activeFilter);
-  const indicatorY = useSharedValue(
-    Math.max(0, activeIndex) * (DESKTOP_RANGE_HEIGHT + DESKTOP_RANGE_GAP),
-  );
-
-  useEffect(() => {
-    if (activeIndex < 0) return;
-    const targetY = activeIndex * (DESKTOP_RANGE_HEIGHT + DESKTOP_RANGE_GAP);
-    indicatorY.value = reduceMotion ? targetY : withTiming(targetY, RANGE_TIMING);
-  }, [activeIndex, indicatorY, reduceMotion]);
-
-  const indicatorStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: indicatorY.value }],
-  }));
-
-  return (
-    <YStack position="relative" gap={DESKTOP_RANGE_GAP}>
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          {
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: DESKTOP_RANGE_HEIGHT,
-            borderRadius: radius.sm,
-            backgroundColor: theme.surfaceAccent.val,
-          },
-          indicatorStyle,
-        ]}
-      />
-      {FILTERS.map((filter) => {
-        const active = activeFilter === filter.key;
-        const count = getFilteredReminders(reminders, filter.key).length;
-        return (
-          <PressableScale
-            key={filter.key}
-            onPress={() => onChange(filter.key)}
-            accessibilityRole="tab"
-            accessibilityLabel={filter.label}
-            accessibilityState={{ selected: active }}
-            style={{ zIndex: 1 }}
-          >
-            <XStack
-              height={DESKTOP_RANGE_HEIGHT}
-              alignItems="center"
-              justifyContent="space-between"
-              gap={spacing.sm}
-              paddingHorizontal={10}
-              borderRadius={radius.sm}
-            >
-              <Text
-                fontSize={12}
-                fontWeight={active ? "700" : "500"}
-                color={active ? theme.primary.val : theme.color.val}
-              >
-                {filter.label}
-              </Text>
-              <Text
-                fontSize={11}
-                fontFamily="$utility"
-                fontWeight={active ? "700" : "500"}
-                color={active ? theme.primary.val : theme.colorMuted.val}
-              >
-                {count}
-              </Text>
-            </XStack>
-          </PressableScale>
-        );
-      })}
-    </YStack>
-  );
 }
 
 function getFilteredReminders(memories: ReminderItem[], filter: FilterKey) {
@@ -451,6 +206,7 @@ export default function RemindersScreen() {
     () => getFilteredReminders(withReminders, activeFilter),
     [withReminders, activeFilter],
   );
+  const rangeOptions = useMemo(() => getRangeOptions(withReminders), [withReminders]);
   const overdueCount = withReminders.filter((item) => isOverdue(getReminderDate(item)!)).length;
   const todayCount = getFilteredReminders(withReminders, "today").length;
   const upcomingCount = Math.max(0, withReminders.length - overdueCount);
@@ -483,10 +239,13 @@ export default function RemindersScreen() {
               />
             </SectionCard>
             <SectionCard title="Range" density="compact" emphasis="quiet">
-              <DesktopRangeSelector
-                activeFilter={activeFilter}
-                reminders={withReminders}
+              <SelectionTabs
+                options={rangeOptions}
+                value={activeFilter}
                 onChange={setActiveFilter}
+                orientation="vertical"
+                size="compact"
+                accessibilityLabel="Reminder range"
               />
             </SectionCard>
           </YStack>
@@ -498,10 +257,13 @@ export default function RemindersScreen() {
           ListHeaderComponent={
             isExpanded ? null : (
               <YStack paddingBottom={spacing.md}>
-                <CompactRangeSelector
-                  activeFilter={activeFilter}
-                  reminders={withReminders}
+                <SelectionTabs
+                  options={rangeOptions}
+                  value={activeFilter}
                   onChange={setActiveFilter}
+                  showCompactLabels
+                  size="compact"
+                  accessibilityLabel="Reminder range"
                 />
               </YStack>
             )

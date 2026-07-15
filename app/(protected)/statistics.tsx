@@ -20,10 +20,11 @@ import { Text, XStack, YStack } from "tamagui";
 import { api } from "@/convex/_generated/api";
 import { AppScreen, SectionCard } from "@/components/ui/AppScreen";
 import { SectionGrid } from "@/components/ui/Responsive";
-import { Card } from "@/components/ui/Card";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { Badge } from "@/components/ui/Badge";
 import { SectionLabel } from "@/components/ui/SectionLabel";
-import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { SelectionTabs } from "@/components/ui/SelectionTabs";
+import { AppIconButton } from "@/components/ui/AppIconButton";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useAuth } from "@/hooks/useAuth";
@@ -120,7 +121,7 @@ function KPI({
 }) {
   const theme = useAppTheme();
   return (
-    <Card style={{ width: "100%", height: "100%", borderRadius: 16 }}>
+    <SurfaceCard style={{ width: "100%", height: "100%", borderRadius: 16 }}>
       <XStack alignItems="flex-start" justifyContent="space-between">
         <YStack
           width={42}
@@ -148,7 +149,7 @@ function KPI({
       <Text marginTop={4} fontSize={12} fontFamily="$body" color={theme.colorMuted.val}>
         {label}
       </Text>
-    </Card>
+    </SurfaceCard>
   );
 }
 
@@ -483,13 +484,13 @@ export default function AnalyticsScreen() {
             <Text fontSize={11} fontWeight="700" color={theme.colorMuted.val}>
               Date range
             </Text>
-            <SegmentedControl options={RANGE_OPTIONS} value={range} onChange={setRange} />
+            <SelectionTabs options={RANGE_OPTIONS} value={range} onChange={setRange} />
           </YStack>
           <YStack gap={6}>
             <Text fontSize={11} fontWeight="700" color={theme.colorMuted.val}>
               Spend source
             </Text>
-            <SegmentedControl
+            <SelectionTabs
               options={SPEND_SOURCE_OPTIONS}
               value={spendSource}
               onChange={(value) => setSpendSource(value as SpendSource)}
@@ -547,7 +548,7 @@ export default function AnalyticsScreen() {
       <SectionGrid minimumColumnWidth={430} maximumColumns={2} gap={16} featuredFirst>
         <YStack>
           <SectionLabel>Usage Flow</SectionLabel>
-          <Card
+          <SurfaceCard
             style={{
               borderRadius: 16,
               overflow: "hidden",
@@ -698,12 +699,12 @@ export default function AnalyticsScreen() {
                 nestedScrollEnabled
               />
             </YStack>
-          </Card>
+          </SurfaceCard>
         </YStack>
 
         <YStack>
           <SectionLabel>AI Usage</SectionLabel>
-          <Card style={{ borderRadius: 16 }}>
+          <SurfaceCard style={{ borderRadius: 16 }}>
             <YStack gap={10} marginBottom={16}>
               <XStack alignItems="center" justifyContent="space-between" gap={12} flexWrap="wrap">
                 <Text fontSize={18} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
@@ -856,12 +857,12 @@ export default function AnalyticsScreen() {
                 AI tracking starts from the rollout of this analytics update.
               </Text>
             )}
-          </Card>
+          </SurfaceCard>
         </YStack>
 
         <YStack>
           <SectionLabel>Search & Retrieval</SectionLabel>
-          <Card style={{ borderRadius: 16 }}>
+          <SurfaceCard style={{ borderRadius: 16 }}>
             <XStack flexWrap="wrap" gap={10}>
               <YStack
                 flex={1}
@@ -918,7 +919,7 @@ export default function AnalyticsScreen() {
                 label={`${formatCompactNumber(overview?.totals.totalSearches ?? 0)} tracked searches`}
               />
             </XStack>
-          </Card>
+          </SurfaceCard>
         </YStack>
       </SectionGrid>
 
@@ -971,15 +972,16 @@ export default function AnalyticsScreen() {
                 </Text>
               ) : null}
             </YStack>
-            <PressableScale onPress={() => setDetailPanel("none")}>
-              <YStack width={36} height={36} alignItems="center" justifyContent="center">
-                <Feather name="x" size={18} color={theme.colorMuted.val} />
-              </YStack>
-            </PressableScale>
+            <AppIconButton
+              icon="x"
+              label="Close details"
+              onPress={() => setDetailPanel("none")}
+              size="compact"
+            />
           </XStack>
 
           {detailPanel === "features" ? (
-            <Card style={{ borderRadius: 16 }}>
+            <SurfaceCard style={{ borderRadius: 16 }}>
               <YStack gap={12}>
                 <Text fontSize={13} color={theme.colorMuted.val}>
                   {formatCompactNumber(overview?.rangeTotals.aiActions ?? 0)} user-visible actions
@@ -1060,11 +1062,11 @@ export default function AnalyticsScreen() {
                   </Text>
                 )}
               </YStack>
-            </Card>
+            </SurfaceCard>
           ) : null}
 
           {detailPanel === "models" ? (
-            <Card style={{ borderRadius: 16 }}>
+            <SurfaceCard style={{ borderRadius: 16 }}>
               <YStack gap={12}>
                 {aiBreakdown.length > 0 ? (
                   aiBreakdown.map((item, index) => (
@@ -1098,11 +1100,11 @@ export default function AnalyticsScreen() {
                   </Text>
                 )}
               </YStack>
-            </Card>
+            </SurfaceCard>
           ) : null}
 
           {detailPanel === "events" ? (
-            <Card style={{ borderRadius: 16 }}>
+            <SurfaceCard style={{ borderRadius: 16 }}>
               <YStack gap={12}>
                 {recentEvents.length > 0 ? (
                   recentEvents.map((event) => (
@@ -1145,7 +1147,7 @@ export default function AnalyticsScreen() {
                   </Text>
                 )}
               </YStack>
-            </Card>
+            </SurfaceCard>
           ) : null}
         </BottomSheetScrollView>
       </BottomSheetModal>

@@ -22,6 +22,7 @@ type SurfaceCardProps = {
   shadowLevel?: AppShadowLevel;
   variant?: "solid" | "frosted" | "glass";
   radius?: number;
+  noPadding?: boolean;
 };
 
 export function SurfaceCard({
@@ -33,6 +34,7 @@ export function SurfaceCard({
   shadowLevel,
   variant = "frosted",
   radius = radiusTokens.md,
+  noPadding = false,
 }: SurfaceCardProps) {
   const theme = useAppTheme();
   const surface = getSurfaceColors(theme, tone);
@@ -44,7 +46,7 @@ export function SurfaceCard({
       <GlassSurface
         radius={radius}
         style={style}
-        contentStyle={{ padding }}
+        contentStyle={{ padding: noPadding ? 0 : padding }}
         shadowLevel={shouldShadow ? resolvedShadowLevel : false}
       >
         {children}
@@ -60,7 +62,7 @@ export function SurfaceCard({
       borderColor={surface.border}
       borderWidth={1}
       borderRadius={radius}
-      padding={padding}
+      padding={noPadding ? 0 : padding}
       style={[shouldShadow ? appShadow(theme.shadowColor.val, resolvedShadowLevel) : null, style]}
     >
       {children}

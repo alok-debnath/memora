@@ -1,10 +1,13 @@
 import type { FeatherIconName } from "@/lib/icons";
 
 export type AppNavigationItem = {
+  id: string;
   label: string;
   detail: string;
   href: string;
   icon: FeatherIconName;
+  primary?: boolean;
+  tabName?: "index" | "timeline" | "diary" | "review";
   adminOnly?: boolean;
 };
 
@@ -15,20 +18,65 @@ export type AppNavigationSection = {
 
 export const APP_NAVIGATION: AppNavigationSection[] = [
   {
-    label: "Core",
+    label: "Primary",
     items: [
-      { label: "Home", detail: "Today and recall", href: "/", icon: "home" },
-      { label: "Diary", detail: "Daily reflection", href: "/diary", icon: "book-open" },
-      { label: "Review", detail: "Spaced repetition", href: "/review", icon: "refresh-cw" },
+      {
+        id: "today",
+        label: "Today",
+        detail: "Your daily memory rhythm",
+        href: "/",
+        icon: "sun",
+        primary: true,
+        tabName: "index",
+      },
+      {
+        id: "timeline",
+        label: "Timeline",
+        detail: "Browse and recall memories",
+        href: "/timeline",
+        icon: "clock",
+        primary: true,
+        tabName: "timeline",
+      },
+      {
+        id: "journal",
+        label: "Journal",
+        detail: "Reflect and notice patterns",
+        href: "/diary",
+        icon: "book-open",
+        primary: true,
+        tabName: "diary",
+      },
+      {
+        id: "review",
+        label: "Review",
+        detail: "Strengthen important memories",
+        href: "/review",
+        icon: "refresh-cw",
+        primary: true,
+        tabName: "review",
+      },
     ],
   },
   {
     label: "Library",
     items: [
-      { label: "Timeline", detail: "Memories over time", href: "/timeline", icon: "clock" },
-      { label: "Reminders", detail: "Upcoming follow-ups", href: "/reminders", icon: "bell" },
-      { label: "Files", detail: "Images and documents", href: "/documents", icon: "paperclip" },
       {
+        id: "reminders",
+        label: "Reminders",
+        detail: "Upcoming follow-ups",
+        href: "/reminders",
+        icon: "bell",
+      },
+      {
+        id: "files",
+        label: "Files",
+        detail: "Images and documents",
+        href: "/documents",
+        icon: "paperclip",
+      },
+      {
+        id: "knowledge-graph",
         label: "Knowledge graph",
         detail: "Connected memories",
         href: "/knowledge-graph",
@@ -40,6 +88,7 @@ export const APP_NAVIGATION: AppNavigationSection[] = [
     label: "Insights",
     items: [
       {
+        id: "analytics",
         label: "Analytics",
         detail: "Patterns and usage",
         href: "/statistics",
@@ -51,14 +100,33 @@ export const APP_NAVIGATION: AppNavigationSection[] = [
     label: "Account",
     items: [
       {
+        id: "settings",
         label: "App settings",
         detail: "Appearance and behavior",
         href: "/settings",
         icon: "settings",
       },
-      { label: "Data", detail: "Trash and controls", href: "/data", icon: "archive" },
-      { label: "Profile", detail: "Identity and AI", href: "/profile", icon: "user" },
       {
+        id: "profile",
+        label: "Profile",
+        detail: "Identity and integrations",
+        href: "/profile",
+        icon: "user",
+      },
+      {
+        id: "data",
+        label: "Data",
+        detail: "Trash and controls",
+        href: "/data",
+        icon: "archive",
+      },
+    ],
+  },
+  {
+    label: "Admin",
+    items: [
+      {
+        id: "admin",
         label: "Admin console",
         detail: "Platform operations",
         href: "/admin",
@@ -83,3 +151,9 @@ export function getNavigationContext(pathname: string) {
   }
   return null;
 }
+
+export const PRIMARY_NAVIGATION = APP_NAVIGATION.flatMap((section) => section.items).filter(
+  (item) => item.primary,
+);
+
+export const SECONDARY_NAVIGATION = APP_NAVIGATION.filter((section) => section.label !== "Primary");

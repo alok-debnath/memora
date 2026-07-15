@@ -6,6 +6,7 @@ import { XStack, Text } from "tamagui";
 
 import { createThemeGradient } from "@/constants/themePalettes";
 import { FontFamily } from "@/constants/fonts";
+import { control } from "@/constants/uiTokens";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useThemeStore } from "@/store/theme";
 import { PressableScale } from "@/components/ui/PressableScale";
@@ -124,6 +125,7 @@ export function AppButton({
       onPress={onPress}
       disabled={isDisabled}
       scale={0.99}
+      hitSlop={Math.max(0, (control.minimumHitSize - metrics.minHeight) / 2)}
       style={[
         {
           alignSelf: fullWidth ? "stretch" : "flex-start",

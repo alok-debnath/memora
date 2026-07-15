@@ -18,6 +18,8 @@ import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
 import { selectSheetOpen, useUIStore } from "@/store/ui";
 import type { MemoryNote } from "@/types/memory";
 import { getReminderDate, inferMemoryEntryKind } from "@/types/memoryKind";
+import { FilterChipGroup } from "@/components/ui/FilterChipGroup";
+import { AppIconButton } from "@/components/ui/AppIconButton";
 
 type MemoryItem = {
   _id: Id<"memories">;
@@ -225,11 +227,12 @@ export function HomeOverviewSheet() {
                 Recent memory activity and reminders
               </Text>
             </YStack>
-            <PressableScale onPress={closeHomeOverview}>
-              <YStack width={36} height={36} alignItems="center" justifyContent="center">
-                <Feather name="x" size={18} color={theme.colorMuted.val} />
-              </YStack>
-            </PressableScale>
+            <AppIconButton
+              icon="x"
+              label="Close overview"
+              onPress={closeHomeOverview}
+              size="compact"
+            />
           </XStack>
 
           <XStack gap={10}>
@@ -328,33 +331,18 @@ export function HomeOverviewSheet() {
               ) : null
             }
           >
-            <XStack gap={6} flexWrap="wrap">
-              {(["week", "month", "year", "all"] as const).map((range) => (
-                <PressableScale key={range} onPress={() => setUpcomingRange(range)}>
-                  <YStack
-                    paddingHorizontal={12}
-                    paddingVertical={6}
-                    borderRadius={999}
-                    backgroundColor={
-                      upcomingRange === range ? theme.primary.val + "22" : theme.secondary.val
-                    }
-                    borderWidth={1}
-                    borderColor={
-                      upcomingRange === range ? theme.primary.val : theme.borderColor.val
-                    }
-                  >
-                    <Text
-                      fontSize={12}
-                      fontWeight="700"
-                      color={upcomingRange === range ? theme.primary.val : theme.colorMuted.val}
-                      textTransform="capitalize"
-                    >
-                      {range}
-                    </Text>
-                  </YStack>
-                </PressableScale>
-              ))}
-            </XStack>
+            <FilterChipGroup
+              options={[
+                { value: "week", label: "Week" },
+                { value: "month", label: "Month" },
+                { value: "year", label: "Year" },
+                { value: "all", label: "All" },
+              ]}
+              value={upcomingRange}
+              onChange={(range) => range && setUpcomingRange(range)}
+              size="compact"
+              accessibilityLabel="Upcoming reminder range"
+            />
             {upcomingReminders.length > 0 ? (
               <YStack>
                 {(upcomingReminders as MemoryItem[]).map((memory, i) => (

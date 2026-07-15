@@ -12,8 +12,9 @@ import Svg, {
 } from "react-native-svg";
 import { Text, XStack, YStack } from "tamagui";
 
-import { PressableScale } from "@/components/ui/PressableScale";
+import { FilterChipGroup, type FilterChipOption } from "@/components/ui/FilterChipGroup";
 import { withAlpha } from "@/components/ui/themeHelpers";
+import { SelectionTabs } from "@/components/ui/SelectionTabs";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useSemanticColors } from "@/hooks/useSemanticColors";
 
@@ -58,14 +59,16 @@ export function InteractiveTimelineChart({
   const semantic = useSemanticColors();
   const resolvedCompareLineColor = compareLineColor ?? semantic.status.warning;
   const [selectedIndex, setSelectedIndex] = React.useState<number>(Math.max(points.length - 1, 0));
-  const [windowSize, setWindowSize] = React.useState<7 | 14 | "all">("all");
+  const [windowSize, setWindowSize] = React.useState<"7" | "14" | "all">("all");
   const [showPrimary, setShowPrimary] = React.useState(true);
   const [showSecondary, setShowSecondary] = React.useState(true);
   const [showCompare, setShowCompare] = React.useState(true);
 
   const visiblePoints = React.useMemo(() => {
-    if (windowSize === "all" || points.length <= windowSize) return points;
-    return points.slice(points.length - windowSize);
+    if (windowSize === "all") return points;
+    const count = Number(windowSize);
+    if (points.length <= count) return points;
+    return points.slice(points.length - count);
   }, [points, windowSize]);
 
   const hasCompare = visiblePoints.some((point) => point.compareSecondary !== undefined);
@@ -124,8 +127,25 @@ export function InteractiveTimelineChart({
   const gridStroke = withAlpha(theme.color.val, "2E");
   const axisColor = withAlpha(theme.color.val, "7A");
   const dotStroke = withAlpha(theme.background.val, "F0");
-  const inactiveChipBorder = withAlpha(theme.shadowColor.val, "22");
-  const inactiveDot = withAlpha(semantic.status.neutral, "77");
+  const visibleSeries = [
+    ...(showPrimary ? (["primary"] as const) : []),
+    ...(showSecondary ? (["secondary"] as const) : []),
+    ...(hasCompare && showCompare ? (["compare"] as const) : []),
+  ];
+  const seriesOptions: FilterChipOption<"primary" | "secondary" | "compare">[] = [
+    { value: "primary", label: primaryLabel, color: barColor, showColorSwatch: true },
+    { value: "secondary", label: secondaryLabel, color: lineColor, showColorSwatch: true },
+    ...(hasCompare
+      ? ([
+          {
+            value: "compare",
+            label: compareLabel,
+            color: resolvedCompareLineColor,
+            showColorSwatch: true,
+          },
+        ] satisfies FilterChipOption<"compare">[])
+      : []),
+  ];
 
   return (
     <YStack>
@@ -139,58 +159,29 @@ export function InteractiveTimelineChart({
           </Text>
         </YStack>
 
-        <XStack gap={8} flexWrap="wrap">
-          <ToggleChip
-            active={showPrimary}
-            color={barColor}
-            label={primaryLabel}
-            onPress={() => setShowPrimary((current) => !current)}
-            inactiveBorder={inactiveChipBorder}
-            inactiveDotColor={inactiveDot}
-          />
-          <ToggleChip
-            active={showSecondary}
-            color={lineColor}
-            label={secondaryLabel}
-            onPress={() => setShowSecondary((current) => !current)}
-            inactiveBorder={inactiveChipBorder}
-            inactiveDotColor={inactiveDot}
-          />
-          {hasCompare ? (
-            <ToggleChip
-              active={showCompare}
-              color={resolvedCompareLineColor}
-              label={compareLabel}
-              onPress={() => setShowCompare((current) => !current)}
-              inactiveBorder={inactiveChipBorder}
-              inactiveDotColor={inactiveDot}
-            />
-          ) : null}
-        </XStack>
+        <FilterChipGroup
+          options={seriesOptions}
+          values={visibleSeries}
+          onValuesChange={(values) => {
+            setShowPrimary(values.includes("primary"));
+            setShowSecondary(values.includes("secondary"));
+            setShowCompare(values.includes("compare"));
+          }}
+          size="compact"
+          accessibilityLabel="Visible chart series"
+        />
 
-        <XStack gap={8}>
-          <RangeChip
-            label="7"
-            active={windowSize === 7}
-            onPress={() => setWindowSize(7)}
-            inactiveBorder={inactiveChipBorder}
-            activeColor={semantic.status.info}
-          />
-          <RangeChip
-            label="14"
-            active={windowSize === 14}
-            onPress={() => setWindowSize(14)}
-            inactiveBorder={inactiveChipBorder}
-            activeColor={semantic.status.info}
-          />
-          <RangeChip
-            label="All"
-            active={windowSize === "all"}
-            onPress={() => setWindowSize("all")}
-            inactiveBorder={inactiveChipBorder}
-            activeColor={semantic.status.info}
-          />
-        </XStack>
+        <SelectionTabs
+          options={[
+            { value: "7", label: "7 days" },
+            { value: "14", label: "14 days" },
+            { value: "all", label: "All" },
+          ]}
+          value={windowSize}
+          onChange={setWindowSize}
+          size="compact"
+          accessibilityLabel="Chart range"
+        />
 
         {selected ? (
           <XStack gap={10} flexWrap="wrap">
@@ -338,91 +329,6 @@ export function InteractiveTimelineChart({
         </ScrollView>
       </YStack>
     </YStack>
-  );
-}
-
-function ToggleChip({
-  active,
-  color,
-  label,
-  onPress,
-  inactiveBorder,
-  inactiveDotColor,
-}: {
-  active: boolean;
-  color: string;
-  label: string;
-  onPress: () => void;
-  inactiveBorder: string;
-  inactiveDotColor: string;
-}) {
-  const theme = useAppTheme();
-  return (
-    <PressableScale onPress={onPress}>
-      <XStack
-        alignItems="center"
-        gap={6}
-        paddingHorizontal={10}
-        paddingVertical={7}
-        borderRadius={10}
-        borderWidth={1}
-        borderColor={active ? color : inactiveBorder}
-        backgroundColor={active ? color + "1A" : "transparent"}
-      >
-        <YStack
-          width={7}
-          height={7}
-          borderRadius={99}
-          backgroundColor={active ? color : inactiveDotColor}
-        />
-        <Text
-          fontSize={11}
-          fontWeight={active ? "700" : "500"}
-          color={active ? theme.color.val : theme.colorMuted.val}
-        >
-          {label}
-        </Text>
-      </XStack>
-    </PressableScale>
-  );
-}
-
-function RangeChip({
-  label,
-  active,
-  onPress,
-  inactiveBorder,
-  activeColor,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-  inactiveBorder: string;
-  activeColor: string;
-}) {
-  const theme = useAppTheme();
-  return (
-    <PressableScale onPress={onPress}>
-      <XStack
-        alignItems="center"
-        justifyContent="center"
-        minWidth={42}
-        paddingHorizontal={10}
-        paddingVertical={6}
-        borderRadius={10}
-        borderWidth={1}
-        borderColor={active ? activeColor : inactiveBorder}
-        backgroundColor={active ? activeColor + "14" : "transparent"}
-      >
-        <Text
-          fontSize={11}
-          fontWeight={active ? "700" : "500"}
-          color={active ? theme.color.val : theme.colorMuted.val}
-        >
-          {label}
-        </Text>
-      </XStack>
-    </PressableScale>
   );
 }
 

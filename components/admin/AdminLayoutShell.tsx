@@ -6,10 +6,11 @@ import { Feather } from "@/lib/icons";
 import { Text, XStack, YStack } from "tamagui";
 
 import { appRouter as router } from "@/lib/appRouter";
-import { Card } from "@/components/ui/Card";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { Badge } from "@/components/ui/Badge";
 import { PressableScale } from "@/components/ui/PressableScale";
-import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { SelectionTabs } from "@/components/ui/SelectionTabs";
+import { AppButton } from "@/components/ui/AppButton";
 import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
 import { withAlpha } from "@/components/ui/themeHelpers";
 import { AdminGuard } from "@/components/admin/AdminGuard";
@@ -88,7 +89,7 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
     >
       <AdminGuard>
         <YStack>
-          <Card style={{ borderRadius: 26 }}>
+          <SurfaceCard style={{ borderRadius: 26 }}>
             <XStack alignItems="flex-start" justifyContent="space-between" gap={10}>
               <YStack gap={6} flex={1}>
                 <Badge label="Admin Control Center" color={adminColor} />
@@ -116,11 +117,11 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
                 <Feather name="shield" size={20} color={adminColor} />
               </YStack>
             </XStack>
-          </Card>
+          </SurfaceCard>
         </YStack>
 
         <YStack>
-          <Card style={{ borderRadius: 22, padding: 12 }}>
+          <SurfaceCard style={{ borderRadius: 22, padding: 12 }}>
             <YStack position="relative" marginHorizontal={-12}>
               <ScrollView
                 horizontal
@@ -263,16 +264,16 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
                 </>
               ) : null}
             </YStack>
-          </Card>
+          </SurfaceCard>
         </YStack>
 
         <YStack>
-          <Card style={{ borderRadius: 22 }}>
+          <SurfaceCard style={{ borderRadius: 22 }}>
             <YStack gap={10}>
-              <SegmentedControl options={RANGE_OPTIONS} value={range} onChange={setRange} />
+              <SelectionTabs options={RANGE_OPTIONS} value={range} onChange={setRange} />
               {showCompareFilter ? (
                 <>
-                  <SegmentedControl
+                  <SelectionTabs
                     options={COMPARE_OPTIONS}
                     value={compareMode}
                     onChange={setCompareMode}
@@ -289,37 +290,23 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
                     Refresh reloads current admin data immediately.
                   </Text>
                 </YStack>
-                <PressableScale onPress={triggerRefresh}>
-                  <XStack
-                    alignItems="center"
-                    gap={6}
-                    paddingHorizontal={12}
-                    paddingVertical={9}
-                    borderRadius={12}
-                    borderWidth={1}
-                    borderColor={withAlpha(theme.shadowColor.val, "22")}
-                  >
-                    <Feather name="refresh-cw" size={13} color={semantic.status.neutral} />
-                    <Text
-                      fontSize={12}
-                      fontFamily="$body"
-                      fontWeight="600"
-                      color={theme.colorMuted.val}
-                    >
-                      Refresh
-                    </Text>
-                  </XStack>
-                </PressableScale>
+                <AppButton
+                  title="Refresh"
+                  icon="refresh-cw"
+                  onPress={triggerRefresh}
+                  variant="secondary"
+                  size="sm"
+                />
               </XStack>
               {showSegmentFilter ? (
-                <SegmentedControl
+                <SelectionTabs
                   options={SEGMENT_OPTIONS}
                   value={segmentFamily}
                   onChange={setSegmentFamily}
                 />
               ) : null}
             </YStack>
-          </Card>
+          </SurfaceCard>
         </YStack>
 
         {children}

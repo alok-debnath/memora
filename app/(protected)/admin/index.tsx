@@ -4,7 +4,7 @@ import { useQuery } from "convex/react";
 import { Text, XStack, YStack } from "tamagui";
 
 import { api } from "@/convex/_generated/api";
-import { Card } from "@/components/ui/Card";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { useAdminState } from "@/components/admin/AdminStateContext";
 import { AdminStatTile } from "@/components/admin/AdminStatTile";
 import { AlertBanner } from "@/components/admin/AlertBanner";
@@ -85,7 +85,7 @@ export default function AdminOverviewScreen() {
         </XStack>
       </YStack>
 
-      <Card style={{ borderRadius: 16 }}>
+      <SurfaceCard style={{ borderRadius: 16 }}>
         <InteractiveTimelineChart
           title="Traffic Pressure"
           subtitle={`Tap any point to inspect day-level AI/search load. ${
@@ -106,11 +106,11 @@ export default function AdminOverviewScreen() {
           lineColor={semantic.integration.openai}
           onSelectPoint={(point) => setSelectedTimepoint(point?.label ?? null)}
         />
-      </Card>
+      </SurfaceCard>
 
       <YStack>
         <XStack gap={10} flexWrap="wrap" alignItems="stretch">
-          <Card style={{ borderRadius: 16, flex: 1, minWidth: 260 }}>
+          <SurfaceCard style={{ borderRadius: 16, flex: 1, minWidth: 260 }}>
             <YStack gap={12}>
               <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 Provider Comparison
@@ -126,9 +126,9 @@ export default function AdminOverviewScreen() {
                 )}
               />
             </YStack>
-          </Card>
+          </SurfaceCard>
 
-          <Card style={{ borderRadius: 16, flex: 1, minWidth: 260 }}>
+          <SurfaceCard style={{ borderRadius: 16, flex: 1, minWidth: 260 }}>
             <YStack gap={12}>
               <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
                 Capability Comparison
@@ -144,7 +144,7 @@ export default function AdminOverviewScreen() {
                 )}
               />
             </YStack>
-          </Card>
+          </SurfaceCard>
         </XStack>
       </YStack>
     </>

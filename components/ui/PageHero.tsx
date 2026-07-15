@@ -36,7 +36,7 @@ export function PageHero({
 
   return (
     <YStack gap={10}>
-      <XStack alignItems="center" gap={12}>
+      <XStack alignItems="flex-start" gap={12} minHeight={responsive.isExpanded ? 72 : 64}>
         {accentStyle === "rail" ? (
           <YStack
             width={3}
@@ -80,7 +80,11 @@ export function PageHero({
           ) : null}
         </YStack>
 
-        {action ?? (icon ? <HeroIcon icon={icon} color={accent} /> : null)}
+        {action || icon ? (
+          <YStack minHeight={44} justifyContent="center" paddingTop={2}>
+            {action ?? (icon ? <HeroIcon icon={icon} color={accent} /> : null)}
+          </YStack>
+        ) : null}
       </XStack>
 
       {stats?.length ? <StatStrip items={stats} accent={accent} /> : null}

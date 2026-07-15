@@ -9,3 +9,8 @@ pre-commit:
         - "ios/**"
       run: bun prettier --write {staged_files}
       stage_fixed: true
+    - name: ui-consistency
+      glob:
+        - "app/**/*.{ts,tsx}"
+        - "components/**/*.{ts,tsx}"
+      run: bun run ui:check

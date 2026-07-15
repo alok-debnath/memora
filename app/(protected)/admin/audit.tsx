@@ -4,7 +4,7 @@ import { usePaginatedQuery } from "convex/react";
 import { Text, XStack, YStack } from "tamagui";
 
 import { api } from "@/convex/_generated/api";
-import { Card } from "@/components/ui/Card";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { Badge } from "@/components/ui/Badge";
 import { AppTextField } from "@/components/ui/AppTextField";
 import { AppButton } from "@/components/ui/AppButton";
@@ -35,7 +35,7 @@ export default function AdminAuditScreen() {
 
   return (
     <YStack gap={12}>
-      <Card style={{ borderRadius: 16 }}>
+      <SurfaceCard style={{ borderRadius: 16 }}>
         <XStack gap={8} flexWrap="wrap">
           <YStack minWidth={180} flex={1}>
             <AppTextField
@@ -52,9 +52,9 @@ export default function AdminAuditScreen() {
             />
           </YStack>
         </XStack>
-      </Card>
+      </SurfaceCard>
 
-      <Card style={{ borderRadius: 16 }}>
+      <SurfaceCard style={{ borderRadius: 16 }}>
         <YStack gap={10}>
           <XStack alignItems="center" justifyContent="space-between">
             <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
@@ -112,7 +112,7 @@ export default function AdminAuditScreen() {
             </YStack>
           ) : null}
         </YStack>
-      </Card>
+      </SurfaceCard>
     </YStack>
   );
 }

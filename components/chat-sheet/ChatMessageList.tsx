@@ -1,49 +1,24 @@
 import React, { useMemo } from "react";
 import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
 import type { ViewProps } from "react-native";
-import { XStack, YStack, Text } from "tamagui";
-import { Feather } from "@/lib/icons";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { withAlpha } from "@/components/ui/themeHelpers";
 import type { ChatSheetController } from "./types";
 
-function EmptyState({ style, onLayout }: Pick<ViewProps, "style" | "onLayout">) {
-  const theme = useAppTheme();
-
+function ChatEmptyState({ style, onLayout }: Pick<ViewProps, "style" | "onLayout">) {
   return (
     // VirtualizedList injects the correct platform-specific counter-transform
     // into its empty component. Forward it rather than hard-coding a rotation:
     // web/iOS use scaleY(-1), while Android uses scale(-1).
-    <YStack
+    <EmptyState
+      icon="message-square"
+      title="Ask Memora anything"
+      description="Search, remember, attach, or speak."
+      variant="plain"
+      size="compact"
       onLayout={onLayout}
-      flex={1}
-      alignItems="center"
-      justifyContent="center"
-      paddingHorizontal={32}
-      gap={12}
       style={style}
-    >
-      <XStack
-        width={52}
-        height={52}
-        borderRadius={26}
-        alignItems="center"
-        justifyContent="center"
-        backgroundColor={withAlpha(theme.primary.val, "12")}
-        borderWidth={1}
-        borderColor={withAlpha(theme.primary.val, "1E")}
-      >
-        <Feather name="message-square" size={22} color={theme.primary.val} />
-      </XStack>
-      <YStack alignItems="center" gap={4}>
-        <Text fontSize={17} fontFamily="$body" fontWeight="700" color={theme.color.val}>
-          Ask Memora anything
-        </Text>
-        <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val} textAlign="center">
-          Search, remember, attach, or speak.
-        </Text>
-      </YStack>
-    </YStack>
+    />
   );
 }
 
@@ -63,7 +38,7 @@ export function ChatMessageList({ controller }: { controller: ChatSheetControlle
       renderItem={renderMessage}
       keyExtractor={keyExtractor}
       style={{ flex: 1, minHeight: 0, backgroundColor: theme.background.val }}
-      ListEmptyComponent={<EmptyState />}
+      ListEmptyComponent={<ChatEmptyState />}
       contentContainerStyle={{
         paddingHorizontal: 16,
         // Inverted: content start (paddingTop) is the visual bottom. Composer

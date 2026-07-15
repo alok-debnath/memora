@@ -26,7 +26,9 @@ export function AppTextField({
   ...inputProps
 }: AppTextFieldProps) {
   const theme = useAppTheme();
+  const [focused, setFocused] = React.useState(false);
   const toneColor = error ? theme.textError.val : theme.colorMuted.val;
+  const { onFocus, onBlur, ...restInputProps } = inputProps;
 
   return (
     <YStack gap={7} style={containerStyle}>
@@ -50,12 +52,26 @@ export function AppTextField({
         paddingVertical={multiline ? 14 : 0}
         alignItems={multiline ? "flex-start" : "center"}
         backgroundColor={theme.surfaceElevated.val}
-        borderColor={error ? withAlpha(theme.destructive.val, "30") : theme.borderColor.val}
-        style={appShadow(theme.shadowColor.val, "xs")}
+        borderColor={
+          error
+            ? withAlpha(theme.destructive.val, "50")
+            : focused
+              ? theme.focusRing.val
+              : theme.borderColor.val
+        }
+        style={appShadow(theme.shadowColor.val, focused ? "sm" : "xs")}
       >
         <TextInput
-          {...inputProps}
+          {...restInputProps}
           multiline={multiline}
+          onFocus={(event) => {
+            setFocused(true);
+            onFocus?.(event);
+          }}
+          onBlur={(event) => {
+            setFocused(false);
+            onBlur?.(event);
+          }}
           placeholderTextColor={theme.colorMuted.val}
           style={[
             {

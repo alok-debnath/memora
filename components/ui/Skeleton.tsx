@@ -6,6 +6,7 @@ import Animated, {
   withRepeat,
   withSequence,
   withTiming,
+  useReducedMotion,
 } from "react-native-reanimated";
 import { XStack, YStack } from "tamagui";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -19,15 +20,18 @@ interface SkeletonProps {
 
 export function Skeleton({ width = "100%", height = 16, borderRadius = 8, style }: SkeletonProps) {
   const theme = useAppTheme();
+  const reduceMotion = useReducedMotion();
   const opacity = useSharedValue(0.3);
 
   useEffect(() => {
-    opacity.value = withRepeat(
-      withSequence(withTiming(0.7, { duration: 800 }), withTiming(0.3, { duration: 800 })),
-      -1,
-      true,
-    );
-  }, [opacity]);
+    opacity.value = reduceMotion
+      ? 0.5
+      : withRepeat(
+          withSequence(withTiming(0.7, { duration: 800 }), withTiming(0.3, { duration: 800 })),
+          -1,
+          true,
+        );
+  }, [opacity, reduceMotion]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,

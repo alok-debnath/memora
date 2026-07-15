@@ -1,14 +1,13 @@
 import React, { useState } from "react";
-import { Pressable } from "react-native";
 import { Feather } from "@/lib/icons";
 import { useMutation, useQuery } from "convex/react";
 import { Text, XStack, YStack } from "tamagui";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { Card } from "@/components/ui/Card";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { GradientButton } from "@/components/ui/GradientButton";
+import { AppButton } from "@/components/ui/AppButton";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { AppScreen } from "@/components/ui/AppScreen";
 import { ResponsiveStatGrid, WorkspaceSplit } from "@/components/ui/Responsive";
@@ -17,6 +16,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useSemanticColors } from "@/hooks/useSemanticColors";
 import { appShadow } from "@/components/ui/themeHelpers";
+import { SelectionTabs } from "@/components/ui/SelectionTabs";
+import { PopoverMenu, type PopoverMenuItem } from "@/components/ui/PopoverMenu";
 
 function formatTs(value?: number, fallback = "Recently") {
   if (!value) return fallback;
@@ -35,9 +36,7 @@ type MemoryRowProps = {
   timestampLabel?: string;
   accentColor: string;
   icon: React.ComponentProps<typeof Feather>["name"];
-  menuOpen: boolean;
-  onMenuToggle: () => void;
-  menuItems: Array<{ label: string; color?: string; onPress: () => void }>;
+  menuItems: PopoverMenuItem[];
 };
 
 function MemoryRow({
@@ -47,8 +46,6 @@ function MemoryRow({
   timestampLabel,
   accentColor,
   icon,
-  menuOpen,
-  onMenuToggle,
   menuItems,
 }: MemoryRowProps) {
   const theme = useAppTheme();
@@ -97,131 +94,19 @@ function MemoryRow({
           {timestampLabel} {formatTs(timestamp)}
         </Text>
       </YStack>
-      <PressableScale
-        onPress={onMenuToggle}
-        style={{
-          width: 34,
-          height: 34,
-          borderRadius: 17,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: theme.secondary.val,
-        }}
-      >
-        <Feather name="more-vertical" size={16} color={theme.colorMuted.val} />
-      </PressableScale>
-
-      {menuOpen && (
-        <Pressable
-          onPress={onMenuToggle}
-          style={{
-            position: "absolute",
-            top: -2000,
-            right: -2000,
-            bottom: -2000,
-            left: -2000,
-            zIndex: 9,
-          }}
-        />
-      )}
-
-      {menuOpen && (
+      <PopoverMenu items={menuItems}>
         <YStack
-          position="absolute"
-          right={10}
-          top={52}
-          zIndex={10}
-          borderRadius={14}
-          borderWidth={1}
-          borderColor={theme.borderColor.val}
-          backgroundColor={theme.card.val}
-          overflow="hidden"
-        >
-          {menuItems.map((item, i) => (
-            <React.Fragment key={item.label}>
-              {i > 0 && <YStack height={1} backgroundColor={theme.borderColor.val} />}
-              <PressableScale
-                onPress={item.onPress}
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 11,
-                  minWidth: 160,
-                }}
-              >
-                <Text
-                  fontSize={13}
-                  fontFamily="$body"
-                  fontWeight="600"
-                  color={item.color ?? theme.primary.val}
-                >
-                  {item.label}
-                </Text>
-              </PressableScale>
-            </React.Fragment>
-          ))}
-        </YStack>
-      )}
-    </XStack>
-  );
-}
-
-// ─── Segmented tab control ───────────────────────────────────────────────────
-
-function TabPill({
-  label,
-  count,
-  active,
-  onPress,
-}: {
-  label: string;
-  count: number;
-  active: boolean;
-  onPress: () => void;
-}) {
-  const theme = useAppTheme();
-  return (
-    <PressableScale
-      onPress={onPress}
-      style={{
-        flex: 1,
-        paddingVertical: 8,
-        paddingHorizontal: 12,
-        borderRadius: 12,
-        backgroundColor: active ? theme.primary.val + "20" : "transparent",
-        alignItems: "center",
-        flexDirection: "row",
-        justifyContent: "center",
-        gap: 6,
-      }}
-    >
-      <Text
-        fontSize={13}
-        fontFamily="$body"
-        fontWeight={active ? "700" : "500"}
-        color={active ? theme.primary.val : theme.colorMuted.val}
-      >
-        {label}
-      </Text>
-      {count > 0 && (
-        <YStack
-          backgroundColor={active ? theme.primary.val : theme.secondary.val}
-          borderRadius={99}
-          paddingHorizontal={6}
-          paddingVertical={1}
-          minWidth={20}
+          width={34}
+          height={34}
+          borderRadius={17}
           alignItems="center"
+          justifyContent="center"
+          backgroundColor={theme.secondary.val}
         >
-          <Text
-            fontSize={10}
-            fontFamily="$body"
-            fontWeight="700"
-            color={active ? theme.textInverse.val : theme.colorMuted.val}
-          >
-            {count}
-          </Text>
+          <Feather name="more-vertical" size={16} color={theme.colorMuted.val} />
         </YStack>
-      )}
-    </PressableScale>
+      </PopoverMenu>
+    </XStack>
   );
 }
 
@@ -233,7 +118,6 @@ export default function DataScreen() {
   const { token } = useAuth();
   const { confirm } = useAppConfirm();
   const [activeTab, setActiveTab] = useState<"deleted" | "completed">("deleted");
-  const [openMenuId, setOpenMenuId] = useState<Id<"memories"> | null>(null);
 
   // Deleted
   const deletedMemories =
@@ -265,14 +149,12 @@ export default function DataScreen() {
   }
 
   function handleRestore(id: Id<"memories">) {
-    setOpenMenuId(null);
     void confirmAction("Restore Memory", "Restore this memory back into your active vault?", () => {
       if (token) void restoreMemory({ token, id });
     });
   }
 
   function handlePermanentDelete(id: Id<"memories">) {
-    setOpenMenuId(null);
     void confirmAction(
       "Delete Forever",
       "Permanently delete this memory? This cannot be undone.",
@@ -293,7 +175,6 @@ export default function DataScreen() {
   }
 
   function handleUncomplete(id: Id<"memories">) {
-    setOpenMenuId(null);
     void confirmAction(
       "Restore to Active",
       "Move this completed item back to your active memories?",
@@ -304,7 +185,6 @@ export default function DataScreen() {
   }
 
   function handlePermanentRemoveCompleted(id: Id<"memories">) {
-    setOpenMenuId(null);
     void confirmAction(
       "Delete Forever",
       "Permanently delete this completed item? This cannot be undone.",
@@ -348,7 +228,7 @@ export default function DataScreen() {
         asideWidth={320}
         aside={
           <YStack gap={16}>
-            <Card style={{ padding: 16, borderRadius: 16 }}>
+            <SurfaceCard style={{ padding: 16, borderRadius: 16 }}>
               <YStack gap={12}>
                 <YStack gap={3}>
                   <Text
@@ -372,9 +252,9 @@ export default function DataScreen() {
                   ]}
                 />
               </YStack>
-            </Card>
+            </SurfaceCard>
 
-            <Card style={{ padding: 16, borderRadius: 16 }}>
+            <SurfaceCard style={{ padding: 16, borderRadius: 16 }}>
               <YStack gap={14}>
                 <YStack gap={4}>
                   <Text
@@ -395,40 +275,32 @@ export default function DataScreen() {
                     deleted or completed items.
                   </Text>
                 </YStack>
-                <GradientButton
+                <AppButton
                   title="Delete All Memory Data"
                   icon="trash-2"
                   onPress={handleClearSlate}
+                  variant="danger"
+                  fullWidth
                 />
               </YStack>
-            </Card>
+            </SurfaceCard>
           </YStack>
         }
       >
         {/* Tabbed deleted / completed section */}
-        <Card style={{ padding: 16, borderRadius: 16 }}>
+        <SurfaceCard style={{ padding: 16, borderRadius: 16 }}>
           <YStack gap={14}>
-            {/* Tab pills */}
-            <XStack backgroundColor={theme.secondary.val} borderRadius={14} padding={4} gap={4}>
-              <TabPill
-                label="Deleted"
-                count={deletedMemories.length}
-                active={activeTab === "deleted"}
-                onPress={() => {
-                  setActiveTab("deleted");
-                  setOpenMenuId(null);
-                }}
-              />
-              <TabPill
-                label="Completed"
-                count={completedMemories.length}
-                active={activeTab === "completed"}
-                onPress={() => {
-                  setActiveTab("completed");
-                  setOpenMenuId(null);
-                }}
-              />
-            </XStack>
+            <SelectionTabs
+              options={[
+                { value: "deleted", label: "Deleted", count: deletedMemories.length },
+                { value: "completed", label: "Completed", count: completedMemories.length },
+              ]}
+              value={activeTab}
+              onChange={(next) => {
+                setActiveTab(next);
+              }}
+              accessibilityLabel="Data view"
+            />
 
             {/* Deleted tab */}
             {activeTab === "deleted" && (
@@ -512,18 +384,16 @@ export default function DataScreen() {
                           timestampLabel="Deleted"
                           accentColor={semantic.status.warningStrong}
                           icon="archive"
-                          menuOpen={openMenuId === memory._id}
-                          onMenuToggle={() =>
-                            setOpenMenuId((cur) => (cur === memory._id ? null : memory._id))
-                          }
                           menuItems={[
                             {
                               label: "Restore",
+                              icon: "rotate-ccw",
                               onPress: () => handleRestore(memory._id),
                             },
                             {
                               label: "Delete forever",
-                              color: theme.destructive.val,
+                              icon: "trash-2",
+                              destructive: true,
                               onPress: () => handlePermanentDelete(memory._id),
                             },
                           ]}
@@ -592,18 +462,16 @@ export default function DataScreen() {
                           timestampLabel="Completed"
                           accentColor={semantic.status.successStrong}
                           icon="check-circle"
-                          menuOpen={openMenuId === memory._id}
-                          onMenuToggle={() =>
-                            setOpenMenuId((cur) => (cur === memory._id ? null : memory._id))
-                          }
                           menuItems={[
                             {
                               label: "Restore to active",
+                              icon: "rotate-ccw",
                               onPress: () => handleUncomplete(memory._id),
                             },
                             {
                               label: "Delete forever",
-                              color: theme.destructive.val,
+                              icon: "trash-2",
+                              destructive: true,
                               onPress: () => handlePermanentRemoveCompleted(memory._id),
                             },
                           ]}
@@ -615,7 +483,7 @@ export default function DataScreen() {
               </YStack>
             )}
           </YStack>
-        </Card>
+        </SurfaceCard>
       </WorkspaceSplit>
     </AppScreen>
   );

@@ -4,6 +4,7 @@ import {
   FadeIn,
   FadeInDown,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withRepeat,
   withTiming,
@@ -148,12 +149,13 @@ export function ThinkingIndicator() {
 export function ToolProgressBubble({ status }: { status: ProgressStatus }) {
   const theme = useAppTheme();
   const semantic = useSemanticColors();
+  const reduceMotion = useReducedMotion();
   const shimmer = useSharedValue(0);
   const [elapsedLabel, setElapsedLabel] = useState(() => formatElapsedTime(status.startedAt));
 
   useEffect(() => {
-    shimmer.value = withRepeat(withTiming(1, { duration: 900 }), -1, true);
-  }, [shimmer]);
+    shimmer.value = reduceMotion ? 0.5 : withRepeat(withTiming(1, { duration: 900 }), -1, true);
+  }, [reduceMotion, shimmer]);
 
   useEffect(() => {
     setElapsedLabel(formatElapsedTime(status.startedAt));

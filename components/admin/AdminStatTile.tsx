@@ -2,7 +2,7 @@ import React from "react";
 import { XStack, YStack, Text } from "tamagui";
 
 import { Feather } from "@/lib/icons";
-import { Card } from "@/components/ui/Card";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useSemanticColors } from "@/hooks/useSemanticColors";
 
@@ -33,7 +33,7 @@ export function AdminStatTile({
   const isGood = goodWhenDown ? !isUp : isUp;
 
   return (
-    <Card style={{ borderRadius: 16, flex: 1, minWidth: 150 }}>
+    <SurfaceCard style={{ borderRadius: 16, flex: 1, minWidth: 150 }}>
       <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val}>
         {label}
       </Text>
@@ -70,6 +70,6 @@ export function AdminStatTile({
           </Text>
         ) : null}
       </XStack>
-    </Card>
+    </SurfaceCard>
   );
 }

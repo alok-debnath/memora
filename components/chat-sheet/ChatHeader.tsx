@@ -3,7 +3,7 @@ import { XStack, YStack, Text } from "tamagui";
 import { Feather } from "@/lib/icons";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { withAlpha } from "@/components/ui/themeHelpers";
-import { PressableScale } from "@/components/ui/PressableScale";
+import { AppIconButton } from "@/components/ui/AppIconButton";
 
 export const ChatHeader = React.memo(function ChatHeader({
   messageCount,
@@ -66,28 +66,23 @@ export const ChatHeader = React.memo(function ChatHeader({
 
       <XStack alignItems="center" gap={2}>
         {onToggleConversations ? (
-          <PressableScale onPress={onToggleConversations}>
-            <XStack alignItems="center" justifyContent="center" width={36} height={36}>
-              <Feather
-                name={showingConversations ? "message-circle" : "list"}
-                size={16}
-                color={showingConversations ? theme.primary.val : theme.colorMuted.val}
-              />
-            </XStack>
-          </PressableScale>
+          <AppIconButton
+            icon={showingConversations ? "message-circle" : "list"}
+            label={showingConversations ? "Return to current chat" : "Show conversations"}
+            onPress={onToggleConversations}
+            variant={showingConversations ? "soft" : "ghost"}
+            size="compact"
+          />
         ) : null}
         {messageCount > 0 && !showingConversations ? (
-          <PressableScale onPress={onClear}>
-            <XStack alignItems="center" justifyContent="center" width={36} height={36}>
-              <Feather name="trash-2" size={15} color={theme.colorMuted.val} />
-            </XStack>
-          </PressableScale>
+          <AppIconButton
+            icon="trash-2"
+            label="Clear conversation"
+            onPress={onClear}
+            size="compact"
+          />
         ) : null}
-        <PressableScale onPress={onClose}>
-          <YStack width={36} height={36} alignItems="center" justifyContent="center">
-            <Feather name="x" size={18} color={theme.colorMuted.val} />
-          </YStack>
-        </PressableScale>
+        <AppIconButton icon="x" label="Close chat" onPress={onClose} size="compact" />
       </XStack>
     </XStack>
   );

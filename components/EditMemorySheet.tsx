@@ -30,9 +30,10 @@ import { useFileAttachments } from "@/hooks/useFileAttachments";
 import { useIsLargeScreen } from "@/hooks/useIsLargeScreen";
 import { AttachmentPreviewBar } from "./AttachmentPreviewBar";
 import { AttachmentPickerButton } from "./AttachmentPickerButton";
-import { GradientButton } from "./ui/GradientButton";
+import { AppButton } from "./ui/AppButton";
 import { PressableScale } from "./ui/PressableScale";
-import { SegmentedControl } from "./ui/SegmentedControl";
+import { SelectionTabs } from "./ui/SelectionTabs";
+import { AppIconButton } from "./ui/AppIconButton";
 import { TagInput } from "./ui/TagInput";
 import { PickerField, type PickerOption } from "./ui/PickerField";
 import { TimeCapsuleToggle } from "./ui/TimeCapsuleToggle";
@@ -442,13 +443,9 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                 </Text>
               </YStack>
             </XStack>
-            <PressableScale onPress={onClose}>
-              <YStack width={36} height={36} alignItems="center" justifyContent="center">
-                <Feather name="x" size={18} color={theme.colorMuted.val} />
-              </YStack>
-            </PressableScale>
+            <AppIconButton icon="x" label="Close editor" onPress={onClose} size="compact" />
           </XStack>
-          <SegmentedControl options={MANUAL_OPTIONS} value={mode} onChange={setMode} />
+          <SelectionTabs options={MANUAL_OPTIONS} value={mode} onChange={setMode} />
         </YStack>
         {/* Time Capsule */}
         <TimeCapsuleToggle
@@ -589,7 +586,7 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
               >
                 TYPE
               </Text>
-              <SegmentedControl
+              <SelectionTabs
                 options={ENTRY_KIND_OPTIONS}
                 value={form.entryKind}
                 onChange={(value) => {
@@ -798,9 +795,11 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                             </YStack>
                           )}
 
-                          <GradientButton
+                          <AppButton
                             title="Done"
                             onPress={() => setShowReminderPicker(false)}
+                            variant="gradient"
+                            fullWidth
                           />
                         </YStack>
                       ) : null}
@@ -1218,7 +1217,13 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
 
             {/* Actions */}
             <YStack gap={10}>
-              <GradientButton title="Save Changes" onPress={handleSave} icon="save" />
+              <AppButton
+                title="Save Changes"
+                onPress={handleSave}
+                icon="save"
+                variant="gradient"
+                fullWidth
+              />
               <XStack justifyContent="center" gap={24} paddingTop={2}>
                 <Pressable
                   onPress={handleReadAloud}
@@ -1301,10 +1306,12 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
                     <Text fontSize={14} fontFamily="$body" color={theme.color.val} lineHeight={20}>
                       {voiceTranscript}
                     </Text>
-                    <GradientButton
+                    <AppButton
                       title="Send edit"
                       icon="send"
                       onPress={() => void handleVoiceTranscription(voiceTranscript)}
+                      variant="gradient"
+                      fullWidth
                     />
                   </YStack>
                 )}

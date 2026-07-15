@@ -6,7 +6,7 @@ import { Text, XStack, YStack } from "tamagui";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { Card } from "@/components/ui/Card";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { AppTextField } from "@/components/ui/AppTextField";
 import { AppButton } from "@/components/ui/AppButton";
 import { Badge } from "@/components/ui/Badge";
@@ -80,7 +80,7 @@ export default function AdminUsersScreen() {
       function UserRowItem({ item }: ListRenderItemInfo<UserRow>) {
         const isSelected = selectedUserId === item._id;
         return (
-          <Card
+          <SurfaceCard
             style={{
               borderRadius: 14,
               borderWidth: 1,
@@ -116,7 +116,7 @@ export default function AdminUsersScreen() {
                 }}
               />
             </XStack>
-          </Card>
+          </SurfaceCard>
         );
       },
     [selectedUserId, semantic, setSelectedEntity, theme],
@@ -124,16 +124,16 @@ export default function AdminUsersScreen() {
 
   return (
     <>
-      <Card style={{ borderRadius: 16 }}>
+      <SurfaceCard style={{ borderRadius: 16 }}>
         <AppTextField
           placeholder="Search by name or email"
           value={search}
           onChangeText={setSearch}
         />
-      </Card>
+      </SurfaceCard>
 
       <XStack gap={10} alignItems="flex-start" flexWrap="wrap">
-        <Card style={{ borderRadius: 16, flex: 1, minWidth: 280 }} noPadding>
+        <SurfaceCard style={{ borderRadius: 16, flex: 1, minWidth: 280 }} noPadding>
           <YStack gap={10} padding={14}>
             <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
               Users
@@ -168,9 +168,9 @@ export default function AdminUsersScreen() {
               />
             )}
           </YStack>
-        </Card>
+        </SurfaceCard>
 
-        <Card style={{ borderRadius: 16, flex: 1, minWidth: 300 }}>
+        <SurfaceCard style={{ borderRadius: 16, flex: 1, minWidth: 300 }}>
           {!selectedUserId || !selected ? (
             <YStack alignItems="center" justifyContent="center" minHeight={240} gap={8}>
               <Feather name="user" size={20} color={semantic.status.info} />
@@ -285,7 +285,7 @@ export default function AdminUsersScreen() {
               </YStack>
             </YStack>
           )}
-        </Card>
+        </SurfaceCard>
       </XStack>
     </>
   );

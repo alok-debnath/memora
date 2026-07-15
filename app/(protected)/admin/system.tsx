@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { Text, XStack, YStack } from "tamagui";
 
 import { api } from "@/convex/_generated/api";
-import { Card } from "@/components/ui/Card";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { AppButton } from "@/components/ui/AppButton";
 import { Badge } from "@/components/ui/Badge";
 import { useAppToast } from "@/components/ui/toast";
@@ -49,7 +49,7 @@ export default function AdminSystemScreen() {
     <>
       <YStack>
         <XStack gap={10} flexWrap="wrap">
-          <Card style={{ borderRadius: 16, flex: 1, minWidth: 220 }}>
+          <SurfaceCard style={{ borderRadius: 16, flex: 1, minWidth: 220 }}>
             <YStack gap={5}>
               <Text fontSize={12} color={theme.colorMuted.val}>
                 AI failure rate
@@ -58,8 +58,8 @@ export default function AdminSystemScreen() {
                 {(health.snapshot.aiFailureRate * 100).toFixed(2)}%
               </Text>
             </YStack>
-          </Card>
-          <Card style={{ borderRadius: 16, flex: 1, minWidth: 220 }}>
+          </SurfaceCard>
+          <SurfaceCard style={{ borderRadius: 16, flex: 1, minWidth: 220 }}>
             <YStack gap={5}>
               <Text fontSize={12} color={theme.colorMuted.val}>
                 Search latency
@@ -68,8 +68,8 @@ export default function AdminSystemScreen() {
                 {Math.round(health.snapshot.avgSearchLatencyMs)}ms
               </Text>
             </YStack>
-          </Card>
-          <Card style={{ borderRadius: 16, flex: 1, minWidth: 220 }}>
+          </SurfaceCard>
+          <SurfaceCard style={{ borderRadius: 16, flex: 1, minWidth: 220 }}>
             <YStack gap={5}>
               <Text fontSize={12} color={theme.colorMuted.val}>
                 Active embedding rebuilds
@@ -78,12 +78,12 @@ export default function AdminSystemScreen() {
                 {formatCompact(health.embeddingRebuilds.active)}
               </Text>
             </YStack>
-          </Card>
+          </SurfaceCard>
         </XStack>
       </YStack>
 
       {(health.systemAlerts ?? []).length > 0 ? (
-        <Card style={{ borderRadius: 16 }}>
+        <SurfaceCard style={{ borderRadius: 16 }}>
           <YStack gap={10}>
             <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
               Operational Alerts
@@ -101,10 +101,10 @@ export default function AdminSystemScreen() {
               />
             ))}
           </YStack>
-        </Card>
+        </SurfaceCard>
       ) : null}
 
-      <Card style={{ borderRadius: 16 }}>
+      <SurfaceCard style={{ borderRadius: 16 }}>
         <YStack gap={10}>
           <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
             Alert Rules
@@ -157,9 +157,9 @@ export default function AdminSystemScreen() {
             ))}
           </YStack>
         </YStack>
-      </Card>
+      </SurfaceCard>
 
-      <Card style={{ borderRadius: 16 }}>
+      <SurfaceCard style={{ borderRadius: 16 }}>
         <YStack gap={10}>
           <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
             Open Incidents
@@ -193,9 +193,9 @@ export default function AdminSystemScreen() {
             ))
           )}
         </YStack>
-      </Card>
+      </SurfaceCard>
 
-      <Card style={{ borderRadius: 16 }}>
+      <SurfaceCard style={{ borderRadius: 16 }}>
         <YStack gap={10}>
           <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
             Maintenance Jobs
@@ -221,7 +221,7 @@ export default function AdminSystemScreen() {
             </XStack>
           ))}
         </YStack>
-      </Card>
+      </SurfaceCard>
     </>
   );
 }

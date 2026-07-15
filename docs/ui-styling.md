@@ -47,6 +47,24 @@ Memora now treats Tamagui as the primary styling system for app UI.
 - Web interactions require visible keyboard focus, appropriate cursors, hover/pressed feedback,
   and keyboard-reachable actions. Respect reduced motion and animate transforms/opacity only.
 
+## Selection Controls
+
+- Use `SelectionTabs` for one active content view, mode, or date range. It owns the animated
+  indicator, counts, compact labels, vertical desktop layout, reduced motion, and tab semantics.
+- Use `FilterChipGroup` for filters that narrow the current content. Chips do not imply a page or
+  content-view change and therefore do not use the sliding tab indicator.
+- Use a compact `SelectionTabs` instance for mutually exclusive icon choices such as grid/list.
+- Do not add screen-local tab pills, mode pills, or range selectors.
+
+## Motion
+
+- Use `constants/motion.ts` for standard presses, selection, content, and overlays. The floating
+  primary navigation bar intentionally retains its established local spring choreography.
+- Standard selection uses a short decelerating timing curve with no stretch or bounce. Springs are
+  reserved for direct manipulation such as sheet settling, drags, and review-card gestures.
+- Repeating rotation is not part of the app language. Progress may use a quiet opacity change and
+  must become static when reduced motion is enabled.
+
 ## Allowed `StyleSheet` Usage
 
 - animation helpers

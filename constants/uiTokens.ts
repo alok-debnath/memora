@@ -39,3 +39,23 @@ export const layout = {
   dockedChatMinWidth: 340,
   dockedChatMaxWidth: 520,
 } as const;
+
+export const control = {
+  compactHeight: 36,
+  defaultHeight: 44,
+  comfortableHeight: 52,
+  iconCompact: 32,
+  iconDefault: 40,
+  minimumHitSize: 44,
+} as const;
+
+export const typeScale = {
+  caption: 11,
+  metadata: 12,
+  control: 13,
+  body: 14,
+  bodyLarge: 16,
+  sectionTitle: 18,
+  pageTitleCompact: 28,
+  pageTitleExpanded: 36,
+} as const;

@@ -22,6 +22,8 @@ import { Feather, type FeatherIconName } from "@/lib/icons";
 import { canUseGoogleDrive } from "@/lib/googleIntegration";
 import { useUIStore } from "@/store/ui";
 import { useQuery } from "convex/react";
+import { FilterChipGroup } from "@/components/ui/FilterChipGroup";
+import { SelectionTabs } from "@/components/ui/SelectionTabs";
 
 const GRID_PADDING = spacing.lg;
 const GRID_GAP = spacing.md;
@@ -330,77 +332,43 @@ export default function FilesScreen() {
 
       <SurfaceCard variant="solid" padding={spacing.sm} radius={radius.md}>
         <XStack alignItems="center" justifyContent="space-between" gap={spacing.md} flexWrap="wrap">
-          <XStack gap={spacing.xs} flexWrap="wrap">
-            {FILTERS.map((option) => {
-              const active = filter === option.value;
-              const count =
+          <FilterChipGroup
+            options={FILTERS.map((option) => ({
+              ...option,
+              count:
                 option.value === "all"
                   ? allAttachments.length
                   : option.value === "image"
                     ? imageCount
-                    : documentCount;
-              return (
-                <PressableScale key={option.value} onPress={() => setFilter(option.value)}>
-                  <XStack
-                    alignItems="center"
-                    gap={6}
-                    paddingHorizontal={11}
-                    paddingVertical={8}
-                    borderRadius={radius.sm}
-                    backgroundColor={active ? withAlpha(colors.primary, "16") : "transparent"}
-                  >
-                    <Feather
-                      name={option.icon}
-                      size={13}
-                      color={active ? colors.primary : colors.textSecondary}
-                    />
-                    <Text
-                      fontSize={12}
-                      fontWeight={active ? "700" : "500"}
-                      color={active ? colors.primary : colors.textSecondary}
-                    >
-                      {option.label}
-                    </Text>
-                    <Text fontSize={10} color={colors.textTertiary}>
-                      {count}
-                    </Text>
-                  </XStack>
-                </PressableScale>
-              );
-            })}
-          </XStack>
-          <XStack
-            gap={4}
-            padding={3}
-            borderRadius={radius.sm}
-            backgroundColor={colors.backgroundSecondary}
-          >
-            {(["grid", "list"] as ViewMode[]).map((mode) => {
-              const active = viewMode === mode;
-              return (
-                <PressableScale
-                  key={mode}
-                  onPress={() => setViewMode(mode)}
-                  accessibilityLabel={`${mode} view`}
-                >
-                  <YStack
-                    width={34}
-                    height={32}
-                    borderRadius={10}
-                    alignItems="center"
-                    justifyContent="center"
-                    backgroundColor={active ? colors.surfaceElevated : "transparent"}
-                  >
-                    <Feather
-                      name={mode === "grid" ? "grid" : "list"}
-                      size={15}
-                      color={active ? colors.primary : colors.textSecondary}
-                    />
-                  </YStack>
-                </PressableScale>
-              );
-            })}
-          </XStack>
+                    : documentCount,
+            }))}
+            value={filter}
+            onChange={(next) => next && setFilter(next)}
+            size="compact"
+            accessibilityLabel="Filter files"
+          />
+          <SelectionTabs<ViewMode>
+            options={[
+              {
+                value: "grid",
+                label: "Grid view",
+                compactLabel: "",
+                icon: <Feather name="grid" size={15} color={colors.primary} />,
+              },
+              {
+                value: "list",
+                label: "List view",
+                compactLabel: "",
+                icon: <Feather name="list" size={15} color={colors.primary} />,
+              },
+            ]}
+            value={viewMode}
+            onChange={setViewMode}
+            showCompactLabels
+            size="compact"
+            style={{ width: 96 }}
+            accessibilityLabel="File layout"
+          />
         </XStack>
       </SurfaceCard>
 

@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { getNavigationContext, isNavigationItemActive } from "@/constants/appNavigation";
+import {
+  getNavigationContext,
+  isNavigationItemActive,
+  PRIMARY_NAVIGATION,
+} from "@/constants/appNavigation";
 import {
   getAdaptiveColumnCount,
   getNavigationMode,
@@ -53,7 +57,22 @@ describe("application navigation", () => {
     expect(isNavigationItemActive("/diary/entry-id", "/diary")).toBe(true);
     expect(isNavigationItemActive("/admin/analytics", "/admin")).toBe(true);
     expect(isNavigationItemActive("/documents", "/diary")).toBe(false);
-    expect(getNavigationContext("/diary/entry-id")?.sectionLabel).toBe("Core");
+    expect(getNavigationContext("/diary/entry-id")?.sectionLabel).toBe("Primary");
     expect(getNavigationContext("/documents")?.sectionLabel).toBe("Library");
+  });
+
+  test("uses the Living Timeline primary hierarchy", () => {
+    expect(PRIMARY_NAVIGATION.map((item) => item.label)).toEqual([
+      "Today",
+      "Timeline",
+      "Journal",
+      "Review",
+    ]);
+    expect(PRIMARY_NAVIGATION.map((item) => item.href)).toEqual([
+      "/",
+      "/timeline",
+      "/diary",
+      "/review",
+    ]);
   });
 });

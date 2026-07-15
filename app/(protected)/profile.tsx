@@ -6,9 +6,9 @@ import { Feather, type FeatherIconName } from "@/lib/icons";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
-import { Card } from "@/components/ui/Card";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { SectionLabel } from "@/components/ui/SectionLabel";
-import { GradientButton } from "@/components/ui/GradientButton";
+import { AppButton } from "@/components/ui/AppButton";
 import { Badge } from "@/components/ui/Badge";
 import { AppScreen } from "@/components/ui/AppScreen";
 import { SectionGrid } from "@/components/ui/Responsive";
@@ -358,7 +358,7 @@ export default function ProfileScreen() {
       <SectionGrid minimumColumnWidth={360} maximumColumns={2} gap={16}>
         <YStack width="100%">
           <SectionLabel>IDENTITY</SectionLabel>
-          <Card style={styles.groupCard}>
+          <SurfaceCard style={styles.groupCard}>
             <XStack alignItems="center" gap={12} marginBottom={18}>
               <SettingsRowIcon theme={theme} icon="user" />
               <YStack flex={1} gap={2}>
@@ -513,19 +513,21 @@ export default function ProfileScreen() {
                 )}
               />
             </YStack>
-            <GradientButton
+            <AppButton
               title="Save Profile"
               onPress={handleSaveProfile}
               icon="save"
+              variant="gradient"
+              fullWidth
               loading={isSavingProfile}
               style={{ marginTop: 8 }}
             />
-          </Card>
+          </SurfaceCard>
         </YStack>
 
         <YStack>
           <SectionLabel>CONNECTED SERVICES</SectionLabel>
-          <Card style={styles.groupCard}>
+          <SurfaceCard style={styles.groupCard}>
             <XStack alignItems="center" gap={12} paddingVertical={4}>
               <SettingsRowIcon theme={theme} icon="cloud" />
               <YStack flex={1}>
@@ -633,7 +635,7 @@ export default function ProfileScreen() {
                 </YStack>
               </YStack>
             ) : null}
-          </Card>
+          </SurfaceCard>
         </YStack>
       </SectionGrid>
       <YStack height={24} />

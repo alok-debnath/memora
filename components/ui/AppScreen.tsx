@@ -15,6 +15,7 @@ import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollV
 import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import { CONTENT_GAP, layout, radius, spacing } from "@/constants/uiTokens";
 import { getNavigationContext } from "@/constants/appNavigation";
+import { AppMenuButton } from "@/components/navigation/AppNavigationMenu";
 
 export type AppScreenContentWidth = "readable" | "standard" | "workspace" | "full";
 
@@ -92,6 +93,11 @@ export function AppScreen({
   const desktopSubpage = Boolean(showBack && responsive.navigationMode !== "bottom");
   const resolvedHeaderEyebrow =
     headerEyebrow ?? (desktopSubpage ? navigationContext?.sectionLabel : "Memora") ?? "Workspace";
+  const resolvedHeaderRight =
+    headerRight ??
+    (responsive.navigationMode === "bottom" && !showBack && (title || subtitle) ? (
+      <AppMenuButton />
+    ) : null);
 
   const handleBackPress = React.useCallback(() => {
     if (router.canGoBack()) {
@@ -126,7 +132,7 @@ export function AppScreen({
 
   const inlineHeader = !useFloatingHeader &&
     !desktopSubpage &&
-    (title || subtitle || headerRight) && (
+    (title || subtitle || resolvedHeaderRight) && (
       <XStack alignItems="center" justifyContent="space-between" gap={CONTENT_GAP}>
         <YStack flex={1} gap={3}>
           {title ? (
@@ -146,7 +152,7 @@ export function AppScreen({
             </Text>
           ) : null}
         </YStack>
-        {headerRight}
+        {resolvedHeaderRight}
       </XStack>
     );
 
@@ -187,7 +193,7 @@ export function AppScreen({
             </Text>
           ) : null}
         </YStack>
-        {headerRight}
+        {resolvedHeaderRight}
       </XStack>
     </YStack>
   ) : null;
@@ -240,7 +246,7 @@ export function AppScreen({
               {title}
             </Text>
           </YStack>
-          {headerRight}
+          {resolvedHeaderRight}
         </XStack>
       </View>
     </>

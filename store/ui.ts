@@ -39,6 +39,7 @@ type SheetState = {
 interface UIStore {
   sheets: SheetState;
   sheetStack: SheetId[];
+  navigationMenuOpen: boolean;
 
   openSheet: <K extends SheetId>(id: K, payload?: SheetPayloadMap[K]) => void;
   closeSheet: (id: SheetId) => void;
@@ -58,6 +59,8 @@ interface UIStore {
   openTurnBreakdown: (chatTurnId: string) => void;
   closeTurnBreakdown: () => void;
   resetSheets: () => void;
+  openNavigationMenu: () => void;
+  closeNavigationMenu: () => void;
 }
 
 const EMPTY_SHEETS: SheetState = {
@@ -89,6 +92,7 @@ function resetSheetEntry<K extends SheetId>(id: K): SheetEntry<K> {
 export const useUIStore = create<UIStore>()((set) => ({
   sheets: EMPTY_SHEETS,
   sheetStack: [],
+  navigationMenuOpen: false,
 
   openSheet: (id, payload) =>
     set((state) => ({
@@ -270,6 +274,8 @@ export const useUIStore = create<UIStore>()((set) => ({
       sheets: EMPTY_SHEETS,
       sheetStack: [],
     }),
+  openNavigationMenu: () => set({ navigationMenuOpen: true }),
+  closeNavigationMenu: () => set({ navigationMenuOpen: false }),
 }));
 
 export const selectSheetStack = (state: UIStore) => state.sheetStack;

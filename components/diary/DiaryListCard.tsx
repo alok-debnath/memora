@@ -3,7 +3,7 @@ import { Pressable } from "react-native";
 import { XStack, YStack, Text } from "tamagui";
 
 import { Feather } from "@/lib/icons";
-import { Card } from "@/components/ui/Card";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { Badge } from "@/components/ui/Badge";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -38,7 +38,7 @@ export const DiaryListCard = React.memo(function DiaryListCard({
 
   return (
     <PressableScale onPress={() => onPress(entry._id)}>
-      <Card
+      <SurfaceCard
         style={{
           borderRadius: 16,
           borderColor: theme.primary.val + "18",
@@ -157,7 +157,7 @@ export const DiaryListCard = React.memo(function DiaryListCard({
             </Text>
           </XStack>
         ) : null}
-      </Card>
+      </SurfaceCard>
     </PressableScale>
   );
 });

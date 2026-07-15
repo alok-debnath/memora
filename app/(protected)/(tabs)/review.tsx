@@ -7,9 +7,10 @@ import * as Haptics from "expo-haptics";
 import Animated, {
   FadeIn,
   FadeOut,
+  ReduceMotion,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
-  withSpring,
   withTiming,
 } from "react-native-reanimated";
 import { useQuery, useMutation } from "convex/react";
@@ -18,13 +19,13 @@ import { Doc, Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/useAuth";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PressableScale } from "@/components/ui/PressableScale";
-import { Card } from "@/components/ui/Card";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { Badge } from "@/components/ui/Badge";
 import { AppScreen, SectionCard } from "@/components/ui/AppScreen";
 import { ResponsiveStatGrid, WorkspaceSplit } from "@/components/ui/Responsive";
-import { PageHero } from "@/components/ui/PageHero";
 import { layout } from "@/constants/uiTokens";
 import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
+import { PrimaryPageHeader } from "@/components/navigation/PrimaryPageHeader";
 import { useSemanticColors } from "@/hooks/useSemanticColors";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 
@@ -93,10 +94,12 @@ function ReviewWorkspace({
 /** Progress bar */
 function ProgressBar({ progress }: { progress: number }) {
   const theme = useAppTheme();
+  const reduceMotion = useReducedMotion();
   const width = useSharedValue(0);
   useEffect(() => {
-    width.value = withTiming(Math.min(progress, 1), { duration: 400 });
-  }, [progress]);
+    const nextWidth = Math.min(progress, 1);
+    width.value = reduceMotion ? nextWidth : withTiming(nextWidth, { duration: 320 });
+  }, [progress, reduceMotion, width]);
   const barStyle = useAnimatedStyle(() => ({
     width: `${width.value * 100}%` as any,
   }));
@@ -355,7 +358,7 @@ function SessionComplete({
           Great work keeping your memories sharp.
         </Text>
 
-        <Card style={{ width: "100%", marginTop: 16 }}>
+        <SurfaceCard style={{ width: "100%", marginTop: 16 }}>
           <XStack justifyContent="space-around">
             <YStack alignItems="center" gap={4}>
               <Text fontSize={28} fontFamily="$heading" fontWeight="800" color={theme.primary.val}>
@@ -375,7 +378,7 @@ function SessionComplete({
               </Text>
             </YStack>
           </XStack>
-        </Card>
+        </SurfaceCard>
 
         <PressableScale
           onPress={onReset}
@@ -402,7 +405,7 @@ function UpcomingRow({ card }: { card: ReviewCard }) {
   const theme = useAppTheme();
   const relTime = formatRelativeTime(card.nextReviewAt);
   return (
-    <Card style={{ paddingVertical: 14, paddingHorizontal: 16 }}>
+    <SurfaceCard style={{ paddingVertical: 14, paddingHorizontal: 16 }}>
       <XStack justifyContent="space-between" alignItems="flex-start" gap={12}>
         <YStack flex={1} gap={6}>
           <Text
@@ -448,7 +451,7 @@ function UpcomingRow({ card }: { card: ReviewCard }) {
           </XStack>
         </YStack>
       </XStack>
-    </Card>
+    </SurfaceCard>
   );
 }
 
@@ -458,6 +461,7 @@ export default function ReviewScreen() {
   const theme = useAppTheme();
   const semantic = useSemanticColors();
   const { token } = useAuth();
+  const reduceMotion = useReducedMotion();
   const tabBarPadding = useTabBarBottomPadding();
   const ratings = useMemo<RatingOption[]>(
     () =>
@@ -522,10 +526,10 @@ export default function ReviewScreen() {
   const handleReveal = useCallback(() => {
     if (isRevealed || !currentCard) return;
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    frontOpacity.value = withTiming(0, { duration: 220 });
-    backOpacity.value = withTiming(1, { duration: 280 });
+    frontOpacity.value = reduceMotion ? 0 : withTiming(0, { duration: 180 });
+    backOpacity.value = reduceMotion ? 1 : withTiming(1, { duration: 220 });
     setIsRevealed(true);
-  }, [isRevealed, currentCard]);
+  }, [backOpacity, currentCard, frontOpacity, isRevealed, reduceMotion]);
 
   const handleRate = useCallback(
     async (quality: number) => {
@@ -596,11 +600,10 @@ export default function ReviewScreen() {
       safeTop={false}
       contentWidth="workspace"
       hero={
-        <PageHero
+        <PrimaryPageHeader
           eyebrow="Spaced repetition"
           title="Review queue"
           description="Reveal each card, rate your recall, and let SM-2 schedule the next review."
-          icon="refresh-cw"
         />
       }
     >
@@ -718,13 +721,13 @@ export default function ReviewScreen() {
                 style={[StyleSheet.absoluteFill, frontStyle]}
               >
                 <PressableScale onPress={handleReveal} style={{ flex: 1 }}>
-                  <Card style={{ flex: 1 }} noPadding>
+                  <SurfaceCard style={{ flex: 1 }} noPadding>
                     <CardFront
                       card={currentCard}
                       cardCount={sessionQueue.length}
                       cardIndex={sessionIndex}
                     />
-                  </Card>
+                  </SurfaceCard>
                 </PressableScale>
               </Animated.View>
 
@@ -733,9 +736,9 @@ export default function ReviewScreen() {
                 pointerEvents={isRevealed ? "auto" : "none"}
                 style={[StyleSheet.absoluteFill, backStyle]}
               >
-                <Card style={{ flex: 1 }} noPadding>
+                <SurfaceCard style={{ flex: 1 }} noPadding>
                   <CardBack card={currentCard} />
-                </Card>
+                </SurfaceCard>
               </Animated.View>
             </YStack>
 
@@ -765,7 +768,10 @@ export default function ReviewScreen() {
             )}
 
             {/* Remove from queue */}
-            <Animated.View entering={FadeIn.delay(200).duration(300)} style={{ marginTop: 14 }}>
+            <Animated.View
+              entering={FadeIn.delay(160).duration(220).reduceMotion(ReduceMotion.System)}
+              style={{ marginTop: 14 }}
+            >
               <PressableScale
                 onPress={handleRemove}
                 style={[

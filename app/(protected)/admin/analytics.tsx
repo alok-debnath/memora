@@ -4,7 +4,7 @@ import { useQuery } from "convex/react";
 import { Text, XStack, YStack } from "tamagui";
 
 import { api } from "@/convex/_generated/api";
-import { Card } from "@/components/ui/Card";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { useAdminState } from "@/components/admin/AdminStateContext";
 import { AdminStatTile } from "@/components/admin/AdminStatTile";
 import { DonutChart } from "@/components/admin/charts/DonutChart";
@@ -34,7 +34,7 @@ export default function AdminAnalyticsLabScreen() {
   return (
     <>
       <YStack>
-        <Card style={{ borderRadius: 16 }}>
+        <SurfaceCard style={{ borderRadius: 16 }}>
           <InteractiveTimelineChart
             title="Segment Timeline"
             subtitle={`Live ${segmentFamily} lens. Tap points for day-level comparison. ${
@@ -55,7 +55,7 @@ export default function AdminAnalyticsLabScreen() {
             lineColor={semantic.integration.openai}
             onSelectPoint={(point) => setSelectedTimepoint(point?.label ?? null)}
           />
-        </Card>
+        </SurfaceCard>
       </YStack>
 
       <YStack>
@@ -66,7 +66,7 @@ export default function AdminAnalyticsLabScreen() {
         </XStack>
       </YStack>
 
-      <Card style={{ borderRadius: 16 }}>
+      <SurfaceCard style={{ borderRadius: 16 }}>
         <YStack gap={12}>
           <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
             Segment Distribution
@@ -85,7 +85,7 @@ export default function AdminAnalyticsLabScreen() {
             />
           )}
         </YStack>
-      </Card>
+      </SurfaceCard>
     </>
   );
 }
