@@ -121,7 +121,7 @@ function KPI({
 }) {
   const theme = useAppTheme();
   return (
-    <SurfaceCard style={{ width: "100%", height: "100%", borderRadius: 16 }}>
+    <SurfaceCard style={{ width: "100%", minHeight: 148, borderRadius: 16 }}>
       <XStack alignItems="flex-start" justifyContent="space-between">
         <YStack
           width={42}

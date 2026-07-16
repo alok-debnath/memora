@@ -38,6 +38,7 @@ import {
 import { deleteTopicLinksForMemory, replaceTopicLinksForMemory } from "./model/memories/topicLinks";
 import { permanentlyDeleteMemory, softDeleteMemory } from "./model/memories/deletion";
 import { executeKeywordSearch } from "./model/memories/keywordSearch";
+import { listDueReminders } from "./model/memories/reminders";
 
 export const list = query({
   args: {
@@ -119,13 +120,7 @@ export const reminders = query({
   handler: async (ctx, args) => {
     const { userId } = await resolveUser(ctx, args.token);
     const now = args.asOf ?? new Date().toISOString();
-    return await ctx.db
-      .query("memories")
-      .withIndex("by_user_status_nextDueAt", (q) =>
-        q.eq("userId", userId).eq("status", "active").lte("nextDueAt", now),
-      )
-      .order("desc")
-      .take(20);
+    return await listDueReminders(ctx, { userId, asOf: now, limit: 20 });
   },
 });
 
@@ -152,8 +147,12 @@ export const upcomingReminders = query({
     if (range === "all") {
       return await ctx.db
         .query("memories")
-        .withIndex("by_user_status_nextDueAt", (q) =>
-          q.eq("userId", userId).eq("status", "active").gte("nextDueAt", nowIso),
+        .withIndex("by_user_status_entryKind_nextDueAt", (q) =>
+          q
+            .eq("userId", userId)
+            .eq("status", "active")
+            .eq("entryKind", "reminder")
+            .gte("nextDueAt", nowIso),
         )
         .order("asc")
         .take(50);
@@ -163,10 +162,11 @@ export const upcomingReminders = query({
 
     return await ctx.db
       .query("memories")
-      .withIndex("by_user_status_nextDueAt", (q) =>
+      .withIndex("by_user_status_entryKind_nextDueAt", (q) =>
         q
           .eq("userId", userId)
           .eq("status", "active")
+          .eq("entryKind", "reminder")
           .gte("nextDueAt", nowIso)
           .lte("nextDueAt", endIso),
       )

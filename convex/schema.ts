@@ -137,7 +137,7 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_user_status", ["userId", "status"])
     .index("by_user_status_entryKind", ["userId", "status", "entryKind"])
-    .index("by_user_status_nextDueAt", ["userId", "status", "nextDueAt"])
+    .index("by_user_status_entryKind_nextDueAt", ["userId", "status", "entryKind", "nextDueAt"])
     .index("by_status_nextDueAt", ["status", "nextDueAt"])
     .index("by_status_embeddingState", ["status", "embeddingState"])
     .index("by_user_primaryTopic", ["userId", "primaryTopicId"])

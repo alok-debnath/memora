@@ -83,6 +83,7 @@ import type * as model_diary_insights from "../model/diary/insights.js";
 import type * as model_memories_deletion from "../model/memories/deletion.js";
 import type * as model_memories_helpers from "../model/memories/helpers.js";
 import type * as model_memories_keywordSearch from "../model/memories/keywordSearch.js";
+import type * as model_memories_reminders from "../model/memories/reminders.js";
 import type * as model_memories_topicLinks from "../model/memories/topicLinks.js";
 import type * as notifications from "../notifications.js";
 import type * as nudges from "../nudges.js";
@@ -177,6 +178,7 @@ declare const fullApi: ApiFromModules<{
   "model/memories/deletion": typeof model_memories_deletion;
   "model/memories/helpers": typeof model_memories_helpers;
   "model/memories/keywordSearch": typeof model_memories_keywordSearch;
+  "model/memories/reminders": typeof model_memories_reminders;
   "model/memories/topicLinks": typeof model_memories_topicLinks;
   notifications: typeof notifications;
   nudges: typeof nudges;

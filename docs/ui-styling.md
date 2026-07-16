@@ -35,6 +35,9 @@ Memora now treats Tamagui as the primary styling system for app UI.
   it does not react correctly to web resizing or orientation changes.
 - Native supports portrait and landscape. Layout changes must not discard navigation, form,
   list-scroll, or open-surface state.
+- Primary pages must clear the floating bottom navigation consistently. Scroll-based `AppScreen`
+  pages receive this spacing automatically; `noScroll` pages must use
+  `useTabBarBottomPadding()` on their virtualized list content container or focus lane.
 - `showBack` is adaptive: compact stack pages receive the mobile floating back header, while
   rail/sidebar pages receive a section-aware workspace header without a redundant back action.
 

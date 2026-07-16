@@ -14,6 +14,7 @@ import { PressableScale } from "@/components/ui/PressableScale";
 import type { MemoryNote } from "@/types/memory";
 import { spacing } from "@/constants/uiTokens";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { PrimaryPageHeader } from "@/components/navigation/PrimaryPageHeader";
 import { getReminderDate, inferMemoryEntryKind } from "@/types/memoryKind";
@@ -83,6 +84,7 @@ function groupByDate(
 export default function TimelineScreen() {
   const theme = useAppTheme();
   const { token } = useAuth();
+  const tabBarPadding = useTabBarBottomPadding();
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [semanticResults, setSemanticResults] = useState<TimelineMemory[] | null>(null);
@@ -275,7 +277,10 @@ export default function TimelineScreen() {
           stickySectionHeadersEnabled
           showsVerticalScrollIndicator={false}
           style={{ width: "100%", alignSelf: "center" }}
-          contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl }}
+          contentContainerStyle={{
+            paddingHorizontal: spacing.lg,
+            paddingBottom: tabBarPadding,
+          }}
         />
       </TimelineWorkspace>
     </AppScreen>

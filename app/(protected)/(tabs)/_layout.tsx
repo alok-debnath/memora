@@ -24,7 +24,8 @@ import { useAppTheme } from "@/hooks/useAppTheme";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { useThemeStore } from "@/store/theme";
 import { useUIStore } from "@/store/ui";
-import { PRIMARY_NAVIGATION } from "@/constants/appNavigation";
+import { COMMAND_ENTRY, PRIMARY_NAVIGATION } from "@/constants/appNavigation";
+import { bottomNavigationLayout } from "@/constants/navigationLayout";
 
 // ─── Navigation items ─────────────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ const NAV_ITEMS = PRIMARY_NAVIGATION.map((item) => ({
 // ─── Bar geometry ─────────────────────────────────────────────────────────────
 
 const BAR_W = 340;
-const BAR_H = 60;
+const BAR_H = bottomNavigationLayout.barHeight;
 const BAR_R = 999; // Large value -> OS clamps to true pill (height/2 each side)
 const BAR_SIDE_PAD = 10; // Inner horizontal padding — pushes icons inward from edges
 const CONTENT_W = BAR_W - BAR_SIDE_PAD * 2; // Usable width inside side padding
@@ -49,8 +50,8 @@ const IND_OVERLAP = 2;
 const IND_W = SLOT_W + IND_OVERLAP * 2;
 const IND_H = BAR_H - IND_PAD_Y * 2;
 const IND_Y = IND_PAD_Y;
-const FADE_H = 14; // Height of the fade gradient above the bar
-const BAR_BOTTOM_MARGIN = 14; // How far the pill floats above the safe-area bottom
+const FADE_H = bottomNavigationLayout.fadeHeight;
+const BAR_BOTTOM_MARGIN = bottomNavigationLayout.bottomMargin;
 
 // Maps state.index (0–3) → visual slot (0, 1, 3, 4) → indicator translateX
 // The active capsule is centered on the slot.
@@ -68,8 +69,8 @@ const ANIM = {
   focus: { damping: 22, stiffness: 280, overshootClamping: true },
   tabPressIn: { damping: 18, stiffness: 500, overshootClamping: true },
   tabPressOut: { damping: 18, stiffness: 320, overshootClamping: true },
-  plusPressIn: { damping: 18, stiffness: 460, overshootClamping: true },
-  plusPressOut: { damping: 20, stiffness: 340, overshootClamping: true },
+  commandPressIn: { damping: 18, stiffness: 460, overshootClamping: true },
+  commandPressOut: { damping: 20, stiffness: 340, overshootClamping: true },
   entrance: { damping: 28, stiffness: 220, overshootClamping: true },
 } as const;
 
@@ -100,7 +101,7 @@ type NavController = {
 type FloatingTabBarProps = {
   activeName: NavItemName;
   onSelectTab: (name: NavItemName) => void;
-  onPressAdd: () => void;
+  onPressCommand: () => void;
   androidBlurTarget?: React.RefObject<View | null>;
 };
 
@@ -186,9 +187,9 @@ const TabItem = React.memo(function TabItem({
   );
 });
 
-// ─── PlusButton ───────────────────────────────────────────────────────────────
+// ─── CommandButton ────────────────────────────────────────────────────────────
 
-const PlusButton = React.memo(function PlusButton({
+const CommandButton = React.memo(function CommandButton({
   onPress,
   primaryColor,
 }: {
@@ -203,22 +204,22 @@ const PlusButton = React.memo(function PlusButton({
   }));
 
   return (
-    <View style={styles.plusSlot}>
+    <View style={styles.commandSlot}>
       <Pressable
         onPress={onPress}
         onPressIn={() => {
-          scale.value = withSpring(0.94, ANIM.plusPressIn);
+          scale.value = withSpring(0.94, ANIM.commandPressIn);
         }}
         onPressOut={() => {
-          scale.value = withSpring(1, ANIM.plusPressOut);
+          scale.value = withSpring(1, ANIM.commandPressOut);
         }}
         accessibilityRole="button"
-        accessibilityLabel="New memory"
+        accessibilityLabel={COMMAND_ENTRY.accessibilityLabel}
         hitSlop={8}
       >
         <Animated.View
           style={[
-            styles.plusButton,
+            styles.commandButton,
             {
               backgroundColor: primaryColor,
               borderColor: withAlpha(theme.textInverse.val, "24"),
@@ -227,7 +228,7 @@ const PlusButton = React.memo(function PlusButton({
             animStyle,
           ]}
         >
-          <Feather name="plus" size={22} color={theme.textInverse.val} />
+          <Feather name={COMMAND_ENTRY.icon} size={21} color={theme.textInverse.val} />
         </Animated.View>
       </Pressable>
     </View>
@@ -310,7 +311,7 @@ function useIsNativeLiquidGlassEnabled() {
 function FloatingTabBar({
   activeName,
   onSelectTab,
-  onPressAdd,
+  onPressCommand,
   androidBlurTarget,
 }: FloatingTabBarProps) {
   const insets = useSafeAreaInsets();
@@ -386,8 +387,9 @@ function FloatingTabBar({
   // so screen content doesn't hide behind the floating pill.
   // alignItems: center handles horizontal centering — no position:absolute tricks needed.
   const bottomInset =
-    (Platform.OS === "android" ? Math.max(insets.bottom, 8) : insets.bottom + 8) +
-    BAR_BOTTOM_MARGIN;
+    (Platform.OS === "android"
+      ? Math.max(insets.bottom, bottomNavigationLayout.androidInsetFloor)
+      : insets.bottom + bottomNavigationLayout.insetGap) + BAR_BOTTOM_MARGIN;
   const containerHeight = BAR_H + bottomInset + FADE_H;
   const fadeColors = React.useMemo(() => {
     // Multi-stop ease-in curve to eliminate banding while staying theme-derived
@@ -476,8 +478,8 @@ function FloatingTabBar({
               );
             })}
 
-            {/* Center + button */}
-            <PlusButton onPress={onPressAdd} primaryColor={primaryColor} />
+            {/* Center command button */}
+            <CommandButton onPress={onPressCommand} primaryColor={primaryColor} />
 
             {/* Review, More */}
             {NAV_ITEMS.slice(2).map((item) => {
@@ -514,10 +516,14 @@ function isTabRootPath(pathname: string) {
 type MobileTabBarOverlayProps = {
   activeName: NavItemName;
   onSelectTab: (name: NavItemName) => void;
-  onPressAdd: () => void;
+  onPressCommand: () => void;
 };
 
-function MobileTabBarOverlay({ activeName, onSelectTab, onPressAdd }: MobileTabBarOverlayProps) {
+function MobileTabBarOverlay({
+  activeName,
+  onSelectTab,
+  onPressCommand,
+}: MobileTabBarOverlayProps) {
   const host = useBackdropBlurHost();
   const overlayId = useId();
 
@@ -526,11 +532,11 @@ function MobileTabBarOverlay({ activeName, onSelectTab, onPressAdd }: MobileTabB
       <FloatingTabBar
         activeName={activeName}
         onSelectTab={onSelectTab}
-        onPressAdd={onPressAdd}
+        onPressCommand={onPressCommand}
         androidBlurTarget={host?.blurTargetRef}
       />
     ),
-    [activeName, host?.blurTargetRef, onPressAdd, onSelectTab],
+    [activeName, host?.blurTargetRef, onPressCommand, onSelectTab],
   );
 
   useEffect(() => {
@@ -628,7 +634,7 @@ function MobileTabLayout() {
   const showTabBar = isTabRootPath(pathname);
   const { activeName, selectTab } = useNavController();
 
-  const handlePressAdd = React.useCallback(() => {
+  const handlePressCommand = React.useCallback(() => {
     if (Platform.OS !== "web") {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
@@ -642,7 +648,7 @@ function MobileTabLayout() {
         <MobileTabBarOverlay
           activeName={activeName}
           onSelectTab={selectTab}
-          onPressAdd={handlePressAdd}
+          onPressCommand={handlePressCommand}
         />
       ) : null}
     </SafeAreaView>
@@ -727,13 +733,13 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     letterSpacing: 0.1,
   },
-  plusSlot: {
+  commandSlot: {
     width: SLOT_W,
     height: BAR_H,
     justifyContent: "center",
     alignItems: "center",
   },
-  plusButton: {
+  commandButton: {
     width: 44,
     height: 44,
     borderRadius: 22,

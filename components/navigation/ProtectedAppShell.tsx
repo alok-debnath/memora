@@ -8,7 +8,7 @@ import { Text, XStack, YStack } from "tamagui";
 import { api } from "@/convex/_generated/api";
 import { Feather } from "@/lib/icons";
 import { appRouter } from "@/lib/appRouter";
-import { APP_NAVIGATION, isNavigationItemActive } from "@/constants/appNavigation";
+import { APP_NAVIGATION, COMMAND_ENTRY, isNavigationItemActive } from "@/constants/appNavigation";
 import { radius, spacing } from "@/constants/uiTokens";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
@@ -181,7 +181,10 @@ export function ProtectedAppShell({ children }: { children: React.ReactNode }) {
             </YStack>
           </ScrollView>
 
-          <PressableScale onPress={openCommand} accessibilityLabel="Capture a new memory">
+          <PressableScale
+            onPress={openCommand}
+            accessibilityLabel={COMMAND_ENTRY.accessibilityLabel}
+          >
             <XStack
               minHeight={48}
               borderRadius={radius.md}
@@ -191,10 +194,10 @@ export function ProtectedAppShell({ children }: { children: React.ReactNode }) {
               paddingHorizontal={rail ? 0 : spacing.md}
               backgroundColor={theme.primary.val}
             >
-              <Feather name="plus" size={19} color={theme.textInverse.val} />
+              <Feather name={COMMAND_ENTRY.icon} size={19} color={theme.textInverse.val} />
               {!rail ? (
                 <Text color={theme.textInverse.val} fontWeight="700" fontSize={14}>
-                  New memory
+                  {COMMAND_ENTRY.label}
                 </Text>
               ) : null}
             </XStack>

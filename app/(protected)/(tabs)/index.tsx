@@ -1,19 +1,81 @@
 import React, { useMemo } from "react";
 import { useQuery } from "convex/react";
-import { Text, YStack } from "tamagui";
+import { Text, XStack, YStack } from "tamagui";
 
-import { PrimaryPageHeader } from "@/components/navigation/PrimaryPageHeader";
-import { AppListRow } from "@/components/ui/AppListRow";
+import { AppMenuButton } from "@/components/navigation/AppNavigationMenu";
 import { AppButton } from "@/components/ui/AppButton";
-import { AppScreen, SectionCard } from "@/components/ui/AppScreen";
-import { ResponsiveStatGrid, SectionGrid } from "@/components/ui/Responsive";
+import { AppListRow } from "@/components/ui/AppListRow";
+import { AppScreen } from "@/components/ui/AppScreen";
+import { Badge } from "@/components/ui/Badge";
+import { PageHero } from "@/components/ui/PageHero";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
+import type { StatusTone } from "@/components/ui/themeHelpers";
+import { COMMAND_ENTRY } from "@/constants/appNavigation";
+import { radius, spacing, typeScale } from "@/constants/uiTokens";
 import { api } from "@/convex/_generated/api";
 import { useAppRouter } from "@/hooks/useAppRouter";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useAuth } from "@/hooks/useAuth";
+import type { FeatherIconName } from "@/lib/icons";
 import { useUIStore } from "@/store/ui";
 import { getReminderDate } from "@/types/memoryKind";
+
+const TODAY_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+});
+
+function getGreeting(hour: number, firstName?: string) {
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  return firstName ? `${greeting}, ${firstName}` : greeting;
+}
+
+function getFocusState(
+  dueCount: number,
+  reviewCount: number,
+  upcomingCount: number,
+): {
+  title: string;
+  badgeLabel: string;
+  badgeTone: StatusTone;
+  badgeIcon: FeatherIconName;
+} {
+  if (dueCount > 0) {
+    return {
+      title: dueCount === 1 ? "1 reminder needs attention" : `${dueCount} reminders need attention`,
+      badgeLabel: "Due now",
+      badgeTone: "warning",
+      badgeIcon: "bell",
+    };
+  }
+
+  if (reviewCount > 0) {
+    return {
+      title: reviewCount === 1 ? "1 card is ready to review" : `${reviewCount} cards are ready`,
+      badgeLabel: "Review",
+      badgeTone: "info",
+      badgeIcon: "refresh-cw",
+    };
+  }
+
+  if (upcomingCount > 0) {
+    return {
+      title: `Nothing urgent · ${upcomingCount} coming up`,
+      badgeLabel: "Later",
+      badgeTone: "neutral",
+      badgeIcon: "calendar",
+    };
+  }
+
+  return {
+    title: "Nothing urgent",
+    badgeLabel: "Clear",
+    badgeTone: "success",
+    badgeIcon: "check",
+  };
+}
 
 export default function TodayScreen() {
   const theme = useAppTheme();
@@ -21,7 +83,10 @@ export default function TodayScreen() {
   const { user, token } = useAuth();
   const openCommand = useUIStore((state) => state.openCommand);
   const openHomeOverview = useUIStore((state) => state.openHomeOverview);
-  const snapshot = useMemo(() => ({ nowIso: new Date().toISOString(), nowMs: Date.now() }), []);
+  const snapshot = useMemo(() => {
+    const now = new Date();
+    return { nowIso: now.toISOString(), label: TODAY_FORMATTER.format(now), hour: now.getHours() };
+  }, []);
 
   const dueRemindersResult = useQuery(
     api.memories.reminders,
@@ -32,121 +97,154 @@ export default function TodayScreen() {
     token ? { token, asOf: snapshot.nowIso, range: "week" } : "skip",
   );
   const reviewCardsResult = useQuery(api.review.getDue, token ? { token, limit: 50 } : "skip");
-  const statsResult = useQuery(
-    api.memories.stats,
-    token ? { token, asOf: snapshot.nowMs } : "skip",
-  );
 
   const loading =
     dueRemindersResult === undefined ||
     upcomingRemindersResult === undefined ||
-    reviewCardsResult === undefined ||
-    statsResult === undefined;
+    reviewCardsResult === undefined;
   const dueReminders = (dueRemindersResult ?? []).filter((memory) => getReminderDate(memory));
   const upcomingReminders = upcomingRemindersResult ?? [];
   const reviewCards = reviewCardsResult ?? [];
-  const stats = statsResult ?? null;
-  const firstName = user?.name?.split(" ")[0] || "there";
+  const reminderPreview = dueReminders[0] ?? upcomingReminders[0];
+  const reminderPreviewTitle = reminderPreview?.title?.trim() || "Untitled reminder";
+  const reviewPreviewTitle = reviewCards[0]?.memory.title?.trim() || "Untitled memory";
+  const firstName = user?.name?.trim().split(/\s+/)[0];
+  const greeting = getGreeting(snapshot.hour, firstName);
+  const focusState = getFocusState(
+    dueReminders.length,
+    reviewCards.length,
+    upcomingReminders.length,
+  );
 
   return (
     <AppScreen
       safeTop={false}
-      contentWidth="workspace"
+      contentWidth="readable"
       hero={
-        <PrimaryPageHeader
-          eyebrow="Daily rhythm"
+        <PageHero
+          eyebrow={snapshot.label}
           title="Today"
-          description={`${firstName}, here is what deserves your attention now.`}
+          action={<AppMenuButton />}
+          accentStyle="none"
         />
       }
     >
-      <SectionGrid minimumColumnWidth={320} maximumColumns={2} gap={14}>
-        <SectionCard title="Needs attention" eyebrow="Now" emphasis="primary">
+      <SurfaceCard variant="glass" noPadding radius={radius.lg} shadowed>
+        <YStack padding={spacing.md} gap={spacing.xs}>
+          <XStack
+            minHeight={40}
+            paddingHorizontal={spacing.sm}
+            alignItems="center"
+            justifyContent="space-between"
+            gap={spacing.md}
+          >
+            <YStack flex={1} minWidth={0} gap={1}>
+              <Text
+                fontFamily="$utility"
+                fontSize={typeScale.caption}
+                lineHeight={14}
+                fontWeight="700"
+                letterSpacing={1}
+                textTransform="uppercase"
+                color={theme.primary.val}
+              >
+                {greeting}
+              </Text>
+              <Text
+                fontFamily="$heading"
+                fontSize={typeScale.sectionTitle}
+                lineHeight={22}
+                fontWeight="700"
+                color={theme.color.val}
+              >
+                {loading ? "Checking your day" : focusState.title}
+              </Text>
+            </YStack>
+            {!loading ? (
+              <Badge
+                label={focusState.badgeLabel}
+                tone={focusState.badgeTone}
+                small
+                icon={focusState.badgeIcon}
+              />
+            ) : null}
+          </XStack>
+
           {loading ? (
-            <YStack gap={10}>
-              <Skeleton height={58} borderRadius={14} />
-              <Skeleton height={58} borderRadius={14} />
+            <YStack gap={spacing.sm} padding={spacing.sm}>
+              <Skeleton height={52} borderRadius={radius.sm} />
+              <Skeleton height={52} borderRadius={radius.sm} />
             </YStack>
           ) : (
-            <YStack gap={4}>
+            <YStack>
               <AppListRow
                 icon="bell"
-                title={
-                  dueReminders.length > 0
-                    ? `${dueReminders.length} reminder${dueReminders.length === 1 ? "" : "s"} due`
-                    : "No reminders due"
-                }
-                description={
-                  dueReminders[0]?.title ??
-                  (upcomingReminders.length > 0
-                    ? `${upcomingReminders.length} coming up this week`
-                    : "Your schedule is clear")
+                iconColor={dueReminders.length > 0 ? theme.warning.val : undefined}
+                title={reminderPreview ? `Reminder · ${reminderPreviewTitle}` : "Reminders"}
+                trailing={
+                  <Badge
+                    label={
+                      dueReminders.length > 0
+                        ? `${dueReminders.length} due`
+                        : upcomingReminders.length > 0
+                          ? `${upcomingReminders.length} this week`
+                          : "Clear"
+                    }
+                    tone={dueReminders.length > 0 ? "warning" : "neutral"}
+                    small
+                  />
                 }
                 onPress={() => router.push("/reminders" as never)}
               />
               <AppListRow
                 icon="refresh-cw"
-                title={
-                  reviewCards.length > 0
-                    ? `${reviewCards.length} review card${reviewCards.length === 1 ? "" : "s"} ready`
-                    : "Review queue is clear"
-                }
-                description={
-                  reviewCards.length > 0
-                    ? "A short review keeps important memories available"
-                    : "Nothing needs reinforcement right now"
+                iconColor={reviewCards.length > 0 ? theme.info.val : undefined}
+                title={reviewCards.length > 0 ? `Review · ${reviewPreviewTitle}` : "Review cards"}
+                trailing={
+                  <Badge
+                    label={reviewCards.length > 0 ? `${reviewCards.length} ready` : "Clear"}
+                    tone={reviewCards.length > 0 ? "info" : "neutral"}
+                    small
+                  />
                 }
                 onPress={() => router.push("/review" as never)}
               />
             </YStack>
           )}
-        </SectionCard>
+        </YStack>
 
-        <SectionCard title="Capture the day" eyebrow="One next step" emphasis="supporting">
-          <Text fontSize={13} lineHeight={19} color={theme.colorMuted.val}>
-            Save what happened, or take a quiet moment to reflect. Everything else can wait.
-          </Text>
-          <YStack gap={8}>
-            <AppButton title="Capture a memory" icon="plus" onPress={openCommand} fullWidth />
-            <AppButton
-              title="Write in Journal"
-              icon="book-open"
-              onPress={() => router.push("/diary" as never)}
-              variant="secondary"
-              fullWidth
-            />
-          </YStack>
-        </SectionCard>
-      </SectionGrid>
-
-      <SectionCard
-        title="Weekly pulse"
-        eyebrow="At a glance"
-        emphasis="quiet"
-        action={
+        <XStack
+          flexWrap="wrap"
+          gap={spacing.sm}
+          padding={spacing.md}
+          borderTopWidth={1}
+          borderTopColor={theme.borderSubtle.val}
+          backgroundColor={theme.backgroundStrong.val}
+        >
           <AppButton
-            title="Open overview"
+            title={COMMAND_ENTRY.label}
+            icon={COMMAND_ENTRY.icon}
+            onPress={openCommand}
+            size="sm"
+            style={{ flexGrow: 1 }}
+          />
+          <AppButton
+            title="Journal"
+            icon="book-open"
+            onPress={() => router.push("/diary" as never)}
+            variant="secondary"
+            size="sm"
+            style={{ flexGrow: 1 }}
+          />
+          <AppButton
+            title="Overview"
             icon="arrow-up-right"
             onPress={openHomeOverview}
             variant="ghost"
             size="sm"
           />
-        }
-      >
-        {loading ? (
-          <Skeleton height={62} borderRadius={14} />
-        ) : (
-          <ResponsiveStatGrid
-            maximumColumns={3}
-            minimumColumnWidth={105}
-            items={[
-              { label: "Captured", value: stats?.recentCount ?? 0 },
-              { label: "Upcoming", value: upcomingReminders.length },
-              { label: "All memories", value: stats?.totalMemories ?? 0 },
-            ]}
-          />
-        )}
-      </SectionCard>
+        </XStack>
+      </SurfaceCard>
     </AppScreen>
   );
 }

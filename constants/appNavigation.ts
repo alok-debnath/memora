@@ -16,6 +16,17 @@ export type AppNavigationSection = {
   items: AppNavigationItem[];
 };
 
+/** Shared identity for the command surface, which supports both recall and creation. */
+export const COMMAND_ENTRY = {
+  label: "Ask",
+  icon: "message-circle",
+  accessibilityLabel: "Ask Memora about your memories or save something new",
+} as const satisfies {
+  label: string;
+  icon: FeatherIconName;
+  accessibilityLabel: string;
+};
+
 export const APP_NAVIGATION: AppNavigationSection[] = [
   {
     label: "Primary",
