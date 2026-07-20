@@ -95,7 +95,6 @@ import type * as nudges from "../nudges.js";
 import type * as processDiaryMutations from "../processDiaryMutations.js";
 import type * as processMemoryMutations from "../processMemoryMutations.js";
 import type * as retrievalRebuildJobs from "../retrievalRebuildJobs.js";
-import type * as review from "../review.js";
 import type * as sharing from "../sharing.js";
 import type * as systemAlerts from "../systemAlerts.js";
 import type * as transcriptionJobs from "../transcriptionJobs.js";
@@ -195,7 +194,6 @@ declare const fullApi: ApiFromModules<{
   processDiaryMutations: typeof processDiaryMutations;
   processMemoryMutations: typeof processMemoryMutations;
   retrievalRebuildJobs: typeof retrievalRebuildJobs;
-  review: typeof review;
   sharing: typeof sharing;
   systemAlerts: typeof systemAlerts;
   transcriptionJobs: typeof transcriptionJobs;

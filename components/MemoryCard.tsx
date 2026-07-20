@@ -15,7 +15,6 @@ interface MemoryCardProps {
   onPress?: () => void;
   onDelete?: () => void;
   onShare?: () => void;
-  onAddToReview?: () => void;
   onComplete?: () => void;
   onTriggerSync?: () => void;
   onRemoveSync?: () => void;
@@ -29,7 +28,6 @@ interface CardBodyProps {
   resolvedTopics?: Array<{ name: string; color?: string | null }>;
   onComplete?: () => void;
   onShare?: () => void;
-  onAddToReview?: () => void;
   onDelete?: () => void;
   showActions?: boolean;
   /** True when this memory has ≥1 Drive file attachment */
@@ -69,7 +67,6 @@ export const CardBody = React.memo(function CardBody({
   resolvedTopics,
   onComplete,
   onShare,
-  onAddToReview,
   onDelete,
   showActions = false,
   hasFiles = false,
@@ -239,18 +236,6 @@ export const CardBody = React.memo(function CardBody({
                     <Feather name="share-2" size={14} color={theme.colorMuted.val} />
                   </Pressable>
                 )}
-                {onAddToReview && (
-                  <Pressable
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      onAddToReview();
-                    }}
-                    hitSlop={12}
-                    style={styles.actionBtn}
-                  >
-                    <Feather name="repeat" size={14} color={theme.colorMuted.val} />
-                  </Pressable>
-                )}
                 {onDelete && (
                   <Pressable
                     onPress={(e) => {
@@ -332,7 +317,6 @@ export const MemoryCard = React.memo(function MemoryCard({
   onPress,
   onDelete,
   onShare,
-  onAddToReview,
   onComplete,
   onTriggerSync,
   onRemoveSync,
@@ -392,16 +376,6 @@ export const MemoryCard = React.memo(function MemoryCard({
           } satisfies ContextMenuItemDef,
         ]
       : []),
-    ...(onAddToReview
-      ? [
-          {
-            label: "Add to Review",
-            icon: "repeat",
-            iconColor: theme.color.val,
-            onPress: onAddToReview,
-          } satisfies ContextMenuItemDef,
-        ]
-      : []),
     ...(onDelete
       ? [
           {
@@ -435,7 +409,6 @@ export const MemoryCard = React.memo(function MemoryCard({
         showActions={Platform.OS === "web"}
         onComplete={onComplete}
         onShare={onShare}
-        onAddToReview={onAddToReview}
         onDelete={onDelete}
         hasFiles={hasFiles}
       />

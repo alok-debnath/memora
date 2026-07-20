@@ -34,7 +34,6 @@ function getGreeting(hour: number, firstName?: string) {
 
 function getFocusState(
   dueCount: number,
-  reviewCount: number,
   upcomingCount: number,
 ): {
   title: string;
@@ -48,15 +47,6 @@ function getFocusState(
       badgeLabel: "Due now",
       badgeTone: "warning",
       badgeIcon: "bell",
-    };
-  }
-
-  if (reviewCount > 0) {
-    return {
-      title: reviewCount === 1 ? "1 card is ready to review" : `${reviewCount} cards are ready`,
-      badgeLabel: "Review",
-      badgeTone: "info",
-      badgeIcon: "refresh-cw",
     };
   }
 
@@ -96,25 +86,14 @@ export default function TodayScreen() {
     api.memories.upcomingReminders,
     token ? { token, asOf: snapshot.nowIso, range: "week" } : "skip",
   );
-  const reviewCardsResult = useQuery(api.review.getDue, token ? { token, limit: 50 } : "skip");
-
-  const loading =
-    dueRemindersResult === undefined ||
-    upcomingRemindersResult === undefined ||
-    reviewCardsResult === undefined;
+  const loading = dueRemindersResult === undefined || upcomingRemindersResult === undefined;
   const dueReminders = (dueRemindersResult ?? []).filter((memory) => getReminderDate(memory));
   const upcomingReminders = upcomingRemindersResult ?? [];
-  const reviewCards = reviewCardsResult ?? [];
   const reminderPreview = dueReminders[0] ?? upcomingReminders[0];
   const reminderPreviewTitle = reminderPreview?.title?.trim() || "Untitled reminder";
-  const reviewPreviewTitle = reviewCards[0]?.memory.title?.trim() || "Untitled memory";
   const firstName = user?.name?.trim().split(/\s+/)[0];
   const greeting = getGreeting(snapshot.hour, firstName);
-  const focusState = getFocusState(
-    dueReminders.length,
-    reviewCards.length,
-    upcomingReminders.length,
-  );
+  const focusState = getFocusState(dueReminders.length, upcomingReminders.length);
 
   return (
     <AppScreen
@@ -195,19 +174,6 @@ export default function TodayScreen() {
                   />
                 }
                 onPress={() => router.push("/reminders" as never)}
-              />
-              <AppListRow
-                icon="refresh-cw"
-                iconColor={reviewCards.length > 0 ? theme.info.val : undefined}
-                title={reviewCards.length > 0 ? `Review · ${reviewPreviewTitle}` : "Review cards"}
-                trailing={
-                  <Badge
-                    label={reviewCards.length > 0 ? `${reviewCards.length} ready` : "Clear"}
-                    tone={reviewCards.length > 0 ? "info" : "neutral"}
-                    small
-                  />
-                }
-                onPress={() => router.push("/review" as never)}
               />
             </YStack>
           )}

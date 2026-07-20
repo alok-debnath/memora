@@ -84,15 +84,14 @@ const SLIDES: IntroSlide[] = [
   {
     id: "follow-through",
     eyebrow: "Follow through",
-    title: "Turn memories into reminders, reviews, and shared moments.",
-    body: "Schedule follow-ups, review important memories with spaced repetition, and share a memory when needed.",
+    title: "Turn memories into reminders and shared moments.",
+    body: "Schedule follow-ups, keep important memories close, and share a memory when needed.",
     icon: "bell",
     previewTitle: "Next actions",
-    previewSubtitle: "Due dates, review, sharing",
+    previewSubtitle: "Due dates and sharing",
     details: [
       { icon: "bell", label: "Reminders and recurring dates" },
       { icon: "calendar", label: "Calendar sync when connected" },
-      { icon: "refresh-cw", label: "Spaced review queue" },
       { icon: "share-2", label: "Share links" },
     ],
   },

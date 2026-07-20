@@ -99,7 +99,6 @@ function createInitialState(memory?: MemoryNote) {
     isRecurring: schedule?.isRecurring ?? false,
     capsuleEnabled: !!memory?.capsuleUnlockDate,
     capsuleDate: memory?.capsuleUnlockDate ?? "",
-    reviewOptOut: memory?.reviewOptOut ?? false,
   };
 }
 
@@ -278,7 +277,6 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
           : null,
       capsuleUnlockDate:
         form.capsuleEnabled && form.capsuleDate.trim() ? form.capsuleDate.trim() : null,
-      reviewOptOut: form.reviewOptOut,
     });
 
     // Upload + record in background after onSave returns
@@ -454,36 +452,6 @@ export function EditMemorySheet({ memory, visible, onClose, onSave }: EditMemory
           onToggle={(v) => setField("capsuleEnabled", v)}
           onDateChange={(v) => setField("capsuleDate", v)}
         />
-
-        {/* Spaced Review opt-out — only for high/critical importance memories */}
-        {form.entryKind === "memory" &&
-          (memory?.importance === "critical" || memory?.importance === "high") && (
-            <YStack
-              borderWidth={0.5}
-              borderColor={theme.borderColor.val}
-              backgroundColor={theme.card.val}
-              borderRadius={14}
-              overflow="hidden"
-            >
-              <XStack alignItems="center" gap={12} padding={14}>
-                <Feather name="repeat" size={18} color={theme.colorMuted.val} />
-                <YStack flex={1}>
-                  <Text color={theme.color.val} fontSize={14} fontFamily="$body" fontWeight="600">
-                    Spaced Review
-                  </Text>
-                  <Text color={theme.colorMuted.val} fontSize={12} fontFamily="$body" marginTop={1}>
-                    Surfaces in review sessions
-                  </Text>
-                </YStack>
-                <Switch
-                  value={!form.reviewOptOut}
-                  onValueChange={(v) => setField("reviewOptOut", !v)}
-                  trackColor={{ true: theme.primary.val, false: theme.borderColor.val }}
-                  thumbColor={theme.textInverse.val}
-                />
-              </XStack>
-            </YStack>
-          )}
 
         {mode === "manual" ? (
           <>

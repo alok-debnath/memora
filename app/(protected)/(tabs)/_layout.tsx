@@ -31,7 +31,7 @@ import { alphaGradients } from "@/constants/themePalettes";
 
 // ─── Navigation items ─────────────────────────────────────────────────────────
 
-type NavItemName = "index" | "timeline" | "diary" | "review";
+type NavItemName = "index" | "timeline" | "diary";
 const NAV_ITEMS = PRIMARY_NAVIGATION.map((item) => ({
   name: item.tabName as NavItemName,
   title: item.label,
@@ -248,7 +248,6 @@ const ROUTE_DISPLAY_INDEX: Record<string, number> = {
   index: 0,
   timeline: 1,
   diary: 2,
-  review: 3,
 };
 
 const TabBarSurface = React.memo(function TabBarSurface({
@@ -494,7 +493,7 @@ function FloatingTabBar({
 
             {/* Tab items row */}
             <View style={styles.row}>
-              {/* Home, Diary */}
+              {/* Home, Timeline */}
               {NAV_ITEMS.slice(0, 2).map((item) => {
                 return (
                   <TabItem
@@ -513,7 +512,7 @@ function FloatingTabBar({
               {/* Center command button */}
               <CommandButton onPress={onPressCommand} primaryColor={primaryColor} />
 
-              {/* Review, More */}
+              {/* Journal */}
               {NAV_ITEMS.slice(2).map((item) => {
                 return (
                   <TabItem
@@ -538,11 +537,7 @@ function FloatingTabBar({
 
 function isTabRootPath(pathname: string) {
   return (
-    pathname === "/" ||
-    pathname === "/index" ||
-    pathname === "/timeline" ||
-    pathname === "/diary" ||
-    pathname === "/review"
+    pathname === "/" || pathname === "/index" || pathname === "/timeline" || pathname === "/diary"
   );
 }
 
@@ -589,27 +584,23 @@ function useNavController(): NavController {
   const index = useTabTrigger({ name: "index" });
   const timeline = useTabTrigger({ name: "timeline" });
   const diary = useTabTrigger({ name: "diary" });
-  const review = useTabTrigger({ name: "review" });
   const switchTabRef = useRef<Record<NavItemName, () => void>>({
     index: () => undefined,
     timeline: () => undefined,
     diary: () => undefined,
-    review: () => undefined,
   });
 
   switchTabRef.current = {
     index: () => index.switchTab("index", {}),
     timeline: () => timeline.switchTab("timeline", {}),
     diary: () => diary.switchTab("diary", {}),
-    review: () => review.switchTab("review", {}),
   };
 
   const activeName = useMemo<NavItemName>(() => {
     if (timeline.trigger?.isFocused) return "timeline";
     if (diary.trigger?.isFocused) return "diary";
-    if (review.trigger?.isFocused) return "review";
     return "index";
-  }, [diary.trigger?.isFocused, review.trigger?.isFocused, timeline.trigger?.isFocused]);
+  }, [diary.trigger?.isFocused, timeline.trigger?.isFocused]);
 
   const selectTab = useCallback((name: NavItemName) => {
     if (Platform.OS !== "web") {
@@ -636,19 +627,8 @@ function useNavController(): NavController {
         isFocused: diary.trigger?.isFocused ?? false,
         onPress: () => selectTab("diary"),
       },
-      {
-        name: "review" as const,
-        isFocused: review.trigger?.isFocused ?? false,
-        onPress: () => selectTab("review"),
-      },
     ],
-    [
-      diary.trigger?.isFocused,
-      index.trigger?.isFocused,
-      review.trigger?.isFocused,
-      selectTab,
-      timeline.trigger?.isFocused,
-    ],
+    [diary.trigger?.isFocused, index.trigger?.isFocused, selectTab, timeline.trigger?.isFocused],
   );
 
   return useMemo(

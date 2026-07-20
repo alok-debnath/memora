@@ -104,7 +104,6 @@ export default function TimelineScreen() {
   const completeMemory = useMutation(api.memories.complete);
   const deleteMemory = useMutation(api.memories.remove);
   const createShareLink = useMutation(api.sharing.createShareLink);
-  const addToReview = useMutation(api.review.addToReview);
   const triggerReminderSync = useMutation(api.integrations.triggerReminderSync);
   const removeReminderSync = useMutation(api.integrations.removeReminderSync);
 
@@ -159,19 +158,6 @@ export default function TimelineScreen() {
       }
     },
     [createShareLink, showToast, token],
-  );
-
-  const handleAddToReview = useCallback(
-    async (memory: MemoryNote) => {
-      if (!token) return;
-      try {
-        await addToReview({ token, memoryId: memory.id as Id<"memories"> });
-        showToast({ title: "Added to review", tone: "success" });
-      } catch {
-        showToast({ title: "Couldn't add to review — try again", tone: "error" });
-      }
-    },
-    [addToReview, showToast, token],
   );
 
   const handleTriggerSync = useCallback(
@@ -366,7 +352,6 @@ export default function TimelineScreen() {
                 onComplete={isReminder(memory) ? () => handleComplete(memory) : undefined}
                 onDelete={() => handleDelete(memory)}
                 onShare={() => handleShare(memory)}
-                onAddToReview={() => handleAddToReview(memory)}
                 onTriggerSync={isReminder(memory) ? () => handleTriggerSync(memory) : undefined}
                 onRemoveSync={isReminder(memory) ? () => handleRemoveSync(memory) : undefined}
               />

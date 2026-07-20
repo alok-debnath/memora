@@ -531,19 +531,6 @@ export const processMemory = action({
         retrievalVersion: MEMORY_RETRIEVAL_VERSION,
         retrievalState: "ready",
       });
-
-      const finalImportance = normalizedForWrite.importance ?? memory.importance;
-      const finalEntryKind = normalizedForWrite.entryKind ?? memory.entryKind;
-      if (
-        (finalImportance === "critical" || finalImportance === "high") &&
-        finalEntryKind === "memory" &&
-        !memory.reviewOptOut
-      ) {
-        await ctx.runMutation(internal.review.internalAddToReview, {
-          memoryId: args.memoryId,
-          userId: memory.userId,
-        });
-      }
     } catch {
       // Best effort only. Background enrichment should never break user writes.
     }

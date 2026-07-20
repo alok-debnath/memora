@@ -64,7 +64,7 @@ Memora now treats Tamagui as the primary styling system for app UI.
 - Use `constants/motion.ts` for standard presses, selection, content, and overlays. The floating
   primary navigation bar intentionally retains its established local spring choreography.
 - Standard selection uses a short decelerating timing curve with no stretch or bounce. Springs are
-  reserved for direct manipulation such as sheet settling, drags, and review-card gestures.
+  reserved for direct manipulation such as sheet settling, drags, and card gestures.
 - Repeating rotation is not part of the app language. Progress may use a quiet opacity change and
   must become static when reduced motion is enabled.
 

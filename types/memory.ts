@@ -41,7 +41,6 @@ export interface MemoryNote {
   recurrenceType?: MemoryRecurrenceType;
   capsuleUnlockDate?: string;
   isPublic?: boolean;
-  reviewOptOut?: boolean;
   googleEventId?: string;
   googleSyncStatus?: "pending" | "synced" | "failed";
   googleSyncMessage?: string;
@@ -71,17 +70,6 @@ export interface DiaryEntry {
   structuredInsights?: Array<{ insight: string; category: string }>;
   createdAt: string;
   updatedAt: string;
-}
-
-export interface ReviewCard {
-  id: string;
-  memoryId: string;
-  memory: MemoryNote;
-  nextReviewAt: string;
-  intervalDays: number;
-  easeFactor: number;
-  repetitions: number;
-  lastReviewedAt?: string;
 }
 
 export interface ChatMessage {

@@ -201,7 +201,6 @@ export const deleteAccount = mutation({
       "memoryHistory",
       "notificationPreferences",
       "diaryEntries",
-      "reviewCards",
       "nudges",
       "chatMessages",
       "userMemoryStats",

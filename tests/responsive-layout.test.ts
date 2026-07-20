@@ -62,17 +62,7 @@ describe("application navigation", () => {
   });
 
   test("uses the Living Timeline primary hierarchy", () => {
-    expect(PRIMARY_NAVIGATION.map((item) => item.label)).toEqual([
-      "Today",
-      "Timeline",
-      "Journal",
-      "Review",
-    ]);
-    expect(PRIMARY_NAVIGATION.map((item) => item.href)).toEqual([
-      "/",
-      "/timeline",
-      "/diary",
-      "/review",
-    ]);
+    expect(PRIMARY_NAVIGATION.map((item) => item.label)).toEqual(["Today", "Timeline", "Journal"]);
+    expect(PRIMARY_NAVIGATION.map((item) => item.href)).toEqual(["/", "/timeline", "/diary"]);
   });
 });

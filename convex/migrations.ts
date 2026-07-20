@@ -322,7 +322,6 @@ export const wipeAllUserData = mutation({
       "memoryAttachments",
       "memoryHistory",
       "diaryEntries",
-      "reviewCards",
       "nudges",
       "chatMessages",
     ] as const;

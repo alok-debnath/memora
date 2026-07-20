@@ -601,7 +601,6 @@ export const update = mutation({
     nextDueAt: v.optional(v.union(v.string(), v.null())),
     capsuleUnlockDate: v.optional(v.union(v.string(), v.null())),
     sourceChatTurnId: v.optional(v.id("chatMessages")),
-    reviewOptOut: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const user = await resolveUser(ctx, args.token);
@@ -712,30 +711,6 @@ export const update = mutation({
         currentTime: new Date().toISOString(),
         sourceChatTurnId: args.sourceChatTurnId,
       });
-    }
-
-    if ("reviewOptOut" in finalPatch) {
-      const effectiveEntryKind =
-        (typeof finalPatch.entryKind === "string" ? finalPatch.entryKind : undefined) ??
-        memory.entryKind;
-      const effectiveImportance =
-        (typeof finalPatch.importance === "string" ? finalPatch.importance : undefined) ??
-        memory.importance;
-      if (finalPatch.reviewOptOut === true) {
-        await ctx.runMutation(internal.review.internalRemoveFromReview, {
-          memoryId: args.id,
-          userId,
-        });
-      } else if (
-        finalPatch.reviewOptOut === false &&
-        effectiveEntryKind === "memory" &&
-        (effectiveImportance === "critical" || effectiveImportance === "high")
-      ) {
-        await ctx.runMutation(internal.review.internalAddToReview, {
-          memoryId: args.id,
-          userId,
-        });
-      }
     }
   },
 });
@@ -1563,13 +1538,6 @@ export const complete = mutation({
       changeReason: "completed",
       snapshotJson: serializeMemorySnapshot(memory),
     });
-
-    // Remove review card — completed reminders don't need further review
-    const reviewCards = await ctx.db
-      .query("reviewCards")
-      .withIndex("by_memory", (q) => q.eq("memoryId", args.id))
-      .take(10);
-    await Promise.all(reviewCards.map((card) => ctx.db.delete(card._id)));
 
     // Decrement topic counts so the filter bar hides topics with no active memories
     const topicIds = Array.from(

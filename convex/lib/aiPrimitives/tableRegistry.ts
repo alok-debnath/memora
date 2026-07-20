@@ -127,32 +127,6 @@ export const AI_TABLE_ALLOWLIST: Record<string, TablePrimitiveConfig> = {
     },
   },
 
-  reviewCards: {
-    table: "reviewCards",
-    ownerField: "userId",
-    allowedOps: new Set<AiOp>(["list", "create", "delete"]),
-    listIndex: "by_user",
-    fieldsDescription:
-      "create: memoryId (string, required). delete: id is the review card's own id.",
-    createDelegate: async (ctx, token, _userId, fields) => {
-      if (typeof fields.memoryId !== "string") {
-        throw new Error("create_doc on reviewCards requires a memoryId field.");
-      }
-      const cardId = await ctx.runMutation(api.review.addToReview, {
-        token,
-        memoryId: fields.memoryId as Id<"memories">,
-      });
-      return { id: String(cardId) };
-    },
-    deleteDelegate: async (ctx, token, userId, id) => {
-      const row = await ownedRow(ctx, "reviewCards", "userId", userId, id);
-      await ctx.runMutation(api.review.removeFromReview, {
-        token,
-        memoryId: row.memoryId as Id<"memories">,
-      });
-    },
-  },
-
   sharedMemories: {
     table: "sharedMemories",
     ownerField: "sharedByUserId",

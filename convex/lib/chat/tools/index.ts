@@ -94,9 +94,6 @@ export function selectChatTools(message: string): ChatTool[] {
   if (/\b(sync|resync|calendar|google event)\b/i.test(normalized)) {
     include("sync_reminder", "remove_reminder_sync");
   }
-  if (/\b(review|flashcard|spaced repetition)\b/i.test(normalized)) {
-    include("create_doc", "delete_doc", "list_docs");
-  }
   if (/\b(share|shared|unshare|share link)\b/i.test(normalized)) {
     include("create_doc", "delete_doc", "list_docs");
   }

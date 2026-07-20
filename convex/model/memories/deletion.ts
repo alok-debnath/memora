@@ -35,15 +35,6 @@ export async function deleteMemoryRelatedData(ctx: MutationCtx, memoryId: Id<"me
   }
 
   while (true) {
-    const reviewCards = await ctx.db
-      .query("reviewCards")
-      .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
-      .take(RELATED_DELETE_BATCH);
-    await Promise.all(reviewCards.map((doc) => ctx.db.delete(doc._id)));
-    if (reviewCards.length < RELATED_DELETE_BATCH) break;
-  }
-
-  while (true) {
     const sharedMemories = await ctx.db
       .query("sharedMemories")
       .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
@@ -90,12 +81,6 @@ export async function softDeleteMemory(
     changeReason: "deleted",
     snapshotJson: serializeMemorySnapshot(memory),
   });
-
-  const reviewCards = await ctx.db
-    .query("reviewCards")
-    .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
-    .take(10);
-  await Promise.all(reviewCards.map((card) => ctx.db.delete(card._id)));
 
   const topicIds = Array.from(
     new Set(

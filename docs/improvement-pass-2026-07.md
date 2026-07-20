@@ -62,7 +62,7 @@ invariants live in `agent-context/ai-architecture.md`.
 
 ## Deferred
 
-- ScrollView→FlatList on review / reminders / knowledge-graph (small bounded lists).
+- ScrollView→FlatList on reminders / knowledge-graph (small bounded lists).
 - Non-duplicating regenerate (needs a send-path flag).
 - Planner-framework rewrite (hand-rolled loop encodes cost invariants — untouched by design).
 - Full on-device regression (native chat streaming, dictation, calendar sync) — only web + CLI smokes were run.

@@ -21,7 +21,7 @@ type AuthShellProps = {
 const INDEX_ROWS: Array<{ label: string; value: string }> = [
   { label: "Capture", value: "Voice, text, links" },
   { label: "Recall", value: "Search by meaning" },
-  { label: "Review", value: "Prompts that stay quiet" },
+  { label: "Reflect", value: "Journal and patterns" },
 ];
 
 function BrandMark({ icon }: { icon: FeatherIconName }) {

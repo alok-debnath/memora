@@ -108,7 +108,6 @@ export default defineSchema({
     embeddingState: v.union(v.literal("missing"), v.literal("ready")),
     shareToken: v.optional(v.string()),
     isPublic: v.optional(v.boolean()),
-    reviewOptOut: v.optional(v.boolean()),
     /** Encryption version used (for migration tracking) */
     encryptionVersion: v.optional(v.number()),
     /**
@@ -544,19 +543,6 @@ export default defineSchema({
     ),
     updatedAt: v.number(),
   }).index("by_user", ["userId"]),
-
-  reviewCards: defineTable({
-    userId: v.id("users"),
-    memoryId: v.id("memories"),
-    nextReviewAt: v.string(),
-    intervalDays: v.float64(),
-    easeFactor: v.float64(),
-    repetitions: v.float64(),
-    lastReviewedAt: v.optional(v.string()),
-  })
-    .index("by_user", ["userId"])
-    .index("by_user_nextReviewAt", ["userId", "nextReviewAt"])
-    .index("by_memory", ["memoryId"]),
 
   nudges: defineTable({
     userId: v.id("users"),

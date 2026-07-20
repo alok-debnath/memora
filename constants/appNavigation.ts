@@ -7,7 +7,7 @@ export type AppNavigationItem = {
   href: string;
   icon: FeatherIconName;
   primary?: boolean;
-  tabName?: "index" | "timeline" | "diary" | "review";
+  tabName?: "index" | "timeline" | "diary";
   adminOnly?: boolean;
 };
 
@@ -57,15 +57,6 @@ export const APP_NAVIGATION: AppNavigationSection[] = [
         icon: "book-open",
         primary: true,
         tabName: "diary",
-      },
-      {
-        id: "review",
-        label: "Review",
-        detail: "Strengthen important memories",
-        href: "/review",
-        icon: "refresh-cw",
-        primary: true,
-        tabName: "review",
       },
     ],
   },

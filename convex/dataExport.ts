@@ -21,7 +21,6 @@ export const exportAllData = query({
       memories,
       diaryEntries,
       chatMessages,
-      reviewCards,
       nudges,
       memoryHistory,
       memoryAttachments,
@@ -41,10 +40,6 @@ export const exportAllData = query({
         .take(10000),
       ctx.db
         .query("chatMessages")
-        .withIndex("by_user", (q) => q.eq("userId", user._id))
-        .take(10000),
-      ctx.db
-        .query("reviewCards")
         .withIndex("by_user", (q) => q.eq("userId", user._id))
         .take(10000),
       ctx.db
@@ -131,15 +126,6 @@ export const exportAllData = query({
         role: c.role,
         content: c.content,
         attachments: c.attachments,
-      })),
-      reviewCards: reviewCards.map((r) => ({
-        id: r._id,
-        memoryId: r.memoryId,
-        nextReviewAt: r.nextReviewAt,
-        intervalDays: r.intervalDays,
-        easeFactor: r.easeFactor,
-        repetitions: r.repetitions,
-        lastReviewedAt: r.lastReviewedAt,
       })),
       nudges: nudges.map((n) => ({
         id: n._id,
