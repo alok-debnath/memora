@@ -12,8 +12,15 @@ export const HISTORY_RECENT_TIER_MESSAGES = 4;
 /** Chat history: char cap for older messages within the window (still useful, less critical). */
 export const HISTORY_OLDER_MESSAGE_CHARS = 500;
 
-/** Agent loop: max planner iterations per turn. */
-export const MAX_ITERATIONS = 4;
+/**
+ * Agent loop: max planner iterations per turn. Raised from 4 to 6 — composing
+ * a task from the generic primitive tools (get/list/create/update/delete_doc)
+ * genuinely needs more sequential round-trips than a single bespoke tool call
+ * did (e.g. list_docs to find a memory, then create_doc to add it to review).
+ */
+export const MAX_ITERATIONS = 6;
+/** Hard cap on tool calls executed within a single iteration — bounds cost for wide parallel batches (e.g. many list_docs calls), which MAX_ITERATIONS alone doesn't limit. */
+export const MAX_TOOL_CALLS_PER_ITERATION = 6;
 /** Planner completion cap. */
 export const MAX_COMPLETION_TOKENS = 2048;
 export const PLANNER_TEMPERATURE = 0.3;
@@ -58,6 +65,8 @@ export const DIARY_ANALYZE_FETCH = 15;
 /** Generic list tool caps. */
 export const LIST_LIMIT_DEFAULT = 20;
 export const LIST_LIMIT_MAX = 50;
+/** Generic primitive get/list: per-field cap on long string values before a row reaches the model. */
+export const PRIMITIVE_FIELD_CHARS = 1200;
 export const HISTORY_TOOL_LIMIT_DEFAULT = 10;
 export const HISTORY_TOOL_LIMIT_MAX = 20;
 

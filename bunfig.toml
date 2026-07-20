@@ -1,2 +1,8 @@
 [install]
 linker = "hoisted"
+
+[test]
+# convex/**/*.test.ts uses convex-test, which needs vitest's edge-runtime
+# environment (run via `bun run test:convex`) — Bun's own test runner can't
+# execute those, so scope it to tests/ only.
+root = "tests"

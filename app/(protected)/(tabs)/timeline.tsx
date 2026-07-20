@@ -1,8 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { SectionList } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SectionList, Share } from "react-native";
+import * as Haptics from "expo-haptics";
+import * as Linking from "expo-linking";
 import { Text, XStack, YStack } from "tamagui";
-import { useAction, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/useAuth";
 import { MemoryCard } from "@/components/MemoryCard";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -11,13 +14,16 @@ import { SectionLabel } from "@/components/ui/SectionLabel";
 import { AppScreen, SectionCard } from "@/components/ui/AppScreen";
 import { ResponsiveStatGrid, WorkspaceSplit } from "@/components/ui/Responsive";
 import { PressableScale } from "@/components/ui/PressableScale";
+import { useAppConfirm } from "@/components/ui/confirm/AppConfirmProvider";
+import { useAppToast } from "@/components/ui/toast";
 import type { MemoryNote } from "@/types/memory";
 import { spacing } from "@/constants/uiTokens";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { PrimaryPageHeader } from "@/components/navigation/PrimaryPageHeader";
-import { getReminderDate, inferMemoryEntryKind } from "@/types/memoryKind";
+import { getReminderDate, inferMemoryEntryKind, isReminder } from "@/types/memoryKind";
+import { useUIStore } from "@/store/ui";
 
 type TimelineMemory = {
   _id: string;
@@ -92,9 +98,116 @@ export default function TimelineScreen() {
   const listRef = useRef<SectionList<any>>(null);
   const requestId = useRef(0);
   const semanticSearch = useAction(api.actions.semanticSearch.search);
+  const { confirm } = useAppConfirm();
+  const { showToast } = useAppToast();
+  const openEditMemory = useUIStore((state) => state.openEditMemory);
+  const completeMemory = useMutation(api.memories.complete);
+  const deleteMemory = useMutation(api.memories.remove);
+  const createShareLink = useMutation(api.sharing.createShareLink);
+  const addToReview = useMutation(api.review.addToReview);
+  const triggerReminderSync = useMutation(api.integrations.triggerReminderSync);
+  const removeReminderSync = useMutation(api.integrations.removeReminderSync);
 
   const memoryResult = useQuery(api.memories.listAll, token ? { token, limit: 500 } : "skip");
   const allMemories = (memoryResult ?? []) as TimelineMemory[];
+
+  const handleComplete = useCallback(
+    async (memory: MemoryNote) => {
+      if (!token) return;
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      try {
+        await completeMemory({ token, id: memory.id as Id<"memories"> });
+        showToast({ title: "Marked complete", tone: "success" });
+      } catch {
+        showToast({ title: "Couldn't complete — try again", tone: "error" });
+      }
+    },
+    [completeMemory, showToast, token],
+  );
+
+  const handleDelete = useCallback(
+    async (memory: MemoryNote) => {
+      if (!token) return;
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      const confirmed = await confirm({
+        title: "Delete Memory",
+        message: "This will move the memory to trash.",
+        confirmLabel: "Delete",
+        tone: "destructive",
+        icon: "trash-2",
+      });
+      if (!confirmed) return;
+      try {
+        await deleteMemory({ token, id: memory.id as Id<"memories"> });
+        showToast({ title: "Memory deleted", tone: "success" });
+      } catch {
+        showToast({ title: "Couldn't delete — try again", tone: "error" });
+      }
+    },
+    [confirm, deleteMemory, showToast, token],
+  );
+
+  const handleShare = useCallback(
+    async (memory: MemoryNote) => {
+      if (!token) return;
+      try {
+        const shareToken = await createShareLink({ token, memoryId: memory.id as Id<"memories"> });
+        const url = Linking.createURL(`/shared/${shareToken}`);
+        await Share.share({ message: url, url });
+      } catch {
+        showToast({ title: "Couldn't create share link — try again", tone: "error" });
+      }
+    },
+    [createShareLink, showToast, token],
+  );
+
+  const handleAddToReview = useCallback(
+    async (memory: MemoryNote) => {
+      if (!token) return;
+      try {
+        await addToReview({ token, memoryId: memory.id as Id<"memories"> });
+        showToast({ title: "Added to review", tone: "success" });
+      } catch {
+        showToast({ title: "Couldn't add to review — try again", tone: "error" });
+      }
+    },
+    [addToReview, showToast, token],
+  );
+
+  const handleTriggerSync = useCallback(
+    async (memory: MemoryNote) => {
+      if (!token) return;
+      try {
+        const result = await triggerReminderSync({ token, memoryId: memory.id as Id<"memories"> });
+        showToast({ title: result.message, tone: result.queued ? "success" : "info" });
+      } catch {
+        showToast({ title: "Couldn't trigger Google sync", tone: "error" });
+      }
+    },
+    [showToast, token, triggerReminderSync],
+  );
+
+  const handleRemoveSync = useCallback(
+    async (memory: MemoryNote) => {
+      if (!token) return;
+      const confirmed = await confirm({
+        title: "Remove Google sync",
+        message:
+          "This removes linked Google Calendar event data for this reminder and clears local sync state.",
+        confirmLabel: "Remove sync",
+        tone: "destructive",
+        icon: "link-2",
+      });
+      if (!confirmed) return;
+      try {
+        const result = await removeReminderSync({ token, memoryId: memory.id as Id<"memories"> });
+        showToast({ title: result.message, tone: result.removed ? "success" : "info" });
+      } catch {
+        showToast({ title: "Couldn't remove Google sync", tone: "error" });
+      }
+    },
+    [confirm, removeReminderSync, showToast, token],
+  );
 
   useEffect(() => {
     requestId.current += 1;
@@ -227,30 +340,38 @@ export default function TimelineScreen() {
           ref={listRef}
           sections={sections}
           keyExtractor={(item) => String(item._id)}
-          renderItem={({ item, index }) => (
-            <MemoryCard
-              memory={
-                {
-                  ...item,
-                  id: item._id,
-                  userId: "" as never,
-                  people: item.people ?? [],
-                  locations: item.locations ?? [],
-                  entryKind: inferMemoryEntryKind(item),
-                  schedule: item.schedule,
-                  reminderDate: getReminderDate(item),
-                  isRecurring: item.schedule?.isRecurring ?? false,
-                  recurrenceType: item.schedule?.recurrenceType,
-                  importance: item.importance ?? "normal",
-                  linkedUrls: item.linkedUrls ?? [],
-                  extractedActions: item.extractedActions ?? [],
-                  createdAt: new Date(item._creationTime).toISOString(),
-                  updatedAt: new Date(item._creationTime).toISOString(),
-                } as MemoryNote
-              }
-              index={index}
-            />
-          )}
+          renderItem={({ item, index }) => {
+            const memory = {
+              ...item,
+              id: item._id,
+              userId: "" as never,
+              people: item.people ?? [],
+              locations: item.locations ?? [],
+              entryKind: inferMemoryEntryKind(item),
+              schedule: item.schedule,
+              reminderDate: getReminderDate(item),
+              isRecurring: item.schedule?.isRecurring ?? false,
+              recurrenceType: item.schedule?.recurrenceType,
+              importance: item.importance ?? "normal",
+              linkedUrls: item.linkedUrls ?? [],
+              extractedActions: item.extractedActions ?? [],
+              createdAt: new Date(item._creationTime).toISOString(),
+              updatedAt: new Date(item._creationTime).toISOString(),
+            } as MemoryNote;
+            return (
+              <MemoryCard
+                memory={memory}
+                index={index}
+                onPress={() => openEditMemory(memory)}
+                onComplete={isReminder(memory) ? () => handleComplete(memory) : undefined}
+                onDelete={() => handleDelete(memory)}
+                onShare={() => handleShare(memory)}
+                onAddToReview={() => handleAddToReview(memory)}
+                onTriggerSync={isReminder(memory) ? () => handleTriggerSync(memory) : undefined}
+                onRemoveSync={isReminder(memory) ? () => handleRemoveSync(memory) : undefined}
+              />
+            );
+          }}
           renderSectionHeader={({ section }) => <SectionLabel>{section.title}</SectionLabel>}
           ItemSeparatorComponent={() => <YStack height={10} />}
           SectionSeparatorComponent={() => <YStack height={spacing.sm} />}

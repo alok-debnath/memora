@@ -32,6 +32,14 @@ export type TurnState = {
   writeToolCalled: boolean;
   writeFallbackMessage: string | null;
   createdMemoriesByDedupeKey: Map<string, { id: Id<"memories">; title: string }>;
+  /**
+   * Per-turn cache for generic get_doc/list_docs primitive reads, keyed by
+   * `${table}:${op}:${argsSignature}`. A repeat read (e.g. re-checking
+   * existence before/after a related write) skips the DB round trip.
+   * Invalidated per-table by invalidatePrimitiveReadCache on any
+   * create/update/delete_doc call against that table.
+   */
+  primitiveReadCache: Map<string, string>;
 };
 
 export function createTurnState(): TurnState {
@@ -48,7 +56,15 @@ export function createTurnState(): TurnState {
     writeToolCalled: false,
     writeFallbackMessage: null,
     createdMemoriesByDedupeKey: new Map(),
+    primitiveReadCache: new Map(),
   };
+}
+
+/** Drop every cached primitive read for a table after a write against it — stale reads must never survive a write. */
+export function invalidatePrimitiveReadCache(state: TurnState, table: string) {
+  for (const key of state.primitiveReadCache.keys()) {
+    if (key.startsWith(`${table}:`)) state.primitiveReadCache.delete(key);
+  }
 }
 
 export function appendFlowTool(state: TurnState, toolName: string) {

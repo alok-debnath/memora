@@ -20,6 +20,7 @@ import {
   HISTORY_RECENT_TIER_MESSAGES,
   MAX_COMPLETION_TOKENS,
   MAX_ITERATIONS,
+  MAX_TOOL_CALLS_PER_ITERATION,
   PLANNER_TEMPERATURE,
 } from "../lib/chat/budgets";
 import { buildCardFlowPayload, type CardFlowAttachment } from "../lib/chat/flow";
@@ -69,6 +70,28 @@ const driveAttachmentArg = v.object({
 
 const ACTION_INTENT_PATTERN =
   /\b(delete|remove|restore|undo|sync|resync|retry|unsync|disconnect|edit|update|change|modify|fix|rename|move|convert|turn|make|remember|save|note|add|capture|store|remind me)\b/i;
+
+/**
+ * Generic (tool-shape-based, not per-tool-name) check for whether a
+ * read-only tool result came back empty. Used to skip the force-respond
+ * heuristic on empty reads so the model can try a broader read next
+ * iteration instead of prematurely answering "nothing found."
+ */
+function isEmptyReadResult(result: string): boolean {
+  try {
+    const parsed = JSON.parse(result) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== "object") return false;
+    if (parsed.doc === null) return true;
+    if (Array.isArray(parsed.docs)) return parsed.docs.length === 0;
+    if (Array.isArray(parsed.results)) return parsed.results.length === 0;
+    if (Array.isArray(parsed.history)) return parsed.history.length === 0;
+    if (typeof parsed.count === "number") return parsed.count === 0;
+    if (typeof parsed.found === "number") return parsed.found === 0;
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 const GENERIC_FAILURE_TEXT =
   "I'm having trouble connecting right now. Please try again in a moment.";
@@ -684,10 +707,15 @@ export const chat = action({
           ) &&
           choice.tool_calls.some((tc) => tc.type === "function" && tc.function.name !== "respond");
 
-        const functionCalls = choice.tool_calls.filter(
+        const allFunctionCalls = choice.tool_calls.filter(
           (toolCall): toolCall is OpenAI.Chat.Completions.ChatCompletionMessageFunctionToolCall =>
             toolCall.type === "function",
         );
+        // Cap calls executed per iteration — an unbounded batch (e.g. many
+        // list_docs across tables) can't be caught by MAX_ITERATIONS, which
+        // only bounds turn count, not calls within a turn.
+        const functionCalls = allFunctionCalls.slice(0, MAX_TOOL_CALLS_PER_ITERATION);
+        const deferredCalls = allFunctionCalls.slice(MAX_TOOL_CALLS_PER_ITERATION);
         const executeToolCall = async (
           toolCall: OpenAI.Chat.Completions.ChatCompletionMessageFunctionToolCall,
         ) => {
@@ -757,7 +785,8 @@ export const chat = action({
           if (
             shouldForceRespondAfterInfoTool &&
             READ_ONLY_INFO_TOOL_NAMES.has(fnName) &&
-            !turnState.respondCalled
+            !turnState.respondCalled &&
+            !isEmptyReadResult(result)
           ) {
             forceRespondNextIteration = true;
           }
@@ -791,6 +820,15 @@ export const chat = action({
             role: "tool",
             tool_call_id: toolCall.id,
             content: toolResults[index],
+          });
+        });
+        deferredCalls.forEach((toolCall) => {
+          conversation.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: JSON.stringify({
+              error: "Deferred — too many tool calls in one turn. Retry this call next iteration.",
+            }),
           });
         });
 

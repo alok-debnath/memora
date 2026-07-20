@@ -112,13 +112,14 @@ describe("planner context efficiency", () => {
 
   test("adds specialized tools for explicit intent", () => {
     const names = selectChatTools("Restore the reminder I deleted").map((tool) => tool.name);
-    expect(names).toContain("list_deleted_memories");
-    expect(names).toContain("restore_memory");
+    expect(names).toContain("list_docs");
+    expect(names).toContain("get_doc");
+    expect(names).toContain("update_doc");
     expect(names).not.toContain("propose_deletion");
   });
 
   test("keeps every tool for ambiguous referential follow-ups", () => {
-    expect(selectChatTools("do it").length).toBe(15);
+    expect(selectChatTools("do it").length).toBe(16);
   });
 
   for (const [message, expectedTool] of [
@@ -127,7 +128,11 @@ describe("planner context efficiency", () => {
     ["Move that memory to the Health topic", "manage_topics"],
     ["Undo the last edit", "history"],
     ["How many diary entries mention work?", "get_stats"],
-    ["Analyze patterns in my mood", "analyze_memories"],
+    ["Analyze patterns in my mood", "list_docs"],
+    ["Combine these two memories into one", "combine_memories"],
+    ["Write a diary entry about today", "create_doc"],
+    ["Add this to my review deck", "create_doc"],
+    ["Share this memory with a link", "create_doc"],
   ] as const) {
     test(`includes ${expectedTool} for: ${message}`, () => {
       expect(selectChatTools(message).map((tool) => tool.name)).toContain(expectedTool);

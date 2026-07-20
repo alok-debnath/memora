@@ -883,6 +883,162 @@ export const restore = mutation({
   },
 });
 
+const IMPORTANCE_RANK: Record<string, number> = { low: 0, normal: 1, high: 2, critical: 3 };
+
+function unionDedupe(lists: (string[] | undefined)[]): string[] | undefined {
+  const seen = new Map<string, string>();
+  for (const list of lists) {
+    for (const value of list ?? []) {
+      const key = value.trim().toLowerCase();
+      if (key && !seen.has(key)) seen.set(key, value);
+    }
+  }
+  return seen.size > 0 ? Array.from(seen.values()) : undefined;
+}
+
+/**
+ * Merge one or more memories into `primaryId`. Structural fields (people,
+ * locations, tags, urls, actions, importance, reminder scheduling) are
+ * merged deterministically here — title/content are supplied by the caller
+ * (the AI tool instructs the model to write coherent merged prose, matching
+ * how create_memory/update_memory already put content-authoring in the
+ * model's hands). Sources are soft-deleted via the existing softDeleteMemory
+ * path (matches ordinary delete semantics — recoverable, review cards and
+ * Google Calendar events cleaned up) and flagged with mergedIntoId so a
+ * stale reference to a source id is dropped by validateCardIds instead of
+ * surfacing a duplicate card.
+ */
+export const combineMemories = mutation({
+  args: {
+    token: v.string(),
+    primaryId: v.id("memories"),
+    mergeIds: v.array(v.id("memories")),
+    title: v.optional(v.string()),
+    content: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await resolveUser(ctx, args.token);
+    const userId = user.userId;
+    const mergeIds = args.mergeIds.filter((id) => id !== args.primaryId);
+    if (mergeIds.length === 0) {
+      throw new Error("combine_memories requires at least one distinct memory to merge in.");
+    }
+
+    const primary = await ctx.db.get(args.primaryId);
+    if (!primary || primary.userId !== userId || !isActiveMemory(primary)) {
+      throw new Error("Not found");
+    }
+    const sources = await Promise.all(mergeIds.map((id) => ctx.db.get(id)));
+    const validSources = sources.filter(
+      (m): m is Doc<"memories"> => m !== null && m.userId === userId && isActiveMemory(m),
+    );
+    if (validSources.length === 0) {
+      throw new Error("None of the memories to merge in were found.");
+    }
+
+    const all = [primary, ...validSources];
+    const people = unionDedupe(all.map((m) => m.people));
+    const locations = unionDedupe(all.map((m) => m.locations));
+    const contextTags = all.some((m) => m.contextTags)
+      ? {
+          who: unionDedupe(all.map((m) => m.contextTags?.who)),
+          what:
+            primary.contextTags?.what ??
+            validSources.find((m) => m.contextTags?.what)?.contextTags?.what,
+          where:
+            primary.contextTags?.where ??
+            validSources.find((m) => m.contextTags?.where)?.contextTags?.where,
+          why:
+            primary.contextTags?.why ??
+            validSources.find((m) => m.contextTags?.why)?.contextTags?.why,
+        }
+      : undefined;
+    const linkedUrls = unionDedupe(all.map((m) => m.linkedUrls));
+    const extractedActions = all.flatMap((m) => m.extractedActions ?? []);
+    const importance = all.reduce(
+      (best, m) => (IMPORTANCE_RANK[m.importance] > IMPORTANCE_RANK[best] ? m.importance : best),
+      primary.importance,
+    );
+    const lifeArea = primary.lifeArea ?? validSources.find((m) => m.lifeArea)?.lifeArea;
+
+    // Reminder promotion: if primary has no due date but a merged-in source
+    // does, adopt the earliest upcoming one rather than silently dropping it.
+    const reminderCandidates = all
+      .map((m) => getMemorySchedule(m))
+      .filter((s): s is NonNullable<typeof s> => !!s?.dueAt);
+    let scheduling: ReturnType<typeof toStoredMemoryFields> | undefined;
+    if (primary.entryKind === "reminder" && primary.schedule?.dueAt) {
+      scheduling = toStoredMemoryFields({ entryKind: "reminder", schedule: primary.schedule });
+    } else if (reminderCandidates.length > 0) {
+      const earliest = reminderCandidates.reduce((best, s) => (s.dueAt < best.dueAt ? s : best));
+      scheduling = toStoredMemoryFields({ entryKind: "reminder", schedule: earliest });
+    }
+
+    const finalTitle = args.title?.trim() || primary.title;
+    const finalContent = args.content?.trim() || primary.content;
+
+    await ctx.db.insert("memoryHistory", {
+      memoryId: args.primaryId,
+      userId,
+      previousTitle: primary.title ?? "",
+      previousContent: primary.content ?? "",
+      editedAt: Date.now(),
+      changeReason: "combined",
+      snapshotJson: serializeMemorySnapshot(primary),
+    });
+
+    const patch: Record<string, unknown> = {
+      title: finalTitle,
+      content: finalContent,
+      ...(people ? { people } : {}),
+      ...(locations ? { locations } : {}),
+      ...(contextTags ? { contextTags } : {}),
+      ...(linkedUrls ? { linkedUrls } : {}),
+      ...(extractedActions.length > 0 ? { extractedActions } : {}),
+      importance,
+      ...(lifeArea ? { lifeArea } : {}),
+      ...(scheduling ?? {}),
+    };
+    await ctx.db.patch(args.primaryId, patch);
+    const patchedPrimary = { ...primary, ...patch } as Doc<"memories">;
+    await applyUserMemoryStatsTransition(ctx, primary, patchedPrimary);
+
+    if (scheduling?.entryKind === "reminder" && primary.entryKind !== "reminder") {
+      const googleIntegration = await getGoogleIntegrationForUser(ctx, userId);
+      if (isCalendarSyncEnabled(googleIntegration)) {
+        await ctx.runMutation(internal.integrations.queueReminderSync, {
+          memoryId: args.primaryId,
+          pendingMessage: "Reminder merged. Syncing to Google Calendar...",
+        });
+      }
+    }
+
+    for (const source of validSources) {
+      await softDeleteMemory(ctx, { memoryId: source._id, memory: source, userId });
+      await ctx.db.patch(source._id, { mergedIntoId: args.primaryId });
+    }
+
+    await ctx.scheduler.runAfter(0, api.actions.processMemory.processMemory, {
+      memoryId: args.primaryId,
+      title: finalTitle ?? "",
+      content: finalContent ?? "",
+      userTimezone: user.timezone,
+      currentTime: new Date().toISOString(),
+    });
+
+    await ctx.runMutation(internal.analytics.recordProductEvent, {
+      userId,
+      event: "memory_updated",
+    });
+
+    return {
+      success: true,
+      memory: { id: args.primaryId, title: finalTitle },
+      mergedCount: validSources.length,
+    };
+  },
+});
+
 export const permanentlyRemove = mutation({
   args: { token: v.string(), id: v.id("memories") },
   handler: async (ctx, args) => {

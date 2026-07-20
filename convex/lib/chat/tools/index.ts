@@ -1,17 +1,10 @@
 "use node";
 
-import {
-  analyzeMemoriesTool,
-  getDiaryEntriesTool,
-  getStatsTool,
-  listMemoriesTool,
-} from "./browseAndStats";
+import { getStatsTool } from "./browseAndStats";
+import { combineMemoriesTool } from "./combineMemories";
 import { createMemoryTool } from "./createMemory";
-import {
-  listDeletedMemoriesTool,
-  proposeDeletionTool,
-  restoreMemoryTool,
-} from "./deletionAndTrash";
+import { proposeDeletionTool } from "./deletionAndTrash";
+import { GENERIC_PRIMITIVE_TOOLS } from "./genericPrimitives";
 import { historyTool, manageTopicsTool } from "./historyAndTopics";
 import { removeReminderSyncTool, syncReminderTool } from "./reminderSync";
 import { respondTool } from "./respond";
@@ -20,26 +13,30 @@ import type { ChatTool } from "./toolTypes";
 import { updateMemoryTool } from "./updateMemory";
 
 /**
- * Tool registry. Order matters only for the model-facing tool list.
- * Adding a chat tool = write one ChatTool module + add it here.
+ * Tool registry: hand-written domain tools (kept because they carry
+ * dedup/reference-resolution logic, confirm-before-destroy UX, calendar side
+ * effects, or multi-step clustering that a generic field patch can't safely
+ * replicate) plus the 5 generic primitive tools that cover everything else
+ * across the AI_TABLE_ALLOWLIST tables (diary, review cards, sharing, topic
+ * renames, restoring a deleted memory — see
+ * lib/aiPrimitives/tableRegistry.ts). Order matters only for the
+ * model-facing tool list.
  */
-const REGISTERED_TOOLS: ChatTool[] = [
+const HAND_WRITTEN_TOOLS: ChatTool[] = [
   searchMemoriesTool,
   createMemoryTool,
   updateMemoryTool,
+  combineMemoriesTool,
   syncReminderTool,
   removeReminderSyncTool,
   proposeDeletionTool,
-  listDeletedMemoriesTool,
-  restoreMemoryTool,
-  listMemoriesTool,
-  getDiaryEntriesTool,
   getStatsTool,
-  analyzeMemoriesTool,
   historyTool,
   manageTopicsTool,
   respondTool,
 ];
+
+const REGISTERED_TOOLS: ChatTool[] = [...HAND_WRITTEN_TOOLS, ...GENERIC_PRIMITIVE_TOOLS];
 
 const CORE_TOOL_NAMES = new Set(["search_memories", "create_memory", "update_memory", "respond"]);
 const REFERENTIAL_FOLLOW_UP =
@@ -61,43 +58,47 @@ export function selectChatTools(message: string): ChatTool[] {
   const include = (...toolNames: string[]) => toolNames.forEach((name) => names.add(name));
 
   if (
-    /\b(list|show|browse|which|what are|do i have|exist|how many|count|memories|reminders)\b/i.test(
+    /\b(list|show|browse|which|what are|do i have|exist|how many|count|memories|reminders|deleted|trash|restore|recover|bring back)\b/i.test(
       normalized,
     )
   ) {
-    include("list_memories");
+    include("list_docs", "get_doc", "update_doc");
   }
   if (/\b(diary|journal|mood|feel(?:ing)?s?|felt|wrote|entry|entries)\b/i.test(normalized)) {
-    include("get_diary_entries");
+    include("list_docs", "get_doc", "create_doc", "update_doc");
   }
   if (/\b(stat(?:s|istics)?|how many|count|overview|total)\b/i.test(normalized)) {
-    include("get_stats", "list_memories");
+    include("get_stats", "list_docs");
   }
   if (
     /\b(analy[sz]e|analysis|trend|pattern|insight|compare|connection|summari[sz]e)\b/i.test(
       normalized,
     )
   ) {
-    include("analyze_memories", "get_diary_entries");
+    include("list_docs", "get_doc");
   }
   if (/\b(delete|remove|trash|discard)\b/i.test(normalized)) {
-    include("propose_deletion");
+    include("propose_deletion", "delete_doc");
   }
-  if (/\b(deleted|trash|restore|recover|bring back)\b/i.test(normalized)) {
-    include("list_deleted_memories", "restore_memory");
+  if (/\b(combine|merge|consolidate)\b/i.test(normalized)) {
+    include("combine_memories", "search_memories");
   }
   if (
     /\b(history|version|revert|rollback|undo(?: an? edit| change)?|snapshot)\b/i.test(normalized)
   ) {
     include("history");
   }
-  if (
-    /\b(topic|topics|tag|tags|category|categor(?:y|ize)|retag|recolor|merge)\b/i.test(normalized)
-  ) {
-    include("manage_topics");
+  if (/\b(topic|topics|tag|tags|category|categor(?:y|ize)|retag|recolor)\b/i.test(normalized)) {
+    include("manage_topics", "update_doc");
   }
   if (/\b(sync|resync|calendar|google event)\b/i.test(normalized)) {
     include("sync_reminder", "remove_reminder_sync");
+  }
+  if (/\b(review|flashcard|spaced repetition)\b/i.test(normalized)) {
+    include("create_doc", "delete_doc", "list_docs");
+  }
+  if (/\b(share|shared|unshare|share link)\b/i.test(normalized)) {
+    include("create_doc", "delete_doc", "list_docs");
   }
 
   return REGISTERED_TOOLS.filter((tool) => names.has(tool.name));

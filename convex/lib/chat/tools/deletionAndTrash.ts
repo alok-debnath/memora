@@ -1,13 +1,18 @@
 "use node";
 
-import { api } from "../../../_generated/api";
-import type { Id } from "../../../_generated/dataModel";
-import { LIST_LIMIT_DEFAULT, LIST_LIMIT_MAX } from "../budgets";
-import { toMemorySummary, toPreviewItems, truncateStatusText } from "../projections";
+import { truncateStatusText } from "../projections";
 import { searchMemories } from "../search";
-import type { MemoryDoc } from "../types";
 import type { ChatTool } from "./toolTypes";
 
+/**
+ * Listing deleted memories and restoring one are now generic primitives
+ * (list_docs(memories, {status:"deleted"}) / update_doc(memories, id,
+ * {status:"active"})) — see lib/aiPrimitives/tableRegistry.ts. This stays a
+ * dedicated tool because it's a deliberate confirm-before-destroy UX (search
+ * → surface → user confirms in the app UI), not a delete — a generic
+ * delete_doc would either have to reimplement that gate or bypass it, and
+ * delete_doc explicitly refuses the memories table for this reason.
+ */
 export const proposeDeletionTool: ChatTool = {
   name: "propose_deletion",
   label: "Find delete matches",
@@ -104,118 +109,5 @@ export const proposeDeletionTool: ChatTool = {
           }
         : { found: 0, message: "No matching items found." },
     );
-  },
-};
-
-export const listDeletedMemoriesTool: ChatTool = {
-  name: "list_deleted_memories",
-  label: "Load deleted",
-  definition: {
-    type: "function",
-    function: {
-      name: "list_deleted_memories",
-      description:
-        "List memories that have been soft-deleted (moved to trash). Use when the user asks to see deleted memories or wants to restore something.",
-      parameters: {
-        type: "object",
-        properties: {
-          limit: {
-            type: "number",
-            description: "Max items to return (default 20)",
-          },
-        },
-        additionalProperties: false,
-      },
-    },
-  },
-  buildStatus: () => ({
-    phase: "loading",
-    detail: "Loading deleted memories",
-    source: "memories",
-    events: [{ label: "Status", value: "deleted" }],
-  }),
-  handler: async (tc, fnArgs) => {
-    try {
-      const limit =
-        typeof fnArgs.limit === "number"
-          ? Math.min(fnArgs.limit, LIST_LIMIT_MAX)
-          : LIST_LIMIT_DEFAULT;
-      const deleted = await tc.ctx.runQuery(api.memories.listDeleted, {
-        token: tc.token,
-        limit,
-      });
-      await tc.reportProgress({
-        phase: "loading",
-        detail: `Loaded ${deleted.length} deleted ${deleted.length === 1 ? "memory" : "memories"}`,
-        source: "memories",
-        resultCount: deleted.length,
-        previewItems: toPreviewItems(deleted, "Deleted memory"),
-        events: [
-          { label: "Status", value: "deleted" },
-          { label: "Limit", value: `${limit}` },
-        ],
-      });
-      return JSON.stringify({
-        deleted_memories: deleted.map((memory: MemoryDoc) => ({
-          ...toMemorySummary(memory),
-          deletedAt: memory.deletedAt ? new Date(memory.deletedAt).toISOString() : null,
-        })),
-        count: deleted.length,
-      });
-    } catch (error) {
-      return JSON.stringify({
-        error: error instanceof Error ? error.message : "Failed to list deleted memories",
-      });
-    }
-  },
-};
-
-export const restoreMemoryTool: ChatTool = {
-  name: "restore_memory",
-  label: "Restore memory",
-  definition: {
-    type: "function",
-    function: {
-      name: "restore_memory",
-      description: "Restore a soft-deleted memory, bringing it back from the trash.",
-      parameters: {
-        type: "object",
-        properties: {
-          memory_id: { type: "string" },
-        },
-        required: ["memory_id"],
-        additionalProperties: false,
-      },
-    },
-  },
-  buildStatus: () => ({
-    phase: "writing",
-    detail: "Restoring a deleted memory",
-    source: "memories",
-    events: [{ label: "Operation", value: "restore" }],
-  }),
-  handler: async (tc, fnArgs) => {
-    try {
-      await tc.ctx.runMutation(api.memories.restore, {
-        token: tc.token,
-        id: fnArgs.memory_id as Id<"memories">,
-      });
-      tc.invalidateRecentMemories();
-      tc.state.pendingCardIds.add(String(fnArgs.memory_id as string));
-      await tc.reportProgress({
-        phase: "writing",
-        detail: "Restored the deleted memory",
-        source: "memories",
-        events: [
-          { label: "Operation", value: "restore" },
-          { label: "Target", value: String(fnArgs.memory_id) },
-        ],
-      });
-      return JSON.stringify({ success: true });
-    } catch (error) {
-      return JSON.stringify({
-        error: error instanceof Error ? error.message : "Failed to restore memory",
-      });
-    }
   },
 };

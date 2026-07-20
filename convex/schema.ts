@@ -122,6 +122,8 @@ export default defineSchema({
     completedAt: v.optional(v.float64()),
     /** Timestamp of soft-delete (ms) */
     deletedAt: v.optional(v.float64()),
+    /** Set on a memory that was retired by combineMemories — points at the surviving merged memory. */
+    mergedIntoId: v.optional(v.id("memories")),
     /** The corresponding event ID in an external provider (e.g. Google Calendar) */
     googleEventId: v.optional(v.string()),
     googleSyncStatus: v.optional(
