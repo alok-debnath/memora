@@ -31,7 +31,7 @@ import { alphaGradients } from "@/constants/themePalettes";
 
 // ─── Navigation items ─────────────────────────────────────────────────────────
 
-type NavItemName = "index" | "timeline" | "diary";
+type NavItemName = "index" | "timeline" | "diary" | "more";
 const NAV_ITEMS = PRIMARY_NAVIGATION.map((item) => ({
   name: item.tabName as NavItemName,
   title: item.label,
@@ -248,6 +248,7 @@ const ROUTE_DISPLAY_INDEX: Record<string, number> = {
   index: 0,
   timeline: 1,
   diary: 2,
+  more: 3,
 };
 
 const TabBarSurface = React.memo(function TabBarSurface({
@@ -512,7 +513,7 @@ function FloatingTabBar({
               {/* Center command button */}
               <CommandButton onPress={onPressCommand} primaryColor={primaryColor} />
 
-              {/* Journal */}
+              {/* Journal, More */}
               {NAV_ITEMS.slice(2).map((item) => {
                 return (
                   <TabItem
@@ -537,7 +538,11 @@ function FloatingTabBar({
 
 function isTabRootPath(pathname: string) {
   return (
-    pathname === "/" || pathname === "/index" || pathname === "/timeline" || pathname === "/diary"
+    pathname === "/" ||
+    pathname === "/index" ||
+    pathname === "/timeline" ||
+    pathname === "/diary" ||
+    pathname === "/more"
   );
 }
 
@@ -584,23 +589,27 @@ function useNavController(): NavController {
   const index = useTabTrigger({ name: "index" });
   const timeline = useTabTrigger({ name: "timeline" });
   const diary = useTabTrigger({ name: "diary" });
+  const more = useTabTrigger({ name: "more" });
   const switchTabRef = useRef<Record<NavItemName, () => void>>({
     index: () => undefined,
     timeline: () => undefined,
     diary: () => undefined,
+    more: () => undefined,
   });
 
   switchTabRef.current = {
     index: () => index.switchTab("index", {}),
     timeline: () => timeline.switchTab("timeline", {}),
     diary: () => diary.switchTab("diary", {}),
+    more: () => more.switchTab("more", {}),
   };
 
   const activeName = useMemo<NavItemName>(() => {
     if (timeline.trigger?.isFocused) return "timeline";
     if (diary.trigger?.isFocused) return "diary";
+    if (more.trigger?.isFocused) return "more";
     return "index";
-  }, [diary.trigger?.isFocused, timeline.trigger?.isFocused]);
+  }, [diary.trigger?.isFocused, more.trigger?.isFocused, timeline.trigger?.isFocused]);
 
   const selectTab = useCallback((name: NavItemName) => {
     if (Platform.OS !== "web") {
@@ -627,8 +636,19 @@ function useNavController(): NavController {
         isFocused: diary.trigger?.isFocused ?? false,
         onPress: () => selectTab("diary"),
       },
+      {
+        name: "more" as const,
+        isFocused: more.trigger?.isFocused ?? false,
+        onPress: () => selectTab("more"),
+      },
     ],
-    [diary.trigger?.isFocused, index.trigger?.isFocused, selectTab, timeline.trigger?.isFocused],
+    [
+      diary.trigger?.isFocused,
+      index.trigger?.isFocused,
+      more.trigger?.isFocused,
+      selectTab,
+      timeline.trigger?.isFocused,
+    ],
   );
 
   return useMemo(

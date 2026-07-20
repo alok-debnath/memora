@@ -2,7 +2,6 @@ import React, { useMemo } from "react";
 import { useQuery } from "convex/react";
 import { Text, XStack, YStack } from "tamagui";
 
-import { AppMenuButton } from "@/components/navigation/AppNavigationMenu";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppListRow } from "@/components/ui/AppListRow";
 import { AppScreen } from "@/components/ui/AppScreen";
@@ -99,14 +98,7 @@ export default function TodayScreen() {
     <AppScreen
       safeTop={false}
       contentWidth="readable"
-      hero={
-        <PageHero
-          eyebrow={snapshot.label}
-          title="Today"
-          action={<AppMenuButton />}
-          accentStyle="none"
-        />
-      }
+      hero={<PageHero eyebrow={snapshot.label} title="Today" accentStyle="none" />}
     >
       <SurfaceCard variant="glass" noPadding radius={radius.lg} shadowed>
         <YStack padding={spacing.md} gap={spacing.xs}>

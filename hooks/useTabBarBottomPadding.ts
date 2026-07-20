@@ -20,12 +20,13 @@ export function useTabBarBottomPadding(): number {
       ? Math.max(insets.bottom, bottomNavigationLayout.androidInsetFloor)
       : insets.bottom + bottomNavigationLayout.insetGap;
 
-  if (!isCompact) return spacing.xxl + insets.bottom;
+  if (!isCompact) return spacing.xxl + bottomNavigationLayout.contentClearance + insets.bottom;
 
   return (
     bottomNavigationLayout.barHeight +
     bottomNavigationLayout.bottomMargin +
     bottomNavigationLayout.fadeHeight +
+    bottomNavigationLayout.contentClearance +
     safeBottom
   );
 }

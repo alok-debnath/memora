@@ -15,7 +15,6 @@ import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { useUIStore } from "@/store/ui";
 import { withAlpha } from "@/components/ui/themeHelpers";
 import { PressableScale } from "@/components/ui/PressableScale";
-import { AppNavigationMenu } from "@/components/navigation/AppNavigationMenu";
 
 const ChatDock = lazy(() =>
   import("@/components/chat-sheet/ChatDock").then((module) => ({ default: module.ChatDock })),
@@ -31,12 +30,7 @@ export function ProtectedAppShell({ children }: { children: React.ReactNode }) {
   const rail = responsive.navigationMode === "rail";
 
   if (responsive.navigationMode === "bottom") {
-    return (
-      <>
-        {children}
-        <AppNavigationMenu />
-      </>
-    );
+    return <>{children}</>;
   }
 
   return (
@@ -92,7 +86,8 @@ export function ProtectedAppShell({ children }: { children: React.ReactNode }) {
             <YStack gap={rail ? spacing.sm : spacing.lg}>
               {APP_NAVIGATION.map((section) => {
                 const items = section.items.filter(
-                  (item) => !item.adminOnly || adminStatus?.isAdmin === true,
+                  (item) =>
+                    !item.bottomNavOnly && (!item.adminOnly || adminStatus?.isAdmin === true),
                 );
                 if (items.length === 0) return null;
 

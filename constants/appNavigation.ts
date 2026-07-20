@@ -7,8 +7,10 @@ export type AppNavigationItem = {
   href: string;
   icon: FeatherIconName;
   primary?: boolean;
-  tabName?: "index" | "timeline" | "diary";
+  tabName?: "index" | "timeline" | "diary" | "more";
   adminOnly?: boolean;
+  /** Bottom-tab-only entry: the sidebar already lists every destination directly. */
+  bottomNavOnly?: boolean;
 };
 
 export type AppNavigationSection = {
@@ -57,6 +59,16 @@ export const APP_NAVIGATION: AppNavigationSection[] = [
         icon: "book-open",
         primary: true,
         tabName: "diary",
+      },
+      {
+        id: "more",
+        label: "More",
+        detail: "Library, insights, and account",
+        href: "/more",
+        icon: "grid",
+        primary: true,
+        tabName: "more",
+        bottomNavOnly: true,
       },
     ],
   },

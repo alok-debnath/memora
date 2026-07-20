@@ -5,4 +5,9 @@ export const bottomNavigationLayout = {
   fadeHeight: 14,
   insetGap: 8,
   androidInsetFloor: 8,
+  /**
+   * Breathing room between the last piece of content and the top of the
+   * floating bar. Padding-only: the bar's own position is unaffected.
+   */
+  contentClearance: 24,
 } as const;
