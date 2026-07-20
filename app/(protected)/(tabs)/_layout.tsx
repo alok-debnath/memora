@@ -18,6 +18,7 @@ import Animated, {
 import { XStack, YStack, Text } from "tamagui";
 
 import { useBackdropBlurHost } from "@/components/ui/BackdropBlurProvider";
+import { ProgressiveBlurFade } from "@/components/ui/ProgressiveBlurFade";
 import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import { FontFamily } from "@/constants/fonts";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -26,6 +27,7 @@ import { useThemeStore } from "@/store/theme";
 import { useUIStore } from "@/store/ui";
 import { COMMAND_ENTRY, PRIMARY_NAVIGATION } from "@/constants/appNavigation";
 import { bottomNavigationLayout } from "@/constants/navigationLayout";
+import { alphaGradients } from "@/constants/themePalettes";
 
 // ─── Navigation items ─────────────────────────────────────────────────────────
 
@@ -51,6 +53,9 @@ const IND_W = SLOT_W + IND_OVERLAP * 2;
 const IND_H = BAR_H - IND_PAD_Y * 2;
 const IND_Y = IND_PAD_Y;
 const FADE_H = bottomNavigationLayout.fadeHeight;
+// Extra height the fading blur extends above the reserved strip, so the mask
+// gradient has enough travel to read as a progressive defocus, not a hard edge.
+const FADE_RAMP_OVERSHOOT = 96;
 const BAR_BOTTOM_MARGIN = bottomNavigationLayout.bottomMargin;
 
 // Maps state.index (0–3) → visual slot (0, 1, 3, 4) → indicator translateX
@@ -103,6 +108,8 @@ type FloatingTabBarProps = {
   onSelectTab: (name: NavItemName) => void;
   onPressCommand: () => void;
   androidBlurTarget?: React.RefObject<View | null>;
+  /** Blur the pill surface itself. Off = translucent tint only. */
+  blurEnabled?: boolean;
 };
 
 type TabBarSurfaceProps = {
@@ -114,6 +121,7 @@ type TabBarSurfaceProps = {
   isDark: boolean;
   useLiquidGlass: boolean;
   androidBlurTarget?: React.RefObject<View | null>;
+  blurEnabled: boolean;
 };
 
 const TabItem = React.memo(function TabItem({
@@ -252,6 +260,7 @@ const TabBarSurface = React.memo(function TabBarSurface({
   isDark,
   useLiquidGlass,
   androidBlurTarget,
+  blurEnabled,
 }: TabBarSurfaceProps) {
   if (Platform.OS === "web") {
     return (
@@ -261,10 +270,21 @@ const TabBarSurface = React.memo(function TabBarSurface({
           // @ts-ignore – web-only CSS property
           {
             backgroundColor: glassColor,
-            backdropFilter: "blur(28px)",
+            backdropFilter: blurEnabled ? "blur(28px)" : undefined,
           },
         ]}
       />
+    );
+  }
+
+  // Blur off: translucency only. Used when the pill sits inside the fading blur
+  // strip, where a second blur pass would just double-cost the same pixels.
+  if (!blurEnabled) {
+    return (
+      <>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: glassColor }]} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: overlayColor }]} />
+      </>
     );
   }
 
@@ -313,13 +333,14 @@ function FloatingTabBar({
   onSelectTab,
   onPressCommand,
   androidBlurTarget,
+  blurEnabled = false,
 }: FloatingTabBarProps) {
   const insets = useSafeAreaInsets();
   const theme = useAppTheme();
   const resolvedMode = useThemeStore((s) => s.resolvedMode);
   const isDark = resolvedMode === "dark";
   const isAndroid = Platform.OS === "android";
-  const useLiquidGlass = useIsNativeLiquidGlassEnabled();
+  const useLiquidGlass = useIsNativeLiquidGlassEnabled() && blurEnabled;
 
   const primaryColor = theme.primary.val;
   const mutedColor = theme.colorMuted.val;
@@ -365,12 +386,13 @@ function FloatingTabBar({
     opacity: barOpacity.value,
   }));
 
+  // Without a blur pass the surface has nothing to defocus behind it, so the
+  // pill leans on opacity instead to stay legible over scrolling content.
+  const surfaceAlpha = blurEnabled ? "86" : "C4";
   const glassColor = isDark
-    ? withAlpha(theme.backgroundStrong.val, "86")
-    : withAlpha(theme.surfaceElevated.val, "86");
-  const overlayColor = isDark
-    ? withAlpha(theme.background.val, "18")
-    : withAlpha(theme.background.val, "18");
+    ? withAlpha(theme.backgroundStrong.val, surfaceAlpha)
+    : withAlpha(theme.surfaceElevated.val, surfaceAlpha);
+  const overlayColor = withAlpha(theme.background.val, blurEnabled ? "18" : "10");
   const borderColor = isDark
     ? withAlpha(theme.borderColor.val, "5C")
     : withAlpha(theme.borderColor.val, "5C");
@@ -391,19 +413,6 @@ function FloatingTabBar({
       ? Math.max(insets.bottom, bottomNavigationLayout.androidInsetFloor)
       : insets.bottom + bottomNavigationLayout.insetGap) + BAR_BOTTOM_MARGIN;
   const containerHeight = BAR_H + bottomInset + FADE_H;
-  const fadeColors = React.useMemo(() => {
-    // Multi-stop ease-in curve to eliminate banding while staying theme-derived
-    const bg = theme.background.val;
-    return [
-      withAlpha(bg, "00"),
-      withAlpha(bg, "4D"),
-      withAlpha(bg, "80"),
-      withAlpha(bg, "A6"),
-      withAlpha(bg, "C5"),
-      withAlpha(bg, "D8"),
-      withAlpha(bg, "E6"),
-    ] as string[];
-  }, [theme.background.val]);
 
   return (
     <View
@@ -415,90 +424,114 @@ function FloatingTabBar({
         bottom: 0,
         height: containerHeight,
         width: "100%",
-        alignItems: "center",
-        justifyContent: "flex-end",
-        paddingBottom: bottomInset,
       }}
     >
-      {/* Fade gradient so content dissolves behind the bar */}
-      <LinearGradient
-        colors={fadeColors as [string, string, ...string[]]}
-        locations={[0, 0.12, 0.28, 0.48, 0.68, 0.84, 1]}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="auto"
+      {/* Gradient-masked blur so content dissolves (and defocuses) behind the bar */}
+      <ProgressiveBlurFade
+        intensity={isDark ? 55 : 48}
+        tintAlpha={isDark ? "E6" : "DB"}
+        blurTarget={androidBlurTarget}
+        // Ramp starts above the reserved strip so the blur has room to build;
+        // purely visual, the layout reserve stays BAR_H + inset + FADE_H.
+        style={{ top: -FADE_RAMP_OVERSHOOT }}
       />
-      <Animated.View
-        style={[
-          styles.outerContainer,
-          appShadow(theme.shadowColor.val, isDark ? "lg" : "md"),
-          barEntranceStyle,
-        ]}
+      {/* The band the pill lives in: the pill, its side gutters, and the
+          safe-area strip below. The transparent gradient below is what actually
+          swallows touches here — a plain View gets flattened away on Android and
+          stops being a touch target, so the hit box has to sit on a real native
+          view (this is why the pre-blur code blocked with a LinearGradient).
+          The fade ramp above this band stays pass-through. */}
+      <View
+        pointerEvents="box-none"
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: BAR_H + bottomInset,
+          alignItems: "center",
+          justifyContent: "flex-start",
+        }}
       >
-        <View style={styles.innerContainer}>
-          <TabBarSurface
-            glassColor={glassColor}
-            overlayColor={overlayColor}
-            androidFallbackColor={androidFallbackColor}
-            blurIntensity={blurIntensity}
-            isAndroid={isAndroid}
-            isDark={isDark}
-            useLiquidGlass={useLiquidGlass}
-            androidBlurTarget={androidBlurTarget}
-          />
+        <LinearGradient
+          colors={alphaGradients.invisible}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="auto"
+        />
+        <Animated.View
+          style={[
+            styles.outerContainer,
+            appShadow(theme.shadowColor.val, isDark ? "lg" : "md"),
+            barEntranceStyle,
+          ]}
+        >
+          <View style={styles.innerContainer}>
+            <TabBarSurface
+              glassColor={glassColor}
+              overlayColor={overlayColor}
+              androidFallbackColor={androidFallbackColor}
+              blurIntensity={blurIntensity}
+              isAndroid={isAndroid}
+              isDark={isDark}
+              useLiquidGlass={useLiquidGlass && blurEnabled}
+              androidBlurTarget={androidBlurTarget}
+              blurEnabled={blurEnabled}
+            />
 
-          {/* Border highlight */}
-          {!useLiquidGlass ? (
-            <View style={[StyleSheet.absoluteFill, styles.border, { borderColor }]} />
-          ) : null}
+            {/* Border highlight */}
+            {!useLiquidGlass ? (
+              <View style={[StyleSheet.absoluteFill, styles.border, { borderColor }]} />
+            ) : null}
 
-          {/* Sliding active capsule */}
-          <Animated.View
-            style={[
-              styles.indicator,
-              { backgroundColor: indicatorBg, borderColor: indicatorBorder, top: IND_Y },
-              indicatorStyle,
-            ]}
-          />
+            {/* Sliding active capsule */}
+            <Animated.View
+              style={[
+                styles.indicator,
+                { backgroundColor: indicatorBg, borderColor: indicatorBorder, top: IND_Y },
+                indicatorStyle,
+              ]}
+            />
 
-          {/* Tab items row */}
-          <View style={styles.row}>
-            {/* Home, Diary */}
-            {NAV_ITEMS.slice(0, 2).map((item) => {
-              return (
-                <TabItem
-                  key={item.name}
-                  name={item.name}
-                  icon={item.icon}
-                  title={item.title}
-                  isFocused={activeName === item.name}
-                  onSelect={onSelectTab}
-                  primaryColor={primaryColor}
-                  mutedColor={mutedColor}
-                />
-              );
-            })}
+            {/* Tab items row */}
+            <View style={styles.row}>
+              {/* Home, Diary */}
+              {NAV_ITEMS.slice(0, 2).map((item) => {
+                return (
+                  <TabItem
+                    key={item.name}
+                    name={item.name}
+                    icon={item.icon}
+                    title={item.title}
+                    isFocused={activeName === item.name}
+                    onSelect={onSelectTab}
+                    primaryColor={primaryColor}
+                    mutedColor={mutedColor}
+                  />
+                );
+              })}
 
-            {/* Center command button */}
-            <CommandButton onPress={onPressCommand} primaryColor={primaryColor} />
+              {/* Center command button */}
+              <CommandButton onPress={onPressCommand} primaryColor={primaryColor} />
 
-            {/* Review, More */}
-            {NAV_ITEMS.slice(2).map((item) => {
-              return (
-                <TabItem
-                  key={item.name}
-                  name={item.name}
-                  icon={item.icon}
-                  title={item.title}
-                  isFocused={activeName === item.name}
-                  onSelect={onSelectTab}
-                  primaryColor={primaryColor}
-                  mutedColor={mutedColor}
-                />
-              );
-            })}
+              {/* Review, More */}
+              {NAV_ITEMS.slice(2).map((item) => {
+                return (
+                  <TabItem
+                    key={item.name}
+                    name={item.name}
+                    icon={item.icon}
+                    title={item.title}
+                    isFocused={activeName === item.name}
+                    onSelect={onSelectTab}
+                    primaryColor={primaryColor}
+                    mutedColor={mutedColor}
+                  />
+                );
+              })}
+            </View>
           </View>
-        </View>
-      </Animated.View>
+        </Animated.View>
+      </View>
     </View>
   );
 }
@@ -517,12 +550,14 @@ type MobileTabBarOverlayProps = {
   activeName: NavItemName;
   onSelectTab: (name: NavItemName) => void;
   onPressCommand: () => void;
+  blurEnabled?: boolean;
 };
 
 function MobileTabBarOverlay({
   activeName,
   onSelectTab,
   onPressCommand,
+  blurEnabled = false,
 }: MobileTabBarOverlayProps) {
   const host = useBackdropBlurHost();
   const overlayId = useId();
@@ -534,9 +569,10 @@ function MobileTabBarOverlay({
         onSelectTab={onSelectTab}
         onPressCommand={onPressCommand}
         androidBlurTarget={host?.blurTargetRef}
+        blurEnabled={blurEnabled}
       />
     ),
-    [activeName, host?.blurTargetRef, onPressCommand, onSelectTab],
+    [activeName, blurEnabled, host?.blurTargetRef, onPressCommand, onSelectTab],
   );
 
   useEffect(() => {

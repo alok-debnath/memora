@@ -823,3 +823,22 @@ export function createThemeGradient(seedColor: string, mode: ResolvedThemeMode) 
   const end = mode === "dark" ? mix(primary, "#FFFFFF", 0.18) : mix(primary, "#FFFFFF", 0.2);
   return [start, primary, end] as const;
 }
+
+/**
+ * Alpha-only gradients. These are masks and hit-box fillers, not surface
+ * colors — the channel values carry no theme meaning, only opacity, so they
+ * live here rather than as literals inside components.
+ */
+export const alphaGradients = {
+  /** Transparent -> opaque ramp, used as a MaskedView mask for a fading blur. */
+  maskFadeIn: ["#00000000", "#00000038", "#00000080", "#000000B8", "#000000E0", "#000000FF"] as [
+    string,
+    string,
+    ...string[],
+  ],
+  /** Same ramp as a CSS gradient, for web where MaskedView is unreliable. */
+  maskFadeInCss:
+    "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.5) 30%, rgba(0,0,0,0.9) 55%, #000 78%)",
+  /** Fully transparent, but still a real native view that can capture touches. */
+  invisible: ["#00000000", "#00000000"] as [string, string],
+} as const;
