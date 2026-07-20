@@ -1,8 +1,9 @@
 import React, { useMemo } from "react";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { Text, XStack, YStack } from "tamagui";
 
 import { AppButton } from "@/components/ui/AppButton";
+import { AppIconButton } from "@/components/ui/AppIconButton";
 import { AppListRow } from "@/components/ui/AppListRow";
 import { AppScreen } from "@/components/ui/AppScreen";
 import { Badge } from "@/components/ui/Badge";
@@ -10,13 +11,15 @@ import { PageHero } from "@/components/ui/PageHero";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import type { StatusTone } from "@/components/ui/themeHelpers";
+import { withAlpha } from "@/components/ui/themeHelpers";
 import { COMMAND_ENTRY } from "@/constants/appNavigation";
 import { radius, spacing, typeScale } from "@/constants/uiTokens";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useAppRouter } from "@/hooks/useAppRouter";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useAuth } from "@/hooks/useAuth";
-import type { FeatherIconName } from "@/lib/icons";
+import { Feather, type FeatherIconName } from "@/lib/icons";
 import { useUIStore } from "@/store/ui";
 import { getReminderDate } from "@/types/memoryKind";
 
@@ -66,6 +69,13 @@ function getFocusState(
   };
 }
 
+/** Local-midnight epoch, so "written today" follows the device day, not UTC. */
+function startOfLocalDay(atMs: number) {
+  const day = new Date(atMs);
+  day.setHours(0, 0, 0, 0);
+  return day.getTime();
+}
+
 export default function TodayScreen() {
   const theme = useAppTheme();
   const router = useAppRouter();
@@ -74,7 +84,12 @@ export default function TodayScreen() {
   const openHomeOverview = useUIStore((state) => state.openHomeOverview);
   const snapshot = useMemo(() => {
     const now = new Date();
-    return { nowIso: now.toISOString(), label: TODAY_FORMATTER.format(now), hour: now.getHours() };
+    return {
+      nowIso: now.toISOString(),
+      nowMs: now.getTime(),
+      label: TODAY_FORMATTER.format(now),
+      hour: now.getHours(),
+    };
   }, []);
 
   const dueRemindersResult = useQuery(
@@ -85,6 +100,12 @@ export default function TodayScreen() {
     api.memories.upcomingReminders,
     token ? { token, asOf: snapshot.nowIso, range: "week" } : "skip",
   );
+  const stats = useQuery(api.memories.stats, token ? { token, asOf: snapshot.nowMs } : "skip");
+  const flashbacksResult = useQuery(api.memories.flashbacks, token ? { token } : "skip");
+  const journalResult = useQuery(api.diary.list, token ? { token, limit: 1 } : "skip");
+  const nudgesResult = useQuery(api.nudges.list, token ? { token } : "skip");
+  const dismissNudge = useMutation(api.nudges.dismiss);
+
   const loading = dueRemindersResult === undefined || upcomingRemindersResult === undefined;
   const dueReminders = (dueRemindersResult ?? []).filter((memory) => getReminderDate(memory));
   const upcomingReminders = upcomingRemindersResult ?? [];
@@ -93,6 +114,20 @@ export default function TodayScreen() {
   const firstName = user?.name?.trim().split(/\s+/)[0];
   const greeting = getGreeting(snapshot.hour, firstName);
   const focusState = getFocusState(dueReminders.length, upcomingReminders.length);
+
+  const flashback = flashbacksResult?.[0];
+  const lastEntry = journalResult?.[0];
+  const journaledToday =
+    lastEntry !== undefined && lastEntry._creationTime >= startOfLocalDay(snapshot.nowMs);
+  const nudge = nudgesResult?.[0];
+
+  const handleDismissNudge = React.useCallback(
+    (id: Id<"nudges">) => {
+      if (!token) return;
+      void dismissNudge({ token, id });
+    },
+    [dismissNudge, token],
+  );
 
   return (
     <AppScreen
@@ -141,6 +176,18 @@ export default function TodayScreen() {
             ) : null}
           </XStack>
 
+          {stats ? (
+            <Text
+              paddingHorizontal={spacing.sm}
+              fontFamily="$utility"
+              fontSize={typeScale.metadata}
+              color={theme.colorMuted.val}
+            >
+              {stats.streakDays > 0 ? `${stats.streakDays}-day streak · ` : ""}
+              {stats.recentCount} captured this week · {stats.totalMemories} total
+            </Text>
+          ) : null}
+
           {loading ? (
             <YStack gap={spacing.sm} padding={spacing.sm}>
               <Skeleton height={52} borderRadius={radius.sm} />
@@ -167,9 +214,79 @@ export default function TodayScreen() {
                 }
                 onPress={() => router.push("/reminders" as never)}
               />
+              <AppListRow
+                icon="book-open"
+                iconColor={journaledToday ? theme.success.val : undefined}
+                title={journaledToday ? "Journal · Written today" : "Journal · Nothing yet today"}
+                trailing={
+                  <Badge
+                    label={journaledToday ? "Done" : "Open"}
+                    tone={journaledToday ? "success" : "neutral"}
+                    small
+                  />
+                }
+                onPress={() => router.push("/diary" as never)}
+              />
+              {flashback ? (
+                <AppListRow
+                  icon="rotate-ccw"
+                  title={`On this day · ${flashback.title?.trim() || "Untitled memory"}`}
+                  trailing={
+                    <Badge
+                      label={new Date(flashback._creationTime).getFullYear().toString()}
+                      tone="neutral"
+                      small
+                    />
+                  }
+                  onPress={openHomeOverview}
+                />
+              ) : null}
             </YStack>
           )}
         </YStack>
+
+        {nudge ? (
+          <XStack
+            alignItems="flex-start"
+            gap={spacing.sm}
+            marginHorizontal={spacing.md}
+            marginBottom={spacing.md}
+            padding={spacing.sm}
+            borderRadius={radius.md}
+            backgroundColor={withAlpha(theme.primary.val, "12")}
+          >
+            <Feather name="zap" size={16} color={theme.primary.val} style={{ marginTop: 2 }} />
+            <YStack flex={1} minWidth={0} gap={2}>
+              {nudge.title ? (
+                <Text
+                  fontFamily="$body"
+                  fontSize={typeScale.body}
+                  fontWeight="700"
+                  color={theme.color.val}
+                >
+                  {nudge.title}
+                </Text>
+              ) : null}
+              {nudge.message ? (
+                <Text
+                  fontFamily="$utility"
+                  fontSize={typeScale.metadata}
+                  lineHeight={18}
+                  color={theme.colorMuted.val}
+                >
+                  {nudge.message}
+                </Text>
+              ) : null}
+            </YStack>
+            <AppIconButton
+              icon="x"
+              label="Dismiss suggestion"
+              size="compact"
+              variant="ghost"
+              onPress={() => handleDismissNudge(nudge._id)}
+            />
+          </XStack>
+        ) : null}
 
         <XStack
           flexWrap="wrap"
