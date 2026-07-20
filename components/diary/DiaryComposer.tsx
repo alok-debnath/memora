@@ -21,7 +21,7 @@ export function DiaryComposer({
   isSaving: boolean;
 }) {
   const theme = useAppTheme();
-  const [mode, setMode] = useState<ComposerMode>("type");
+  const [mode, setMode] = useState<ComposerMode>("voice");
   const [text, setText] = useState("");
 
   const handleSubmit = async () => {
@@ -46,14 +46,14 @@ export function DiaryComposer({
       <SelectionTabs<ComposerMode>
         options={[
           {
-            value: "type",
-            label: "Write",
-            icon: <Feather name="edit-3" size={14} color={theme.primary.val} />,
-          },
-          {
             value: "voice",
             label: "Speak",
             icon: <Feather name="mic" size={14} color={theme.primary.val} />,
+          },
+          {
+            value: "type",
+            label: "Write",
+            icon: <Feather name="edit-3" size={14} color={theme.primary.val} />,
           },
         ]}
         value={mode}

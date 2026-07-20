@@ -81,6 +81,7 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
     >("idle");
     const [text, setText] = useState("");
     const [error, setError] = useState<string | null>(null);
+    const [wasSpedUp, setWasSpedUp] = useState(false);
     const TranscriptInput = withinBottomSheet ? BottomSheetAwareTextInput : TextInput;
     const stoppedRef = useRef(false);
     const uriRef = useRef<string | null>(null);
@@ -113,6 +114,7 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
       stoppedRef.current = false;
       setText("");
       setError(null);
+      setWasSpedUp(false);
       setPhase("idle");
       onPauseChange?.(false);
       onCancel?.();
@@ -215,12 +217,14 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
         try {
           const prepared = prepareAudioForTranscription(pcmChunksRef.current);
+          setWasSpedUp(true);
           await uploadAndTranscribe(prepared);
         } catch (processingError) {
           console.warn(
             "Frontend audio preprocessing failed; using original WAV.",
             processingError instanceof Error ? processingError.message : processingError,
           );
+          setWasSpedUp(false);
           const original =
             Platform.OS === "web"
               ? await (await fetch(recording.fileUri)).blob()
@@ -316,6 +320,14 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
               color: theme.color.val,
             }}
           />
+          {wasSpedUp ? (
+            <XStack alignItems="center" gap={6}>
+              <Feather name="zap" size={12} color={theme.colorMuted.val} />
+              <Text color={theme.colorMuted.val} fontSize={12}>
+                Optimized for faster transcription
+              </Text>
+            </XStack>
+          ) : null}
           <XStack justifyContent="space-between">
             <Pressable onPress={discard}>
               <Text color={theme.destructive.val}>Discard</Text>
