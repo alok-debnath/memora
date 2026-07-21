@@ -1,227 +1,203 @@
 import React from "react";
-import { ActivityIndicator } from "react-native";
 import { useMutation, useQuery } from "convex/react";
-import { Text, XStack, YStack } from "tamagui";
+import { XStack, YStack } from "tamagui";
 
 import { api } from "@/convex/_generated/api";
-import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { AppButton } from "@/components/ui/AppButton";
-import { Badge } from "@/components/ui/Badge";
 import { useAppToast } from "@/components/ui/toast";
 import { useAdminState } from "@/components/admin/AdminStateContext";
+import { AdminStatTile } from "@/components/admin/AdminStatTile";
 import { AlertBanner } from "@/components/admin/AlertBanner";
-import { useAppTheme } from "@/hooks/useAppTheme";
-import { useSemanticColors } from "@/hooks/useSemanticColors";
-
-function formatCompact(value: number) {
-  return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(
-    value,
-  );
-}
+import {
+  AdminDataRow,
+  AdminEmptyState,
+  AdminLoadingState,
+  AdminMetricGrid,
+  AdminPanel,
+  AdminSectionHeader,
+} from "@/components/admin/AdminWorkspace";
+import { formatCompactNumber } from "@/components/admin/charts/palette";
 
 export default function AdminSystemScreen() {
-  const theme = useAppTheme();
-  const semantic = useSemanticColors();
   const { showToast } = useAppToast();
-  const { range, setSelectedEntity } = useAdminState();
-
-  const health = useQuery(api.admin.systemHealth, { range });
+  const { range, refreshKey, setSelectedEntity } = useAdminState();
+  const health = useQuery(api.admin.systemHealth, { range, refreshKey });
   const incidents = useQuery(api.admin.listAlertIncidents, {
     status: "open",
     paginationOpts: { numItems: 20, cursor: null },
+    refreshKey,
   });
   const rules = useQuery(api.admin.listAlertRules, {});
-
   const evaluateRules = useMutation(api.admin.evaluateAlertRules);
   const upsertAlertRule = useMutation(api.admin.upsertAlertRule);
   const setIncidentStatus = useMutation(api.admin.setIncidentStatus);
   const runMaintenanceJob = useMutation(api.admin.runMaintenanceJob);
 
-  if (!health) {
-    return (
-      <YStack alignItems="center" paddingVertical={40}>
-        <ActivityIndicator color={semantic.status.info} />
-      </YStack>
-    );
-  }
+  if (!health) return <AdminLoadingState label="Loading system health" />;
 
   return (
-    <>
-      <YStack>
-        <XStack gap={10} flexWrap="wrap">
-          <SurfaceCard style={{ borderRadius: 16, flex: 1, minWidth: 220 }}>
-            <YStack gap={5}>
-              <Text fontSize={12} color={theme.colorMuted.val}>
-                AI failure rate
-              </Text>
-              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-                {(health.snapshot.aiFailureRate * 100).toFixed(2)}%
-              </Text>
-            </YStack>
-          </SurfaceCard>
-          <SurfaceCard style={{ borderRadius: 16, flex: 1, minWidth: 220 }}>
-            <YStack gap={5}>
-              <Text fontSize={12} color={theme.colorMuted.val}>
-                Search latency
-              </Text>
-              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-                {Math.round(health.snapshot.avgSearchLatencyMs)}ms
-              </Text>
-            </YStack>
-          </SurfaceCard>
-          <SurfaceCard style={{ borderRadius: 16, flex: 1, minWidth: 220 }}>
-            <YStack gap={5}>
-              <Text fontSize={12} color={theme.colorMuted.val}>
-                Active embedding rebuilds
-              </Text>
-              <Text fontSize={24} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-                {formatCompact(health.embeddingRebuilds.active)}
-              </Text>
-            </YStack>
-          </SurfaceCard>
-        </XStack>
-      </YStack>
+    <YStack gap={12}>
+      <AdminMetricGrid>
+        <AdminStatTile
+          label="AI failure rate"
+          value={`${(health.snapshot.aiFailureRate * 100).toFixed(2)}%`}
+          goodWhenDown
+        />
+        <AdminStatTile
+          label="Search latency"
+          value={`${Math.round(health.snapshot.avgSearchLatencyMs)}ms`}
+          goodWhenDown
+        />
+        <AdminStatTile
+          label="Embedding rebuilds"
+          value={formatCompactNumber(health.embeddingRebuilds.active)}
+        />
+        <AdminStatTile
+          label="Open incidents"
+          value={formatCompactNumber(incidents?.page.length ?? 0)}
+        />
+      </AdminMetricGrid>
 
-      {(health.systemAlerts ?? []).length > 0 ? (
-        <SurfaceCard style={{ borderRadius: 16 }}>
+      {health.systemAlerts.length > 0 ? (
+        <AdminPanel>
           <YStack gap={10}>
-            <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-              Operational Alerts
-            </Text>
+            <AdminSectionHeader title="Health signals" detail="Current platform-generated alerts" />
             {health.systemAlerts.map((alert) => (
-              <AlertBanner
-                key={alert.key}
-                alert={{
-                  key: alert.key,
-                  severity: alert.severity,
-                  title: alert.title,
-                  message: alert.message,
-                  updatedAt: alert.updatedAt,
-                }}
-              />
+              <AlertBanner key={alert.key} alert={alert} />
             ))}
           </YStack>
-        </SurfaceCard>
+        </AdminPanel>
       ) : null}
 
-      <SurfaceCard style={{ borderRadius: 16 }}>
-        <YStack gap={10}>
-          <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-            Alert Rules
-          </Text>
-          <XStack gap={8} flexWrap="wrap">
-            <AppButton
-              title="Evaluate now"
-              size="sm"
-              onPress={async () => {
-                const result = await evaluateRules({ range });
-                showToast({
-                  title: "Evaluation complete",
-                  message: `${result.triggered} rules triggered`,
-                  tone: "success",
-                });
-              }}
-            />
-            <AppButton
-              title="Add failure-rate rule"
-              size="sm"
-              variant="secondary"
-              onPress={async () => {
-                await upsertAlertRule({
-                  key: "ai_failure_rate_warning",
-                  title: "AI failure rate warning",
-                  description: "Triggers when AI failures are too high.",
-                  metricKey: "ai_failure_rate",
-                  comparison: "gt",
-                  threshold: 0.08,
-                  severity: "warning",
-                  enabled: true,
-                });
-                showToast({ title: "Rule saved", tone: "success" });
-              }}
-            />
-          </XStack>
-          <YStack gap={8}>
-            {(rules ?? []).map((rule: any) => (
-              <XStack key={rule.key} alignItems="center" justifyContent="space-between">
-                <YStack>
-                  <Text fontSize={13} fontWeight="700" color={theme.color.val}>
-                    {rule.title}
-                  </Text>
-                  <Text fontSize={11} color={theme.colorMuted.val}>
-                    {rule.metricKey} {rule.comparison} {rule.threshold}
-                  </Text>
-                </YStack>
-                <Badge label={rule.severity} color={semantic.status.warning} />
-              </XStack>
-            ))}
-          </YStack>
+      <AdminPanel padding={0}>
+        <YStack padding={14}>
+          <AdminSectionHeader
+            title="Active incidents"
+            detail="Open threshold breaches ordered by recency"
+          />
         </YStack>
-      </SurfaceCard>
-
-      <SurfaceCard style={{ borderRadius: 16 }}>
-        <YStack gap={10}>
-          <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-            Open Incidents
-          </Text>
-          {(incidents?.page ?? []).length === 0 ? (
-            <Text fontSize={13} color={theme.colorMuted.val}>
-              No open incidents.
-            </Text>
-          ) : (
-            (incidents?.page ?? []).map((incident: any) => (
-              <XStack key={incident._id} alignItems="center" justifyContent="space-between" gap={8}>
-                <YStack flex={1}>
-                  <Text fontSize={13} fontWeight="700" color={theme.color.val}>
-                    {incident.ruleKey}
-                  </Text>
-                  <Text fontSize={11} color={theme.colorMuted.val}>
-                    {incident.metricKey}: {incident.value.toFixed(3)} threshold {incident.threshold}
-                  </Text>
-                </YStack>
+        {(incidents?.page ?? []).length === 0 ? (
+          <AdminEmptyState
+            title="No open incidents"
+            detail="All monitored thresholds are within their acknowledged state."
+            icon="check-circle"
+          />
+        ) : (
+          incidents?.page.map((incident) => (
+            <AdminDataRow
+              key={incident._id}
+              title={incident.ruleKey}
+              subtitle={`${incident.metricKey} breached its configured threshold`}
+              metrics={[
+                { label: "Observed", value: incident.value.toFixed(3), tone: "danger" },
+                { label: "Threshold", value: String(incident.threshold) },
+              ]}
+              action={
                 <AppButton
                   title="Acknowledge"
                   size="sm"
-                  variant="ghost"
+                  variant="secondary"
                   onPress={async () => {
                     setSelectedEntity({ type: "incident", id: String(incident._id) });
                     await setIncidentStatus({ incidentId: incident._id, status: "acknowledged" });
-                    showToast({ title: "Incident updated", tone: "success" });
+                    showToast({ title: "Incident acknowledged", tone: "success" });
+                  }}
+                />
+              }
+            />
+          ))
+        )}
+      </AdminPanel>
+
+      <AdminPanel padding={0}>
+        <YStack padding={14} gap={10}>
+          <AdminSectionHeader
+            title="Alert rules"
+            detail="Enabled operational thresholds"
+            action={
+              <XStack gap={6} flexWrap="wrap">
+                <AppButton
+                  title="Evaluate now"
+                  size="sm"
+                  onPress={async () => {
+                    const result = await evaluateRules({ range });
+                    showToast({
+                      title: "Evaluation complete",
+                      message: `${result.triggered} rules triggered`,
+                      tone: "success",
+                    });
+                  }}
+                />
+                <AppButton
+                  title="Add failure rule"
+                  size="sm"
+                  variant="secondary"
+                  onPress={async () => {
+                    await upsertAlertRule({
+                      key: "ai_failure_rate_warning",
+                      title: "AI failure rate warning",
+                      description: "Triggers when AI failures are too high.",
+                      metricKey: "ai_failure_rate",
+                      comparison: "gt",
+                      threshold: 0.08,
+                      severity: "warning",
+                      enabled: true,
+                    });
+                    showToast({ title: "Rule saved", tone: "success" });
                   }}
                 />
               </XStack>
-            ))
-          )}
+            }
+          />
         </YStack>
-      </SurfaceCard>
+        {(rules ?? []).length === 0 ? (
+          <AdminEmptyState title="No alert rules" />
+        ) : (
+          rules?.map((rule) => (
+            <AdminDataRow
+              key={rule.key}
+              title={rule.title}
+              subtitle={rule.description}
+              metrics={[
+                { label: "Metric", value: rule.metricKey },
+                { label: "Condition", value: `${rule.comparison} ${rule.threshold}` },
+                {
+                  label: "Severity",
+                  value: rule.severity,
+                  tone: rule.severity === "critical" ? "danger" : "default",
+                },
+              ]}
+            />
+          ))
+        )}
+      </AdminPanel>
 
-      <SurfaceCard style={{ borderRadius: 16 }}>
-        <YStack gap={10}>
-          <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-            Maintenance Jobs
-          </Text>
-          {health.jobs.map((job: any) => (
-            <XStack key={job.key} alignItems="center" justifyContent="space-between" gap={8}>
-              <YStack flex={1}>
-                <Text fontSize={13} fontWeight="700" color={theme.color.val}>
-                  {job.title}
-                </Text>
-                <Text fontSize={11} color={theme.colorMuted.val}>
-                  {job.detail}
-                </Text>
-              </YStack>
+      <AdminPanel padding={0}>
+        <YStack padding={14}>
+          <AdminSectionHeader
+            title="Maintenance actions"
+            detail="Non-destructive background jobs"
+          />
+        </YStack>
+        {health.jobs.map((job) => (
+          <AdminDataRow
+            key={job.key}
+            title={job.title}
+            subtitle={job.detail}
+            action={
               <AppButton
                 title="Run"
                 size="sm"
+                variant="secondary"
                 onPress={async () => {
                   await runMaintenanceJob({ job: job.key as any });
                   showToast({ title: "Job queued", message: job.title, tone: "success" });
                 }}
               />
-            </XStack>
-          ))}
-        </YStack>
-      </SurfaceCard>
-    </>
+            }
+          />
+        ))}
+      </AdminPanel>
+    </YStack>
   );
 }

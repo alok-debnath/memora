@@ -2,7 +2,7 @@ import React from "react";
 import { XStack, YStack, Text } from "tamagui";
 
 import { Feather } from "@/lib/icons";
-import { SurfaceCard } from "@/components/ui/SurfaceCard";
+import { AdminPanel } from "@/components/admin/AdminWorkspace";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useSemanticColors } from "@/hooks/useSemanticColors";
 
@@ -17,6 +17,7 @@ export function AdminStatTile({
   hint,
   deltaPct,
   goodWhenDown = false,
+  minWidth = 150,
 }: {
   label: string;
   value: string;
@@ -24,6 +25,7 @@ export function AdminStatTile({
   /** Fractional change vs previous period, e.g. 0.12 = +12%. */
   deltaPct?: number;
   goodWhenDown?: boolean;
+  minWidth?: number;
 }) {
   const theme = useAppTheme();
   const semantic = useSemanticColors();
@@ -33,43 +35,45 @@ export function AdminStatTile({
   const isGood = goodWhenDown ? !isUp : isUp;
 
   return (
-    <SurfaceCard style={{ borderRadius: 16, flex: 1, minWidth: 150 }}>
-      <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val}>
-        {label}
-      </Text>
-      <Text
-        marginTop={4}
-        fontSize={24}
-        fontFamily="$heading"
-        fontWeight="700"
-        color={theme.color.val}
-      >
-        {value}
-      </Text>
-      <XStack marginTop={2} alignItems="center" gap={6}>
-        {hasDelta ? (
-          <XStack alignItems="center" gap={2}>
-            <Feather
-              name={isUp ? "arrow-up-right" : "arrow-down-right"}
-              size={11}
-              color={isGood ? semantic.status.success : semantic.status.error}
-            />
-            <Text
-              fontSize={11}
-              fontFamily="$body"
-              fontWeight="700"
-              color={isGood ? semantic.status.success : semantic.status.error}
-            >
-              {Math.abs(deltaPct * 100).toFixed(1)}%
+    <YStack flex={1} minWidth={minWidth}>
+      <AdminPanel padding={14}>
+        <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val}>
+          {label}
+        </Text>
+        <Text
+          marginTop={4}
+          fontSize={24}
+          fontFamily="$heading"
+          fontWeight="700"
+          color={theme.color.val}
+        >
+          {value}
+        </Text>
+        <XStack marginTop={2} alignItems="center" gap={6}>
+          {hasDelta ? (
+            <XStack alignItems="center" gap={2}>
+              <Feather
+                name={isUp ? "arrow-up-right" : "arrow-down-right"}
+                size={11}
+                color={isGood ? semantic.status.success : semantic.status.error}
+              />
+              <Text
+                fontSize={11}
+                fontFamily="$body"
+                fontWeight="700"
+                color={isGood ? semantic.status.success : semantic.status.error}
+              >
+                {Math.abs(deltaPct * 100).toFixed(1)}%
+              </Text>
+            </XStack>
+          ) : null}
+          {hint ? (
+            <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val}>
+              {hint}
             </Text>
-          </XStack>
-        ) : null}
-        {hint ? (
-          <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val}>
-            {hint}
-          </Text>
-        ) : null}
-      </XStack>
-    </SurfaceCard>
+          ) : null}
+        </XStack>
+      </AdminPanel>
+    </YStack>
   );
 }

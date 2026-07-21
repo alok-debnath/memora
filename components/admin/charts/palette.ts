@@ -44,3 +44,12 @@ export function formatUsdMicros(value: number) {
     maximumFractionDigits: 2,
   }).format(value / 1_000_000);
 }
+
+export function stablePaletteIndex(key: string, length: number) {
+  if (length <= 0) return 0;
+  let hash = 0;
+  for (let index = 0; index < key.length; index += 1) {
+    hash = (hash * 31 + key.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash) % length;
+}

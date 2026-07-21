@@ -2,19 +2,14 @@ import React from "react";
 import Svg, { Circle } from "react-native-svg";
 import { XStack, YStack, Text } from "tamagui";
 
+import { PressableScale } from "@/components/ui/PressableScale";
+import { withAlpha } from "@/components/ui/themeHelpers";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { useChartPalette, formatCompactNumber } from "./palette";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import { useChartPalette, formatCompactNumber, stablePaletteIndex } from "./palette";
 
-export type DonutSlice = {
-  label: string;
-  value: number;
-};
+export type DonutSlice = { label: string; value: number };
 
-/**
- * Part-of-whole donut with legend. Slices take the fixed categorical order;
- * beyond 5 slices the tail folds into "Other". A 2px surface gap separates
- * segments (stroke dash spacing).
- */
 export function DonutChart({
   slices,
   size = 132,
@@ -26,7 +21,8 @@ export function DonutChart({
 }) {
   const theme = useAppTheme();
   const palette = useChartPalette();
-
+  const responsive = useResponsiveLayout();
+  const [selectedLabel, setSelectedLabel] = React.useState<string | null>(null);
   const sorted = [...slices].sort((a, b) => b.value - a.value);
   const head = sorted.slice(0, 5);
   const tail = sorted.slice(5);
@@ -35,49 +31,56 @@ export function DonutChart({
       ? [...head, { label: "Other", value: tail.reduce((sum, slice) => sum + slice.value, 0) }]
       : head;
   const total = rows.reduce((sum, slice) => sum + slice.value, 0);
+  const selected = rows.find((slice) => slice.label === selectedLabel) ?? null;
 
-  if (total === 0) {
+  if (total === 0)
     return (
-      <Text fontSize={12} fontFamily="$body" color={theme.colorMuted.val}>
+      <Text fontSize={12} color={theme.colorMuted.val}>
         No data in this range.
       </Text>
     );
-  }
 
   const strokeWidth = 16;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  const gap = 2;
-
   let offset = 0;
-  const segments = rows.map((slice, index) => {
+  const segments = rows.map((slice) => {
     const fraction = slice.value / total;
-    const length = Math.max(0, fraction * circumference - gap);
+    const length = Math.max(0, fraction * circumference - 2);
     const segment = {
-      key: slice.label,
-      color: palette.categorical[index % palette.categorical.length],
+      ...slice,
+      color: palette.categorical[stablePaletteIndex(slice.label, palette.categorical.length)],
       dashArray: `${length} ${circumference - length}`,
       dashOffset: -offset,
     };
     offset += fraction * circumference;
     return segment;
   });
+  const centerValue = selected?.value ?? total;
+  const centerCaption = selected ? `${Math.round((selected.value / total) * 100)}%` : centerLabel;
 
   return (
-    <XStack gap={16} alignItems="center" flexWrap="wrap">
+    <XStack
+      gap={16}
+      alignItems="center"
+      flexDirection={responsive.isCompact ? "column" : "row"}
+      accessibilityLabel={`${centerLabel ?? "Distribution"}. Total ${total}. ${rows.map((row) => `${row.label} ${Math.round((row.value / total) * 100)} percent`).join(", ")}`}
+    >
       <YStack width={size} height={size} alignItems="center" justifyContent="center">
         <Svg width={size} height={size}>
           {segments.map((segment) => (
             <Circle
-              key={segment.key}
+              key={segment.label}
               cx={size / 2}
               cy={size / 2}
               r={radius}
               stroke={segment.color}
-              strokeWidth={strokeWidth}
+              strokeWidth={
+                selectedLabel && selectedLabel !== segment.label ? strokeWidth - 5 : strokeWidth
+              }
+              strokeOpacity={selectedLabel && selectedLabel !== segment.label ? 0.35 : 1}
               strokeDasharray={segment.dashArray}
               strokeDashoffset={segment.dashOffset}
-              strokeLinecap="butt"
               fill="none"
               transform={`rotate(-90 ${size / 2} ${size / 2})`}
             />
@@ -85,39 +88,48 @@ export function DonutChart({
         </Svg>
         <YStack position="absolute" alignItems="center">
           <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-            {formatCompactNumber(total)}
+            {formatCompactNumber(centerValue)}
           </Text>
-          {centerLabel ? (
-            <Text fontSize={10} fontFamily="$body" color={theme.colorMuted.val}>
-              {centerLabel}
+          {centerCaption ? (
+            <Text fontSize={10} color={theme.colorMuted.val}>
+              {centerCaption}
             </Text>
           ) : null}
         </YStack>
       </YStack>
-
-      <YStack gap={6} flex={1} minWidth={140}>
-        {rows.map((slice, index) => (
-          <XStack key={slice.label} alignItems="center" gap={8}>
-            <YStack
-              width={8}
-              height={8}
-              borderRadius={4}
-              backgroundColor={palette.categorical[index % palette.categorical.length]}
-            />
-            <Text
-              flex={1}
-              fontSize={12}
-              fontFamily="$body"
-              color={theme.color.val}
-              numberOfLines={1}
+      <YStack gap={3} flex={1} minWidth={responsive.isCompact ? "100%" : 180}>
+        {segments.map((slice) => {
+          const active = selectedLabel === slice.label;
+          return (
+            <PressableScale
+              key={slice.label}
+              onPress={() => setSelectedLabel(active ? null : slice.label)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`${slice.label}, ${formatCompactNumber(slice.value)}, ${Math.round((slice.value / total) * 100)} percent`}
             >
-              {slice.label}
-            </Text>
-            <Text fontSize={11} fontFamily="$body" color={theme.colorMuted.val}>
-              {Math.round((slice.value / total) * 100)}%
-            </Text>
-          </XStack>
-        ))}
+              <XStack
+                minHeight={40}
+                paddingHorizontal={8}
+                alignItems="center"
+                gap={8}
+                borderRadius={10}
+                backgroundColor={active ? withAlpha(slice.color, "14") : "transparent"}
+              >
+                <YStack width={8} height={8} borderRadius={4} backgroundColor={slice.color} />
+                <Text flex={1} fontSize={12} color={theme.color.val} numberOfLines={1}>
+                  {slice.label}
+                </Text>
+                <Text fontSize={11} fontWeight="700" color={theme.color.val}>
+                  {formatCompactNumber(slice.value)}
+                </Text>
+                <Text width={38} textAlign="right" fontSize={11} color={theme.colorMuted.val}>
+                  {Math.round((slice.value / total) * 100)}%
+                </Text>
+              </XStack>
+            </PressableScale>
+          );
+        })}
       </YStack>
     </XStack>
   );

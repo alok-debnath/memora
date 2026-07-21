@@ -1,118 +1,119 @@
 import React from "react";
 import { ActivityIndicator } from "react-native";
 import { usePaginatedQuery } from "convex/react";
-import { Text, XStack, YStack } from "tamagui";
+import { XStack, YStack } from "tamagui";
 
 import { api } from "@/convex/_generated/api";
-import { SurfaceCard } from "@/components/ui/SurfaceCard";
-import { Badge } from "@/components/ui/Badge";
-import { AppTextField } from "@/components/ui/AppTextField";
 import { AppButton } from "@/components/ui/AppButton";
+import { AppTextField } from "@/components/ui/AppTextField";
 import { useAdminState } from "@/components/admin/AdminStateContext";
-import { useAppTheme } from "@/hooks/useAppTheme";
+import {
+  AdminDataRow,
+  AdminEmptyState,
+  AdminPanel,
+  AdminSectionHeader,
+} from "@/components/admin/AdminWorkspace";
 
 const PAGE_SIZE = 40;
 
 export default function AdminAuditScreen() {
-  const theme = useAppTheme();
-  const { range, setSelectedEntity } = useAdminState();
+  const { range, refreshKey, setSelectedEntity } = useAdminState();
   const [actionQuery, setActionQuery] = React.useState("");
   const [targetQuery, setTargetQuery] = React.useState("");
-
+  const [actorQuery, setActorQuery] = React.useState("");
   const {
     results: entries,
-    status: pageStatus,
+    status,
     loadMore,
   } = usePaginatedQuery(
     api.admin.listAdminActions,
     {
       actionContains: actionQuery.trim() || undefined,
       targetType: targetQuery.trim() || undefined,
+      actorContains: actorQuery.trim() || undefined,
       range,
+      refreshKey,
     },
     { initialNumItems: PAGE_SIZE },
   );
 
   return (
     <YStack gap={12}>
-      <SurfaceCard style={{ borderRadius: 16 }}>
+      <AdminPanel padding={12}>
         <XStack gap={8} flexWrap="wrap">
-          <YStack minWidth={180} flex={1}>
-            <AppTextField
-              placeholder="Filter by action (e.g. user.spend_cap)"
-              value={actionQuery}
-              onChangeText={setActionQuery}
-            />
+          <YStack minWidth={170} flex={1}>
+            <AppTextField placeholder="Action" value={actionQuery} onChangeText={setActionQuery} />
           </YStack>
-          <YStack minWidth={180} flex={1}>
+          <YStack minWidth={150} flex={1}>
             <AppTextField
-              placeholder="Filter by target type"
+              placeholder="Target type"
               value={targetQuery}
               onChangeText={setTargetQuery}
             />
           </YStack>
+          <YStack minWidth={170} flex={1}>
+            <AppTextField
+              placeholder="Actor name or email"
+              value={actorQuery}
+              onChangeText={setActorQuery}
+            />
+          </YStack>
         </XStack>
-      </SurfaceCard>
+      </AdminPanel>
 
-      <SurfaceCard style={{ borderRadius: 16 }}>
-        <YStack gap={10}>
-          <XStack alignItems="center" justifyContent="space-between">
-            <Text fontSize={16} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
-              Recent Admin Actions
-            </Text>
-            <Badge label={`${entries.length} loaded`} />
-          </XStack>
-
-          {pageStatus === "LoadingFirstPage" ? (
-            <YStack alignItems="center" paddingVertical={30}>
-              <ActivityIndicator />
-            </YStack>
-          ) : entries.length === 0 ? (
-            <Text fontSize={13} color={theme.colorMuted.val}>
-              No admin actions match these filters.
-            </Text>
-          ) : (
-            entries.map((entry) => (
-              <XStack key={entry._id} alignItems="center" justifyContent="space-between" gap={10}>
-                <YStack flex={1}>
-                  <Text fontSize={13} fontWeight="700" color={theme.color.val}>
-                    {entry.action}
-                  </Text>
-                  <Text fontSize={11} color={theme.colorMuted.val}>
-                    {entry.targetType}
-                    {entry.targetId ? ` · ${entry.targetId}` : ""}
-                  </Text>
-                  <Text fontSize={11} color={theme.colorMuted.val}>
-                    {new Date(entry.createdAt).toLocaleString()}
-                  </Text>
-                </YStack>
-                <XStack alignItems="center" gap={6}>
-                  <Badge label={entry.actor?.name ?? "Unknown admin"} tone="neutral" />
-                  <AppButton
-                    title="Trace"
-                    size="sm"
-                    variant="ghost"
-                    onPress={() => setSelectedEntity({ type: "action", id: String(entry._id) })}
-                  />
-                </XStack>
-              </XStack>
-            ))
-          )}
-
-          {pageStatus === "CanLoadMore" ? (
+      <AdminPanel padding={0}>
+        <YStack padding={14}>
+          <AdminSectionHeader
+            title="Admin actions"
+            detail={`${entries.length} trace records loaded`}
+          />
+        </YStack>
+        {status === "LoadingFirstPage" ? (
+          <YStack minHeight={180} alignItems="center" justifyContent="center">
+            <ActivityIndicator />
+          </YStack>
+        ) : entries.length === 0 ? (
+          <AdminEmptyState
+            title="No matching actions"
+            detail="Change the action, target, or actor filter."
+            icon="file-text"
+          />
+        ) : (
+          entries.map((entry) => (
+            <AdminDataRow
+              key={entry._id}
+              title={entry.action}
+              subtitle={`${entry.targetType}${entry.targetId ? ` · ${entry.targetId}` : ""}`}
+              metrics={[
+                { label: "Actor", value: entry.actor?.name ?? "Unknown admin" },
+                { label: "Time", value: new Date(entry.createdAt).toLocaleString() },
+              ]}
+              action={
+                <AppButton
+                  title="Trace"
+                  size="sm"
+                  variant="ghost"
+                  onPress={() => setSelectedEntity({ type: "action", id: String(entry._id) })}
+                />
+              }
+            />
+          ))
+        )}
+        {status === "CanLoadMore" ? (
+          <YStack padding={12} alignItems="center">
             <AppButton
               title="Load more"
               size="sm"
               variant="secondary"
               onPress={() => loadMore(PAGE_SIZE)}
             />
-          ) : pageStatus === "LoadingMore" ? (
-            <YStack alignItems="center" paddingVertical={8}>
-              <ActivityIndicator size="small" />
-            </YStack>
-          ) : null}
-        </YStack>
-      </SurfaceCard>
+          </YStack>
+        ) : status === "LoadingMore" ? (
+          <YStack padding={12} alignItems="center">
+            <ActivityIndicator size="small" />
+          </YStack>
+        ) : null}
+      </AdminPanel>
     </YStack>
   );
 }

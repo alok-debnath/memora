@@ -1,5 +1,6 @@
+/* Hallmark · pre-emit critique: P5 H5 E4 S5 R5 V4 */
 import React from "react";
-import { ScrollView } from "react-native";
+import { Platform } from "react-native";
 import Svg, {
   Circle,
   Defs,
@@ -14,23 +15,28 @@ import { Text, XStack, YStack } from "tamagui";
 
 import { FilterChipGroup, type FilterChipOption } from "@/components/ui/FilterChipGroup";
 import { withAlpha } from "@/components/ui/themeHelpers";
-import { SelectionTabs } from "@/components/ui/SelectionTabs";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useSemanticColors } from "@/hooks/useSemanticColors";
+import {
+  bucketTimelinePoints,
+  createCountTicks,
+  getLabelIndices,
+  getTimelineBucketCount,
+  getTimelineLayout,
+  type TimelinePoint,
+} from "@/components/admin/charts/timelineGeometry";
 
 function formatCompact(value: number) {
-  return new Intl.NumberFormat(undefined, {
-    notation: "compact",
-    maximumFractionDigits: value >= 1000 ? 1 : 0,
-  }).format(value);
+  return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(
+    value,
+  );
 }
 
-type TimelinePoint = {
-  label: string;
-  primary: number;
-  secondary: number;
-  compareSecondary?: number;
-};
+function linePath(points: Array<{ x: number; y: number }>) {
+  return points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+}
+
+export { type TimelinePoint } from "@/components/admin/charts/timelineGeometry";
 
 export function InteractiveTimelineChart({
   title,
@@ -38,7 +44,7 @@ export function InteractiveTimelineChart({
   points,
   primaryLabel,
   secondaryLabel,
-  compareLabel = "Previous period",
+  compareLabel = "Previous AI requests",
   barColor,
   lineColor,
   compareLineColor,
@@ -57,296 +63,301 @@ export function InteractiveTimelineChart({
 }) {
   const theme = useAppTheme();
   const semantic = useSemanticColors();
-  const resolvedCompareLineColor = compareLineColor ?? semantic.status.warning;
-  const [selectedIndex, setSelectedIndex] = React.useState<number>(Math.max(points.length - 1, 0));
-  const [windowSize, setWindowSize] = React.useState<"7" | "14" | "all">("all");
-  const [showPrimary, setShowPrimary] = React.useState(true);
-  const [showSecondary, setShowSecondary] = React.useState(true);
-  const [showCompare, setShowCompare] = React.useState(true);
-
-  const visiblePoints = React.useMemo(() => {
-    if (windowSize === "all") return points;
-    const count = Number(windowSize);
-    if (points.length <= count) return points;
-    return points.slice(points.length - count);
-  }, [points, windowSize]);
-
-  const hasCompare = visiblePoints.some((point) => point.compareSecondary !== undefined);
-  const selected = visiblePoints[selectedIndex] ?? visiblePoints[visiblePoints.length - 1] ?? null;
-
-  React.useEffect(() => {
-    if (selectedIndex >= visiblePoints.length) {
-      setSelectedIndex(Math.max(visiblePoints.length - 1, 0));
-    }
-  }, [selectedIndex, visiblePoints.length]);
-
-  React.useEffect(() => {
-    onSelectPoint?.(selected);
-  }, [onSelectPoint, selected]);
-
-  const width = Math.max(320, visiblePoints.length * 32);
-  const height = 212;
-  const chartTop = 18;
-  const chartHeight = 118;
-  const chartBottom = chartTop + chartHeight;
-  const step = width / Math.max(visiblePoints.length, 1);
-  const barWidth = Math.max(10, Math.min(14, width / Math.max(visiblePoints.length * 2, 1)));
-
-  const maxPrimary = Math.max(1, ...visiblePoints.map((point) => point.primary));
-  const maxSecondary = Math.max(
-    1,
-    ...visiblePoints.map((point) => point.secondary),
-    ...visiblePoints.map((point) => point.compareSecondary ?? 0),
+  const compareColor = compareLineColor ?? semantic.status.warning;
+  const [availableWidth, setAvailableWidth] = React.useState(320);
+  const [selectedIndex, setSelectedIndex] = React.useState(0);
+  const [visibleSeries, setVisibleSeries] = React.useState<
+    Array<"primary" | "secondary" | "compare">
+  >(["primary", "secondary", "compare"]);
+  const layout = getTimelineLayout(availableWidth);
+  const buckets = React.useMemo(
+    () => bucketTimelinePoints(points, getTimelineBucketCount(points.length, availableWidth)),
+    [availableWidth, points],
   );
+  const hasCompare = buckets.some((point) => point.compareSecondary !== undefined);
+  const selected = buckets[selectedIndex] ?? buckets[buckets.length - 1] ?? null;
+  const showPrimary = visibleSeries.includes("primary");
+  const showSecondary = visibleSeries.includes("secondary");
+  const showCompare = hasCompare && visibleSeries.includes("compare");
 
-  const linePoints = visiblePoints.map((point, index) => {
-    const x = index * step + step / 2;
-    const y = chartBottom - (point.secondary / maxSecondary) * chartHeight;
-    return { x, y };
-  });
-  const comparePoints = visiblePoints.map((point, index) => {
-    const x = index * step + step / 2;
-    const y = chartBottom - ((point.compareSecondary ?? 0) / maxSecondary) * chartHeight;
-    return { x, y };
-  });
+  React.useEffect(
+    () => setSelectedIndex((current) => Math.min(current, Math.max(0, buckets.length - 1))),
+    [buckets.length],
+  );
+  React.useEffect(() => onSelectPoint?.(selected), [onSelectPoint, selected]);
 
-  const linePath = linePoints
-    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
-    .join(" ");
-  const comparePath = comparePoints
-    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
-    .join(" ");
+  const chartWidth = Math.max(1, availableWidth);
+  const plotTop = 16;
+  const plotBottom = layout.chartHeight - 42;
+  const plotHeight = plotBottom - plotTop;
+  const plotWidth = chartWidth - layout.insetLeft - layout.insetRight;
+  const step = plotWidth / Math.max(1, buckets.length);
+  const barWidth = Math.max(4, Math.min(18, step * 0.56));
+  const scale = createCountTicks(
+    buckets.flatMap((point) => [
+      showPrimary ? point.primary : 0,
+      showSecondary ? point.secondary : 0,
+      showCompare ? (point.compareSecondary ?? 0) : 0,
+    ]),
+  );
+  const yFor = (value: number) => plotBottom - (Math.max(0, value) / scale.max) * plotHeight;
+  const xFor = (index: number) => layout.insetLeft + step * index + step / 2;
+  const aiPoints = buckets.map((point, index) => ({ x: xFor(index), y: yFor(point.secondary) }));
+  const previousPoints = buckets.map((point, index) => ({
+    x: xFor(index),
+    y: yFor(point.compareSecondary ?? 0),
+  }));
+  const aiPath = linePath(aiPoints);
+  const previousPath = linePath(previousPoints);
   const areaPath =
-    linePoints.length > 1
-      ? `${linePath} L ${linePoints[linePoints.length - 1]?.x ?? 0} ${chartBottom} L ${
-          linePoints[0]?.x ?? 0
-        } ${chartBottom} Z`
+    aiPoints.length > 1
+      ? `${aiPath} L ${aiPoints[aiPoints.length - 1]!.x} ${plotBottom} L ${aiPoints[0]!.x} ${plotBottom} Z`
       : "";
-
-  const selectedLinePoint = linePoints[selectedIndex] ?? null;
-  const gridStroke = withAlpha(theme.color.val, "2E");
-  const axisColor = withAlpha(theme.color.val, "7A");
-  const dotStroke = withAlpha(theme.background.val, "F0");
-  const visibleSeries = [
-    ...(showPrimary ? (["primary"] as const) : []),
-    ...(showSecondary ? (["secondary"] as const) : []),
-    ...(hasCompare && showCompare ? (["compare"] as const) : []),
-  ];
+  const labelIndices = new Set(getLabelIndices(buckets.length, availableWidth));
   const seriesOptions: FilterChipOption<"primary" | "secondary" | "compare">[] = [
     { value: "primary", label: primaryLabel, color: barColor, showColorSwatch: true },
     { value: "secondary", label: secondaryLabel, color: lineColor, showColorSwatch: true },
     ...(hasCompare
-      ? ([
+      ? [
           {
-            value: "compare",
+            value: "compare" as const,
             label: compareLabel,
-            color: resolvedCompareLineColor,
+            color: compareColor,
             showColorSwatch: true,
           },
-        ] satisfies FilterChipOption<"compare">[])
+        ]
       : []),
   ];
+  const rangeSummary =
+    buckets.length > 0
+      ? `${buckets[0]!.startLabel} to ${buckets[buckets.length - 1]!.endLabel}`
+      : "No dates available";
+  const accessibilitySummary = selected
+    ? `${title}. ${selected.rangeLabel ?? selected.label}. ${primaryLabel}: ${selected.primary}. ${secondaryLabel}: ${selected.secondary}.${selected.compareSecondary === undefined ? "" : ` ${compareLabel}: ${selected.compareSecondary}.`}`
+    : `${title}. No data in this period.`;
 
   return (
-    <YStack>
-      <YStack gap={12}>
-        <YStack gap={4}>
-          <Text fontSize={17} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
+    <YStack
+      gap={12}
+      onLayout={(event) =>
+        setAvailableWidth(Math.max(280, Math.round(event.nativeEvent.layout.width)))
+      }
+      accessibilityRole="summary"
+      accessibilityLabel={accessibilitySummary}
+    >
+      <XStack alignItems="flex-start" justifyContent="space-between" gap={12} flexWrap="wrap">
+        <YStack flex={1} minWidth={200} gap={2}>
+          <Text
+            fontSize={17}
+            lineHeight={22}
+            fontFamily="$heading"
+            fontWeight="700"
+            color={theme.color.val}
+          >
             {title}
           </Text>
-          <Text fontSize={12} color={theme.colorMuted.val}>
+          <Text fontSize={12} lineHeight={17} color={theme.colorMuted.val}>
             {subtitle}
           </Text>
         </YStack>
+        <Text
+          fontSize={10}
+          textTransform="uppercase"
+          letterSpacing={0.6}
+          color={theme.colorMuted.val}
+        >
+          {rangeSummary}
+        </Text>
+      </XStack>
 
-        <FilterChipGroup
-          options={seriesOptions}
-          values={visibleSeries}
-          onValuesChange={(values) => {
-            setShowPrimary(values.includes("primary"));
-            setShowSecondary(values.includes("secondary"));
-            setShowCompare(values.includes("compare"));
-          }}
-          size="compact"
-          accessibilityLabel="Visible chart series"
+      <FilterChipGroup
+        options={seriesOptions}
+        values={visibleSeries}
+        onValuesChange={setVisibleSeries}
+        size="compact"
+        accessibilityLabel="Visible chart series"
+      />
+
+      <XStack gap={8} flexWrap="wrap">
+        <SummaryMetric
+          label="Range"
+          value={selected?.rangeLabel ?? selected?.label ?? "—"}
+          color={theme.colorMuted.val}
         />
-
-        <SelectionTabs
-          options={[
-            { value: "7", label: "7 days" },
-            { value: "14", label: "14 days" },
-            { value: "all", label: "All" },
-          ]}
-          value={windowSize}
-          onChange={setWindowSize}
-          size="compact"
-          accessibilityLabel="Chart range"
-        />
-
-        {selected ? (
-          <XStack gap={10} flexWrap="wrap">
-            {showPrimary ? (
-              <StatPill
-                color={barColor}
-                label={`${primaryLabel} (${selected.label})`}
-                value={formatCompact(selected.primary)}
-              />
-            ) : null}
-            {showSecondary ? (
-              <StatPill
-                color={lineColor}
-                label={secondaryLabel}
-                value={formatCompact(selected.secondary)}
-              />
-            ) : null}
-            {showCompare && selected.compareSecondary !== undefined ? (
-              <StatPill
-                color={resolvedCompareLineColor}
-                label={compareLabel}
-                value={formatCompact(selected.compareSecondary)}
-              />
-            ) : null}
-          </XStack>
+        {showPrimary ? (
+          <SummaryMetric
+            label={primaryLabel}
+            value={selected ? formatCompact(selected.primary) : "—"}
+            color={barColor}
+          />
         ) : null}
+        {showSecondary ? (
+          <SummaryMetric
+            label={secondaryLabel}
+            value={selected ? formatCompact(selected.secondary) : "—"}
+            color={lineColor}
+          />
+        ) : null}
+        {showCompare ? (
+          <SummaryMetric
+            label={compareLabel}
+            value={
+              selected?.compareSecondary === undefined
+                ? "—"
+                : formatCompact(selected.compareSecondary)
+            }
+            color={compareColor}
+          />
+        ) : null}
+      </XStack>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <Svg width={width} height={height}>
-            <Defs>
-              <SvgLinearGradient id="lineAreaFade" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0%" stopColor={lineColor} stopOpacity={0.25} />
-                <Stop offset="100%" stopColor={lineColor} stopOpacity={0.02} />
-              </SvgLinearGradient>
-            </Defs>
-
-            {[0.25, 0.5, 0.75, 1].map((grid) => {
-              const y = chartBottom - grid * chartHeight;
-              return (
+      {buckets.length === 0 ? (
+        <YStack minHeight={layout.chartHeight} alignItems="center" justifyContent="center">
+          <Text fontSize={12} color={theme.colorMuted.val}>
+            No timeline data in this period.
+          </Text>
+        </YStack>
+      ) : (
+        <Svg
+          width={chartWidth}
+          height={layout.chartHeight}
+          accessibilityLabel={accessibilitySummary}
+        >
+          <Defs>
+            <SvgLinearGradient id="adminTimelineArea" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0%" stopColor={lineColor} stopOpacity={0.14} />
+              <Stop offset="100%" stopColor={lineColor} stopOpacity={0.01} />
+            </SvgLinearGradient>
+          </Defs>
+          {scale.ticks.map((tick) => {
+            const y = yFor(tick);
+            return (
+              <React.Fragment key={`tick-${tick}`}>
                 <Line
-                  key={`grid-${grid}`}
-                  x1={0}
+                  x1={layout.insetLeft}
                   y1={y}
-                  x2={width}
+                  x2={chartWidth - layout.insetRight}
                   y2={y}
-                  stroke={gridStroke}
-                  strokeOpacity={0.11}
-                  strokeDasharray="4 6"
+                  stroke={theme.borderColor.val}
+                  strokeWidth={1}
                 />
-              );
-            })}
-
-            {showSecondary && linePoints.length > 1 ? (
-              <Path d={areaPath} fill="url(#lineAreaFade)" />
-            ) : null}
-
-            {visiblePoints.map((point, index) => {
-              const x = index * step + step / 2 - barWidth / 2;
-              const barHeight = (point.primary / maxPrimary) * chartHeight;
-              const isSelected = index === selectedIndex;
-              const isTick =
-                index === 0 ||
-                index === visiblePoints.length - 1 ||
-                index === Math.floor(visiblePoints.length / 2);
-              return (
-                <React.Fragment key={`${point.label}-${index}`}>
-                  {showPrimary ? (
-                    <Rect
-                      x={x}
-                      y={chartBottom - barHeight}
-                      width={barWidth}
-                      height={Math.max(4, barHeight)}
-                      rx={6}
-                      fill={barColor}
-                      opacity={isSelected ? 1 : 0.76}
-                      onPress={() => setSelectedIndex(index)}
-                    />
-                  ) : null}
-                  {isTick ? (
-                    <SvgText
-                      x={index * step + step / 2}
-                      y={height - 16}
-                      fontSize={10}
-                      fill={axisColor}
-                      textAnchor="middle"
-                    >
-                      {point.label}
-                    </SvgText>
-                  ) : null}
-                </React.Fragment>
-              );
-            })}
-
-            {showSecondary && linePoints.length > 1 ? (
-              <Path
-                d={linePath}
-                fill="none"
-                stroke={lineColor}
-                strokeWidth={3}
-                strokeLinecap="round"
-              />
-            ) : null}
-
-            {showCompare && hasCompare && comparePoints.length > 1 ? (
-              <Path
-                d={comparePath}
-                fill="none"
-                stroke={resolvedCompareLineColor}
-                strokeWidth={2}
-                strokeDasharray="6 4"
-                strokeLinecap="round"
-              />
-            ) : null}
-
-            {showSecondary
-              ? linePoints.map((point, index) => {
-                  const isSelected = index === selectedIndex;
-                  return (
-                    <Circle
-                      key={`dot-${index}`}
-                      cx={point.x}
-                      cy={point.y}
-                      r={isSelected ? 5 : 3.5}
-                      fill={lineColor}
-                      stroke={dotStroke}
-                      strokeWidth={1.5}
-                      onPress={() => setSelectedIndex(index)}
-                    />
-                  );
-                })
-              : null}
-
-            {selectedLinePoint ? (
-              <Line
-                x1={selectedLinePoint.x}
-                y1={chartTop - 6}
-                x2={selectedLinePoint.x}
-                y2={chartBottom + 8}
-                stroke={lineColor}
-                strokeOpacity={0.25}
-                strokeDasharray="3 5"
-              />
-            ) : null}
-          </Svg>
-        </ScrollView>
-      </YStack>
+                <SvgText
+                  x={layout.insetLeft - 7}
+                  y={y + 3}
+                  fontSize={9}
+                  fill={theme.colorMuted.val}
+                  textAnchor="end"
+                >
+                  {formatCompact(tick)}
+                </SvgText>
+              </React.Fragment>
+            );
+          })}
+          {showSecondary && areaPath ? <Path d={areaPath} fill="url(#adminTimelineArea)" /> : null}
+          {buckets.map((point, index) => {
+            const x = xFor(index);
+            const selectedPoint = index === selectedIndex;
+            return (
+              <React.Fragment key={`${point.label}-${index}`}>
+                {showPrimary ? (
+                  <Rect
+                    x={x - barWidth / 2}
+                    y={yFor(point.primary)}
+                    width={barWidth}
+                    height={Math.max(1, plotBottom - yFor(point.primary))}
+                    rx={3}
+                    fill={barColor}
+                    opacity={selectedPoint ? 1 : 0.7}
+                  />
+                ) : null}
+                {labelIndices.has(index) ? (
+                  <SvgText
+                    x={x}
+                    y={layout.chartHeight - 16}
+                    fontSize={9}
+                    fill={theme.colorMuted.val}
+                    textAnchor="middle"
+                  >
+                    {point.label}
+                  </SvgText>
+                ) : null}
+                <Rect
+                  x={x - step / 2}
+                  y={plotTop}
+                  width={step}
+                  height={plotHeight}
+                  fill="transparent"
+                  onPress={() => setSelectedIndex(index)}
+                  {...(Platform.OS === "web"
+                    ? { onMouseEnter: () => setSelectedIndex(index) }
+                    : {})}
+                />
+              </React.Fragment>
+            );
+          })}
+          {showSecondary && aiPoints.length > 1 ? (
+            <Path
+              d={aiPath}
+              fill="none"
+              stroke={lineColor}
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ) : null}
+          {showCompare && previousPoints.length > 1 ? (
+            <Path
+              d={previousPath}
+              fill="none"
+              stroke={compareColor}
+              strokeWidth={2}
+              strokeDasharray="6 5"
+              strokeLinecap="round"
+            />
+          ) : null}
+          {showSecondary && aiPoints.length === 1 ? (
+            <Circle cx={aiPoints[0]!.x} cy={aiPoints[0]!.y} r={4} fill={lineColor} />
+          ) : null}
+          {selected ? (
+            <Line
+              x1={xFor(selectedIndex)}
+              y1={plotTop}
+              x2={xFor(selectedIndex)}
+              y2={plotBottom}
+              stroke={withAlpha(theme.color.val, "38")}
+              strokeDasharray="3 4"
+            />
+          ) : null}
+          {showSecondary && aiPoints[selectedIndex] ? (
+            <Circle
+              cx={aiPoints[selectedIndex]!.x}
+              cy={aiPoints[selectedIndex]!.y}
+              r={4.5}
+              fill={lineColor}
+              stroke={theme.card.val}
+              strokeWidth={2}
+            />
+          ) : null}
+        </Svg>
+      )}
     </YStack>
   );
 }
 
-function StatPill({ label, value, color }: { label: string; value: string; color: string }) {
+function SummaryMetric({ label, value, color }: { label: string; value: string; color: string }) {
   const theme = useAppTheme();
   return (
-    <YStack
-      paddingHorizontal={12}
-      paddingVertical={8}
-      borderRadius={14}
-      borderWidth={1}
-      borderColor={color + "40"}
-      backgroundColor={color + "1A"}
-    >
-      <Text fontSize={11} color={theme.colorMuted.val}>
+    <YStack minWidth={96} flexGrow={1} paddingVertical={7} borderTopWidth={2} borderColor={color}>
+      <Text fontSize={10} color={theme.colorMuted.val} numberOfLines={1}>
         {label}
       </Text>
-      <Text fontSize={14} fontFamily="$heading" fontWeight="700" color={theme.color.val}>
+      <Text
+        fontSize={13}
+        fontFamily="$heading"
+        fontWeight="700"
+        color={theme.color.val}
+        numberOfLines={1}
+      >
         {value}
       </Text>
     </YStack>

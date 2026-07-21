@@ -46,6 +46,8 @@ type MorePageScaffoldProps = {
    * full size — no collapse/shrink animation on scroll.
    */
   staticHeader?: boolean;
+  /** Uses the wider application workspace measure. Defaults to the standard page measure. */
+  widthMode?: "standard" | "workspace";
 };
 
 export function MorePageScaffold({
@@ -58,11 +60,13 @@ export function MorePageScaffold({
   externalOnScroll,
   onContentTopPadding,
   staticHeader,
+  widthMode = "standard",
 }: MorePageScaffoldProps) {
   const router = useRouter();
   const theme = useAppTheme();
   const responsive = useResponsiveLayout();
-  const maxContentWidth = layout.standardMaxWidth;
+  const maxContentWidth =
+    widthMode === "workspace" ? layout.workspaceMaxWidth : layout.standardMaxWidth;
   const scrollY = useSharedValue(0);
   const headerTop = HEADER_TOP_MARGIN;
   const contentTopPadding = headerTop + HEADER_HEIGHT + CONTENT_TOP_GAP;
@@ -137,7 +141,7 @@ export function MorePageScaffold({
             style={{
               flex: 1,
               width: "100%",
-              maxWidth: layout.standardMaxWidth,
+              maxWidth: maxContentWidth,
               alignSelf: "center",
             }}
           >

@@ -1,23 +1,23 @@
+/* Hallmark · genre: technical-editorial · macrostructure: Workbench · designed-as-app */
 import React from "react";
 import { ScrollView, StyleSheet } from "react-native";
 import { usePathname } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
-import { Feather } from "@/lib/icons";
 import { Text, XStack, YStack } from "tamagui";
 
+import { Feather } from "@/lib/icons";
 import { appRouter as router } from "@/lib/appRouter";
-import { SurfaceCard } from "@/components/ui/SurfaceCard";
-import { Badge } from "@/components/ui/Badge";
-import { PressableScale } from "@/components/ui/PressableScale";
-import { SelectionTabs } from "@/components/ui/SelectionTabs";
 import { AppButton } from "@/components/ui/AppButton";
 import { MorePageScaffold } from "@/components/ui/MorePageScaffold";
+import { PressableScale } from "@/components/ui/PressableScale";
+import { SelectionTabs } from "@/components/ui/SelectionTabs";
 import { withAlpha } from "@/components/ui/themeHelpers";
 import { AdminGuard } from "@/components/admin/AdminGuard";
+import { AdminPanel } from "@/components/admin/AdminWorkspace";
 import { useAdminState } from "@/components/admin/AdminStateContext";
-import { ADMIN_ROUTES, ADMIN_ROUTE_META } from "@/components/admin/adminNavigation";
+import { ADMIN_ROUTES } from "@/components/admin/adminNavigation";
+import { control, spacing } from "@/constants/uiTokens";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { useSemanticColors } from "@/hooks/useSemanticColors";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 
 const RANGE_OPTIONS = [
   { value: "7d" as const, label: "7D" },
@@ -25,12 +25,10 @@ const RANGE_OPTIONS = [
   { value: "90d" as const, label: "90D" },
   { value: "365d" as const, label: "1Y" },
 ];
-
 const COMPARE_OPTIONS = [
-  { value: "previous" as const, label: "With Previous Period" },
-  { value: "off" as const, label: "Current Period Only" },
+  { value: "previous" as const, label: "Previous" },
+  { value: "off" as const, label: "Current only" },
 ];
-
 const SEGMENT_OPTIONS = [
   { value: "billing" as const, label: "Billing" },
   { value: "behavior" as const, label: "Behavior" },
@@ -48,11 +46,65 @@ function resolveWorkflow(pathname: string) {
   return "overview" as const;
 }
 
-export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
-  const theme = useAppTheme();
-  const semantic = useSemanticColors();
-  const adminColor = theme.destructive.val;
+function RouteControl({ compact = false }: { compact?: boolean }) {
   const pathname = usePathname();
+  const theme = useAppTheme();
+  const routes = ADMIN_ROUTES.map((route) => {
+    const active = pathname === route.href;
+    return (
+      <PressableScale
+        key={route.href}
+        onPress={() => router.replace(route.href as never)}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: active }}
+        accessibilityLabel={`${route.label} admin workspace`}
+      >
+        <XStack
+          minHeight={control.minimumHitSize}
+          minWidth={compact ? undefined : 148}
+          paddingHorizontal={12}
+          alignItems="center"
+          gap={8}
+          borderRadius={12}
+          backgroundColor={active ? withAlpha(theme.primary.val, "14") : "transparent"}
+          borderWidth={StyleSheet.hairlineWidth}
+          borderColor={active ? withAlpha(theme.primary.val, "70") : "transparent"}
+        >
+          <Feather
+            name={route.icon}
+            size={14}
+            color={active ? theme.primary.val : theme.colorMuted.val}
+          />
+          <Text
+            fontSize={12}
+            fontWeight={active ? "700" : "500"}
+            color={active ? theme.primary.val : theme.colorMuted.val}
+            numberOfLines={1}
+          >
+            {route.label}
+          </Text>
+        </XStack>
+      </PressableScale>
+    );
+  });
+
+  if (compact) {
+    return (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: 6 }}
+      >
+        {routes}
+      </ScrollView>
+    );
+  }
+  return <YStack gap={4}>{routes}</YStack>;
+}
+
+function Toolbar({ pathname }: { pathname: string }) {
+  const theme = useAppTheme();
+  const responsive = useResponsiveLayout();
   const {
     range,
     setRange,
@@ -61,255 +113,107 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
     segmentFamily,
     setSegmentFamily,
     triggerRefresh,
-    setActiveWorkflow,
   } = useAdminState();
+  const showCompare = pathname === "/admin" || pathname === "/admin/analytics";
+  const showSegment = pathname === "/admin/analytics";
 
-  const meta = ADMIN_ROUTE_META[pathname] ?? ADMIN_ROUTE_META["/admin"];
-  const showSegmentFilter = pathname === "/admin/analytics";
-  const showCompareFilter = pathname === "/admin" || pathname === "/admin/analytics";
-  const workflow = resolveWorkflow(pathname);
-  const [tabsViewportWidth, setTabsViewportWidth] = React.useState(0);
-  const [tabsContentWidth, setTabsContentWidth] = React.useState(0);
-  const [tabsScrollX, setTabsScrollX] = React.useState(0);
-
-  React.useEffect(() => {
-    setActiveWorkflow(workflow);
-  }, [workflow, setActiveWorkflow]);
-
-  const tabsOverflow = tabsContentWidth > tabsViewportWidth + 4;
-  const showLeftFade = tabsOverflow && tabsScrollX > 8;
-  const showRightFade = tabsOverflow && tabsScrollX < tabsContentWidth - tabsViewportWidth - 8;
+  const group = (label: string, controlNode: React.ReactNode) => (
+    <YStack gap={5} minWidth={responsive.isCompact ? "100%" : undefined}>
+      <Text
+        fontSize={10}
+        lineHeight={12}
+        letterSpacing={0.7}
+        textTransform="uppercase"
+        color={theme.colorMuted.val}
+      >
+        {label}
+      </Text>
+      {controlNode}
+    </YStack>
+  );
 
   return (
-    <MorePageScaffold
-      title="Admin"
-      fallbackHref="/more"
-      staticHeader
-      scrollProps={{ contentContainerStyle: { gap: 14 } }}
-    >
+    <AdminPanel padding={12}>
+      <XStack gap={12} alignItems="flex-end" flexWrap="wrap">
+        {group(
+          "Period",
+          <SelectionTabs
+            options={RANGE_OPTIONS}
+            value={range}
+            onChange={setRange}
+            size="compact"
+            accessibilityLabel="Analytics period"
+          />,
+        )}
+        {showCompare
+          ? group(
+              "Compare",
+              <SelectionTabs
+                options={COMPARE_OPTIONS}
+                value={compareMode}
+                onChange={setCompareMode}
+                size="compact"
+                accessibilityLabel="Comparison mode"
+              />,
+            )
+          : null}
+        {showSegment
+          ? group(
+              "Segment",
+              <SelectionTabs
+                options={SEGMENT_OPTIONS}
+                value={segmentFamily}
+                onChange={setSegmentFamily}
+                size="compact"
+                accessibilityLabel="Analytics segment"
+              />,
+            )
+          : null}
+        <YStack marginLeft={responsive.isExpanded ? "auto" : 0}>
+          <AppButton
+            title="Refresh"
+            icon="refresh-cw"
+            onPress={triggerRefresh}
+            variant="secondary"
+            size="sm"
+          />
+        </YStack>
+      </XStack>
+    </AdminPanel>
+  );
+}
+
+export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const responsive = useResponsiveLayout();
+  const { setActiveWorkflow } = useAdminState();
+  const workflow = resolveWorkflow(pathname);
+
+  React.useEffect(() => setActiveWorkflow(workflow), [setActiveWorkflow, workflow]);
+
+  return (
+    <MorePageScaffold title="Admin" fallbackHref="/more" staticHeader widthMode="workspace">
       <AdminGuard>
-        <YStack>
-          <SurfaceCard style={{ borderRadius: 26 }}>
-            <XStack alignItems="flex-start" justifyContent="space-between" gap={10}>
-              <YStack gap={6} flex={1}>
-                <Badge label="Admin Control Center" color={adminColor} />
-                <Text
-                  fontSize={26}
-                  lineHeight={30}
-                  fontFamily="$heading"
-                  fontWeight="700"
-                  color={theme.color.val}
-                >
-                  {meta.title}
+        {!responsive.isExpanded ? <RouteControl compact /> : null}
+        <XStack gap={spacing.md} alignItems="flex-start">
+          {responsive.isExpanded ? (
+            <AdminPanel padding={8}>
+              <YStack paddingHorizontal={10} paddingVertical={8} gap={2}>
+                <Text fontSize={10} textTransform="uppercase" letterSpacing={0.8} fontWeight="700">
+                  Operations
                 </Text>
-                <Text fontSize={13} lineHeight={19} color={theme.colorMuted.val}>
-                  {meta.subtitle}
+                <Text fontSize={11} color="$colorMuted">
+                  Admin workspace
                 </Text>
               </YStack>
-              <YStack
-                width={48}
-                height={48}
-                borderRadius={16}
-                alignItems="center"
-                justifyContent="center"
-                backgroundColor={withAlpha(adminColor, "18")}
-              >
-                <Feather name="shield" size={20} color={adminColor} />
-              </YStack>
-            </XStack>
-          </SurfaceCard>
-        </YStack>
-
-        <YStack>
-          <SurfaceCard style={{ borderRadius: 22, padding: 12 }}>
-            <YStack position="relative" marginHorizontal={-12}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: 8, paddingHorizontal: 12 }}
-                onLayout={(event) => setTabsViewportWidth(event.nativeEvent.layout.width)}
-                onContentSizeChange={(width) => setTabsContentWidth(width)}
-                onScroll={(event) => setTabsScrollX(event.nativeEvent.contentOffset.x)}
-                scrollEventThrottle={16}
-              >
-                {ADMIN_ROUTES.map((route) => {
-                  const active = pathname === route.href;
-                  return (
-                    <PressableScale
-                      key={route.href}
-                      onPress={() => router.replace(route.href as never)}
-                    >
-                      <XStack
-                        alignItems="center"
-                        gap={7}
-                        paddingHorizontal={12}
-                        paddingVertical={9}
-                        borderRadius={12}
-                        borderWidth={1}
-                        borderColor={active ? adminColor : withAlpha(theme.shadowColor.val, "22")}
-                        backgroundColor={active ? withAlpha(adminColor, "18") : "transparent"}
-                      >
-                        <Feather
-                          name={route.icon}
-                          size={13}
-                          color={active ? adminColor : semantic.status.neutral}
-                        />
-                        <Text
-                          fontSize={12}
-                          fontFamily="$body"
-                          fontWeight={active ? "700" : "500"}
-                          color={active ? adminColor : theme.colorMuted.val}
-                        >
-                          {route.label}
-                        </Text>
-                      </XStack>
-                    </PressableScale>
-                  );
-                })}
-              </ScrollView>
-
-              {showLeftFade ? (
-                <>
-                  <XStack
-                    pointerEvents="none"
-                    position="absolute"
-                    left={0}
-                    top={0}
-                    bottom={0}
-                    width={48}
-                    zIndex={5}
-                  >
-                    <LinearGradient
-                      colors={[
-                        withAlpha(theme.surfaceElevated.val, "FF"),
-                        withAlpha(theme.surfaceElevated.val, "F2"),
-                        withAlpha(theme.surfaceElevated.val, "B8"),
-                        withAlpha(theme.surfaceElevated.val, "00"),
-                      ]}
-                      start={{ x: 0, y: 0.5 }}
-                      end={{ x: 1, y: 0.5 }}
-                      style={StyleSheet.absoluteFill}
-                    />
-                  </XStack>
-                  <YStack
-                    pointerEvents="none"
-                    position="absolute"
-                    left={0}
-                    top="50%"
-                    marginTop={-13}
-                    width={18}
-                    height={26}
-                    borderRadius={10}
-                    alignItems="center"
-                    justifyContent="center"
-                    backgroundColor={withAlpha(theme.surfaceElevated.val, "E8")}
-                    borderWidth={1}
-                    borderColor={withAlpha(theme.borderStrong.val, "70")}
-                    zIndex={6}
-                  >
-                    <Feather
-                      name="chevron-left"
-                      size={13}
-                      color={withAlpha(theme.color.val, "C8")}
-                    />
-                  </YStack>
-                </>
-              ) : null}
-
-              {showRightFade ? (
-                <>
-                  <XStack
-                    pointerEvents="none"
-                    position="absolute"
-                    right={0}
-                    top={0}
-                    bottom={0}
-                    width={48}
-                    zIndex={5}
-                  >
-                    <LinearGradient
-                      colors={[
-                        withAlpha(theme.surfaceElevated.val, "00"),
-                        withAlpha(theme.surfaceElevated.val, "B8"),
-                        withAlpha(theme.surfaceElevated.val, "F2"),
-                        withAlpha(theme.surfaceElevated.val, "FF"),
-                      ]}
-                      start={{ x: 0, y: 0.5 }}
-                      end={{ x: 1, y: 0.5 }}
-                      style={StyleSheet.absoluteFill}
-                    />
-                  </XStack>
-                  <YStack
-                    pointerEvents="none"
-                    position="absolute"
-                    right={0}
-                    top="50%"
-                    marginTop={-13}
-                    width={18}
-                    height={26}
-                    borderRadius={10}
-                    alignItems="center"
-                    justifyContent="center"
-                    backgroundColor={withAlpha(theme.surfaceElevated.val, "E8")}
-                    borderWidth={1}
-                    borderColor={withAlpha(theme.borderStrong.val, "70")}
-                    zIndex={6}
-                  >
-                    <Feather
-                      name="chevron-right"
-                      size={13}
-                      color={withAlpha(theme.color.val, "C8")}
-                    />
-                  </YStack>
-                </>
-              ) : null}
-            </YStack>
-          </SurfaceCard>
-        </YStack>
-
-        <YStack>
-          <SurfaceCard style={{ borderRadius: 22 }}>
-            <YStack gap={10}>
-              <SelectionTabs options={RANGE_OPTIONS} value={range} onChange={setRange} />
-              {showCompareFilter ? (
-                <>
-                  <SelectionTabs
-                    options={COMPARE_OPTIONS}
-                    value={compareMode}
-                    onChange={setCompareMode}
-                  />
-                  <Text fontSize={11} color={theme.colorMuted.val}>
-                    With previous period overlays last window values on charts for direct
-                    comparison.
-                  </Text>
-                </>
-              ) : null}
-              <XStack gap={8} alignItems="center">
-                <YStack flex={1}>
-                  <Text fontSize={11} color={theme.colorMuted.val}>
-                    Refresh reloads current admin data immediately.
-                  </Text>
-                </YStack>
-                <AppButton
-                  title="Refresh"
-                  icon="refresh-cw"
-                  onPress={triggerRefresh}
-                  variant="secondary"
-                  size="sm"
-                />
-              </XStack>
-              {showSegmentFilter ? (
-                <SelectionTabs
-                  options={SEGMENT_OPTIONS}
-                  value={segmentFamily}
-                  onChange={setSegmentFamily}
-                />
-              ) : null}
-            </YStack>
-          </SurfaceCard>
-        </YStack>
-
-        {children}
+              <RouteControl />
+            </AdminPanel>
+          ) : null}
+          <YStack flex={1} minWidth={0} gap={12}>
+            <Toolbar pathname={pathname} />
+            {children}
+          </YStack>
+        </XStack>
       </AdminGuard>
     </MorePageScaffold>
   );
