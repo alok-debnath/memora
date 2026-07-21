@@ -1,18 +1,15 @@
 import React from "react";
-import { type ScrollViewProps, StyleSheet, View } from "react-native";
+import { type ScrollViewProps, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
 import { usePathname, useRouter } from "expo-router";
 import { XStack, YStack, Text } from "tamagui";
 
-import { Feather } from "@/lib/icons";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
-import { PressableScale } from "@/components/ui/PressableScale";
+import { PAGE_TOP_HEADER_OFFSET, PageTopFadeHeader } from "@/components/ui/PageTopFadeHeader";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
-import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 import { CONTENT_GAP, layout, radius, spacing } from "@/constants/uiTokens";
 import { getNavigationContext } from "@/constants/appNavigation";
 
@@ -46,12 +43,6 @@ type AppScreenProps = {
   contentWidth?: AppScreenContentWidth;
   headerEyebrow?: string;
 };
-
-const FLOATING_HEADER_HEIGHT = 58;
-const FLOATING_HEADER_TOP_MARGIN = 8;
-const FLOATING_HEADER_CONTENT_GAP = 18;
-const FLOATING_HEADER_TOP_PADDING =
-  FLOATING_HEADER_TOP_MARGIN + FLOATING_HEADER_HEIGHT + FLOATING_HEADER_CONTENT_GAP;
 
 export function AppScreen({
   children,
@@ -101,24 +92,6 @@ export function AppScreen({
     }
     router.replace(fallbackHref as never);
   }, [fallbackHref, router]);
-
-  const backButton = showBack ? (
-    <PressableScale onPress={handleBackPress} hitSlop={10}>
-      <XStack
-        width={40}
-        height={40}
-        borderRadius={20}
-        alignItems="center"
-        justifyContent="center"
-        backgroundColor={withAlpha(theme.backgroundStrong.val, "CC")}
-        borderWidth={1}
-        borderColor={withAlpha(theme.borderColor.val, "B8")}
-        style={appShadow(theme.shadowColor.val, "xs")}
-      >
-        <Feather name="chevron-left" size={22} color={theme.color.val} />
-      </XStack>
-    </PressableScale>
-  ) : null;
 
   // Sub-pages (showBack) get a floating header pinned above the scroll
   // content, matching the old fixed back+title capsule. Tab-root screens
@@ -196,58 +169,18 @@ export function AppScreen({
   const pageHeader = desktopSubpageHeader ?? inlineHeader;
 
   const floatingHeader = useFloatingHeader ? (
-    <>
-      <LinearGradient
-        pointerEvents="none"
-        colors={[
-          theme.background.val,
-          withAlpha(theme.background.val, "F2"),
-          withAlpha(theme.background.val, "B8"),
-          withAlpha(theme.background.val, "00"),
-        ]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={[styles.topFade, { height: topInset + 88 }]}
-      />
-      <View style={[styles.floatingHeaderLayer, { top: topInset + FLOATING_HEADER_TOP_MARGIN }]}>
-        <XStack
-          alignItems="center"
-          gap={12}
-          height={FLOATING_HEADER_HEIGHT}
-          paddingHorizontal={padded ? spacing.lg : 0}
-        >
-          {backButton}
-          <YStack flex={1} minWidth={0} gap={1}>
-            <Text
-              color={theme.colorMuted.val}
-              fontFamily="$body"
-              fontWeight="700"
-              fontSize={10}
-              lineHeight={12}
-              textTransform="uppercase"
-              letterSpacing={0.8}
-            >
-              {resolvedHeaderEyebrow}
-            </Text>
-            <Text
-              color={theme.color.val}
-              fontFamily="$heading"
-              fontWeight="700"
-              fontSize={28}
-              lineHeight={32}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              {title}
-            </Text>
-          </YStack>
-          {resolvedHeaderRight}
-        </XStack>
-      </View>
-    </>
+    <PageTopFadeHeader
+      title={title ?? ""}
+      eyebrow={resolvedHeaderEyebrow}
+      onBack={handleBackPress}
+      topInset={topInset}
+      headerRight={resolvedHeaderRight}
+      horizontalPadding={padded ? spacing.lg : 0}
+      maxContentWidth={maxContentWidth}
+    />
   ) : null;
 
-  const contentTopPadding = topInset + (useFloatingHeader ? FLOATING_HEADER_TOP_PADDING : 10);
+  const contentTopPadding = topInset + (useFloatingHeader ? PAGE_TOP_HEADER_OFFSET : 10);
 
   const noScrollBody = (
     <>
@@ -309,26 +242,6 @@ export function AppScreen({
     </YStack>
   );
 }
-
-const styles = StyleSheet.create({
-  topFade: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 0,
-    height: 88,
-    zIndex: 998,
-    elevation: 998,
-  },
-  floatingHeaderLayer: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    width: "100%",
-    zIndex: 1001,
-    elevation: 1001,
-  },
-});
 
 type SectionCardProps = {
   children: React.ReactNode;

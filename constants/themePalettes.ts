@@ -839,6 +839,9 @@ export const alphaGradients = {
   /** Same ramp as a CSS gradient, for web where MaskedView is unreliable. */
   maskFadeInCss:
     "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.5) 30%, rgba(0,0,0,0.9) 55%, #000 78%)",
+  /** Opaque -> transparent counterpart for top-edge fading blur on web. */
+  maskFadeOutCss:
+    "linear-gradient(to top, transparent 0%, rgba(0,0,0,0.5) 30%, rgba(0,0,0,0.9) 55%, #000 78%)",
   /** Fully transparent, but still a real native view that can capture touches. */
   invisible: ["#00000000", "#00000000"] as [string, string],
 } as const;
