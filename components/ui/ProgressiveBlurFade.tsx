@@ -19,18 +19,50 @@ type ProgressiveBlurFadeProps = {
   /** Edge where the blur is strongest. Defaults to the bottom edge. */
   direction?: "top" | "bottom";
   /** Controls how much themed surface tint sits over the blur. */
-  tintVariant?: "default" | "subtle";
+  tintVariant?: TintVariant;
+  /**
+   * Fraction of the strip, measured from the strong edge, held at full blur before
+   * the fade ramp starts. `0` keeps the default ramp; higher values grow the solid
+   * blur band and compress the gradient into the remaining space.
+   */
+  blurHold?: number;
   style?: React.ComponentProps<typeof View>["style"];
 };
+
+/** `expo-linear-gradient` requires at least two stops. */
+type GradientStops = [number, number, ...number[]];
 
 // Multi-stop mask lets the blur grow on an ease-in curve instead of exposing
 // a visible linear seam. Direction is controlled by the gradient vector so
 // both edges use the exact same native blur/mask implementation.
-const MASK_LOCATIONS: readonly [number, number, ...number[]] = [0, 0.14, 0.3, 0.46, 0.62, 0.78];
-// Tint is bottom-weighted so the upper part of the strip reads as blur, not wash.
-const TINT_LOCATIONS: readonly [number, number, ...number[]] = [0, 0.3, 0.46, 0.6, 0.74, 0.87, 1];
-const TINT_ALPHAS = ["00", "1F", "3D", "5C", "80", "9E", "B8"] as const;
-const SUBTLE_TINT_ALPHAS = ["00", "0E", "1C", "2A", "3A", "4E", "64"] as const;
+const MASK_LOCATIONS: readonly number[] = [0, 0.14, 0.3, 0.46, 0.62, 0.78];
+// Span the mask ramp occupies by default; the rest of the strip is already opaque.
+const MASK_RAMP_SPAN = MASK_LOCATIONS[MASK_LOCATIONS.length - 1];
+// Tint is weak-edge-weighted so the held part of the strip reads as blur, not wash.
+const TINT_LOCATIONS: readonly number[] = [0, 0.3, 0.46, 0.6, 0.74, 0.87, 1];
+
+// Each ramp ends at the alpha applied where the blur is strongest.
+const TINT_RAMPS = {
+  default: ["00", "1F", "3D", "5C", "80", "9E", "B8"],
+  subtle: ["00", "0E", "1C", "2A", "3A", "4E", "64"],
+  // Subtle scaled to ~40%, so the strip leans on the blur rather than the wash.
+  faint: ["00", "06", "0B", "11", "17", "1F", "28"],
+} as const satisfies Record<string, readonly string[]>;
+
+type TintVariant = keyof typeof TINT_RAMPS;
+
+/** Rescales a ramp so it spans `span` instead of `rampSpan`, keeping its curve. */
+const compress = (locations: readonly number[], span: number, rampSpan: number) =>
+  locations.map((location) => (location / rampSpan) * span);
+
+/** Mirrors `maskFadeIn` as CSS, so web and native never drift onto different curves. */
+const toCssMask = (towards: string, locations: readonly number[]) => {
+  // The palette ramp is already #RRGGBBAA, which CSS accepts verbatim.
+  const stops = alphaGradients.maskFadeIn.map(
+    (color, index) => `${color} ${(locations[index] * 100).toFixed(1)}%`,
+  );
+  return `linear-gradient(${towards}, ${stops.join(", ")})`;
+};
 
 /**
  * Fading blur: a BlurView masked by a vertical linear gradient, so content
@@ -48,19 +80,41 @@ export const ProgressiveBlurFade = React.memo(function ProgressiveBlurFade({
   blurTarget,
   direction = "bottom",
   tintVariant = "default",
+  blurHold = 0,
   style,
 }: ProgressiveBlurFadeProps) {
   const theme = useAppTheme();
   const isDark = useThemeStore((s) => s.resolvedMode) === "dark";
   const background = theme.background.val;
 
-  const tintColors = React.useMemo(() => {
-    const tintAlphas = tintVariant === "subtle" ? SUBTLE_TINT_ALPHAS : TINT_ALPHAS;
-    const alphas = tintAlpha
-      ? tintAlphas.map((a, i) => (i === tintAlphas.length - 1 ? tintAlpha : a))
-      : tintAlphas;
-    return alphas.map((alpha) => withAlpha(background, alpha)) as [string, string, ...string[]];
-  }, [background, tintAlpha, tintVariant]);
+  const hold = Math.min(Math.max(blurHold, 0), 0.9);
+
+  // At hold 0 both ramps rescale onto themselves, so there is no special case.
+  const maskLocations = React.useMemo(
+    () =>
+      compress(MASK_LOCATIONS, hold ? 1 - hold : MASK_RAMP_SPAN, MASK_RAMP_SPAN) as GradientStops,
+    [hold],
+  );
+
+  const { tintColors, tintLocations } = React.useMemo(() => {
+    const ramp = TINT_RAMPS[tintVariant];
+    const peak = tintAlpha ?? ramp[ramp.length - 1];
+    const alphas: string[] = [...ramp.slice(0, -1), peak];
+    const locations = compress(TINT_LOCATIONS, 1 - hold, 1);
+    // Compressing leaves a gap to the strong edge; hold the peak tint across it.
+    if (hold) {
+      alphas.push(peak);
+      locations.push(1);
+    }
+    return {
+      tintColors: alphas.map((alpha) => withAlpha(background, alpha)) as [
+        string,
+        string,
+        ...string[],
+      ],
+      tintLocations: locations as GradientStops,
+    };
+  }, [background, hold, tintAlpha, tintVariant]);
 
   const gradientStart = direction === "top" ? { x: 0, y: 1 } : { x: 0, y: 0 };
   const gradientEnd = direction === "top" ? { x: 0, y: 0 } : { x: 0, y: 1 };
@@ -68,7 +122,7 @@ export const ProgressiveBlurFade = React.memo(function ProgressiveBlurFade({
   const tint = (
     <LinearGradient
       colors={tintColors}
-      locations={TINT_LOCATIONS}
+      locations={tintLocations}
       start={gradientStart}
       end={gradientEnd}
       style={StyleSheet.absoluteFill}
@@ -77,8 +131,7 @@ export const ProgressiveBlurFade = React.memo(function ProgressiveBlurFade({
   );
 
   if (Platform.OS === "web") {
-    const gradient =
-      direction === "top" ? alphaGradients.maskFadeOutCss : alphaGradients.maskFadeInCss;
+    const gradient = toCssMask(direction === "top" ? "to top" : "to bottom", maskLocations);
     return (
       <View pointerEvents="none" style={[StyleSheet.absoluteFill, style]}>
         <View
@@ -110,7 +163,7 @@ export const ProgressiveBlurFade = React.memo(function ProgressiveBlurFade({
           maskElement={
             <LinearGradient
               colors={alphaGradients.maskFadeIn}
-              locations={MASK_LOCATIONS}
+              locations={maskLocations}
               start={gradientStart}
               end={gradientEnd}
               style={StyleSheet.absoluteFill}

@@ -16,6 +16,10 @@ import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
 export const PAGE_TOP_HEADER_HEIGHT = 58;
 export const PAGE_TOP_HEADER_MARGIN = 8;
 export const PAGE_TOP_HEADER_GAP = 18;
+/** Strip below the solid blur band that carries the blur-to-transparent falloff. */
+const FADE_TAIL = 50;
+/** Pulled off the solid blur band so the fade sits higher over the title block. */
+const BLUR_TRIM = 40;
 export const PAGE_TOP_HEADER_OFFSET =
   PAGE_TOP_HEADER_MARGIN + PAGE_TOP_HEADER_HEIGHT + PAGE_TOP_HEADER_GAP;
 
@@ -114,19 +118,21 @@ function PageTopFadeHeaderVisual({
 }: PageTopFadeHeaderVisualProps) {
   const theme = useAppTheme();
 
+  const solidBlurHeight = Math.max(
+    topInset,
+    topInset + PAGE_TOP_HEADER_MARGIN * 2 + PAGE_TOP_HEADER_HEIGHT - BLUR_TRIM,
+  );
+  const fadeHeight = solidBlurHeight + FADE_TAIL;
+
   return (
     <>
       <ProgressiveBlurFade
         direction="top"
-        intensity={55}
-        tintVariant="subtle"
+        intensity={44}
+        tintVariant="faint"
+        blurHold={solidBlurHeight / fadeHeight}
         blurTarget={blurTarget}
-        style={[
-          styles.fade,
-          {
-            height: topInset + PAGE_TOP_HEADER_MARGIN + PAGE_TOP_HEADER_HEIGHT + 72,
-          },
-        ]}
+        style={[styles.fade, { height: fadeHeight }]}
       />
       <Animated.View
         pointerEvents="box-none"

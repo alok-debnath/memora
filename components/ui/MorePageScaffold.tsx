@@ -111,28 +111,31 @@ export function MorePageScaffold({
     };
   });
 
-  const ambientStyle = useAnimatedStyle(() => {
-    if (staticHeader) return { opacity: 0.95 };
-    const offset = scrollY.value;
-    return {
-      opacity: interpolate(offset, [0, HEADER_COLLAPSE_RANGE * 0.67], [0.95, 0.5]),
-    };
-  });
+  const ambientStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [0, HEADER_COLLAPSE_RANGE * 0.67], [0.95, 0.5]),
+  }));
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background.val }} edges={["bottom"]}>
       <YStack flex={1} backgroundColor={theme.background.val}>
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.ambientBand,
-            {
-              top: headerTop + PAGE_TOP_HEADER_HEIGHT + 14,
-              backgroundColor: withAlpha(theme.borderStrong.val, "18"),
-            },
-            ambientStyle,
-          ]}
-        />
+        {/*
+          Scroll cue only: it earns its keep by fading as the header collapses. A
+          static header never scrolls, so the band would sit pinned across the bottom
+          of the header's blur ramp and read as a seam.
+        */}
+        {staticHeader ? null : (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.ambientBand,
+              {
+                top: headerTop + PAGE_TOP_HEADER_HEIGHT + 14,
+                backgroundColor: withAlpha(theme.borderStrong.val, "18"),
+              },
+              ambientStyle,
+            ]}
+          />
+        )}
 
         {noScroll ? (
           <View
