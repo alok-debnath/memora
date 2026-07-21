@@ -25,7 +25,14 @@ function ScreenErrorFallback({ label, onRetry }: { label?: string; onRetry: () =
       <Text fontSize={13} fontFamily="$body" color={theme.colorMuted.val} textAlign="center">
         The rest of the app is fine — retry this screen.
       </Text>
-      <AppButton title="Try again" icon="refresh-cw" size="sm" onPress={onRetry} />
+      {/* AppButton pins itself to flex-start, which beats the parent's centering. */}
+      <AppButton
+        title="Try again"
+        icon="refresh-cw"
+        size="sm"
+        onPress={onRetry}
+        style={{ alignSelf: "center" }}
+      />
     </YStack>
   );
 }
