@@ -21,6 +21,10 @@ const config: ExpoConfig = {
   android: {
     package: IS_DEV ? "com.alokdebnath.memora.dev" : "com.alokdebnath.memora",
     permissions: ["android.permission.RECORD_AUDIO"],
+    adaptiveIcon: {
+      foregroundImage: "./assets/images/adaptive-icon.png",
+      backgroundColor: "#101A33",
+    },
   },
   web: {
     favicon: "./assets/images/icon.png",
@@ -54,7 +58,10 @@ const config: ExpoConfig = {
       {
         image: "./assets/images/splash-icon.png",
         resizeMode: "contain",
-        backgroundColor: "#E8911B",
+        backgroundColor: "#101A33",
+        dark: {
+          backgroundColor: "#101A33",
+        },
       },
     ],
     "expo-status-bar",
