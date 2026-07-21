@@ -8,7 +8,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { Text, XStack, YStack } from "tamagui";
 
-import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
+import { withAlpha } from "@/components/ui/themeHelpers";
 import { motion } from "@/constants/motion";
 import { control, radius, spacing, typeScale } from "@/constants/uiTokens";
 import { useAppTheme } from "@/hooks/useAppTheme";
@@ -36,6 +36,7 @@ type SelectionTabsProps<T extends string = string> = {
 };
 
 const TRACK_PADDING = 3;
+const TRACK_BORDER_WIDTH = 1;
 const VERTICAL_GAP = spacing.xs;
 
 export function SelectionTabs<T extends string = string>({
@@ -51,14 +52,13 @@ export function SelectionTabs<T extends string = string>({
 }: SelectionTabsProps<T>) {
   const theme = useAppTheme();
   const reduceMotion = useReducedMotion();
-  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const [trackWidth, setTrackWidth] = useState(0);
   const activeIndex = Math.max(
     0,
     options.findIndex((option) => option.value === value),
   );
   const itemHeight = size === "compact" ? control.compactHeight : control.defaultHeight;
-  const horizontalWidth =
-    containerSize.width > 0 ? (containerSize.width - TRACK_PADDING * 2) / options.length : 0;
+  const horizontalWidth = options.length > 0 ? trackWidth / options.length : 0;
   const indicatorOffset = useSharedValue(0);
 
   useEffect(() => {
@@ -68,11 +68,9 @@ export function SelectionTabs<T extends string = string>({
     indicatorOffset.value = reduceMotion ? destination : withTiming(destination, motion.selection);
   }, [activeIndex, horizontalWidth, indicatorOffset, itemHeight, orientation, reduceMotion]);
 
-  const handleLayout = useCallback((event: LayoutChangeEvent) => {
-    const { width, height } = event.nativeEvent.layout;
-    setContainerSize((current) =>
-      current.width === width && current.height === height ? current : { width, height },
-    );
+  const handleTrackLayout = useCallback((event: LayoutChangeEvent) => {
+    const { width } = event.nativeEvent.layout;
+    setTrackWidth((current) => (current === width ? current : width));
   }, []);
 
   const indicatorStyle = useAnimatedStyle(() => ({
@@ -94,9 +92,9 @@ export function SelectionTabs<T extends string = string>({
   const indicatorGeometry: ViewStyle =
     orientation === "horizontal"
       ? {
-          top: TRACK_PADDING,
-          bottom: TRACK_PADDING,
-          left: TRACK_PADDING,
+          top: 0,
+          bottom: 0,
+          left: 0,
           width: horizontalWidth,
         }
       : {
@@ -108,107 +106,111 @@ export function SelectionTabs<T extends string = string>({
 
   return (
     <XStack
-      onLayout={handleLayout}
       accessibilityLabel={accessibilityLabel}
-      position="relative"
       alignSelf="stretch"
-      minHeight={orientation === "horizontal" ? itemHeight + TRACK_PADDING * 2 : undefined}
-      padding={orientation === "horizontal" ? TRACK_PADDING : 0}
-      borderWidth={orientation === "horizontal" ? 1 : 0}
+      paddingHorizontal={orientation === "horizontal" ? TRACK_PADDING : 0}
+      paddingVertical={orientation === "horizontal" ? TRACK_PADDING : 0}
+      borderWidth={orientation === "horizontal" ? TRACK_BORDER_WIDTH : 0}
       borderColor={theme.borderSubtle.val}
       borderTopLeftRadius={radius.md}
       borderTopRightRadius={radius.md}
       borderBottomLeftRadius={attached ? 0 : radius.md}
       borderBottomRightRadius={attached ? 0 : radius.md}
       backgroundColor={orientation === "horizontal" ? theme.backgroundStrong.val : "transparent"}
-      style={[trackStyle, style]}
+      style={style}
     >
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          {
-            position: "absolute",
-            borderRadius: radius.sm,
-            backgroundColor:
-              orientation === "horizontal" ? theme.surfaceElevated.val : theme.surfaceAccent.val,
-            borderWidth: 1,
-            borderColor:
-              orientation === "horizontal"
-                ? theme.borderColor.val
-                : withAlpha(theme.primary.val, "28"),
-            ...(orientation === "horizontal" && horizontalWidth > 0
-              ? appShadow(theme.shadowColor.val, "xs")
-              : null),
-          },
-          indicatorGeometry,
-          indicatorStyle,
-        ]}
-      />
+      <XStack
+        onLayout={orientation === "horizontal" ? handleTrackLayout : undefined}
+        position="relative"
+        flex={1}
+        alignSelf="stretch"
+        minWidth={0}
+        style={trackStyle}
+      >
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            {
+              position: "absolute",
+              borderRadius: radius.sm,
+              backgroundColor:
+                orientation === "horizontal" ? theme.surfaceElevated.val : theme.surfaceAccent.val,
+              borderWidth: 1,
+              borderColor:
+                orientation === "horizontal"
+                  ? theme.borderColor.val
+                  : withAlpha(theme.primary.val, "28"),
+            },
+            indicatorGeometry,
+            indicatorStyle,
+          ]}
+        />
 
-      {options.map((option) => {
-        const active = option.value === value;
-        const label = showCompactLabels ? (option.compactLabel ?? option.label) : option.label;
-        return (
-          <PressableScale
-            key={option.value}
-            onPress={() => !option.disabled && onChange(option.value)}
-            disabled={option.disabled}
-            accessibilityRole="tab"
-            accessibilityLabel={option.label}
-            accessibilityState={{ selected: active, disabled: option.disabled }}
-            hitSlop={Math.max(0, (control.minimumHitSize - itemHeight) / 2)}
-            style={{
-              flex: orientation === "horizontal" ? 1 : undefined,
-              minWidth: 0,
-              height: itemHeight,
-              opacity: option.disabled ? 0.42 : 1,
-              zIndex: 1,
-            }}
-          >
-            <XStack
-              flex={1}
-              minWidth={0}
-              paddingHorizontal={size === "compact" ? spacing.sm : spacing.md}
-              alignItems="center"
-              justifyContent={orientation === "horizontal" ? "center" : "flex-start"}
-              gap={spacing.xs}
-              borderRadius={radius.sm}
+        {options.map((option) => {
+          const active = option.value === value;
+          const label = showCompactLabels ? (option.compactLabel ?? option.label) : option.label;
+          return (
+            <PressableScale
+              key={option.value}
+              onPress={() => !option.disabled && onChange(option.value)}
+              disabled={option.disabled}
+              accessibilityRole="tab"
+              accessibilityLabel={option.label}
+              accessibilityState={{ selected: active, disabled: option.disabled }}
+              hitSlop={Math.max(0, (control.minimumHitSize - itemHeight) / 2)}
+              style={{
+                flex: orientation === "horizontal" ? 1 : undefined,
+                minWidth: 0,
+                height: itemHeight,
+                opacity: option.disabled ? 0.42 : 1,
+                zIndex: 1,
+              }}
             >
-              {option.icon}
-              <Text
-                flexShrink={1}
-                numberOfLines={1}
-                fontFamily="$body"
-                fontSize={size === "compact" ? typeScale.metadata : typeScale.control}
-                fontWeight={active ? "700" : "500"}
-                color={active ? theme.color.val : theme.colorMuted.val}
+              <XStack
+                flex={1}
+                minWidth={0}
+                paddingHorizontal={size === "compact" ? spacing.sm : spacing.md}
+                alignItems="center"
+                justifyContent={orientation === "horizontal" ? "center" : "flex-start"}
+                gap={spacing.xs}
+                borderRadius={radius.sm}
               >
-                {label}
-              </Text>
-              {typeof option.count === "number" && option.count > 0 ? (
-                <YStack
-                  minWidth={18}
-                  height={18}
-                  paddingHorizontal={4}
-                  borderRadius={radius.pill}
-                  alignItems="center"
-                  justifyContent="center"
-                  backgroundColor={active ? theme.primary.val : theme.secondary.val}
+                {option.icon}
+                <Text
+                  flexShrink={1}
+                  numberOfLines={1}
+                  fontFamily="$body"
+                  fontSize={size === "compact" ? typeScale.metadata : typeScale.control}
+                  fontWeight={active ? "700" : "500"}
+                  color={active ? theme.color.val : theme.colorMuted.val}
                 >
-                  <Text
-                    fontFamily="$utility"
-                    fontSize={9}
-                    fontWeight="700"
-                    color={active ? theme.textInverse.val : theme.colorMuted.val}
+                  {label}
+                </Text>
+                {typeof option.count === "number" && option.count > 0 ? (
+                  <YStack
+                    minWidth={18}
+                    height={18}
+                    paddingHorizontal={4}
+                    borderRadius={radius.pill}
+                    alignItems="center"
+                    justifyContent="center"
+                    backgroundColor={active ? theme.primary.val : theme.secondary.val}
                   >
-                    {option.count > 99 ? "99+" : option.count}
-                  </Text>
-                </YStack>
-              ) : null}
-            </XStack>
-          </PressableScale>
-        );
-      })}
+                    <Text
+                      fontFamily="$utility"
+                      fontSize={9}
+                      fontWeight="700"
+                      color={active ? theme.textInverse.val : theme.colorMuted.val}
+                    >
+                      {option.count > 99 ? "99+" : option.count}
+                    </Text>
+                  </YStack>
+                ) : null}
+              </XStack>
+            </PressableScale>
+          );
+        })}
+      </XStack>
     </XStack>
   );
 }
