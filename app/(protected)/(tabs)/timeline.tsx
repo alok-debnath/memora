@@ -1,6 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SectionList, type SectionListData, Share, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import Animated, {
+  FadeInUp,
+  FadeOutUp,
+  LinearTransition,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import * as Linking from "expo-linking";
 import { Text, XStack, YStack } from "tamagui";
@@ -14,7 +25,10 @@ import { SearchBar } from "@/components/ui/SearchBar";
 import { SectionLabel } from "@/components/ui/SectionLabel";
 import { AppScreen, SectionCard } from "@/components/ui/AppScreen";
 import { ResponsiveStatGrid, WorkspaceSplit } from "@/components/ui/Responsive";
+import { Badge } from "@/components/ui/Badge";
+import { Feather } from "@/lib/icons";
 import { PageHero } from "@/components/ui/PageHero";
+import { TopicPills } from "@/components/ui/TopicPills";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { withAlpha } from "@/components/ui/themeHelpers";
 import { alphaGradients } from "@/constants/themePalettes";
@@ -63,8 +77,34 @@ type TimelineMemory = {
 
 /** Stable identity: `?? []` inline would re-trigger every downstream memo. */
 const EMPTY_MEMORIES: TimelineMemory[] = [];
+const EMPTY_TOPICS: React.ComponentProps<typeof TopicPills>["topics"] = [];
+
+/** Live indicator while the semantic tier is still resolving. */
+function PulsingDot({ color }: { color: string }) {
+  const opacity = useSharedValue(1);
+  useEffect(() => {
+    opacity.value = withRepeat(
+      withSequence(withTiming(0.25, { duration: 550 }), withTiming(1, { duration: 550 })),
+      -1,
+      false,
+    );
+  }, [opacity]);
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return (
+    <Animated.View
+      style={[{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }, style]}
+    />
+  );
+}
 
 const LIST_STYLE = { width: "100%", alignSelf: "center" } as const;
+
+/** Shared timing so the header block and the list travel together. */
+const LAYOUT_TRANSITION = LinearTransition.duration(220);
+
+const styles = StyleSheet.create({
+  body: { flex: 1 },
+});
 
 /** Hoisted so the list doesn't remount every separator on each render. */
 const ItemSeparator = () => <YStack height={10} />;
@@ -155,15 +195,21 @@ function groupByDate(memories: readonly TimelineMemory[]) {
 
 export default function TimelineScreen() {
   const theme = useAppTheme();
+  const reduceMotion = useReducedMotion();
   const { token } = useAuth();
   const tabBarPadding = useTabBarBottomPadding();
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [semanticResults, setSemanticResults] = useState<TimelineMemory[] | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [isSemanticCached, setIsSemanticCached] = useState(false);
+  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+  const [isSyncingTopics, setIsSyncingTopics] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const listRef = useRef<SectionList<MemoryNote, TimelineSection>>(null);
   const requestId = useRef(0);
   const semanticSearch = useAction(api.actions.semanticSearch.search);
+  const reconcileTopics = useAction(api.actions.manageTopics.reconcileTopics);
   const { confirm } = useAppConfirm();
   const { showToast } = useAppToast();
   const openEditMemory = useUIStore((state) => state.openEditMemory);
@@ -175,6 +221,30 @@ export default function TimelineScreen() {
 
   const memoryResult = useQuery(api.memories.listAll, token ? { token, limit: 500 } : "skip");
   const allMemories = (memoryResult ?? EMPTY_MEMORIES) as TimelineMemory[];
+
+  const trimmedQuery = searchQuery.trim();
+  // Raw query drives local filtering and the chrome, so both react instantly;
+  // only the network tiers wait for the debounce.
+  const searchMode = trimmedQuery.length > 0;
+  const networkQuery = debouncedQuery.toLowerCase();
+
+  const activeTopicSummaries =
+    useQuery(api.userTopics.activeSummaries, token ? { token } : "skip") ?? EMPTY_TOPICS;
+
+  const selectedTopicMemories = useQuery(
+    api.memories.listByTopic,
+    token && selectedTopic && !searchMode
+      ? { token, topicId: selectedTopic as Id<"userTopics">, limit: 500 }
+      : "skip",
+  );
+
+  // Server-side full-text + keyword tier. Without it, exact matches are capped
+  // at whatever `listAll` fetched, so older memories are unreachable by title.
+  const instantSearchResult = useQuery(
+    api.memories.searchInstant,
+    token && networkQuery.length >= 3 ? { token, query: networkQuery, limit: 12 } : "skip",
+  );
+  const instantResults = (instantSearchResult ?? EMPTY_MEMORIES) as TimelineMemory[];
 
   const handleComplete = useCallback(
     async (memory: MemoryNote) => {
@@ -282,6 +352,56 @@ export default function TimelineScreen() {
       .then((result) => {
         if (requestId.current === currentRequest) {
           setSemanticResults(result.results as TimelineMemory[]);
+          setIsSemanticCached(result.isCached);
+        }
+      })
+      .catch(() => {
+        if (requestId.current === currentRequest) {
+          setSemanticResults(null);
+          setIsSemanticCached(false);
+        }
+      })
+      .finally(() => {
+        if (requestId.current === currentRequest) setIsSearching(false);
+      });
+  }, [debouncedQuery, semanticSearch, token]);
+
+  // A topic that drops out of the active set would otherwise filter to nothing.
+  useEffect(() => {
+    if (selectedTopic && !activeTopicSummaries.some((topic) => topic._id === selectedTopic)) {
+      setSelectedTopic(null);
+    }
+  }, [activeTopicSummaries, selectedTopic]);
+
+  // Closing clears the query, so the list is never left filtered by a field
+  // the user can no longer see.
+  const handleToggleSearch = useCallback(() => {
+    setIsSearchOpen((open) => {
+      if (open) setSearchQuery("");
+      return !open;
+    });
+  }, []);
+
+  const handleSyncTopics = useCallback(async () => {
+    if (!token || isSyncingTopics) return;
+    setIsSyncingTopics(true);
+    try {
+      await reconcileTopics({ token });
+    } finally {
+      setIsSyncingTopics(false);
+    }
+  }, [isSyncingTopics, reconcileTopics, token]);
+
+  const handleDeepScan = useCallback(() => {
+    if (!token || !debouncedQuery) return;
+    const currentRequest = requestId.current + 1;
+    requestId.current = currentRequest;
+    setIsSearching(true);
+    setIsSemanticCached(false);
+    semanticSearch({ token, query: debouncedQuery, limit: 16, forceDeepSearch: true })
+      .then((result) => {
+        if (requestId.current === currentRequest) {
+          setSemanticResults(result.results as TimelineMemory[]);
         }
       })
       .catch(() => {
@@ -292,25 +412,55 @@ export default function TimelineScreen() {
       });
   }, [debouncedQuery, semanticSearch, token]);
 
-  const trimmedQuery = useMemo(() => searchQuery.trim(), [searchQuery]);
-
-  const sorted = useMemo(() => {
+  // Instant, local, and independent of the debounce.
+  const exactMatches = useMemo(() => {
     const query = trimmedQuery.toLowerCase();
-    if (!query) return [...allMemories].sort((a, b) => b._creationTime - a._creationTime);
-
-    const matches = new Map<string, TimelineMemory>();
-    allMemories.forEach((memory) => {
-      const exact =
+    if (!query) return EMPTY_MEMORIES;
+    return allMemories.filter(
+      (memory) =>
         (memory.title ?? "").toLowerCase().includes(query) ||
         (memory.content ?? "").toLowerCase().includes(query) ||
         (memory.people ?? []).some((person) => person.toLowerCase().includes(query)) ||
-        (memory.locations ?? []).some((location) => location.toLowerCase().includes(query));
-      if (exact) matches.set(memory._id, memory);
-    });
-    semanticResults?.forEach((memory) => matches.set(memory._id, memory));
+        (memory.locations ?? []).some((location) => location.toLowerCase().includes(query)),
+    );
+  }, [allMemories, trimmedQuery]);
 
-    return Array.from(matches.values()).sort((a, b) => b._creationTime - a._creationTime);
-  }, [allMemories, semanticResults, trimmedQuery]);
+  const sorted = useMemo(() => {
+    if (!searchMode) {
+      const pool = selectedTopic
+        ? ((selectedTopicMemories ?? EMPTY_MEMORIES) as TimelineMemory[])
+        : allMemories;
+      return [...pool].sort((a, b) => b._creationTime - a._creationTime);
+    }
+
+    // Tiered merge, best evidence first: local substring, then the server's
+    // full-text/keyword RRF, then vector hits. First writer wins per id.
+    const merged = new Map<string, TimelineMemory>();
+    for (const memory of exactMatches) merged.set(memory._id, memory);
+    for (const memory of instantResults)
+      if (!merged.has(memory._id)) merged.set(memory._id, memory);
+    for (const memory of semanticResults ?? [])
+      if (!merged.has(memory._id)) merged.set(memory._id, memory);
+
+    const pool = Array.from(merged.values());
+    const byTopic = selectedTopic
+      ? pool.filter(
+          (memory) =>
+            memory.primaryTopicId === selectedTopic ||
+            ((memory.topicIds as string[] | undefined) ?? []).includes(selectedTopic),
+        )
+      : pool;
+
+    return byTopic.sort((a, b) => b._creationTime - a._creationTime);
+  }, [
+    allMemories,
+    exactMatches,
+    instantResults,
+    searchMode,
+    selectedTopic,
+    selectedTopicMemories,
+    semanticResults,
+  ]);
 
   const sectionFadeColors = useMemo(
     () =>
@@ -366,10 +516,17 @@ export default function TimelineScreen() {
           style={StyleSheet.absoluteFill}
           pointerEvents="none"
         />
-        <SectionLabel marginBottom={0}>{section.title}</SectionLabel>
+        <XStack alignItems="center" gap={8}>
+          <SectionLabel marginBottom={0}>{section.title}</SectionLabel>
+          {/* The grouping already carries the count, so no separate tally is
+              needed above the list. */}
+          <Text fontSize={11} fontWeight="600" color={theme.colorMuted.val}>
+            {section.data.length}
+          </Text>
+        </XStack>
       </YStack>
     ),
-    [sectionFadeColors],
+    [sectionFadeColors, theme.colorMuted.val],
   );
 
   const contentContainerStyle = useMemo(
@@ -386,107 +543,204 @@ export default function TimelineScreen() {
       bodyGap={0}
       hero={
         // One child, so the screen's CONTENT_GAP does not apply between these
-        // two and the header can sit tight against the search field.
+        // two and the header can sit tight against the topic row.
         <YStack gap={8}>
-          <PageHero title="Timeline" accentStyle="none" dense />
-          {/* Static, above the list: as a list header it scrolled into the top fade. */}
-          <SearchBar
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Recall a memory, person, place, or idea..."
-            isSearching={isSearching}
+          <PageHero
+            title="Timeline"
+            accentStyle="none"
+            dense
+            action={
+              <PressableScale
+                onPress={handleToggleSearch}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={isSearchOpen ? "Close search" : "Search memories"}
+              >
+                <XStack
+                  width={38}
+                  height={38}
+                  borderRadius={19}
+                  alignItems="center"
+                  justifyContent="center"
+                  backgroundColor={
+                    isSearchOpen ? withAlpha(theme.primary.val, "14") : "transparent"
+                  }
+                  borderWidth={1}
+                  borderColor={
+                    isSearchOpen ? withAlpha(theme.primary.val, "50") : theme.borderColor.val
+                  }
+                >
+                  <Feather
+                    name={isSearchOpen ? "x" : "search"}
+                    size={17}
+                    color={isSearchOpen ? theme.primary.val : theme.colorMuted.val}
+                  />
+                </XStack>
+              </PressableScale>
+            }
           />
+
+          {isSearchOpen ? (
+            <Animated.View
+              entering={reduceMotion ? undefined : FadeInUp.duration(220)}
+              exiting={reduceMotion ? undefined : FadeOutUp.duration(160)}
+            >
+              <YStack gap={6}>
+                {/* Static, above the list: as a list header it scrolled into the top fade. */}
+                <SearchBar
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  placeholder="Recall a memory, person, place, or idea..."
+                  isSearching={isSearching}
+                  autoFocus
+                />
+                {/* Fixed height so typing never resizes the header under your finger. */}
+                <XStack height={24} alignItems="center" justifyContent="space-between" gap={8}>
+                  {searchMode ? (
+                    <XStack gap={8} alignItems="center" flex={1} minWidth={0}>
+                      {isSearching ? (
+                        <>
+                          <PulsingDot color={theme.primary.val} />
+                          <Text fontSize={12} color={theme.colorMuted.val} numberOfLines={1}>
+                            Searching deeper…
+                          </Text>
+                        </>
+                      ) : (
+                        <>
+                          <Text fontSize={12} color={theme.colorMuted.val} numberOfLines={1}>
+                            {sorted.length} found
+                          </Text>
+                          <Badge
+                            label={isSemanticCached ? "Fast" : "Full scan"}
+                            icon={isSemanticCached ? "zap" : "check"}
+                            color={isSemanticCached ? theme.warning.val : theme.success.val}
+                            small
+                          />
+                        </>
+                      )}
+                    </XStack>
+                  ) : (
+                    <YStack flex={1} />
+                  )}
+                  {searchMode && !isSearching && isSemanticCached ? (
+                    <PressableScale onPress={handleDeepScan} hitSlop={8} accessibilityRole="button">
+                      {/* Same verb as the progress copy above: one operation,
+                          one name, from action through to result. */}
+                      <Text fontSize={12} fontWeight="600" color={theme.primary.val}>
+                        Search deeper
+                      </Text>
+                    </PressableScale>
+                  ) : null}
+                </XStack>
+              </YStack>
+            </Animated.View>
+          ) : null}
+
+          {/* Slides rather than snapping when the search block opens above it. */}
+          <Animated.View layout={reduceMotion ? undefined : LAYOUT_TRANSITION}>
+            <TopicPills
+              selected={selectedTopic}
+              onSelect={setSelectedTopic}
+              topics={activeTopicSummaries as React.ComponentProps<typeof TopicPills>["topics"]}
+              onSync={handleSyncTopics}
+              isSyncing={isSyncingTopics}
+              inset={0}
+            />
+          </Animated.View>
         </YStack>
       }
     >
-      <TimelineWorkspace
-        aside={
-          <YStack gap={12}>
-            <SectionCard
-              title="Archive summary"
-              eyebrow="Current view"
-              density="compact"
-              emphasis="quiet"
-            >
-              <ResponsiveStatGrid
-                maximumColumns={2}
-                minimumColumnWidth={105}
-                items={[
-                  { label: "Memories", value: sorted.length },
-                  { label: "Periods", value: sections.length },
-                ]}
-              />
-              {searchQuery.trim() ? (
-                <Text fontSize={12} lineHeight={18} color={theme.colorMuted.val}>
-                  {isSearching
-                    ? `Finding related memories for “${searchQuery.trim()}”…`
-                    : `Showing keyword and related matches for “${searchQuery.trim()}”.`}
-                </Text>
-              ) : null}
-            </SectionCard>
-            {sections.length > 0 ? (
-              <SectionCard title="Jump to" density="compact" emphasis="quiet">
-                <YStack gap={6}>
-                  {sections.slice(0, 8).map((section, sectionIndex) => (
-                    <PressableScale
-                      key={section.title}
-                      onPress={() =>
-                        listRef.current?.scrollToLocation({
-                          sectionIndex,
-                          itemIndex: 0,
-                          animated: true,
-                        })
-                      }
-                    >
-                      <XStack
-                        alignItems="center"
-                        justifyContent="space-between"
-                        gap={8}
-                        paddingVertical={5}
-                      >
-                        <Text flex={1} fontSize={12} fontWeight="600" color={theme.color.val}>
-                          {section.title}
-                        </Text>
-                        <Text fontSize={11} color={theme.colorMuted.val}>
-                          {section.data.length}
-                        </Text>
-                      </XStack>
-                    </PressableScale>
-                  ))}
-                </YStack>
+      {/* The hero grows and shrinks above it, so the list travels with it. */}
+      <Animated.View style={styles.body} layout={reduceMotion ? undefined : LAYOUT_TRANSITION}>
+        <TimelineWorkspace
+          aside={
+            <YStack gap={12}>
+              <SectionCard
+                title="Archive summary"
+                eyebrow="Current view"
+                density="compact"
+                emphasis="quiet"
+              >
+                <ResponsiveStatGrid
+                  maximumColumns={2}
+                  minimumColumnWidth={105}
+                  items={[
+                    { label: "Memories", value: sorted.length },
+                    { label: "Periods", value: sections.length },
+                  ]}
+                />
+                {searchQuery.trim() ? (
+                  <Text fontSize={12} lineHeight={18} color={theme.colorMuted.val}>
+                    {isSearching
+                      ? `Finding related memories for “${searchQuery.trim()}”…`
+                      : `Showing keyword and related matches for “${searchQuery.trim()}”.`}
+                  </Text>
+                ) : null}
               </SectionCard>
-            ) : null}
-          </YStack>
-        }
-      >
-        <SectionList
-          ref={listRef}
-          sections={sections}
-          keyExtractor={keyExtractor}
-          renderItem={renderItem}
-          renderSectionHeader={renderSectionHeader}
-          ItemSeparatorComponent={ItemSeparator}
-          ListEmptyComponent={
-            // The screen's body gap is 0 because the day row supplies its own
-            // leading space; with no rows there is nothing to supply it.
-            <YStack paddingTop={CONTENT_GAP}>
-              <EmptyState
-                icon="clock"
-                title={trimmedQuery ? "No matching memories" : "No timeline"}
-                description={
-                  trimmedQuery
-                    ? "Try a different word or phrase."
-                    : "Create memories to see them on your timeline."
-                }
-              />
+              {sections.length > 0 ? (
+                <SectionCard title="Jump to" density="compact" emphasis="quiet">
+                  <YStack gap={6}>
+                    {sections.slice(0, 8).map((section, sectionIndex) => (
+                      <PressableScale
+                        key={section.title}
+                        onPress={() =>
+                          listRef.current?.scrollToLocation({
+                            sectionIndex,
+                            itemIndex: 0,
+                            animated: true,
+                          })
+                        }
+                      >
+                        <XStack
+                          alignItems="center"
+                          justifyContent="space-between"
+                          gap={8}
+                          paddingVertical={5}
+                        >
+                          <Text flex={1} fontSize={12} fontWeight="600" color={theme.color.val}>
+                            {section.title}
+                          </Text>
+                          <Text fontSize={11} color={theme.colorMuted.val}>
+                            {section.data.length}
+                          </Text>
+                        </XStack>
+                      </PressableScale>
+                    ))}
+                  </YStack>
+                </SectionCard>
+              ) : null}
             </YStack>
           }
-          stickySectionHeadersEnabled
-          showsVerticalScrollIndicator={false}
-          style={LIST_STYLE}
-          contentContainerStyle={contentContainerStyle}
-        />
-      </TimelineWorkspace>
+        >
+          <SectionList
+            ref={listRef}
+            sections={sections}
+            keyExtractor={keyExtractor}
+            renderItem={renderItem}
+            renderSectionHeader={renderSectionHeader}
+            ItemSeparatorComponent={ItemSeparator}
+            ListEmptyComponent={
+              // The screen's body gap is 0 because the day row supplies its own
+              // leading space; with no rows there is nothing to supply it.
+              <YStack paddingTop={CONTENT_GAP}>
+                <EmptyState
+                  icon="clock"
+                  title={trimmedQuery ? "No matching memories" : "No timeline"}
+                  description={
+                    trimmedQuery
+                      ? "Try a different word or phrase."
+                      : "Create memories to see them on your timeline."
+                  }
+                />
+              </YStack>
+            }
+            stickySectionHeadersEnabled
+            showsVerticalScrollIndicator={false}
+            style={LIST_STYLE}
+            contentContainerStyle={contentContainerStyle}
+          />
+        </TimelineWorkspace>
+      </Animated.View>
     </AppScreen>
   );
 }

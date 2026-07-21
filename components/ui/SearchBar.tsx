@@ -19,6 +19,8 @@ interface SearchBarProps {
   onChangeText: (text: string) => void;
   placeholder?: string;
   isSearching?: boolean;
+  /** Focuses on mount, for fields revealed by an explicit search action. */
+  autoFocus?: boolean;
 }
 
 export function SearchBar({
@@ -26,6 +28,7 @@ export function SearchBar({
   onChangeText,
   placeholder = "Search memories...",
   isSearching,
+  autoFocus,
 }: SearchBarProps) {
   const theme = useAppTheme();
   const reduceMotion = useReducedMotion();
@@ -52,7 +55,9 @@ export function SearchBar({
     <XStack
       backgroundColor={theme.surfaceElevated.val}
       borderColor={focused ? theme.focusRing.val : theme.borderColor.val}
-      borderWidth={1}
+      // Integer only: Android rounds fractional widths per edge when a
+      // borderRadius is present, which renders the stroke visibly uneven.
+      borderWidth={2}
       borderRadius={18}
       paddingHorizontal={14}
       height={52}
@@ -75,6 +80,7 @@ export function SearchBar({
       <TextInput
         value={value}
         onChangeText={onChangeText}
+        autoFocus={autoFocus}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         accessibilityLabel={placeholder}
