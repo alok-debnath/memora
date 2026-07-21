@@ -131,7 +131,6 @@ describe("planner context efficiency", () => {
     ["Analyze patterns in my mood", "list_docs"],
     ["Combine these two memories into one", "combine_memories"],
     ["Write a diary entry about today", "create_doc"],
-    ["Add this to my review deck", "create_doc"],
     ["Share this memory with a link", "create_doc"],
   ] as const) {
     test(`includes ${expectedTool} for: ${message}`, () => {

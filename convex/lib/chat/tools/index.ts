@@ -17,10 +17,9 @@ import { updateMemoryTool } from "./updateMemory";
  * dedup/reference-resolution logic, confirm-before-destroy UX, calendar side
  * effects, or multi-step clustering that a generic field patch can't safely
  * replicate) plus the 5 generic primitive tools that cover everything else
- * across the AI_TABLE_ALLOWLIST tables (diary, review cards, sharing, topic
- * renames, restoring a deleted memory — see
- * lib/aiPrimitives/tableRegistry.ts). Order matters only for the
- * model-facing tool list.
+ * across the AI_TABLE_ALLOWLIST tables — diaryEntries, sharedMemories,
+ * userTopics and memories, see lib/aiPrimitives/tableRegistry.ts. Order
+ * matters only for the model-facing tool list.
  */
 const HAND_WRITTEN_TOOLS: ChatTool[] = [
   searchMemoriesTool,
