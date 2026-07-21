@@ -650,8 +650,9 @@ export default function TimelineScreen() {
         </YStack>
       }
     >
-      {/* The hero grows and shrinks above it, so the list travels with it. */}
-      <Animated.View style={styles.body} layout={reduceMotion ? undefined : LAYOUT_TRANSITION}>
+      {/* No layout transition: the header block settles as data arrives, and
+          animating that through to the list read as the page sliding on open. */}
+      <YStack style={styles.body}>
         <TimelineWorkspace
           aside={
             <YStack gap={12}>
@@ -740,7 +741,7 @@ export default function TimelineScreen() {
             contentContainerStyle={contentContainerStyle}
           />
         </TimelineWorkspace>
-      </Animated.View>
+      </YStack>
     </AppScreen>
   );
 }
