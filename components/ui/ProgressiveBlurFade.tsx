@@ -18,8 +18,6 @@ type ProgressiveBlurFadeProps = {
   blurTarget?: React.RefObject<View | null>;
   /** Edge where the blur is strongest. Defaults to the bottom edge. */
   direction?: "top" | "bottom";
-  /** Controls how much themed surface tint sits over the blur. */
-  tintVariant?: TintVariant;
   /**
    * Fraction of the strip, measured from the strong edge, held at full blur before
    * the fade ramp starts. `0` keeps the default ramp; higher values grow the solid
@@ -32,28 +30,22 @@ type ProgressiveBlurFadeProps = {
 /** `expo-linear-gradient` requires at least two stops. */
 type GradientStops = [number, number, ...number[]];
 
-// Multi-stop mask lets the blur grow on an ease-in curve instead of exposing
-// a visible linear seam. Direction is controlled by the gradient vector so
-// both edges use the exact same native blur/mask implementation.
-const MASK_LOCATIONS: readonly number[] = [0, 0.14, 0.3, 0.46, 0.62, 0.78];
-// Span the mask ramp occupies by default; the rest of the strip is already opaque.
-const MASK_RAMP_SPAN = MASK_LOCATIONS[MASK_LOCATIONS.length - 1];
-// Tint is weak-edge-weighted so the held part of the strip reads as blur, not wash.
-const TINT_LOCATIONS: readonly number[] = [0, 0.3, 0.46, 0.6, 0.74, 0.87, 1];
+// Span the mask ramp occupies by default; past it the strip is fully blurred.
+// Direction is set by the gradient vector, so both edges share one native path.
+const MASK_RAMP_SPAN = 0.78;
+// Evenly spaced: the easing lives in `maskFadeIn`'s alpha values, not here.
+const MASK_LOCATIONS: readonly number[] = alphaGradients.maskFadeIn.map(
+  (_, index, all) => (index / (all.length - 1)) * MASK_RAMP_SPAN,
+);
 
-// Each ramp ends at the alpha applied where the blur is strongest.
-const TINT_RAMPS = {
-  default: ["00", "1F", "3D", "5C", "80", "9E", "B8"],
-  subtle: ["00", "0E", "1C", "2A", "3A", "4E", "64"],
-  // Subtle scaled to ~40%, so the strip leans on the blur rather than the wash.
-  faint: ["00", "06", "0B", "11", "17", "1F", "28"],
-} as const satisfies Record<string, readonly string[]>;
+// Weak-edge-weighted, so the held part of the strip reads as blur, not wash.
+const TINT_LOCATIONS: GradientStops = [0, 0.3, 0.46, 0.6, 0.74, 0.87, 1];
+// Ends at the alpha applied where the blur is strongest.
+const TINT_ALPHAS = ["00", "1F", "3D", "5C", "80", "9E", "B8"] as const;
 
-type TintVariant = keyof typeof TINT_RAMPS;
-
-/** Rescales a ramp so it spans `span` instead of `rampSpan`, keeping its curve. */
-const compress = (locations: readonly number[], span: number, rampSpan: number) =>
-  locations.map((location) => (location / rampSpan) * span);
+/** Rescales the mask ramp onto `span`, keeping its curve. */
+const compress = (span: number) =>
+  MASK_LOCATIONS.map((location) => (location / MASK_RAMP_SPAN) * span);
 
 /** Mirrors `maskFadeIn` as CSS, so web and native never drift onto different curves. */
 const toCssMask = (towards: string, locations: readonly number[]) => {
@@ -79,7 +71,6 @@ export const ProgressiveBlurFade = React.memo(function ProgressiveBlurFade({
   tintAlpha,
   blurTarget,
   direction = "bottom",
-  tintVariant = "default",
   blurHold = 0,
   style,
 }: ProgressiveBlurFadeProps) {
@@ -89,32 +80,19 @@ export const ProgressiveBlurFade = React.memo(function ProgressiveBlurFade({
 
   const hold = Math.min(Math.max(blurHold, 0), 0.9);
 
-  // At hold 0 both ramps rescale onto themselves, so there is no special case.
+  // At hold 0 the ramp rescales onto itself, so there is no special case.
   const maskLocations = React.useMemo(
-    () =>
-      compress(MASK_LOCATIONS, hold ? 1 - hold : MASK_RAMP_SPAN, MASK_RAMP_SPAN) as GradientStops,
+    () => compress(hold ? 1 - hold : MASK_RAMP_SPAN) as GradientStops,
     [hold],
   );
 
-  const { tintColors, tintLocations } = React.useMemo(() => {
-    const ramp = TINT_RAMPS[tintVariant];
-    const peak = tintAlpha ?? ramp[ramp.length - 1];
-    const alphas: string[] = [...ramp.slice(0, -1), peak];
-    const locations = compress(TINT_LOCATIONS, 1 - hold, 1);
-    // Compressing leaves a gap to the strong edge; hold the peak tint across it.
-    if (hold) {
-      alphas.push(peak);
-      locations.push(1);
-    }
-    return {
-      tintColors: alphas.map((alpha) => withAlpha(background, alpha)) as [
-        string,
-        string,
-        ...string[],
-      ],
-      tintLocations: locations as GradientStops,
-    };
-  }, [background, hold, tintAlpha, tintVariant]);
+  // Deliberately independent of `hold`: the tint always ramps across the full
+  // strip so only the very edge reaches peak. Compressing it too would wash the
+  // whole held band flat and hide the blur it exists to show.
+  const tintColors = React.useMemo(() => {
+    const alphas = [...TINT_ALPHAS.slice(0, -1), tintAlpha ?? TINT_ALPHAS[TINT_ALPHAS.length - 1]];
+    return alphas.map((alpha) => withAlpha(background, alpha)) as [string, string, ...string[]];
+  }, [background, tintAlpha]);
 
   const gradientStart = direction === "top" ? { x: 0, y: 1 } : { x: 0, y: 0 };
   const gradientEnd = direction === "top" ? { x: 0, y: 0 } : { x: 0, y: 1 };
@@ -122,7 +100,7 @@ export const ProgressiveBlurFade = React.memo(function ProgressiveBlurFade({
   const tint = (
     <LinearGradient
       colors={tintColors}
-      locations={tintLocations}
+      locations={TINT_LOCATIONS}
       start={gradientStart}
       end={gradientEnd}
       style={StyleSheet.absoluteFill}

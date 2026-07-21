@@ -42,6 +42,11 @@ type AppScreenProps = {
   /** Controls the content measure without making screens own breakpoint logic. */
   contentWidth?: AppScreenContentWidth;
   headerEyebrow?: string;
+  /**
+   * Gap between the hero/header block and the body. Lower it when the body
+   * supplies its own leading space, e.g. a list whose first row is padded.
+   */
+  bodyGap?: number;
 };
 
 export function AppScreen({
@@ -58,6 +63,7 @@ export function AppScreen({
   safeTop = true,
   contentWidth = "standard",
   headerEyebrow,
+  bodyGap = CONTENT_GAP,
 }: AppScreenProps) {
   const responsive = useResponsiveLayout();
   const pathname = usePathname();
@@ -202,7 +208,7 @@ export function AppScreen({
           width: "100%",
           maxWidth: maxContentWidth,
           alignSelf: "center",
-          marginTop: pageHeader || hero ? CONTENT_GAP : 0,
+          marginTop: pageHeader || hero ? bodyGap : 0,
         }}
       >
         {children}

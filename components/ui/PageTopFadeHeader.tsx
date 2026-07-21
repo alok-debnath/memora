@@ -12,6 +12,7 @@ import { useBackdropBlurHost } from "@/components/ui/BackdropBlurProvider";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { ProgressiveBlurFade } from "@/components/ui/ProgressiveBlurFade";
 import { appShadow, withAlpha } from "@/components/ui/themeHelpers";
+import { useThemeStore } from "@/store/theme";
 
 export const PAGE_TOP_HEADER_HEIGHT = 58;
 export const PAGE_TOP_HEADER_MARGIN = 8;
@@ -117,6 +118,7 @@ function PageTopFadeHeaderVisual({
   blurTarget,
 }: PageTopFadeHeaderVisualProps) {
   const theme = useAppTheme();
+  const isDark = useThemeStore((s) => s.resolvedMode) === "dark";
 
   const solidBlurHeight = Math.max(
     topInset,
@@ -128,8 +130,8 @@ function PageTopFadeHeaderVisual({
     <>
       <ProgressiveBlurFade
         direction="top"
-        intensity={44}
-        tintVariant="faint"
+        intensity={isDark ? 55 : 48}
+        tintAlpha={isDark ? "F5" : "F0"}
         blurHold={solidBlurHeight / fadeHeight}
         blurTarget={blurTarget}
         style={[styles.fade, { height: fadeHeight }]}

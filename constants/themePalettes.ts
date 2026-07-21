@@ -829,13 +829,23 @@ export function createThemeGradient(seedColor: string, mode: ResolvedThemeMode) 
  * colors — the channel values carry no theme meaning, only opacity, so they
  * live here rather than as literals inside components.
  */
+/**
+ * Smootherstep (6t^5-15t^4+10t^3) sampled at evenly spaced t, opaque ->
+ * transparent. Slope reaches zero at BOTH ends, so neither edge of a fade
+ * shows a crease. The easing is in these values, not in gradient stop
+ * positions — pair it with evenly spaced locations or the curve is lost.
+ */
+const FADE_ALPHAS = ["FF", "FB", "E5", "B9", "80", "46", "1A", "04", "00"] as const;
+
 export const alphaGradients = {
   /** Transparent -> opaque ramp, used as a MaskedView mask for a fading blur. */
-  maskFadeIn: ["#00000000", "#00000038", "#00000080", "#000000B8", "#000000E0", "#000000FF"] as [
+  maskFadeIn: FADE_ALPHAS.map((alpha) => `#000000${alpha}`).reverse() as [
     string,
     string,
     ...string[],
   ],
   /** Fully transparent, but still a real native view that can capture touches. */
   invisible: ["#00000000", "#00000000"] as [string, string],
+  /** Opaque -> transparent, for fading a themed surface out over content. */
+  surfaceFadeOut: FADE_ALPHAS,
 } as const;
