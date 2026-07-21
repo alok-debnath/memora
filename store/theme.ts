@@ -66,11 +66,11 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
       customColor: accentSource === "custom" ? accentColor : get().customColor,
       resolvedAccentColor: resolveAccentColor(accentSource, accentColor),
     });
-    AsyncStorage.multiSet([
-      ["theme_accent_source", accentSource],
-      ["theme_accent_color", accentColor],
-      ["theme_custom_color", accentSource === "custom" ? accentColor : get().customColor],
-    ]);
+    AsyncStorage.setMany({
+      theme_accent_source: accentSource,
+      theme_accent_color: accentColor,
+      theme_custom_color: accentSource === "custom" ? accentColor : get().customColor,
+    });
   },
   setCustomColor: (color) => {
     const customColor = normalizeStoredAccent(color, get().customColor);
@@ -80,11 +80,11 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
       customColor,
       resolvedAccentColor: resolveAccentColor("custom", customColor),
     });
-    AsyncStorage.multiSet([
-      ["theme_accent_source", "custom"],
-      ["theme_accent_color", customColor],
-      ["theme_custom_color", customColor],
-    ]);
+    AsyncStorage.setMany({
+      theme_accent_source: "custom",
+      theme_accent_color: customColor,
+      theme_custom_color: customColor,
+    });
   },
   setSystemMode: (systemMode) => {
     set((state) => ({
@@ -95,16 +95,19 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
   },
   loadTheme: async () => {
     try {
-      const entries = await AsyncStorage.multiGet([
+      const entries = await AsyncStorage.getMany([
         "theme_mode",
         "theme_accent_source",
         "theme_accent_color",
         "theme_custom_color",
       ]);
-      const stored = entries[0]?.[1];
-      const storedAccentSource = normalizeAccentSource(entries[1]?.[1] ?? null);
-      const storedAccentColor = normalizeStoredAccent(entries[2]?.[1] ?? null);
-      const storedCustomColor = normalizeStoredAccent(entries[3]?.[1] ?? null, storedAccentColor);
+      const stored = entries.theme_mode;
+      const storedAccentSource = normalizeAccentSource(entries.theme_accent_source ?? null);
+      const storedAccentColor = normalizeStoredAccent(entries.theme_accent_color ?? null);
+      const storedCustomColor = normalizeStoredAccent(
+        entries.theme_custom_color ?? null,
+        storedAccentColor,
+      );
       const fallback = get().systemMode;
       const accentSource = storedAccentSource;
       const accentColor = accentSource === "memora" ? MEMORA_ACCENT : storedAccentColor;
