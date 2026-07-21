@@ -55,7 +55,7 @@ const IND_Y = IND_PAD_Y;
 const FADE_H = bottomNavigationLayout.fadeHeight;
 // Extra height the fading blur extends above the reserved strip, so the mask
 // gradient has enough travel to read as a progressive defocus, not a hard edge.
-const FADE_RAMP_OVERSHOOT = 96;
+const FADE_RAMP_OVERSHOOT = 48;
 const BAR_BOTTOM_MARGIN = bottomNavigationLayout.bottomMargin;
 
 // Maps state.index (0–3) → visual slot (0, 1, 3, 4) → indicator translateX
@@ -429,7 +429,7 @@ function FloatingTabBar({
       {/* Gradient-masked blur so content dissolves (and defocuses) behind the bar */}
       <ProgressiveBlurFade
         intensity={isDark ? 55 : 48}
-        tintAlpha={isDark ? "E6" : "DB"}
+        tintAlpha={isDark ? "F5" : "F0"}
         blurTarget={androidBlurTarget}
         // Ramp starts above the reserved strip so the blur has room to build;
         // purely visual, the layout reserve stays BAR_H + inset + FADE_H.

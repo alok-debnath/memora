@@ -1,7 +1,8 @@
 import React, { useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Platform, Pressable, TextInput } from "react-native";
 import { useAction, useMutation } from "convex/react";
-import { File } from "expo-file-system";
+import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
+import { File, Paths } from "expo-file-system";
 import { useAudioRecorder } from "@siteed/audio-studio";
 import * as Haptics from "expo-haptics";
 import { Feather } from "@/lib/icons";
@@ -56,6 +57,22 @@ function cleanupRecordingUri(uri: string | null | undefined) {
   }
 }
 
+async function createAudioPreviewUri(audio: ArrayBuffer | Blob, mimeType: string) {
+  if (Platform.OS === "web") {
+    const blob = audio instanceof Blob ? audio : new Blob([audio], { type: mimeType });
+    return URL.createObjectURL(blob);
+  }
+
+  const buffer = audio instanceof ArrayBuffer ? audio : await audio.arrayBuffer();
+  const preview = new File(
+    Paths.cache,
+    `memora-transcription-preview-${Date.now()}-${Math.random().toString(36).slice(2)}.wav`,
+  );
+  preview.create({ overwrite: true });
+  preview.write(new Uint8Array(buffer));
+  return preview.uri;
+}
+
 export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorderProps>(
   function VoiceRecorder(
     {
@@ -82,10 +99,14 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
     const [text, setText] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [wasSpedUp, setWasSpedUp] = useState(false);
+    const [audioPreviewUri, setAudioPreviewUri] = useState<string | null>(null);
     const TranscriptInput = withinBottomSheet ? BottomSheetAwareTextInput : TextInput;
     const stoppedRef = useRef(false);
     const uriRef = useRef<string | null>(null);
+    const audioPreviewUriRef = useRef<string | null>(null);
     const pcmChunksRef = useRef<Float32Array[]>([]);
+    const audioPlayer = useAudioPlayer(audioPreviewUri);
+    const audioPlayerStatus = useAudioPlayerStatus(audioPlayer);
     const device = useOnDeviceDictation({
       enabled: transcriptionMode === "device",
       onPartialTranscript: onTranscription,
@@ -101,6 +122,34 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
       },
     });
 
+    const clearAudioPreview = () => {
+      audioPlayer.pause();
+      audioPlayer.replace(null);
+      cleanupRecordingUri(audioPreviewUriRef.current);
+      audioPreviewUriRef.current = null;
+      setAudioPreviewUri(null);
+    };
+
+    const acceptTranscription = () => {
+      onTranscriptionComplete?.(text);
+      clearAudioPreview();
+      setPhase("idle");
+    };
+
+    const toggleAudioPreview = async () => {
+      if (audioPlayerStatus.playing) {
+        audioPlayer.pause();
+        return;
+      }
+      if (
+        audioPlayerStatus.didJustFinish ||
+        (audioPlayerStatus.duration > 0 &&
+          audioPlayerStatus.currentTime >= audioPlayerStatus.duration - 0.05)
+      )
+        await audioPlayer.seekTo(0);
+      audioPlayer.play();
+    };
+
     const discard = () => {
       device.cancel();
       if (recorder.isRecording)
@@ -110,6 +159,7 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
           .catch(() => undefined);
       cleanupRecordingUri(uriRef.current);
       uriRef.current = null;
+      clearAudioPreview();
       pcmChunksRef.current = [];
       stoppedRef.current = false;
       setText("");
@@ -122,6 +172,7 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
     useImperativeHandle(ref, () => ({ cancel: discard }));
 
     const start = async () => {
+      clearAudioPreview();
       setError(null);
       stoppedRef.current = false;
       if (transcriptionMode === "device") {
@@ -172,6 +223,17 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
     }) => {
       setPhase("processing");
       try {
+        try {
+          const previewUri = await createAudioPreviewUri(args.audio, args.mimeType);
+          cleanupRecordingUri(audioPreviewUriRef.current);
+          audioPreviewUriRef.current = previewUri;
+          setAudioPreviewUri(previewUri);
+        } catch (previewError) {
+          console.warn(
+            "Could not prepare the transcription audio preview.",
+            previewError instanceof Error ? previewError.message : previewError,
+          );
+        }
         const { jobId, uploadUrl } = await createUpload({
           mimeType: args.mimeType,
           durationMs: args.durationMs,
@@ -278,6 +340,7 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
             .then((recording) => cleanupRecordingUri(recording?.fileUri))
             .catch(() => undefined);
         device.cancel();
+        cleanupRecordingUri(audioPreviewUriRef.current);
       },
       [],
     );
@@ -290,12 +353,23 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
             <Text flex={1} color={theme.color.val} numberOfLines={1}>
               Review dictation in the composer
             </Text>
-            <Pressable
-              onPress={() => {
-                onTranscriptionComplete?.(text);
-                setPhase("idle");
-              }}
-            >
+            {audioPreviewUri ? (
+              <Pressable
+                onPress={() => void toggleAudioPreview()}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  audioPlayerStatus.playing ? "Pause sent audio" : "Play sent audio"
+                }
+                hitSlop={8}
+              >
+                <Feather
+                  name={audioPlayerStatus.playing ? "pause" : "volume-2"}
+                  size={18}
+                  color={theme.primary.val}
+                />
+              </Pressable>
+            ) : null}
+            <Pressable onPress={acceptTranscription}>
               <Text color={theme.primary.val} fontWeight="700">
                 Use
               </Text>
@@ -320,6 +394,26 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
               color: theme.color.val,
             }}
           />
+          {audioPreviewUri ? (
+            <Pressable
+              onPress={() => void toggleAudioPreview()}
+              accessibilityRole="button"
+              accessibilityLabel={
+                audioPlayerStatus.playing ? "Pause sent audio" : "Play sent audio"
+              }
+            >
+              <XStack alignItems="center" gap={6} paddingVertical={4}>
+                <Feather
+                  name={audioPlayerStatus.playing ? "pause-circle" : "play-circle"}
+                  size={18}
+                  color={theme.primary.val}
+                />
+                <Text color={theme.primary.val} fontWeight="700">
+                  {audioPlayerStatus.playing ? "Pause sent audio" : "Listen to sent audio"}
+                </Text>
+              </XStack>
+            </Pressable>
+          ) : null}
           {wasSpedUp ? (
             <XStack alignItems="center" gap={6}>
               <Feather name="zap" size={12} color={theme.colorMuted.val} />
@@ -332,12 +426,7 @@ export const VoiceRecorder = React.forwardRef<VoiceRecorderHandle, VoiceRecorder
             <Pressable onPress={discard}>
               <Text color={theme.destructive.val}>Discard</Text>
             </Pressable>
-            <Pressable
-              onPress={() => {
-                onTranscriptionComplete?.(text);
-                setPhase("idle");
-              }}
-            >
+            <Pressable onPress={acceptTranscription}>
               <Text color={theme.primary.val} fontWeight="700">
                 Use transcription
               </Text>

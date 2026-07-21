@@ -10,18 +10,13 @@ import { PressableScale } from "@/components/ui/PressableScale";
 import { SectionGrid } from "@/components/ui/Responsive";
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { withAlpha } from "@/components/ui/themeHelpers";
-import { APP_NAVIGATION, SECONDARY_NAVIGATION } from "@/constants/appNavigation";
+import { SECONDARY_NAVIGATION } from "@/constants/appNavigation";
 import { radius, spacing, typeScale } from "@/constants/uiTokens";
 import { api } from "@/convex/_generated/api";
 import { useAppRouter } from "@/hooks/useAppRouter";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useAuth } from "@/hooks/useAuth";
-import { Feather, type FeatherIconName } from "@/lib/icons";
-
-/** Destinations promoted out of the section lists into the tile grid. */
-const QUICK_ACCESS_IDS = ["reminders", "files", "knowledge-graph", "analytics"] as const;
-
-const ALL_ITEMS = APP_NAVIGATION.flatMap((section) => section.items);
+import { Feather } from "@/lib/icons";
 
 function initialsFrom(name?: string | null, email?: string | null) {
   const source = name?.trim() || email?.trim() || "";
@@ -29,58 +24,6 @@ function initialsFrom(name?: string | null, email?: string | null) {
   if (parts.length === 0) return "?";
   const letters = parts.length === 1 ? parts[0].slice(0, 2) : `${parts[0][0]}${parts[1][0]}`;
   return letters.toUpperCase();
-}
-
-function QuickTile({
-  icon,
-  label,
-  detail,
-  onPress,
-}: {
-  icon: FeatherIconName;
-  label: string;
-  detail: string;
-  onPress: () => void;
-}) {
-  const theme = useAppTheme();
-
-  return (
-    <PressableScale onPress={onPress} accessibilityRole="link" accessibilityLabel={label}>
-      <SurfaceCard variant="solid" padding={spacing.md} radius={radius.lg}>
-        <YStack gap={spacing.sm} minHeight={96} justifyContent="space-between">
-          <YStack
-            width={38}
-            height={38}
-            borderRadius={radius.sm}
-            alignItems="center"
-            justifyContent="center"
-            backgroundColor={withAlpha(theme.primary.val, "18")}
-          >
-            <Feather name={icon} size={18} color={theme.primary.val} />
-          </YStack>
-          <YStack gap={1}>
-            <Text
-              fontFamily="$body"
-              fontSize={typeScale.body}
-              fontWeight="700"
-              color={theme.color.val}
-              numberOfLines={1}
-            >
-              {label}
-            </Text>
-            <Text
-              fontFamily="$utility"
-              fontSize={typeScale.caption}
-              color={theme.colorMuted.val}
-              numberOfLines={1}
-            >
-              {detail}
-            </Text>
-          </YStack>
-        </YStack>
-      </SurfaceCard>
-    </PressableScale>
-  );
 }
 
 function SectionHeading({ label }: { label: string }) {
@@ -111,10 +54,6 @@ export default function MoreScreen() {
   const { user, logout } = useAuth();
   const { confirm } = useAppConfirm();
   const adminStatus = useQuery(api.auth.getAdminStatus);
-
-  const quickAccess = QUICK_ACCESS_IDS.map((id) => ALL_ITEMS.find((item) => item.id === id)).filter(
-    (item): item is (typeof ALL_ITEMS)[number] => item !== undefined,
-  );
 
   const handleSignOut = React.useCallback(async () => {
     const confirmed = await confirm({
@@ -183,21 +122,6 @@ export default function MoreScreen() {
             </XStack>
           </SurfaceCard>
         </PressableScale>
-
-        <YStack gap={spacing.sm}>
-          <SectionHeading label="Quick access" />
-          <SectionGrid minimumColumnWidth={150} maximumColumns={4} gap={spacing.sm}>
-            {quickAccess.map((item) => (
-              <QuickTile
-                key={item.id}
-                icon={item.icon}
-                label={item.label}
-                detail={item.detail}
-                onPress={() => router.push(item.href as never)}
-              />
-            ))}
-          </SectionGrid>
-        </YStack>
 
         <SectionGrid minimumColumnWidth={300} maximumColumns={3} gap={spacing.lg}>
           {SECONDARY_NAVIGATION.map((section) => {

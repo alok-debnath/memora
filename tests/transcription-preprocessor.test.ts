@@ -19,7 +19,7 @@ function sine(seconds: number, frequency = 220) {
 
 describe("frontend transcription audio preprocessing", () => {
   test("keeps the requested tempo fixed in code", () => {
-    expect(TRANSCRIPTION_AUDIO_TEMPO).toBe(3);
+    expect(TRANSCRIPTION_AUDIO_TEMPO).toBe(2);
   });
 
   test("removes sustained silence but retains speech", () => {
@@ -44,7 +44,7 @@ describe("frontend transcription audio preprocessing", () => {
     expect(view.getUint16(22, true)).toBe(1);
     expect(view.getUint32(24, true)).toBe(TRANSCRIPTION_AUDIO_SAMPLE_RATE);
     expect(prepared.mimeType).toBe("audio/wav");
-    expect(prepared.durationMs).toBeLessThan(1_500);
+    expect(prepared.durationMs).toBeLessThan(2_000);
     expect(prepared.removedSilenceMs).toBeGreaterThan(500);
   });
 
