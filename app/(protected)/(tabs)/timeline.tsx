@@ -14,6 +14,7 @@ import { SearchBar } from "@/components/ui/SearchBar";
 import { SectionLabel } from "@/components/ui/SectionLabel";
 import { AppScreen, SectionCard } from "@/components/ui/AppScreen";
 import { ResponsiveStatGrid, WorkspaceSplit } from "@/components/ui/Responsive";
+import { PageHero } from "@/components/ui/PageHero";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { withAlpha } from "@/components/ui/themeHelpers";
 import { alphaGradients } from "@/constants/themePalettes";
@@ -24,7 +25,6 @@ import { CONTENT_GAP, spacing } from "@/constants/uiTokens";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { useTabBarBottomPadding } from "@/hooks/useTabBarBottomPadding";
 import { useAppTheme } from "@/hooks/useAppTheme";
-import { PrimaryPageHeader } from "@/components/navigation/PrimaryPageHeader";
 import { getReminderDate, inferMemoryEntryKind, isReminder } from "@/types/memoryKind";
 import { useUIStore } from "@/store/ui";
 
@@ -385,12 +385,10 @@ export default function TimelineScreen() {
       // The day row carries its own top padding; the default gap doubles it.
       bodyGap={0}
       hero={
-        <>
-          <PrimaryPageHeader
-            eyebrow="Memory archive"
-            title="Timeline"
-            description="Browse your archive chronologically and jump between meaningful time periods."
-          />
+        // One child, so the screen's CONTENT_GAP does not apply between these
+        // two and the header can sit tight against the search field.
+        <YStack gap={8}>
+          <PageHero title="Timeline" accentStyle="none" dense />
           {/* Static, above the list: as a list header it scrolled into the top fade. */}
           <SearchBar
             value={searchQuery}
@@ -398,7 +396,7 @@ export default function TimelineScreen() {
             placeholder="Recall a memory, person, place, or idea..."
             isSearching={isSearching}
           />
-        </>
+        </YStack>
       }
     >
       <TimelineWorkspace

@@ -18,6 +18,11 @@ type PageHeroProps = {
   action?: React.ReactNode;
   stats?: PageHeroStat[];
   accentStyle?: "rail" | "none";
+  /**
+   * Drops the reserved block height. The default leaves room for a description
+   * line; without one that space reads as a gap under the title.
+   */
+  dense?: boolean;
 };
 
 export function PageHero({
@@ -29,14 +34,19 @@ export function PageHero({
   action,
   stats,
   accentStyle = "rail",
+  dense = false,
 }: PageHeroProps) {
   const theme = useAppTheme();
   const responsive = useResponsiveLayout();
   const accent = iconColor ?? theme.primary.val;
 
   return (
-    <YStack gap={10}>
-      <XStack alignItems="flex-start" gap={12} minHeight={responsive.isExpanded ? 72 : 64}>
+    <YStack gap={dense ? 0 : 10}>
+      <XStack
+        alignItems="flex-start"
+        gap={12}
+        minHeight={dense ? undefined : responsive.isExpanded ? 72 : 64}
+      >
         {accentStyle === "rail" ? (
           <YStack
             width={3}
